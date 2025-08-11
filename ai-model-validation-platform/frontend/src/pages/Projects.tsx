@@ -36,6 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import { createProject, getProjects } from '../services/api';
 import { Project as ApiProject, ProjectCreate } from '../services/types';
 import ProjectsDebug from '../components/ProjectsDebug';
+import ApiTestComponent from '../components/ApiTestComponent';
 
 // Use Project type from API services
 type Project = ApiProject;
@@ -139,7 +140,9 @@ const Projects: React.FC = () => {
       setFormLoading(true);
       setFormError(null);
       
-      await createProject(formData);
+      console.log('Creating project with data:', formData);
+      const result = await createProject(formData);
+      console.log('Project created successfully:', result);
       
       // Success - close dialog and refresh projects
       setOpenDialog(false);
@@ -147,6 +150,13 @@ const Projects: React.FC = () => {
       await loadProjects();
       
     } catch (error: any) {
+      console.error('Project creation error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
       setFormError(error.message || 'Failed to create project. Please try again.');
     } finally {
       setFormLoading(false);
@@ -176,6 +186,7 @@ const Projects: React.FC = () => {
   return (
     <Box>
       {process.env.NODE_ENV === 'development' && <ProjectsDebug />}
+      {process.env.NODE_ENV === 'development' && <ApiTestComponent />}
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Projects</Typography>
@@ -220,7 +231,7 @@ const Projects: React.FC = () => {
       {loading ? (
         <Grid container spacing={3}>
           {[1, 2, 3, 4, 5, 6].map((index) => (
-            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={index}>
+            <Grid size={{xs: 12, md: 6, lg: 4}} key={index}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -267,7 +278,7 @@ const Projects: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {projects.map((project) => (
-            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={project.id}>
+            <Grid size={{xs: 12, md: 6, lg: 4}} key={project.id}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -370,7 +381,7 @@ const Projects: React.FC = () => {
             fullWidth
             variant="outlined"
             value={formData.name}
-            onChange={(e) => handleFormChange('name', e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFormChange('name', e.target.value)}
             error={!!formErrors.name}
             helperText={formErrors.name}
             disabled={formLoading}
@@ -385,7 +396,7 @@ const Projects: React.FC = () => {
             rows={3}
             variant="outlined"
             value={formData.description}
-            onChange={(e) => handleFormChange('description', e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFormChange('description', e.target.value)}
             error={!!formErrors.description}
             helperText={formErrors.description}
             disabled={formLoading}
@@ -398,7 +409,7 @@ const Projects: React.FC = () => {
             fullWidth
             variant="outlined"
             value={formData.cameraModel}
-            onChange={(e) => handleFormChange('cameraModel', e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFormChange('cameraModel', e.target.value)}
             error={!!formErrors.cameraModel}
             helperText={formErrors.cameraModel}
             disabled={formLoading}

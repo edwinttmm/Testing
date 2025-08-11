@@ -38,7 +38,6 @@ import {
   Wifi,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
-import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 import { TestSession as TestSessionType, VideoFile, Project, ApiError } from '../services/types';
 
@@ -51,7 +50,6 @@ interface DetectionEvent {
 }
 
 const TestExecution: React.FC = () => {
-  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -101,11 +99,9 @@ const TestExecution: React.FC = () => {
     }
   };
 
-  // WebSocket connection with authentication and reconnection
+  // WebSocket connection with reconnection
   useEffect(() => {
-    if (user) {
-      initializeWebSocket();
-    }
+    initializeWebSocket();
 
     return () => {
       if (socket) {
@@ -115,11 +111,11 @@ const TestExecution: React.FC = () => {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [user]);
+  }, []);
 
   const initializeWebSocket = useCallback(() => {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
-    const token = localStorage.getItem('authToken');
+    const wsUrl = process.env.REACT_APP_WS_URL || 'http://localhost:8001';
+    const token = localStorage.getItem('authToken') || 'dev-token';
     
     const newSocket = io(wsUrl, {
       auth: {
@@ -127,6 +123,8 @@ const TestExecution: React.FC = () => {
       },
       transports: ['websocket', 'polling'],
       timeout: 10000,
+      forceNew: true,
+      path: '/socket.io/'
     });
     
     newSocket.on('connect', () => {
@@ -135,6 +133,9 @@ const TestExecution: React.FC = () => {
       setReconnectAttempts(0);
       console.log('Connected to WebSocket server');
       setSuccessMessage('Connected to real-time detection server');
+      
+      // Join test namespace
+      newSocket.emit('join_room', { room: 'test_sessions' });
     });
 
     newSocket.on('disconnect', (reason) => {
@@ -149,7 +150,8 @@ const TestExecution: React.FC = () => {
 
     newSocket.on('connect_error', (error) => {
       console.error('WebSocket connection error:', error);
-      setConnectionError('Failed to connect to real-time server');
+      setIsConnected(false);
+      setConnectionError(`Failed to connect to real-time server: ${error.message || 'Unknown error'}`);
       handleReconnect();
     });
 
@@ -163,8 +165,20 @@ const TestExecution: React.FC = () => {
       setCurrentSession(session);
     });
 
+    newSocket.on('connection_status', (data) => {
+      console.log('Connection status:', data);
+      if (data.status === 'connected') {
+        setSuccessMessage(data.message);
+      }
+    });
+
+    newSocket.on('error', (data) => {
+      console.error('Socket.IO error:', data);
+      setError(`Server error: ${data.message}`);
+    });
+
     setSocket(newSocket);
-  }, [user]);
+  }, []);
 
   const handleReconnect = useCallback(() => {
     if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {

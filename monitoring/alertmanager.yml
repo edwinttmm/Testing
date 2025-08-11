@@ -1,0 +1,20 @@
+global:
+  smtp_from: alerts@aivalidation.com
+  smtp_smarthost: localhost:587
+receivers:
+- email_configs:
+  - body: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+    subject: 'Performance Alert: {{ range .Alerts }}{{ .Annotations.summary }}{{ end
+      }}'
+    to: performance-team@aivalidation.com
+  name: web.hook
+  webhook_configs:
+  - send_resolved: true
+    url: http://api:8001/api/alerts/webhook
+route:
+  group_by:
+  - alertname
+  group_interval: 10s
+  group_wait: 10s
+  receiver: web.hook
+  repeat_interval: 1h
