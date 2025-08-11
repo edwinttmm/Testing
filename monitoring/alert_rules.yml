@@ -1,0 +1,93 @@
+groups:
+- name: api_performance_alerts
+  rules:
+  - alert: HighAPILatency
+    annotations:
+      description: 95th percentile latency is {{ $value }}s for {{ $labels.endpoint
+        }}
+      summary: API latency is high
+    expr: http_request_duration_seconds{quantile="0.95"} > 1.0
+    for: 2m
+    labels:
+      severity: warning
+  - alert: HighErrorRate
+    annotations:
+      description: Error rate is {{ $value }} errors per second
+      summary: High error rate detected
+    expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+    for: 1m
+    labels:
+      severity: critical
+  - alert: APIDowntime
+    annotations:
+      description: API server has been down for more than 30 seconds
+      summary: API server is down
+    expr: up{job="api-server"} == 0
+    for: 30s
+    labels:
+      severity: critical
+- name: database_performance_alerts
+  rules:
+  - alert: DatabaseConnectionsHigh
+    annotations:
+      description: '{{ $value }}% of database connections are in use'
+      summary: Database connection pool nearly exhausted
+    expr: postgresql_connections_active / postgresql_connections_max > 0.8
+    for: 5m
+    labels:
+      severity: warning
+  - alert: SlowDatabaseQueries
+    annotations:
+      description: '{{ $value }} slow queries detected in the last 5 minutes'
+      summary: Multiple slow database queries detected
+    expr: postgresql_slow_queries_total > 10
+    for: 2m
+    labels:
+      severity: warning
+- name: frontend_performance_alerts
+  rules:
+  - alert: HighPageLoadTime
+    annotations:
+      description: Largest Contentful Paint is {{ $value }}ms
+      summary: Page load time is high
+    expr: web_vitals_lcp > 2500
+    for: 5m
+    labels:
+      severity: warning
+  - alert: PoorUserExperience
+    annotations:
+      description: Cumulative Layout Shift score is {{ $value }}
+      summary: Poor user experience detected
+    expr: web_vitals_cls > 0.25
+    for: 5m
+    labels:
+      severity: warning
+- name: system_performance_alerts
+  rules:
+  - alert: HighCPUUsage
+    annotations:
+      description: CPU usage is {{ $value }}% on {{ $labels.instance }}
+      summary: High CPU usage detected
+    expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))
+      * 100) > 80
+    for: 5m
+    labels:
+      severity: warning
+  - alert: HighMemoryUsage
+    annotations:
+      description: Memory usage is {{ $value }}% on {{ $labels.instance }}
+      summary: High memory usage detected
+    expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes
+      > 0.9
+    for: 5m
+    labels:
+      severity: critical
+  - alert: DiskSpaceLow
+    annotations:
+      description: Only {{ $value }}% disk space remaining on {{ $labels.instance
+        }}
+      summary: Disk space is low
+    expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+    for: 5m
+    labels:
+      severity: warning

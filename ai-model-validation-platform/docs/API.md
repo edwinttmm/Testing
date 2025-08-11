@@ -1,1 +1,460 @@
-# AI Model Validation Platform API Documentation\n\n## Overview\n\nThe AI Model Validation Platform provides a RESTful API for managing validation projects, uploading test videos, executing tests, and retrieving results.\n\n**Base URL**: `http://localhost:8000`\n\n**API Documentation**: `http://localhost:8000/docs` (Swagger UI)\n\n## Authentication\n\nAll API endpoints require JWT authentication via the `Authorization` header:\n\n```\nAuthorization: Bearer <jwt_token>\n```\n\n### Authentication Endpoints\n\n#### POST /auth/login\nAuthenticate user and get JWT token.\n\n**Request Body**:\n```json\n{\n    \"email\": \"user@example.com\",\n    \"password\": \"password123\"\n}\n```\n\n**Response**:\n```json\n{\n    \"access_token\": \"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...\",\n    \"token_type\": \"bearer\",\n    \"expires_in\": 1800\n}\n```\n\n#### POST /auth/register\nRegister a new user account.\n\n**Request Body**:\n```json\n{\n    \"email\": \"user@example.com\",\n    \"password\": \"password123\",\n    \"full_name\": \"John Doe\"\n}\n```\n\n## Project Management\n\n### GET /api/projects\nList all projects for the authenticated user.\n\n**Query Parameters**:\n- `skip` (optional): Number of records to skip (default: 0)\n- `limit` (optional): Maximum number of records to return (default: 100)\n\n**Response**:\n```json\n[\n    {\n        \"id\": \"uuid\",\n        \"name\": \"Highway VRU Detection\",\n        \"description\": \"Testing front-facing camera detection\",\n        \"camera_model\": \"Sony IMX390\",\n        \"camera_view\": \"Front-facing VRU\",\n        \"lens_type\": \"Wide angle\",\n        \"resolution\": \"1920x1080\",\n        \"frame_rate\": 30,\n        \"signal_type\": \"GPIO\",\n        \"status\": \"Active\",\n        \"owner_id\": \"uuid\",\n        \"created_at\": \"2024-01-15T10:30:00Z\",\n        \"updated_at\": \"2024-01-15T10:30:00Z\"\n    }\n]\n```\n\n### POST /api/projects\nCreate a new validation project.\n\n**Request Body**:\n```json\n{\n    \"name\": \"Urban Cycling Detection\",\n    \"description\": \"Urban environment cyclist detection validation\",\n    \"camera_model\": \"OmniVision OV2312\",\n    \"camera_view\": \"Front-facing VRU\",\n    \"lens_type\": \"Standard\",\n    \"resolution\": \"1280x720\",\n    \"frame_rate\": 25,\n    \"signal_type\": \"Network Packet\"\n}\n```\n\n### GET /api/projects/{project_id}\nGet details of a specific project.\n\n### PUT /api/projects/{project_id}\nUpdate an existing project.\n\n### DELETE /api/projects/{project_id}\nDelete a project (soft delete).\n\n## Video and Ground Truth Management\n\n### POST /api/projects/{project_id}/videos\nUpload a test video for ground truth generation.\n\n**Request**: Multipart form data with video file\n\n**Response**:\n```json\n{\n    \"video_id\": \"uuid\",\n    \"filename\": \"test_video.mp4\",\n    \"status\": \"uploaded\",\n    \"message\": \"Video uploaded successfully. Ground truth generation started.\"\n}\n```\n\n### GET /api/videos/{video_id}/ground-truth\nGet ground truth data for a processed video.\n\n**Response**:\n```json\n{\n    \"video_id\": \"uuid\",\n    \"objects\": [\n        {\n            \"id\": \"uuid\",\n            \"timestamp\": 12.5,\n            \"class_label\": \"pedestrian\",\n            \"bounding_box\": {\n                \"x\": 100,\n                \"y\": 200,\n                \"width\": 50,\n                \"height\": 120\n            },\n            \"confidence\": 0.92\n        }\n    ],\n    \"total_detections\": 127,\n    \"status\": \"completed\"\n}\n```\n\n## Test Execution\n\n### POST /api/test-sessions\nCreate a new test session.\n\n**Request Body**:\n```json\n{\n    \"name\": \"Highway Test Session 1\",\n    \"project_id\": \"uuid\",\n    \"video_id\": \"uuid\",\n    \"tolerance_ms\": 100\n}\n```\n\n**Response**:\n```json\n{\n    \"id\": \"uuid\",\n    \"name\": \"Highway Test Session 1\",\n    \"project_id\": \"uuid\",\n    \"video_id\": \"uuid\",\n    \"tolerance_ms\": 100,\n    \"status\": \"created\",\n    \"created_at\": \"2024-01-15T14:30:00Z\"\n}\n```\n\n### GET /api/test-sessions\nList test sessions.\n\n**Query Parameters**:\n- `project_id` (optional): Filter by project ID\n- `skip` (optional): Number of records to skip\n- `limit` (optional): Maximum number of records to return\n\n### GET /api/test-sessions/{session_id}\nGet details of a specific test session.\n\n## Detection Events (Raspberry Pi Interface)\n\n### POST /api/detection-events\nSubmit a detection event from the Raspberry Pi.\n\n**Note**: This endpoint does not require authentication as it's called by the Raspberry Pi hardware.\n\n**Request Body**:\n```json\n{\n    \"test_session_id\": \"uuid\",\n    \"timestamp\": 15.2,\n    \"confidence\": 0.87,\n    \"class_label\": \"cyclist\"\n}\n```\n\n**Response**:\n```json\n{\n    \"detection_id\": \"uuid\",\n    \"validation_result\": \"TP\",\n    \"status\": \"processed\"\n}\n```\n\n**Validation Results**:\n- `TP`: True Positive (detection matches ground truth)\n- `FP`: False Positive (detection with no ground truth match)\n- `FN`: False Negative (ground truth with no detection)\n\n## Results and Analytics\n\n### GET /api/test-sessions/{session_id}/results\nGet comprehensive validation results for a test session.\n\n**Response**:\n```json\n{\n    \"test_session_id\": \"uuid\",\n    \"metrics\": {\n        \"true_positives\": 85,\n        \"false_positives\": 12,\n        \"false_negatives\": 8,\n        \"precision\": 0.876,\n        \"recall\": 0.914,\n        \"f1_score\": 0.894,\n        \"accuracy\": 0.914\n    },\n    \"detection_events\": [\n        {\n            \"id\": \"uuid\",\n            \"test_session_id\": \"uuid\",\n            \"timestamp\": 15.2,\n            \"confidence\": 0.87,\n            \"class_label\": \"cyclist\",\n            \"validation_result\": \"TP\",\n            \"ground_truth_match_id\": \"uuid\",\n            \"created_at\": \"2024-01-15T14:35:22Z\"\n        }\n    ],\n    \"total_ground_truth\": 93,\n    \"total_detections\": 97\n}\n```\n\n### GET /api/test-sessions/{session_id}/report\nGenerate and download a PDF report for the test session.\n\n**Response**: PDF file download\n\n## Audit Logging\n\n### GET /api/audit-logs\nRetrieve audit logs (admin only).\n\n**Query Parameters**:\n- `user_id` (optional): Filter by user ID\n- `event_type` (optional): Filter by event type\n- `skip` (optional): Number of records to skip\n- `limit` (optional): Maximum number of records to return\n\n**Response**:\n```json\n[\n    {\n        \"id\": \"uuid\",\n        \"user_id\": \"uuid\",\n        \"event_type\": \"project_create\",\n        \"event_data\": {\n            \"project_id\": \"uuid\",\n            \"project_name\": \"Highway VRU Detection\"\n        },\n        \"ip_address\": \"192.168.1.100\",\n        \"user_agent\": \"Mozilla/5.0...\",\n        \"created_at\": \"2024-01-15T10:30:00Z\"\n    }\n]\n```\n\n## Error Responses\n\nAll endpoints may return the following error responses:\n\n### 400 Bad Request\n```json\n{\n    \"detail\": \"Invalid input data\"\n}\n```\n\n### 401 Unauthorized\n```json\n{\n    \"detail\": \"Not authenticated\"\n}\n```\n\n### 403 Forbidden\n```json\n{\n    \"detail\": \"Not enough permissions\"\n}\n```\n\n### 404 Not Found\n```json\n{\n    \"detail\": \"Resource not found\"\n}\n```\n\n### 422 Validation Error\n```json\n{\n    \"detail\": [\n        {\n            \"loc\": [\"body\", \"email\"],\n            \"msg\": \"field required\",\n            \"type\": \"value_error.missing\"\n        }\n    ]\n}\n```\n\n### 500 Internal Server Error\n```json\n{\n    \"detail\": \"Internal server error\"\n}\n```\n\n## WebSocket Events\n\nThe platform supports WebSocket connections for real-time updates during test execution.\n\n**WebSocket URL**: `ws://localhost:8000/ws`\n\n### Events\n\n#### `detection_event`\nReceived when a new detection event is processed.\n\n```json\n{\n    \"type\": \"detection_event\",\n    \"data\": {\n        \"id\": \"uuid\",\n        \"timestamp\": 15.2,\n        \"validation_result\": \"TP\",\n        \"confidence\": 0.87,\n        \"class_label\": \"cyclist\"\n    }\n}\n```\n\n#### `test_session_update`\nReceived when test session status changes.\n\n```json\n{\n    \"type\": \"test_session_update\",\n    \"data\": {\n        \"session_id\": \"uuid\",\n        \"status\": \"completed\",\n        \"metrics\": {\n            \"precision\": 0.876,\n            \"recall\": 0.914,\n            \"f1_score\": 0.894\n        }\n    }\n}\n```\n\n## Rate Limits\n\n- Authentication endpoints: 5 requests per minute per IP\n- File upload endpoints: 10 requests per hour per user\n- Detection events endpoint: 1000 requests per hour per session\n- Other endpoints: 100 requests per minute per user\n\n## SDK and Integration Examples\n\nFor integration examples and SDKs, see:\n- [Python SDK Example](./examples/python-sdk.py)\n- [Raspberry Pi Client](./raspberry-pi-client.py)\n- [JavaScript/Node.js Example](./examples/nodejs-client.js)
+# API Documentation
+
+## Overview
+
+The AI Model Validation Platform API provides endpoints for managing VRU detection validation projects, uploading videos, running tests, and analyzing results.
+
+**Base URL**: `http://localhost:8000` (development)
+
+## Authentication
+
+**Note**: Authentication has been removed for simplified deployment. All endpoints are now publicly accessible.
+
+## API Endpoints
+
+### Health and Status
+
+#### GET /health
+Returns the health status of the API.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+#### GET /
+Returns basic API information.
+
+**Response:**
+```json
+{
+  "message": "AI Model Validation Platform API"
+}
+```
+
+### Projects
+
+#### GET /api/projects
+List all projects.
+
+**Query Parameters:**
+- `skip` (integer, optional): Number of projects to skip (default: 0)
+- `limit` (integer, optional): Maximum number of projects to return (default: 100)
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Project Name",
+    "description": "Project description",
+    "camera_model": "Camera Model",
+    "camera_view": "Front-facing VRU",
+    "signal_type": "GPIO",
+    "status": "Active",
+    "owner_id": "anonymous",
+    "created_at": "2023-01-01T00:00:00Z",
+    "updated_at": "2023-01-01T00:00:00Z"
+  }
+]
+```
+
+#### POST /api/projects
+Create a new project.
+
+**Request Body:**
+```json
+{
+  "name": "Project Name",
+  "description": "Project description",
+  "cameraModel": "Camera Model",
+  "cameraView": "Front-facing VRU",
+  "signalType": "GPIO"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "name": "Project Name",
+  "description": "Project description",
+  "camera_model": "Camera Model",
+  "camera_view": "Front-facing VRU",
+  "signal_type": "GPIO",
+  "status": "Active",
+  "owner_id": "anonymous",
+  "created_at": "2023-01-01T00:00:00Z",
+  "updated_at": "2023-01-01T00:00:00Z"
+}
+```
+
+**Validation Errors:**
+- `400`: Project name is required
+- `422`: Invalid input data
+
+#### GET /api/projects/{project_id}
+Get a specific project by ID.
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "name": "Project Name",
+  "description": "Project description",
+  "camera_model": "Camera Model",
+  "camera_view": "Front-facing VRU",
+  "signal_type": "GPIO",
+  "status": "Active",
+  "owner_id": "anonymous",
+  "created_at": "2023-01-01T00:00:00Z",
+  "updated_at": "2023-01-01T00:00:00Z"
+}
+```
+
+**Errors:**
+- `404`: Project not found
+
+### Videos
+
+#### POST /api/projects/{project_id}/videos
+Upload a video file to a project.
+
+**Request:**
+- Content-Type: `multipart/form-data`
+- Field: `file` (video file)
+
+**Supported Formats:**
+- MP4 (.mp4)
+- AVI (.avi)  
+- MOV (.mov)
+- MKV (.mkv)
+- WebM (.webm)
+
+**File Size Limit:** 100MB (configurable)
+
+**Response:**
+```json
+{
+  "video_id": "uuid",
+  "filename": "video.mp4",
+  "status": "uploaded",
+  "message": "Video uploaded successfully."
+}
+```
+
+**Validation Errors:**
+- `400`: Invalid file format or file too large
+- `404`: Project not found
+- `413`: File size exceeds limit
+
+#### GET /api/videos/{video_id}/ground-truth
+Get ground truth data for a video.
+
+**Response:**
+```json
+{
+  "video_id": "uuid",
+  "annotations": [],
+  "status": "pending",
+  "message": "Ground truth processing not yet implemented"
+}
+```
+
+### Test Sessions
+
+#### POST /api/test-sessions
+Create a new test session.
+
+**Request Body:**
+```json
+{
+  "name": "Test Session Name",
+  "project_id": "uuid",
+  "video_id": "uuid",
+  "tolerance_ms": 100
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "name": "Test Session Name",
+  "project_id": "uuid",
+  "video_id": "uuid",
+  "tolerance_ms": 100,
+  "status": "created",
+  "started_at": null,
+  "completed_at": null,
+  "created_at": "2023-01-01T00:00:00Z"
+}
+```
+
+**Validation Errors:**
+- `400`: Test session name is required
+- `404`: Project not found
+
+#### GET /api/test-sessions
+List test sessions.
+
+**Query Parameters:**
+- `project_id` (string, optional): Filter by project ID
+- `skip` (integer, optional): Number of sessions to skip (default: 0)
+- `limit` (integer, optional): Maximum number of sessions to return (default: 100)
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "name": "Test Session Name",
+    "project_id": "uuid",
+    "video_id": "uuid",
+    "tolerance_ms": 100,
+    "status": "created",
+    "started_at": null,
+    "completed_at": null,
+    "created_at": "2023-01-01T00:00:00Z"
+  }
+]
+```
+
+#### GET /api/test-sessions/{session_id}/results
+Get test results for a session.
+
+**Response:**
+```json
+{
+  "session_id": "uuid",
+  "accuracy": 94.2,
+  "precision": 92.5,
+  "recall": 95.8,
+  "f1_score": 94.1,
+  "total_detections": 150,
+  "true_positives": 142,
+  "false_positives": 8,
+  "false_negatives": 6,
+  "status": "completed"
+}
+```
+
+### Detection Events
+
+#### POST /api/detection-events
+Submit a detection event from Raspberry Pi.
+
+**Request Body:**
+```json
+{
+  "test_session_id": "uuid",
+  "timestamp": 1.5,
+  "confidence": 0.95,
+  "class_label": "pedestrian"
+}
+```
+
+**Response:**
+```json
+{
+  "detection_id": "uuid",
+  "validation_result": null,
+  "status": "processed"
+}
+```
+
+**Validation Errors:**
+- `400`: Invalid confidence value (must be 0-1) or negative timestamp
+
+### Dashboard
+
+#### GET /api/dashboard/stats
+Get dashboard statistics.
+
+**Response:**
+```json
+{
+  "projectCount": 5,
+  "videoCount": 10,
+  "testCount": 15,
+  "averageAccuracy": 94.2,
+  "activeTests": 0,
+  "totalDetections": 100
+}
+```
+
+## Error Handling
+
+### Standard Error Response Format
+
+```json
+{
+  "detail": "Error message",
+  "status_code": 400,
+  "error": "Additional error information"
+}
+```
+
+### HTTP Status Codes
+
+- `200`: Success
+- `201`: Created
+- `400`: Bad Request (validation error)
+- `404`: Not Found
+- `409`: Conflict (integrity error)
+- `413`: Request Entity Too Large
+- `422`: Unprocessable Entity
+- `500`: Internal Server Error
+
+### Validation Errors
+
+For validation errors (422), the response includes detailed error information:
+
+```json
+{
+  "detail": "Input validation failed",
+  "errors": [
+    {
+      "loc": ["field_name"],
+      "msg": "Error message",
+      "type": "value_error"
+    }
+  ]
+}
+```
+
+## Rate Limiting
+
+Currently, no rate limiting is implemented. Consider implementing rate limiting for production deployments.
+
+## CORS
+
+CORS is configured to allow requests from:
+- `http://localhost:3000` (development frontend)
+- `http://127.0.0.1:3000`
+- `http://localhost:8080`
+- `http://127.0.0.1:8080`
+- Additional origins can be configured via environment variables
+
+## Configuration
+
+API behavior can be customized using environment variables:
+
+- `AIVALIDATION_API_HOST`: API host (default: 0.0.0.0)
+- `AIVALIDATION_API_PORT`: API port (default: 8000)
+- `AIVALIDATION_MAX_FILE_SIZE`: Maximum upload file size in bytes
+- `AIVALIDATION_CORS_ORIGINS`: Comma-separated list of allowed origins
+
+## Examples
+
+### Create Project and Upload Video
+
+```bash
+# Create project
+curl -X POST http://localhost:8000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Highway VRU Detection",
+    "description": "Testing pedestrian detection on highway footage",
+    "cameraModel": "Sony IMX219",
+    "cameraView": "Front-facing VRU",
+    "signalType": "GPIO"
+  }'
+
+# Upload video (replace {project_id} with actual ID)
+curl -X POST http://localhost:8000/api/projects/{project_id}/videos \
+  -F "file=@test_video.mp4"
+```
+
+### Submit Detection Event
+
+```bash
+curl -X POST http://localhost:8000/api/detection-events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "test_session_id": "session-uuid",
+    "timestamp": 5.25,
+    "confidence": 0.87,
+    "class_label": "pedestrian"
+  }'
+```
+
+### Get Dashboard Stats
+
+```bash
+curl http://localhost:8000/api/dashboard/stats
+```
+
+## SDKs and Libraries
+
+### Python Client Example
+
+```python
+import requests
+
+class AIValidationClient:
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+    
+    def create_project(self, name, description, camera_model, camera_view, signal_type):
+        data = {
+            "name": name,
+            "description": description,
+            "cameraModel": camera_model,
+            "cameraView": camera_view,
+            "signalType": signal_type
+        }
+        response = requests.post(f"{self.base_url}/api/projects", json=data)
+        return response.json()
+    
+    def upload_video(self, project_id, file_path):
+        with open(file_path, 'rb') as f:
+            files = {'file': f}
+            response = requests.post(
+                f"{self.base_url}/api/projects/{project_id}/videos",
+                files=files
+            )
+        return response.json()
+```
+
+### JavaScript/Node.js Client Example
+
+```javascript
+class AIValidationClient {
+    constructor(baseUrl = 'http://localhost:8000') {
+        this.baseUrl = baseUrl;
+    }
+    
+    async createProject(projectData) {
+        const response = await fetch(`${this.baseUrl}/api/projects`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(projectData),
+        });
+        return response.json();
+    }
+    
+    async getProjects() {
+        const response = await fetch(`${this.baseUrl}/api/projects`);
+        return response.json();
+    }
+}
+```
+
+## WebSocket Support
+
+Currently, the API does not include WebSocket support. Real-time features for test execution monitoring could be implemented using WebSockets or Server-Sent Events in future versions.
+
+## Future Enhancements
+
+Planned API enhancements:
+- Real-time test execution monitoring
+- Batch operations for projects and videos
+- Advanced filtering and search
+- Export functionality for results
+- Webhook support for notifications
+- API versioning support

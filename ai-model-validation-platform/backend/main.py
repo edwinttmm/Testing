@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -11,6 +10,8 @@ import uvicorn
 import logging
 import os
 from contextlib import asynccontextmanager
+from config import settings, setup_logging, create_directories, validate_environment
+from socketio_server import sio, create_socketio_app
 
 from database import SessionLocal, engine
 from models import Base, Project, Video, TestSession, DetectionEvent
@@ -21,62 +22,50 @@ from schemas import (
     DetectionEvent, ValidationResult
 )
 
-# Authentication schemas
-from pydantic import BaseModel
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-class AuthResponse(BaseModel):
-    token: str
-    user: dict
 from crud import (
     create_project, get_projects, get_project,
     create_video, get_videos,
     create_test_session, get_test_sessions,
     create_detection_event
 )
+# Import Socket.IO integration
+from socketio_server import sio, create_socketio_app
+
 # from services.ground_truth_service import GroundTruthService  # Temporarily disabled
 # from services.validation_service import ValidationService  # Temporarily disabled
-from services.auth_service import AuthService
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="AI Model Validation Platform API",
-    description="API for validating vehicle-mounted camera VRU detection",
-    version="1.0.0"
+    title=settings.app_name,
+    description=settings.app_description,
+    version=settings.app_version,
+    debug=settings.api_debug
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+setup_logging(settings)
 logger = logging.getLogger(__name__)
 
-# Environment-specific CORS configuration
-allowed_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080"
-]
+# Create necessary directories
+create_directories(settings)
 
-# Add production origins from environment
-if os.getenv("ALLOWED_ORIGINS"):
-    allowed_origins.extend(os.getenv("ALLOWED_ORIGINS").split(","))
+# Validate environment configuration
+validate_environment(settings)
+
+# CORS configuration from settings
+allowed_origins = settings.cors_origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "User-Agent"],
+    allow_credentials=settings.cors_credentials,
+    allow_methods=settings.cors_methods,
+    allow_headers=settings.cors_headers,
     expose_headers=["*"],
     max_age=3600,
 )
 
-security = HTTPBearer()
-auth_service = AuthService()
 # ground_truth_service = GroundTruthService()  # Temporarily disabled
 # validation_service = ValidationService()  # Temporarily disabled
 
@@ -152,24 +141,6 @@ def get_db():
     finally:
         db.close()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
-    """Get current user with proper authentication validation"""
-    try:
-        user = auth_service.get_current_user(credentials.credentials, db)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return user
-    except Exception as e:
-        logger.error(f"Authentication error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
 @app.get("/")
 async def root():
@@ -181,8 +152,24 @@ async def create_new_project(
     project: ProjectCreate,
     db: Session = Depends(get_db)
 ):
-    # Use default user for testing (no auth required)
-    return create_project(db=db, project=project, user_id="anonymous")
+    try:
+        # Validate project data
+        if not project.name or not project.name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project name is required"
+            )
+        
+        # Use default user for testing (no auth required)
+        return create_project(db=db, project=project, user_id="anonymous")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Project creation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create project"
+        )
 
 @app.get("/api/projects", response_model=List[ProjectResponse])
 async def list_projects(
@@ -217,18 +204,52 @@ async def upload_video(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # Save video file and create database record
-    video_record = create_video(db=db, project_id=project_id, filename=file.filename)
-    
-    # Ground truth service temporarily disabled
-    # ground_truth_service.process_video_async(video_record.id, file)
-    
-    return {
-        "video_id": video_record.id,
-        "filename": file.filename,
-        "status": "uploaded",
-        "message": "Video uploaded successfully. Ground truth generation started."
-    }
+    try:
+        # Validate file type and size
+        if not file.filename or not file.filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file format. Only video files are allowed."
+            )
+        
+        # Check if file is too large (100MB limit)
+        file_size = 0
+        if hasattr(file.file, 'seek') and hasattr(file.file, 'tell'):
+            file.file.seek(0, 2)  # Seek to end
+            file_size = file.file.tell()
+            file.file.seek(0)  # Reset to beginning
+            
+            if file_size > 100 * 1024 * 1024:  # 100MB
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="File size exceeds 100MB limit"
+                )
+        
+        # Verify project exists
+        project = get_project(db=db, project_id=project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        # Save video file and create database record
+        video_record = create_video(db=db, project_id=project_id, filename=file.filename)
+        
+        return {
+            "video_id": video_record.id,
+            "filename": file.filename,
+            "status": "uploaded",
+            "message": "Video uploaded successfully."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Video upload error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload video"
+        )
 
 @app.get("/api/videos/{video_id}/ground-truth", response_model=GroundTruthResponse)
 async def get_ground_truth(
@@ -255,7 +276,31 @@ async def create_test(
     test_session: TestSessionCreate,
     db: Session = Depends(get_db)
 ):
-    return create_test_session(db=db, test_session=test_session, user_id="anonymous")
+    try:
+        # Validate test session data
+        if not test_session.name or not test_session.name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Test session name is required"
+            )
+        
+        # Verify project and video exist
+        project = get_project(db=db, project_id=test_session.project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        return create_test_session(db=db, test_session=test_session, user_id="anonymous")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Test session creation error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create test session"
+        )
 
 @app.get("/api/test-sessions", response_model=List[TestSessionResponse])
 async def list_test_sessions(
@@ -273,21 +318,48 @@ async def receive_detection(
     db: Session = Depends(get_db)
 ):
     """Receive detection events from Raspberry Pi"""
-    # Store the detection event
-    detection_record = create_detection_event(db=db, detection=detection)
-    
-    # Validate against ground truth
-    validation_result = validation_service.validate_detection(
-        detection.test_session_id,
-        detection.timestamp,
-        detection.confidence
-    )
-    
-    return {
-        "detection_id": detection_record.id,
-        "validation_result": validation_result,
-        "status": "processed"
-    }
+    try:
+        # Validate detection data
+        if detection.confidence is not None and (detection.confidence < 0 or detection.confidence > 1):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Confidence must be between 0 and 1"
+            )
+        
+        if detection.timestamp < 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp must be non-negative"
+            )
+        
+        # Store the detection event
+        detection_record = create_detection_event(db=db, detection=detection)
+        
+        # Emit real-time detection event via Socket.IO
+        socketio_manager = get_socketio_manager()
+        await socketio_manager.emit_detection_event({
+            "id": detection_record.id,
+            "sessionId": detection.session_id,
+            "timestamp": detection.timestamp,
+            "classLabel": detection.class_label,
+            "confidence": detection.confidence,
+            "validationResult": detection.validation_result or "PENDING"
+        })
+        
+        # Return success response (validation service disabled)
+        return {
+            "detection_id": detection_record.id,
+            "validation_result": None,
+            "status": "processed"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Detection event error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process detection event"
+        )
 
 # Validation Results endpoint
 @app.get("/api/test-sessions/{session_id}/results", response_model=ValidationResult)
@@ -354,69 +426,14 @@ async def get_dashboard_stats(
             "totalDetections": 0
         }
 
-# Authentication endpoints
-@app.post("/api/auth/login", response_model=AuthResponse)
-async def login(
-    credentials: LoginRequest,
-    db: Session = Depends(get_db)
-):
-    """Authenticate user and return JWT token"""
-    try:
-        user = auth_service.authenticate_user(credentials.email, credentials.password, db)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
-            )
-        
-        # Create JWT token
-        token = auth_service.create_access_token(
-            data={"sub": user["email"], "user_id": user["id"], "full_name": user["full_name"]}
-        )
-        
-        return AuthResponse(
-            token=token,
-            user=user
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Login error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
-        )
-
-@app.post("/api/auth/demo-login", response_model=AuthResponse)
-async def demo_login(db: Session = Depends(get_db)):
-    """Demo login endpoint for testing"""
-    try:
-        user = {
-            "id": "demo-user-id",
-            "email": "demo@example.com",
-            "full_name": "Demo User",
-            "is_active": True
-        }
-        
-        token = auth_service.create_access_token(
-            data={"sub": user["email"], "user_id": user["id"], "full_name": user["full_name"]}
-        )
-        
-        return AuthResponse(
-            token=token,
-            user=user
-        )
-    except Exception as e:
-        logger.error(f"Demo login error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Demo login failed"
-        )
 
 # Health check
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
+# Create the combined FastAPI + Socket.IO ASGI app
+socketio_app = create_socketio_app(app)
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(socketio_app, host="0.0.0.0", port=8001)

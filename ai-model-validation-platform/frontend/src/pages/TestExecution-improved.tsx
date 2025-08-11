@@ -38,7 +38,6 @@ import {
   Wifi,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
-import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
 import { TestSession as TestSessionType, VideoFile, Project, ApiError } from '../services/types';
 
@@ -51,7 +50,6 @@ interface DetectionEvent {
 }
 
 const TestExecution: React.FC = () => {
-  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -101,11 +99,9 @@ const TestExecution: React.FC = () => {
     }
   };
 
-  // WebSocket connection with authentication and reconnection
+  // WebSocket connection with reconnection
   useEffect(() => {
-    if (user) {
-      initializeWebSocket();
-    }
+    initializeWebSocket();
 
     return () => {
       if (socket) {
@@ -115,7 +111,7 @@ const TestExecution: React.FC = () => {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [user]);
+  }, []);
 
   const initializeWebSocket = useCallback(() => {
     const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
@@ -164,7 +160,7 @@ const TestExecution: React.FC = () => {
     });
 
     setSocket(newSocket);
-  }, [user]);
+  }, []);
 
   const handleReconnect = useCallback(() => {
     if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {

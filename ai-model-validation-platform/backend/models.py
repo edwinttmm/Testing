@@ -1,28 +1,15 @@
-from sqlalchemy import Column, String, DateTime, Float, Integer, Boolean, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Float, Integer, Boolean, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 
 from database import Base
 
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    # projects = relationship("Project", back_populates="owner")  # Removed for no-auth mode
-
 class Project(Base):
     __tablename__ = "projects"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, index=True)  # Index for search
     description = Column(Text)
     camera_model = Column(String, nullable=False)
     camera_view = Column(String, nullable=False)  # 'Front-facing VRU', 'Rear-facing VRU', 'In-Cab Driver Behavior'
@@ -30,85 +17,115 @@ class Project(Base):
     resolution = Column(String)
     frame_rate = Column(Integer)
     signal_type = Column(String, nullable=False)  # 'GPIO', 'Network Packet', 'Serial'
-    status = Column(String, default="Active")  # 'Active', 'Completed', 'Draft'
-    owner_id = Column(String(36), nullable=True, default="anonymous")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    status = Column(String, default="Active", index=True)  # 'Active', 'Completed', 'Draft' - Index for filtering
+    owner_id = Column(String(36), nullable=True, default="anonymous", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)  # Index for time-based queries
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # owner = relationship("User", back_populates="projects")  # Removed for no-auth mode
-    videos = relationship("Video", back_populates="project")
-    test_sessions = relationship("TestSession", back_populates="project")
+    videos = relationship("Video", back_populates="project", cascade="all, delete-orphan")
+    test_sessions = relationship("TestSession", back_populates="project", cascade="all, delete-orphan")
 
 class Video(Base):
     __tablename__ = "videos"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    filename = Column(String, nullable=False)
+    filename = Column(String, nullable=False, index=True)  # Index for search
     file_path = Column(String, nullable=False)
     file_size = Column(Integer)
     duration = Column(Float)  # in seconds
     fps = Column(Float)
     resolution = Column(String)
-    status = Column(String, default="uploaded")  # 'uploaded', 'processing', 'completed', 'failed'
-    ground_truth_generated = Column(Boolean, default=False)
-    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    status = Column(String, default="uploaded", index=True)  # Index for status filtering
+    ground_truth_generated = Column(Boolean, default=False, index=True)  # Index for filtering
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     project = relationship("Project", back_populates="videos")
-    ground_truth_objects = relationship("GroundTruthObject", back_populates="video")
+    ground_truth_objects = relationship("GroundTruthObject", back_populates="video", cascade="all, delete-orphan")
+
+    # Composite index for common queries
+    __table_args__ = (
+        Index('idx_video_project_status', 'project_id', 'status'),
+        Index('idx_video_project_created', 'project_id', 'created_at'),
+    )
 
 class GroundTruthObject(Base):
     __tablename__ = "ground_truth_objects"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    video_id = Column(String(36), ForeignKey("videos.id"), nullable=False)
-    timestamp = Column(Float, nullable=False)  # timestamp in video (seconds)
-    class_label = Column(String, nullable=False)  # 'pedestrian', 'cyclist', 'distracted_driver', etc.
+    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
+    timestamp = Column(Float, nullable=False, index=True)  # Index for temporal queries
+    class_label = Column(String, nullable=False, index=True)  # Index for filtering by type
     bounding_box = Column(JSON)  # {"x": 0, "y": 0, "width": 100, "height": 100}
-    confidence = Column(Float)
+    confidence = Column(Float, index=True)  # Index for confidence-based queries
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     video = relationship("Video", back_populates="ground_truth_objects")
+
+    # Composite index for common queries
+    __table_args__ = (
+        Index('idx_gt_video_timestamp', 'video_id', 'timestamp'),
+        Index('idx_gt_video_class', 'video_id', 'class_label'),
+    )
 
 class TestSession(Base):
     __tablename__ = "test_sessions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = Column(String, nullable=False)
-    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
-    video_id = Column(String(36), ForeignKey("videos.id"), nullable=False)
-    tolerance_ms = Column(Integer, default=100)  # tolerance for timing comparison
-    status = Column(String, default="created")  # 'created', 'running', 'completed', 'failed'
-    started_at = Column(DateTime(timezone=True))
-    completed_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    name = Column(String, nullable=False, index=True)  # Index for search
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
+    tolerance_ms = Column(Integer, default=100)
+    status = Column(String, default="created", index=True)  # Index for status filtering
+    started_at = Column(DateTime(timezone=True), index=True)  # Index for time-based queries
+    completed_at = Column(DateTime(timezone=True), index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     project = relationship("Project", back_populates="test_sessions")
-    detection_events = relationship("DetectionEvent", back_populates="test_session")
+    detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
+
+    # Composite index for common queries
+    __table_args__ = (
+        Index('idx_testsession_project_status', 'project_id', 'status'),
+        Index('idx_testsession_project_created', 'project_id', 'created_at'),
+    )
 
 class DetectionEvent(Base):
     __tablename__ = "detection_events"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    test_session_id = Column(String(36), ForeignKey("test_sessions.id"), nullable=False)
-    timestamp = Column(Float, nullable=False)  # timestamp when detection occurred
-    confidence = Column(Float)
-    class_label = Column(String)  # detected class from camera
-    validation_result = Column(String)  # 'TP', 'FP', 'FN'
-    ground_truth_match_id = Column(String(36), ForeignKey("ground_truth_objects.id"))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    timestamp = Column(Float, nullable=False, index=True)  # Index for temporal queries
+    confidence = Column(Float, index=True)  # Index for confidence-based filtering
+    class_label = Column(String, index=True)  # Index for filtering by detection type
+    validation_result = Column(String, index=True)  # Index for filtering by validation result ('TP', 'FP', 'FN')
+    ground_truth_match_id = Column(String(36), ForeignKey("ground_truth_objects.id", ondelete="SET NULL"), index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     test_session = relationship("TestSession", back_populates="detection_events")
+
+    # Composite index for performance-critical queries
+    __table_args__ = (
+        Index('idx_detection_session_timestamp', 'test_session_id', 'timestamp'),
+        Index('idx_detection_session_validation', 'test_session_id', 'validation_result'),
+        Index('idx_detection_timestamp_confidence', 'timestamp', 'confidence'),
+    )
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String(36), ForeignKey("users.id"))
-    event_type = Column(String, nullable=False)  # 'user_login', 'project_create', 'video_upload', etc.
+    user_id = Column(String(36), nullable=True, default="anonymous", index=True)
+    event_type = Column(String, nullable=False, index=True)  # Index for filtering by event type
     event_data = Column(JSON)  # additional event details
-    ip_address = Column(String)
+    ip_address = Column(String, index=True)  # Index for security queries
     user_agent = Column(String)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)  # Index for time-based queries
+
+    # Composite index for audit queries
+    __table_args__ = (
+        Index('idx_audit_user_event', 'user_id', 'event_type'),
+        Index('idx_audit_created_event', 'created_at', 'event_type'),
+    )

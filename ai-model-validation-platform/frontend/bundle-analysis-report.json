@@ -1,0 +1,63 @@
+{
+  "timestamp": "2025-08-10T08:38:12.831Z",
+  "bundleAnalysis": {
+    "timestamp": "2025-08-10T08:38:12.829Z",
+    "totalSize": 0,
+    "gzippedSize": 0,
+    "files": {
+      "javascript": [],
+      "css": [],
+      "assets": []
+    },
+    "recommendations": [
+      {
+        "type": "info",
+        "category": "vendor-splitting",
+        "message": "No vendor bundle detected. Consider splitting vendor code.",
+        "impact": "low",
+        "solution": "Configure webpack to create vendor chunks"
+      }
+    ],
+    "totalSizeKB": 0,
+    "totalSizeMB": 0
+  },
+  "packageAnalysis": {
+    "totalDependencies": 25,
+    "totalDevDependencies": 0,
+    "heavyDependenciesFound": [
+      {
+        "name": "@mui/material",
+        "version": "^7.3.1",
+        "recommendation": "Large UI library. Use tree shaking and import only needed components."
+      },
+      {
+        "name": "@mui/x-data-grid",
+        "version": "^8.10.0",
+        "recommendation": "Heavy grid component. Consider virtualization for large datasets."
+      },
+      {
+        "name": "@mui/x-date-pickers",
+        "version": "^8.10.0",
+        "recommendation": "Date picker library. Import only specific pickers needed."
+      },
+      {
+        "name": "recharts",
+        "version": "^3.1.2",
+        "recommendation": "Chart library. Consider lighter alternatives for simple charts."
+      },
+      {
+        "name": "socket.io-client",
+        "version": "^4.8.1",
+        "recommendation": "WebSocket library. Ensure it's only loaded when needed."
+      }
+    ],
+    "optimizationOpportunities": [
+      {
+        "type": "tree-shaking",
+        "message": "Enable MUI tree shaking with babel plugin",
+        "solution": "Install @babel/plugin-transform-imports"
+      }
+    ]
+  },
+  "optimizationScript": "# Bundle Optimization Steps\n\n## 1. Install Analysis Tools\nnpm install --save-dev webpack-bundle-analyzer\nnpm install --save-dev @babel/plugin-transform-imports\n\n## 2. Add Bundle Analysis Script to package.json\n{\n  \"scripts\": {\n    \"analyze\": \"npm run build && npx webpack-bundle-analyzer build/static/js/*.js\"\n  }\n}\n\n## 3. Configure Babel for Tree Shaking (create .babelrc)\n{\n  \"plugins\": [\n    [\"@babel/plugin-transform-imports\", {\n      \"@mui/material\": {\n        \"transform\": \"@mui/material/{{member}}\",\n        \"preventFullImport\": true\n      },\n      \"@mui/icons-material\": {\n        \"transform\": \"@mui/icons-material/{{member}}\",\n        \"preventFullImport\": true\n      }\n    }]\n  ]\n}\n\n## 4. Implement Code Splitting\n// Replace direct imports with lazy loading\nconst Dashboard = React.lazy(() => import('./pages/Dashboard'));\nconst Projects = React.lazy(() => import('./pages/Projects'));\n\n// Wrap routes with Suspense\n<Suspense fallback={<div>Loading...</div>}>\n  <Routes>\n    <Route path=\"/dashboard\" element={<Dashboard />} />\n  </Routes>\n</Suspense>\n\n## 5. Optimize MUI Imports\n// Instead of:\nimport { Button, TextField, Box } from '@mui/material';\n\n// Use:\nimport Button from '@mui/material/Button';\nimport TextField from '@mui/material/TextField';\nimport Box from '@mui/material/Box';\n\n## 6. Run Analysis\nnpm run analyze"
+}

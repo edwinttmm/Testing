@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from models import User, Project, Video, TestSession, DetectionEvent, GroundTruthObject, AuditLog
+from models import Project, Video, TestSession, DetectionEvent, GroundTruthObject, AuditLog
 from schemas import (
     ProjectCreate, ProjectUpdate,
     TestSessionCreate,
@@ -9,28 +9,11 @@ from schemas import (
     AuditLogCreate
 )
 
-# User CRUD
-def get_user(db: Session, user_id: str) -> Optional[User]:
-    return db.query(User).filter(User.id == user_id).first()
-
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    return db.query(User).filter(User.email == email).first()
-
-def create_user(db: Session, email: str, hashed_password: str, full_name: str = None) -> User:
-    db_user = User(
-        email=email,
-        hashed_password=hashed_password,
-        full_name=full_name
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
 
 # Project CRUD
 def create_project(db: Session, project: ProjectCreate, user_id: str = "anonymous") -> Project:
     # Use model_dump instead of deprecated dict() method
-    project_data = project.model_dump()
+    project_data = project.model_dump(by_alias=True)
     db_project = Project(
         **project_data,
         owner_id=user_id
@@ -51,7 +34,7 @@ def get_project(db: Session, project_id: str, user_id: str = "anonymous") -> Opt
 def update_project(db: Session, project_id: str, project_update: ProjectUpdate, user_id: str) -> Optional[Project]:
     db_project = get_project(db, project_id, user_id)
     if db_project:
-        update_data = project_update.dict(exclude_unset=True)
+        update_data = project_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_project, field, value)
         db.commit()
@@ -109,7 +92,7 @@ def get_ground_truth_objects(db: Session, video_id: str) -> List[GroundTruthObje
 
 # Test Session CRUD
 def create_test_session(db: Session, test_session: TestSessionCreate, user_id: str) -> TestSession:
-    db_session = TestSession(**test_session.dict())
+    db_session = TestSession(**test_session.model_dump())
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
@@ -126,7 +109,7 @@ def get_test_session(db: Session, session_id: str) -> Optional[TestSession]:
 
 # Detection Event CRUD
 def create_detection_event(db: Session, detection: DetectionEventSchema) -> DetectionEvent:
-    db_detection = DetectionEvent(**detection.dict())
+    db_detection = DetectionEvent(**detection.model_dump())
     db.add(db_detection)
     db.commit()
     db.refresh(db_detection)
@@ -138,7 +121,7 @@ def get_detection_events(db: Session, test_session_id: str) -> List[DetectionEve
 # Audit Log CRUD
 def create_audit_log(db: Session, audit_log: AuditLogCreate, user_id: str = None) -> AuditLog:
     db_log = AuditLog(
-        **audit_log.dict(),
+        **audit_log.model_dump(),
         user_id=user_id
     )
     db.add(db_log)

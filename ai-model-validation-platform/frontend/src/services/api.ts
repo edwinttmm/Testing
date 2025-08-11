@@ -11,10 +11,7 @@ import {
   TestSessionCreate,
   DashboardStats,
   ChartData,
-  User,
-  LoginCredentials,
-  RegisterData,
-  AuthResponse
+  User
 } from './types';
 
 class ApiService {
@@ -23,7 +20,7 @@ class ApiService {
   constructor() {
     this.api = axios.create({
       baseURL: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001',
-      timeout: 10000,
+      timeout: 30000, // Increased timeout to 30 seconds
       headers: {
         'Content-Type': 'application/json',
       },
@@ -68,12 +65,6 @@ class ApiService {
       apiError.message = responseData?.message || responseData?.detail || error.message;
       apiError.details = error.response.data;
 
-      // Handle auth errors
-      if (error.response.status === 401) {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('user');
-        // Redirect to login could be handled here
-      }
     } else if (error.request) {
       // Network error
       apiError.message = 'Network error - please check your connection';
@@ -87,38 +78,6 @@ class ApiService {
     return apiError;
   }
 
-  // Authentication
-  async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await this.api.post<AuthResponse>('/api/auth/login', credentials);
-    
-    if (response.data.token) {
-      localStorage.setItem('authToken', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-    }
-    
-    return response.data;
-  }
-
-  async register(data: RegisterData): Promise<AuthResponse> {
-    const response = await this.api.post<AuthResponse>('/api/auth/register', data);
-    
-    if (response.data.token) {
-      localStorage.setItem('authToken', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-    }
-    
-    return response.data;
-  }
-
-  logout(): void {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-  }
-
-  getCurrentUser(): User | null {
-    const userStr = localStorage.getItem('user');
-    return userStr ? JSON.parse(userStr) : null;
-  }
 
   // Project CRUD
   async getProjects(skip: number = 0, limit: number = 100): Promise<Project[]> {
@@ -134,8 +93,64 @@ class ApiService {
   }
 
   async createProject(project: ProjectCreate): Promise<Project> {
-    const response = await this.api.post<Project>('/api/projects', project);
-    return response.data;
+    console.log('API Service - Creating project with data:', project);
+    console.log('API Service - Base URL:', this.api.defaults.baseURL);
+    
+    // Try fetch first as a fallback
+    try {
+      console.log('API Service - Trying fetch method first...');
+      const baseURL = this.api.defaults.baseURL || 'http://localhost:8001';
+      const url = `${baseURL}/api/projects`;
+      
+      console.log('API Service - Fetch URL:', url);
+      console.log('API Service - Fetch payload:', JSON.stringify(project));
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(project)
+      });
+      
+      console.log('API Service - Fetch response status:', response.status);
+      console.log('API Service - Fetch response headers:', response.headers);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Service - Fetch error response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log('API Service - Fetch success result:', result);
+      return result;
+      
+    } catch (fetchError: any) {
+      console.error('API Service - Fetch method failed:', fetchError);
+      
+      // Fallback to axios method
+      console.log('API Service - Falling back to axios method...');
+      try {
+        const response = await this.api.post<Project>('/api/projects', project);
+        console.log('API Service - Axios success response:', response.data);
+        return response.data;
+      } catch (axiosError: any) {
+        console.error('API Service - Both fetch and axios failed');
+        console.error('API Service - Fetch error:', fetchError);
+        console.error('API Service - Axios error:', axiosError);
+        console.error('API Service - Axios error details:', {
+          message: axiosError.message,
+          code: axiosError.code,
+          response: axiosError.response,
+          request: axiosError.request
+        });
+        
+        // Throw the more descriptive error
+        throw axiosError.response ? axiosError : fetchError;
+      }
+    }
   }
 
   async updateProject(id: string, updates: ProjectUpdate): Promise<Project> {
@@ -252,29 +267,23 @@ class ApiService {
 const apiServiceInstance = new ApiService();
 export const apiService = apiServiceInstance;
 
-// Export individual functions for easier imports
-export const {
-  login,
-  register,
-  logout,
-  getCurrentUser,
-  getProjects,
-  getProject,
-  createProject,
-  updateProject,
-  deleteProject,
-  getVideos,
-  uploadVideo,
-  getVideo,
-  deleteVideo,
-  getGroundTruth,
-  getTestSessions,
-  getTestSession,
-  createTestSession,
-  getTestResults,
-  getDashboardStats,
-  getChartData,
-  healthCheck,
-} = apiServiceInstance;
+// Export individual functions for easier imports (properly bound)
+export const getProjects = apiServiceInstance.getProjects.bind(apiServiceInstance);
+export const getProject = apiServiceInstance.getProject.bind(apiServiceInstance);
+export const createProject = apiServiceInstance.createProject.bind(apiServiceInstance);
+export const updateProject = apiServiceInstance.updateProject.bind(apiServiceInstance);
+export const deleteProject = apiServiceInstance.deleteProject.bind(apiServiceInstance);
+export const getVideos = apiServiceInstance.getVideos.bind(apiServiceInstance);
+export const uploadVideo = apiServiceInstance.uploadVideo.bind(apiServiceInstance);
+export const getVideo = apiServiceInstance.getVideo.bind(apiServiceInstance);
+export const deleteVideo = apiServiceInstance.deleteVideo.bind(apiServiceInstance);
+export const getGroundTruth = apiServiceInstance.getGroundTruth.bind(apiServiceInstance);
+export const getTestSessions = apiServiceInstance.getTestSessions.bind(apiServiceInstance);
+export const getTestSession = apiServiceInstance.getTestSession.bind(apiServiceInstance);
+export const createTestSession = apiServiceInstance.createTestSession.bind(apiServiceInstance);
+export const getTestResults = apiServiceInstance.getTestResults.bind(apiServiceInstance);
+export const getDashboardStats = apiServiceInstance.getDashboardStats.bind(apiServiceInstance);
+export const getChartData = apiServiceInstance.getChartData.bind(apiServiceInstance);
+export const healthCheck = apiServiceInstance.healthCheck.bind(apiServiceInstance);
 
 export default apiService;

@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -15,15 +14,11 @@ import {
 import {
   Notifications,
   AccountCircle,
-  Logout,
   Person,
 } from '@mui/icons-material';
-import { useAuth } from '../../contexts/AuthContext';
 
 const Header: React.FC = () => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -35,13 +30,13 @@ const Header: React.FC = () => {
 
   const handleProfile = () => {
     handleClose();
-    navigate('/settings');
+    // Navigate to settings - placeholder
+    window.location.href = '/settings';
   };
 
   const handleLogout = () => {
     handleClose();
-    logout();
-    navigate('/login');
+    // No authentication - just close menu
   };
 
   return (
@@ -69,7 +64,7 @@ const Header: React.FC = () => {
             color="inherit"
           >
             <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-              {user?.fullName ? user.fullName[0].toUpperCase() : <AccountCircle />}
+              <AccountCircle />
             </Avatar>
           </IconButton>
           
@@ -92,20 +87,16 @@ const Header: React.FC = () => {
           >
             <Box sx={{ px: 2, py: 1 }}>
               <Typography variant="subtitle1" fontWeight="medium">
-                {user?.fullName || 'User'}
+                Demo User
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {user?.email || 'user@example.com'}
+                demo@example.com
               </Typography>
             </Box>
             <Divider />
             <MenuItem onClick={handleProfile}>
               <Person sx={{ mr: 1 }} />
               Profile & Settings
-            </MenuItem>
-            <MenuItem onClick={handleLogout}>
-              <Logout sx={{ mr: 1 }} />
-              Sign Out
             </MenuItem>
           </Menu>
         </Box>

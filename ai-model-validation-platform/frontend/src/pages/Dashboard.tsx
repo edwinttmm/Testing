@@ -16,47 +16,8 @@ import {
 } from '@mui/icons-material';
 import { getDashboardStats } from '../services/api';
 import { DashboardStats } from '../services/types';
-
-interface StatCardProps {
-  title: string;
-  value: number;
-  icon: React.ReactElement;
-  color: string;
-  subtitle?: string;
-}
-
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, subtitle }) => (
-  <Card sx={{ height: '100%' }}>
-    <CardContent>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Box
-          sx={{
-            p: 1,
-            borderRadius: 1,
-            bgcolor: `${color}.light`,
-            color: `${color}.main`,
-            mr: 2,
-          }}
-        >
-          {icon}
-        </Box>
-        <Box>
-          <Typography variant="h4" component="div" fontWeight="bold">
-            {value}
-          </Typography>
-          <Typography color="text.secondary" variant="body2">
-            {title}
-          </Typography>
-          {subtitle && (
-            <Typography color="text.secondary" variant="caption">
-              {subtitle}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-    </CardContent>
-  </Card>
-);
+import AccessibleStatCard from '../components/ui/AccessibleStatCard';
+import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -165,116 +126,113 @@ const Dashboard: React.FC = () => {
         )}
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
-          <StatCard
+          <AccessibleStatCard
             title="Active Projects"
             value={stats?.projectCount || 0}
             icon={<FolderOpen />}
             color="primary"
             subtitle={stats?.projectCount ? `${stats.projectCount} total projects` : 'No projects yet'}
+            loading={loading}
+            ariaLabel={`Active Projects: ${stats?.projectCount || 0} total projects`}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
-          <StatCard
+          <AccessibleStatCard
             title="Videos Processed"
             value={stats?.videoCount || 0}
             icon={<VideoLibrary />}
             color="success"
             subtitle={stats?.videoCount ? `${stats.videoCount} videos uploaded` : 'No videos yet'}
+            loading={loading}
+            ariaLabel={`Videos Processed: ${stats?.videoCount || 0} videos uploaded`}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
-          <StatCard
+          <AccessibleStatCard
             title="Tests Completed"
             value={stats?.testCount || 0}
             icon={<Assessment />}
             color="info"
             subtitle={stats?.testCount ? `${stats.testCount} test sessions` : 'No tests yet'}
+            loading={loading}
+            ariaLabel={`Tests Completed: ${stats?.testCount || 0} test sessions`}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
-          <StatCard
+          <AccessibleStatCard
             title="Detection Accuracy"
-            value={stats?.averageAccuracy || 0}
+            value={`${stats?.averageAccuracy || 0}%`}
             icon={<TrendingUp />}
             color="warning"
             subtitle="Average across all tests"
+            loading={loading}
+            ariaLabel={`Detection Accuracy: ${stats?.averageAccuracy || 0}% average across all tests`}
+            trend={{
+              value: 2.3,
+              direction: 'up'
+            }}
           />
         </Box>
       </Box>
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
         <Box sx={{ minWidth: 400, flex: 1 }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Recent Test Sessions
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                {[1, 2, 3, 4].map((session) => (
-                  <Box
-                    key={session}
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      py: 1,
-                      borderBottom: '1px solid #f0f0f0',
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="body2" fontWeight="medium">
-                        Test Session #{session}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Front-facing VRU • 2 hours ago
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" color="success.main" fontWeight="medium">
-                      92.5% Accuracy
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
-            </CardContent>
-          </Card>
+          <AccessibleCard
+            title="Recent Test Sessions"
+            loading={loading}
+            ariaLabel="Recent test sessions list"
+            role="region"
+          >
+            <Box role="list" aria-label="Recent test sessions">
+              {[
+                { session: 1, type: "Front-facing VRU", timeAgo: "2 hours ago", accuracy: 92.5 },
+                { session: 2, type: "Side-view VRU", timeAgo: "4 hours ago", accuracy: 88.3 },
+                { session: 3, type: "Mixed-angle VRU", timeAgo: "6 hours ago", accuracy: 95.1 },
+                { session: 4, type: "Night-time VRU", timeAgo: "8 hours ago", accuracy: 87.9 }
+              ].map((item) => (
+                <AccessibleSessionItem
+                  key={item.session}
+                  sessionNumber={item.session}
+                  type={item.type}
+                  timeAgo={item.timeAgo}
+                  accuracy={item.accuracy}
+                />
+              ))}
+            </Box>
+          </AccessibleCard>
         </Box>
 
         <Box sx={{ minWidth: 400, flex: 1 }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                System Status
-              </Typography>
-              <Box sx={{ mt: 2 }}>
-                <Box sx={{ mb: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2">YOLO Model Performance</Typography>
-                    <Typography variant="body2">95%</Typography>
-                  </Box>
-                  <LinearProgress variant="determinate" value={95} color="success" />
-                </Box>
-                
-                <Box sx={{ mb: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2">Database Usage</Typography>
-                    <Typography variant="body2">67%</Typography>
-                  </Box>
-                  <LinearProgress variant="determinate" value={67} color="info" />
-                </Box>
-                
-                <Box sx={{ mb: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2">Storage Usage</Typography>
-                    <Typography variant="body2">43%</Typography>
-                  </Box>
-                  <LinearProgress variant="determinate" value={43} color="primary" />
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+          <AccessibleCard
+            title="System Status"
+            loading={loading}
+            ariaLabel="System performance metrics"
+            role="region"
+          >
+            <Box role="group" aria-label="System performance indicators">
+              <AccessibleProgressItem
+                label="YOLO Model Performance"
+                value={95}
+                color="success"
+                ariaLabel="YOLO Model Performance at 95% - Excellent"
+              />
+              <AccessibleProgressItem
+                label="Database Usage"
+                value={67}
+                color="info"
+                ariaLabel="Database Usage at 67% - Normal"
+              />
+              <AccessibleProgressItem
+                label="Storage Usage"
+                value={43}
+                color="primary"
+                ariaLabel="Storage Usage at 43% - Good"
+              />
+            </Box>
+          </AccessibleCard>
         </Box>
       </Box>
     </Box>

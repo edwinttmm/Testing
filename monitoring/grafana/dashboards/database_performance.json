@@ -1,0 +1,32 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Database Performance Dashboard",
+    "panels": [
+      {
+        "title": "Database Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "postgresql_connections_active",
+            "legendFormat": "Active connections"
+          },
+          {
+            "expr": "postgresql_connections_max",
+            "legendFormat": "Max connections"
+          }
+        ]
+      },
+      {
+        "title": "Query Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "postgresql_query_duration_seconds",
+            "legendFormat": "Query duration"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -3,21 +3,6 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 # Using str for UUID compatibility with SQLite
 
-# User schemas
-class UserBase(BaseModel):
-    email: EmailStr
-    full_name: Optional[str] = None
-
-class UserCreate(UserBase):
-    password: str
-
-class UserResponse(UserBase):
-    id: str
-    is_active: bool
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 # Project schemas
 class ProjectBase(BaseModel):
@@ -141,11 +126,19 @@ class ValidationMetrics(BaseModel):
     accuracy: float
 
 class ValidationResult(BaseModel):
-    test_session_id: str
-    metrics: ValidationMetrics
-    detection_events: List[DetectionEventResponse]
-    total_ground_truth: int
+    session_id: str = Field(alias="test_session_id")
+    accuracy: float
+    precision: float
+    recall: float
+    f1_score: float
     total_detections: int
+    true_positives: int
+    false_positives: int
+    false_negatives: int
+    status: str
+    
+    class Config:
+        populate_by_name = True
 
 # Audit Log schemas
 class AuditLogCreate(BaseModel):
@@ -162,17 +155,6 @@ class AuditLogResponse(AuditLogCreate):
     class Config:
         from_attributes = True
 
-# Authentication schemas
-class LoginCredentials(BaseModel):
-    email: EmailStr
-    password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    email: Optional[str] = None
 
 # Dashboard schemas
 class DashboardStats(BaseModel):

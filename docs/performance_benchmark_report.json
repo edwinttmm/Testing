@@ -1,0 +1,348 @@
+{
+  "timestamp": 1754896613.0352478,
+  "categories": {
+    "memory": [
+      {
+        "name": "initial_rss_memory",
+        "value": 31.68359375,
+        "unit": "MB",
+        "timestamp": 1754896612.2811863,
+        "details": {}
+      },
+      {
+        "name": "initial_vms_memory",
+        "value": 41.39453125,
+        "unit": "MB",
+        "timestamp": 1754896612.281193,
+        "details": {}
+      },
+      {
+        "name": "system_total_memory",
+        "value": 7.7574920654296875,
+        "unit": "GB",
+        "timestamp": 1754896612.2812889,
+        "details": {}
+      },
+      {
+        "name": "system_available_memory",
+        "value": 5.29437255859375,
+        "unit": "GB",
+        "timestamp": 1754896612.2812917,
+        "details": {}
+      },
+      {
+        "name": "system_memory_percent",
+        "value": 31.8,
+        "unit": "percent",
+        "timestamp": 1754896612.2812936,
+        "details": {}
+      }
+    ],
+    "database": [
+      {
+        "name": "db_connection_0",
+        "value": 0.0002732276916503906,
+        "unit": "seconds",
+        "timestamp": 1754896612.2816982,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2813325,
+          "end_time": 1754896612.2816057
+        }
+      },
+      {
+        "name": "db_connection_1",
+        "value": 0.00015163421630859375,
+        "unit": "seconds",
+        "timestamp": 1754896612.2819397,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2817125,
+          "end_time": 1754896612.2818642
+        }
+      },
+      {
+        "name": "db_connection_2",
+        "value": 0.00013637542724609375,
+        "unit": "seconds",
+        "timestamp": 1754896612.282159,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2819502,
+          "end_time": 1754896612.2820866
+        }
+      },
+      {
+        "name": "db_connection_3",
+        "value": 0.00012540817260742188,
+        "unit": "seconds",
+        "timestamp": 1754896612.2823606,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2821686,
+          "end_time": 1754896612.282294
+        }
+      },
+      {
+        "name": "db_connection_4",
+        "value": 0.00014662742614746094,
+        "unit": "seconds",
+        "timestamp": 1754896612.2825856,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2823677,
+          "end_time": 1754896612.2825143
+        }
+      },
+      {
+        "name": "db_connection_5",
+        "value": 0.0001285076141357422,
+        "unit": "seconds",
+        "timestamp": 1754896612.2827916,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2825928,
+          "end_time": 1754896612.2827213
+        }
+      },
+      {
+        "name": "db_connection_6",
+        "value": 0.00012493133544921875,
+        "unit": "seconds",
+        "timestamp": 1754896612.2829957,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2828007,
+          "end_time": 1754896612.2829256
+        }
+      },
+      {
+        "name": "db_connection_7",
+        "value": 0.00011849403381347656,
+        "unit": "seconds",
+        "timestamp": 1754896612.2831988,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2830029,
+          "end_time": 1754896612.2831213
+        }
+      },
+      {
+        "name": "db_connection_8",
+        "value": 0.00012040138244628906,
+        "unit": "seconds",
+        "timestamp": 1754896612.2833886,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2832077,
+          "end_time": 1754896612.283328
+        }
+      },
+      {
+        "name": "db_connection_9",
+        "value": 0.0001461505889892578,
+        "unit": "seconds",
+        "timestamp": 1754896612.2836196,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.283396,
+          "end_time": 1754896612.2835422
+        }
+      },
+      {
+        "name": "avg_db_connection_time",
+        "value": 0.00014717578887939452,
+        "unit": "seconds",
+        "timestamp": 1754896612.2837083,
+        "details": {}
+      },
+      {
+        "name": "query_count_projects",
+        "value": 0.0003864765167236328,
+        "unit": "seconds",
+        "timestamp": 1754896612.2842646,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2837775,
+          "end_time": 1754896612.284164,
+          "rows_returned": 1
+        }
+      },
+      {
+        "name": "query_count_videos",
+        "value": 0.0007295608520507812,
+        "unit": "seconds",
+        "timestamp": 1754896612.2851112,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.284284,
+          "end_time": 1754896612.2850137,
+          "rows_returned": 1
+        }
+      },
+      {
+        "name": "query_count_test_sessions",
+        "value": 0.0006437301635742188,
+        "unit": "seconds",
+        "timestamp": 1754896612.2858496,
+        "details": {
+          "memory_delta_mb": -0.0859375,
+          "start_time": 1754896612.2851295,
+          "end_time": 1754896612.2857733,
+          "rows_returned": 1
+        }
+      },
+      {
+        "name": "query_count_detection_events",
+        "value": 0.0004649162292480469,
+        "unit": "seconds",
+        "timestamp": 1754896612.2864215,
+        "details": {
+          "memory_delta_mb": -0.01171875,
+          "start_time": 1754896612.2858634,
+          "end_time": 1754896612.2863283,
+          "rows_returned": 1
+        }
+      },
+      {
+        "name": "query_complex_join",
+        "value": 0.0013380050659179688,
+        "unit": "seconds",
+        "timestamp": 1754896612.2878902,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2864504,
+          "end_time": 1754896612.2877884,
+          "rows_returned": 1
+        }
+      },
+      {
+        "name": "query_time_range_query",
+        "value": 0.0004901885986328125,
+        "unit": "seconds",
+        "timestamp": 1754896612.2885125,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.2879074,
+          "end_time": 1754896612.2883976,
+          "rows_returned": 0
+        }
+      }
+    ],
+    "api": [
+      {
+        "name": "api_health_check_error",
+        "value": 0,
+        "unit": "error",
+        "timestamp": 1754896612.2912743,
+        "details": {
+          "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7369bf325730>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+        }
+      },
+      {
+        "name": "api_dashboard_stats_error",
+        "value": 0,
+        "unit": "error",
+        "timestamp": 1754896612.2928383,
+        "details": {
+          "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/dashboard/stats (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7369bf325610>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+        }
+      },
+      {
+        "name": "api_list_projects_error",
+        "value": 0,
+        "unit": "error",
+        "timestamp": 1754896612.2939222,
+        "details": {
+          "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/projects (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7369bf325df0>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+        }
+      },
+      {
+        "name": "api_list_test_sessions_error",
+        "value": 0,
+        "unit": "error",
+        "timestamp": 1754896612.2950377,
+        "details": {
+          "error": "HTTPConnectionPool(host='localhost', port=8001): Max retries exceeded with url: /api/test-sessions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7369bf326300>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+        }
+      }
+    ],
+    "load_test": [
+      {
+        "name": "concurrent_load_1",
+        "value": 0.041918277740478516,
+        "unit": "seconds",
+        "timestamp": 1754896612.3370676,
+        "details": {
+          "memory_delta_mb": -0.109375,
+          "start_time": 1754896612.2950528,
+          "end_time": 1754896612.336971
+        }
+      },
+      {
+        "name": "concurrent_load_5",
+        "value": 0.041962385177612305,
+        "unit": "seconds",
+        "timestamp": 1754896612.3791478,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.3370874,
+          "end_time": 1754896612.3790498
+        }
+      },
+      {
+        "name": "concurrent_load_10",
+        "value": 0.047208309173583984,
+        "unit": "seconds",
+        "timestamp": 1754896612.4265413,
+        "details": {
+          "memory_delta_mb": 0.0,
+          "start_time": 1754896612.3791726,
+          "end_time": 1754896612.4263809
+        }
+      },
+      {
+        "name": "concurrent_load_20",
+        "value": 0.052892208099365234,
+        "unit": "seconds",
+        "timestamp": 1754896612.4795792,
+        "details": {
+          "memory_delta_mb": 0.24609375,
+          "start_time": 1754896612.4265838,
+          "end_time": 1754896612.479476
+        }
+      }
+    ],
+    "frontend": [
+      {
+        "name": "build_total_size",
+        "value": 0.0185394287109375,
+        "unit": "MB",
+        "timestamp": 1754896612.4796994,
+        "details": {}
+      },
+      {
+        "name": "build_js_size",
+        "value": 0.0,
+        "unit": "MB",
+        "timestamp": 1754896612.4797318,
+        "details": {}
+      },
+      {
+        "name": "build_css_size",
+        "value": 0.0,
+        "unit": "MB",
+        "timestamp": 1754896612.4797332,
+        "details": {}
+      },
+      {
+        "name": "node_modules_size",
+        "value": 0.6251056166365743,
+        "unit": "GB",
+        "timestamp": 1754896613.035198,
+        "details": {}
+      }
+    ]
+  },
+  "summary": {}
+}
