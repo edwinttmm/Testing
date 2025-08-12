@@ -252,7 +252,7 @@ export function withPerformanceTracking<T extends object>(
   Component: React.ComponentType<T>,
   componentName?: string
 ) {
-  const WrappedComponent = memo((props: T) => {
+  const WrappedComponent = memo<T>((props: T) => {
     const endTimer = useRef<(() => void) | null>(null);
 
     useLayoutEffect(() => {
@@ -264,7 +264,7 @@ export function withPerformanceTracking<T extends object>(
       };
     });
 
-    return <Component {...props} />;
+    return React.createElement(Component, props);
   });
 
   WrappedComponent.displayName = `withPerformanceTracking(${componentName || Component.name})`;

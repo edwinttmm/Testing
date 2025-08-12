@@ -31,7 +31,7 @@ from crud import (
 # Import Socket.IO integration
 from socketio_server import sio, create_socketio_app
 
-# from services.ground_truth_service import GroundTruthService  # Temporarily disabled
+from services.ground_truth_service import GroundTruthService
 # from services.validation_service import ValidationService  # Temporarily disabled
 
 Base.metadata.create_all(bind=engine)
@@ -66,7 +66,7 @@ app.add_middleware(
     max_age=3600,
 )
 
-# ground_truth_service = GroundTruthService()  # Temporarily disabled
+ground_truth_service = GroundTruthService()
 # validation_service = ValidationService()  # Temporarily disabled
 
 # Global exception handlers
@@ -233,14 +233,32 @@ async def upload_video(
                 detail="Project not found"
             )
         
+        # Save video file to disk
+        upload_dir = settings.upload_directory
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, f"{file.filename}")
+        
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
         # Save video file and create database record
-        video_record = create_video(db=db, project_id=project_id, filename=file.filename)
+        video_record = create_video(db=db, project_id=project_id, filename=file.filename, file_size=file_size, file_path=file_path)
+        
+        # Start background processing for ground truth generation
+        import asyncio
+        try:
+            # Create a task for ground truth processing
+            asyncio.create_task(ground_truth_service.process_video_async(video_record.id, file_path))
+            logger.info(f"Started ground truth processing for video {video_record.id}")
+        except Exception as e:
+            logger.warning(f"Could not start ground truth processing: {str(e)}")
         
         return {
             "video_id": video_record.id,
             "filename": file.filename,
             "status": "uploaded",
-            "message": "Video uploaded successfully."
+            "message": "Video uploaded successfully. Processing started."
         }
     except HTTPException:
         raise
@@ -251,24 +269,110 @@ async def upload_video(
             detail="Failed to upload video"
         )
 
+@app.get("/api/projects/{project_id}/videos")
+async def get_project_videos(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Verify project exists
+        project = get_project(db=db, project_id=project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        # Get videos for this project
+        videos = get_videos(db=db, project_id=project_id)
+        
+        # For each video, get the detection count
+        video_list = []
+        for video in videos:
+            # Get ground truth object count for this video
+            from crud import get_ground_truth_objects
+            ground_truth_objects = get_ground_truth_objects(db, video.id)
+            detection_count = len(ground_truth_objects)
+            
+            video_list.append({
+                "id": video.id,
+                "filename": video.filename,
+                "status": video.status,
+                "created_at": video.created_at,
+                "duration": video.duration,
+                "file_size": video.file_size,
+                "ground_truth_generated": video.ground_truth_generated,
+                "detectionCount": detection_count
+            })
+        
+        return video_list
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get project videos error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get project videos"
+        )
+
+@app.delete("/api/videos/{video_id}")
+async def delete_video(
+    video_id: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Get the video to check if it exists and get file path
+        from crud import get_video
+        video = get_video(db=db, video_id=video_id)
+        if not video:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video not found"
+            )
+        
+        # Delete physical file if it exists
+        if video.file_path and os.path.exists(video.file_path):
+            try:
+                os.remove(video.file_path)
+                logger.info(f"Deleted video file: {video.file_path}")
+            except Exception as e:
+                logger.warning(f"Could not delete video file {video.file_path}: {str(e)}")
+        
+        # Delete from database
+        db.delete(video)
+        db.commit()
+        
+        return {"message": "Video deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete video error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete video"
+        )
+
 @app.get("/api/videos/{video_id}/ground-truth", response_model=GroundTruthResponse)
 async def get_ground_truth(
     video_id: str,
     db: Session = Depends(get_db)
 ):
-    # Ground truth service temporarily disabled
-    # ground_truth = ground_truth_service.get_ground_truth(video_id)
-    # if not ground_truth:
-    #     raise HTTPException(status_code=404, detail="Ground truth not found")
-    # return ground_truth
-    
-    # Return mock ground truth for testing
-    return {
-        "video_id": video_id,
-        "annotations": [],
-        "status": "pending",
-        "message": "Ground truth processing not yet implemented"
-    }
+    try:
+        ground_truth = ground_truth_service.get_ground_truth(video_id)
+        if not ground_truth:
+            raise HTTPException(status_code=404, detail="Ground truth not found")
+        return ground_truth
+    except Exception as e:
+        logger.error(f"Ground truth retrieval error: {str(e)}")
+        # Return fallback response
+        return {
+            "video_id": video_id,
+            "objects": [],
+            "total_detections": 0,
+            "status": "pending",
+            "message": "Ground truth processing in progress or failed"
+        }
 
 # Test Execution endpoints
 @app.post("/api/test-sessions", response_model=TestSessionResponse)

@@ -42,10 +42,11 @@ def update_project(db: Session, project_id: str, project_update: ProjectUpdate, 
     return db_project
 
 # Video CRUD
-def create_video(db: Session, project_id: str, filename: str, file_path: str = None) -> Video:
+def create_video(db: Session, project_id: str, filename: str, file_path: str = None, file_size: int = None) -> Video:
     db_video = Video(
         filename=filename,
         file_path=file_path or f"/uploads/{filename}",
+        file_size=file_size,
         project_id=project_id
     )
     db.add(db_video)

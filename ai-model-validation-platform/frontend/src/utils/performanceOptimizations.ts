@@ -41,7 +41,7 @@ export function useThrottle<T>(value: T, limit: number): T {
 
 // Intersection Observer hook for lazy loading
 export function useIntersectionObserver(
-  ref: React.RefObject<Element>,
+  ref: React.RefObject<Element | HTMLImageElement | null>,
   options: IntersectionObserverInit = {}
 ): IntersectionObserverEntry | undefined {
   const [intersectionObserverEntry, setIntersectionObserverEntry] =
@@ -112,11 +112,14 @@ export function createLazyComponent<T extends React.ComponentType<any>>(
 ) {
   const LazyComponent = React.lazy(importFunc);
   
-  return React.memo(React.forwardRef<any, React.ComponentProps<T>>((props, ref) => (
-    <React.Suspense fallback={fallback ? <fallback /> : <div>Loading...</div>}>
-      <LazyComponent {...props} ref={ref} />
-    </React.Suspense>
-  )));
+  return React.memo(React.forwardRef<any, React.ComponentProps<T>>((props, ref) => {
+    const FallbackComponent = fallback || (() => React.createElement('div', {}, 'Loading...'));
+    return React.createElement(
+      React.Suspense,
+      { fallback: React.createElement(FallbackComponent) },
+      React.createElement(LazyComponent as any, { ...props, ref })
+    );
+  }));
 }
 
 // Image lazy loading component
@@ -155,20 +158,18 @@ export const LazyImage: React.FC<LazyImageProps> = ({
     }
   }, [isIntersecting, isLoaded, src]);
 
-  return (
-    <img
-      {...props}
-      ref={imgRef}
-      src={imageSrc}
-      alt={alt}
-      loading="lazy"
-      style={{
-        transition: 'opacity 0.3s ease',
-        opacity: isLoaded ? 1 : 0.7,
-        ...props.style,
-      }}
-    />
-  );
+  return React.createElement('img', {
+    ...props,
+    ref: imgRef,
+    src: imageSrc,
+    alt: alt,
+    loading: "lazy",
+    style: {
+      transition: 'opacity 0.3s ease',
+      opacity: isLoaded ? 1 : 0.7,
+      ...props.style,
+    }
+  });
 };
 
 // Memoization utilities
@@ -223,8 +224,8 @@ export function useMemoCompare<T>(
   next: T,
   compare: (previous: T | undefined, next: T) => boolean
 ): T {
-  const previousRef = React.useRef<T>();
-  const memoizedRef = React.useRef<T>();
+  const previousRef = React.useRef<T>(undefined);
+  const memoizedRef = React.useRef<T>(undefined);
 
   if (!compare(previousRef.current, next)) {
     memoizedRef.current = next;
@@ -259,7 +260,10 @@ export const PerformanceProfiler: React.FC<PerformanceProfilerProps> = ({
       id: string,
       phase: 'mount' | 'update',
       actualDuration: number,
-      baseDuration: number
+      baseDuration: number,
+      startTime: number,
+      commitTime: number,
+      interactions: Set<any>
     ) => {
       if (process.env.NODE_ENV === 'development') {
         console.log(`Component ${id} ${phase} took ${actualDuration}ms`);
@@ -271,10 +275,10 @@ export const PerformanceProfiler: React.FC<PerformanceProfilerProps> = ({
     []
   );
 
-  return (
-    <React.Profiler id={id} onRender={onRender || defaultOnRender}>
-      {children}
-    </React.Profiler>
+  return React.createElement(
+    React.Profiler,
+    { id, onRender: (onRender || defaultOnRender) as any },
+    children
   );
 };
 

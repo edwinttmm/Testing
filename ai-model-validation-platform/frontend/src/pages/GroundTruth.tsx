@@ -19,11 +19,9 @@ import {
   IconButton,
   Alert,
   Snackbar,
-  CircularProgress,
 } from '@mui/material';
 import {
   CloudUpload,
-  PlayArrow,
   CheckCircle,
   HourglassEmpty,
   Error,
@@ -87,7 +85,8 @@ const GroundTruth: React.FC = () => {
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [uploadingVideos, setUploadingVideos] = useState<UploadingVideo[]>([]);
   const [uploadDialog, setUploadDialog] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [viewDialog, setViewDialog] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<VideoFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [uploadErrors, setUploadErrors] = useState<UploadError[]>([]);
@@ -95,7 +94,7 @@ const GroundTruth: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Mock project ID - in real app this would come from route params or context
-  const projectId = '1';
+  const projectId = 'f4ad5fe6-9cdf-450e-8897-bf0d719b25c2'; // Using first available project ID
 
   // Load videos on component mount
   useEffect(() => {
@@ -104,15 +103,12 @@ const GroundTruth: React.FC = () => {
 
   const loadVideos = async () => {
     try {
-      setLoading(true);
       setError(null);
       const videoList = await apiService.getVideos(projectId);
       setVideos(videoList);
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError.message || 'Failed to load videos');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -130,19 +126,6 @@ const GroundTruth: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: VideoFile['status'] | UploadingVideo['status']) => {
-    switch (status) {
-      case 'completed':
-        return 'success';
-      case 'processing':
-      case 'uploading':
-        return 'warning';
-      case 'failed':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
 
   // File upload handlers
   const handleFileSelect = useCallback((files: FileList | null) => {
@@ -285,10 +268,23 @@ const GroundTruth: React.FC = () => {
     setUploadingVideos(prev => prev.filter(v => v.id !== uploadId));
   };
 
+  const handleViewVideo = async (video: VideoFile) => {
+    setSelectedVideo(video);
+    setViewDialog(true);
+    
+    // Load ground truth data if available
+    if (video.ground_truth_generated || video.groundTruthGenerated) {
+      try {
+        const groundTruth = await apiService.getGroundTruth(video.id);
+        // Could store ground truth data in state if needed for detailed view
+        console.log('Ground truth data:', groundTruth);
+      } catch (err) {
+        console.warn('Could not load ground truth data:', err);
+      }
+    }
+  };
+
   const allVideos = [...uploadingVideos, ...videos];
-  const completedVideos = videos.filter(v => v.status === 'completed');
-  const processingCount = videos.filter(v => v.status === 'processing').length + 
-                         uploadingVideos.filter(v => v.status === 'uploading' || v.status === 'processing').length;
 
   return (
     <Box>
@@ -417,7 +413,7 @@ const GroundTruth: React.FC = () => {
                   secondary={
                     <Box>
                       <Typography variant="caption" component="div">
-                        Size: {formatFileSize(video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.createdAt || video.uploadedAt).toLocaleDateString()}
+                        Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
                       </Typography>
                       {video.status === 'processing' && (
                         <Box sx={{ mt: 1 }}>
@@ -440,7 +436,11 @@ const GroundTruth: React.FC = () => {
                 
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <IconButton size="small" title="View details">
+                    <IconButton 
+                      size="small" 
+                      title="View details"
+                      onClick={() => handleViewVideo(video)}
+                    >
                       <Visibility />
                     </IconButton>
                     <IconButton 
@@ -532,6 +532,104 @@ const GroundTruth: React.FC = () => {
           >
             Browse Files
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Video View Dialog */}
+      <Dialog open={viewDialog} onClose={() => setViewDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Video Details: {selectedVideo?.filename || selectedVideo?.name}
+        </DialogTitle>
+        <DialogContent>
+          {selectedVideo && (
+            <Box sx={{ mt: 2 }}>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Video Information
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Filename:</strong> {selectedVideo.filename || selectedVideo.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Size:</strong> {formatFileSize(selectedVideo.file_size || selectedVideo.fileSize || selectedVideo.size || 0)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Duration:</strong> {formatDuration(selectedVideo.duration)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Status:</strong> {selectedVideo.status}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Uploaded:</strong> {new Date(selectedVideo.created_at || selectedVideo.createdAt || selectedVideo.uploadedAt).toLocaleString()}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Ground Truth:</strong> {selectedVideo.ground_truth_generated || selectedVideo.groundTruthGenerated ? 'Generated' : 'Pending'}
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Detection Summary
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Total Detections:</strong> {selectedVideo.detectionCount || 0}
+                    </Typography>
+                    {selectedVideo.status === 'processing' && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2" color="warning.main">
+                          Processing ground truth data...
+                        </Typography>
+                        <LinearProgress sx={{ mt: 1 }} />
+                      </Box>
+                    )}
+                    {selectedVideo.status === 'completed' && (
+                      <Chip
+                        label="Ready for Testing"
+                        color="success"
+                        size="small"
+                        sx={{ mt: 1 }}
+                      />
+                    )}
+                    {selectedVideo.status === 'failed' && (
+                      <Alert severity="error" sx={{ mt: 1 }}>
+                        Processing failed. Please try re-uploading the video.
+                      </Alert>
+                    )}
+                  </Box>
+                </Grid>
+              </Grid>
+              
+              {/* Actions */}
+              <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Delete />}
+                  onClick={() => {
+                    setViewDialog(false);
+                    handleDeleteVideo(selectedVideo.id);
+                  }}
+                >
+                  Delete Video
+                </Button>
+                {selectedVideo.status === 'completed' && (
+                  <Button
+                    variant="contained"
+                    startIcon={<CheckCircle />}
+                    disabled
+                  >
+                    Ready for Testing
+                  </Button>
+                )}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setViewDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 

@@ -36,12 +36,12 @@ class GroundTruthService:
             4: 'aggressive'
         }
     
-    async def process_video_async(self, video_id: str, video_file):
+    async def process_video_async(self, video_id: str, video_file_path: str):
         """Process video asynchronously to generate ground truth"""
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(self.executor, self._process_video, video_id, video_file)
+        await loop.run_in_executor(self.executor, self._process_video, video_id, video_file_path)
     
-    def _process_video(self, video_id: str, video_file):
+    def _process_video(self, video_id: str, video_file_path: str):
         """Process video synchronously using YOLO for ground truth generation"""
         db = SessionLocal()
         
@@ -49,14 +49,8 @@ class GroundTruthService:
             # Update video status to processing
             update_video_status(db, video_id, "processing")
             
-            # Save uploaded file temporarily
-            temp_path = f"/tmp/{video_file.filename}"
-            with open(temp_path, "wb") as buffer:
-                content = video_file.file.read()
-                buffer.write(content)
-            
-            # Process video with YOLO
-            detections = self._extract_detections(temp_path)
+            # Process video with YOLO  
+            detections = self._extract_detections(video_file_path)
             
             # Store ground truth objects in database
             for detection in detections:
@@ -75,9 +69,6 @@ class GroundTruthService:
                 video.status = "completed"
                 video.ground_truth_generated = True
                 db.commit()
-            
-            # Clean up temporary file
-            os.remove(temp_path)
             
         except Exception as e:
             print(f"Error processing video {video_id}: {str(e)}")
