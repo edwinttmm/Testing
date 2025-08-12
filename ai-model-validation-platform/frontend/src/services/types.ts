@@ -48,13 +48,16 @@ export interface VideoFile {
   name?: string;
   size: number;
   fileSize?: number;
+  file_size?: number; // API response field
   duration?: number;
   uploadedAt: string;
   createdAt?: string;
+  created_at?: string; // API response field
   url?: string;
   status: 'uploading' | 'processing' | 'completed' | 'failed';
   groundTruthStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   groundTruthGenerated?: boolean;
+  ground_truth_generated?: boolean; // API response field
   detectionCount?: number;
   annotations?: Annotation[];
 }
