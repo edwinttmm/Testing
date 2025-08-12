@@ -1,14 +1,18 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from sqlalchemy import func
-from typing import List, Optional
+from sqlalchemy import func, select, delete
+from typing import List, Optional, AsyncIterator
 from pydantic import ValidationError
 import uvicorn
 import logging
 import os
+import aiofiles
+import tempfile
+import uuid
+from pathlib import Path
 from contextlib import asynccontextmanager
 from config import settings, setup_logging, create_directories, validate_environment
 from socketio_server import sio, create_socketio_app
@@ -68,6 +72,90 @@ app.add_middleware(
 
 ground_truth_service = GroundTruthService()
 # validation_service = ValidationService()  # Temporarily disabled
+
+# Security utilities
+ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv'}
+
+def generate_secure_filename(original_filename: str) -> tuple[str, str]:
+    """
+    Generate a secure UUID-based filename while preserving the original extension.
+    
+    Args:
+        original_filename: The original filename from the user
+        
+    Returns:
+        tuple: (secure_filename, original_extension)
+        
+    Raises:
+        HTTPException: If the file extension is not allowed
+    """
+    if not original_filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename cannot be empty"
+        )
+    
+    # Extract and validate file extension
+    original_path = Path(original_filename)
+    file_extension = original_path.suffix.lower()
+    
+    if file_extension not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file format. Only {', '.join(ALLOWED_VIDEO_EXTENSIONS)} files are allowed."
+        )
+    
+    # Generate secure UUID-based filename
+    secure_filename = f"{uuid.uuid4()}{file_extension}"
+    
+    return secure_filename, file_extension
+
+def secure_join_path(base_dir: str, filename: str) -> str:
+    """
+    Securely join paths to prevent path traversal attacks.
+    
+    Args:
+        base_dir: The base directory (should be absolute)
+        filename: The filename (should be just a filename, no path components)
+        
+    Returns:
+        str: The secure absolute path
+        
+    Raises:
+        HTTPException: If path traversal is detected
+    """
+    # Additional validation - reject filenames with path separators
+    if '/' in filename or '\\' in filename or '..' in filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path detected - filename cannot contain path separators"
+        )
+    
+    # Reject null bytes and other dangerous characters
+    dangerous_chars = ['\x00', '\x01', '\x02', '\x03', '\x04', '\x05']
+    if any(char in filename for char in dangerous_chars):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path detected - filename contains illegal characters"
+        )
+    
+    # Ensure base directory is absolute and resolve any symlinks
+    base_path = Path(base_dir).resolve()
+    
+    # Create the target path - only use the filename part
+    clean_filename = Path(filename).name  # This extracts just the filename, no path components
+    target_path = (base_path / clean_filename).resolve()
+    
+    # Ensure the target path is within the base directory
+    try:
+        target_path.relative_to(base_path)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path detected"
+        )
+    
+    return str(target_path)
 
 # Global exception handlers
 @app.exception_handler(ValidationError)
@@ -205,12 +293,8 @@ async def upload_video(
     db: Session = Depends(get_db)
 ):
     try:
-        # Validate file type and size
-        if not file.filename or not file.filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid file format. Only video files are allowed."
-            )
+        # Generate secure filename and validate extension
+        secure_filename, file_extension = generate_secure_filename(file.filename)
         
         # Check if file is too large (100MB limit)
         file_size = 0
@@ -233,16 +317,16 @@ async def upload_video(
                 detail="Project not found"
             )
         
-        # Save video file to disk
+        # Save video file to disk using secure path
         upload_dir = settings.upload_directory
         os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, f"{file.filename}")
+        file_path = secure_join_path(upload_dir, secure_filename)
         
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
         
-        # Save video file and create database record
+        # Save video file and create database record with original filename stored
         video_record = create_video(db=db, project_id=project_id, filename=file.filename, file_size=file_size, file_path=file_path)
         
         # Start background processing for ground truth generation
@@ -275,37 +359,64 @@ async def get_project_videos(
     db: Session = Depends(get_db)
 ):
     try:
-        # Verify project exists
-        project = get_project(db=db, project_id=project_id)
-        if not project:
+        # Verify project exists first with minimal query
+        project_exists = db.query(Project.id).filter(Project.id == project_id).first()
+        if not project_exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found"
             )
         
-        # Get videos for this project
-        videos = get_videos(db=db, project_id=project_id)
+        # OPTIMIZED: Single query with subquery to get detection counts
+        # This eliminates the N+1 query problem (AP-01)
+        from sqlalchemy import func
+        from models import GroundTruthObject
         
-        # For each video, get the detection count
+        # Create subquery for ground truth counts
+        gt_count_subquery = (
+            db.query(
+                GroundTruthObject.video_id,
+                func.count(GroundTruthObject.id).label('detection_count')
+            )
+            .group_by(GroundTruthObject.video_id)
+            .subquery()
+        )
+        
+        # Single optimized query with left join for detection counts
+        videos_with_counts = (
+            db.query(
+                Video.id,
+                Video.filename,
+                Video.status,
+                Video.created_at,
+                Video.duration,
+                Video.file_size,
+                Video.ground_truth_generated,
+                func.coalesce(gt_count_subquery.c.detection_count, 0).label('detection_count')
+            )
+            .outerjoin(gt_count_subquery, Video.id == gt_count_subquery.c.video_id)
+            .filter(Video.project_id == project_id)
+            .order_by(Video.created_at.desc())
+            .all()
+        )
+        
+        # Build response efficiently
         video_list = []
-        for video in videos:
-            # Get ground truth object count for this video
-            from crud import get_ground_truth_objects
-            ground_truth_objects = get_ground_truth_objects(db, video.id)
-            detection_count = len(ground_truth_objects)
-            
+        for video_data in videos_with_counts:
             video_list.append({
-                "id": video.id,
-                "filename": video.filename,
-                "status": video.status,
-                "created_at": video.created_at,
-                "duration": video.duration,
-                "file_size": video.file_size,
-                "ground_truth_generated": video.ground_truth_generated,
-                "detectionCount": detection_count
+                "id": video_data.id,
+                "filename": video_data.filename,
+                "status": video_data.status,
+                "created_at": video_data.created_at,
+                "duration": video_data.duration,
+                "file_size": video_data.file_size,
+                "ground_truth_generated": video_data.ground_truth_generated,
+                "detectionCount": int(video_data.detection_count)
             })
         
+        logger.info(f"Retrieved {len(video_list)} videos for project {project_id} in single query")
         return video_list
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -440,15 +551,14 @@ async def receive_detection(
         detection_record = create_detection_event(db=db, detection=detection)
         
         # Emit real-time detection event via Socket.IO
-        socketio_manager = get_socketio_manager()
-        await socketio_manager.emit_detection_event({
+        await sio.emit('detection_event', {
             "id": detection_record.id,
             "sessionId": detection.session_id,
             "timestamp": detection.timestamp,
             "classLabel": detection.class_label,
             "confidence": detection.confidence,
             "validationResult": detection.validation_result or "PENDING"
-        })
+        }, room=f"test_session_{detection.session_id}")
         
         # Return success response (validation service disabled)
         return {
