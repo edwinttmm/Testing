@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -49,7 +49,7 @@ interface DetectionEvent {
   classLabel: string;
 }
 
-const TestExecution: React.FC = () => {
+const TestExecution: React.FC = memo(() => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -131,7 +131,7 @@ const TestExecution: React.FC = () => {
       setIsConnected(true);
       setConnectionError(null);
       setReconnectAttempts(0);
-      console.log('Connected to WebSocket server');
+      // Connected to WebSocket server
       setSuccessMessage('Connected to real-time detection server');
       
       // Join test namespace
@@ -140,7 +140,7 @@ const TestExecution: React.FC = () => {
 
     newSocket.on('disconnect', (reason) => {
       setIsConnected(false);
-      console.log('Disconnected from WebSocket server:', reason);
+      // Disconnected from WebSocket server
       
       // Try to reconnect if not manually disconnected
       if (reason !== 'io client disconnect') {
@@ -156,17 +156,17 @@ const TestExecution: React.FC = () => {
     });
 
     newSocket.on('detection_event', (event: DetectionEvent) => {
-      console.log('Received detection event:', event);
+      // Received detection event
       setDetectionEvents(prev => [...prev, event]);
     });
 
     newSocket.on('test_session_update', (session: TestSessionType) => {
-      console.log('Test session update:', session);
+      // Test session update
       setCurrentSession(session);
     });
 
     newSocket.on('connection_status', (data) => {
-      console.log('Connection status:', data);
+      // Connection status update
       if (data.status === 'connected') {
         setSuccessMessage(data.message);
       }
@@ -185,7 +185,7 @@ const TestExecution: React.FC = () => {
       const delay = Math.pow(2, reconnectAttempts) * 1000; // Exponential backoff
       
       reconnectTimeoutRef.current = setTimeout(() => {
-        console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+        // Attempting to reconnect
         setReconnectAttempts(prev => prev + 1);
         initializeWebSocket();
       }, delay);
@@ -715,6 +715,8 @@ const TestExecution: React.FC = () => {
       </Snackbar>
     </Box>
   );
-};
+});
+
+TestExecution.displayName = 'TestExecution';
 
 export default TestExecution;

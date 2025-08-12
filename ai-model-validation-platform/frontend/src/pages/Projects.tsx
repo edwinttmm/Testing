@@ -140,9 +140,9 @@ const Projects: React.FC = () => {
       setFormLoading(true);
       setFormError(null);
       
-      console.log('Creating project with data:', formData);
+      // Creating project with provided data
       const result = await createProject(formData);
-      console.log('Project created successfully:', result);
+      // Project created successfully
       
       // Success - close dialog and refresh projects
       setOpenDialog(false);

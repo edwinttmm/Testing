@@ -28,21 +28,62 @@ const createMockSocket = () => ({
 
 // Mock data contracts
 const mockProjects = [
-  { id: '1', name: 'Test Project 1', description: 'Description 1', createdAt: '2023-01-01' },
-  { id: '2', name: 'Test Project 2', description: 'Description 2', createdAt: '2023-01-02' }
+  { 
+    id: '1', 
+    name: 'Test Project 1', 
+    description: 'Description 1', 
+    cameraModel: 'Test Camera Model 1',
+    cameraView: 'Front-facing VRU' as const,
+    signalType: 'Detection Signal',
+    status: 'Active' as const,
+    testsCount: 5,
+    accuracy: 85.5,
+    createdAt: '2023-01-01' 
+  },
+  { 
+    id: '2', 
+    name: 'Test Project 2', 
+    description: 'Description 2',
+    cameraModel: 'Test Camera Model 2',
+    cameraView: 'Rear-facing VRU' as const,
+    signalType: 'Detection Signal',
+    status: 'Completed' as const,
+    testsCount: 8,
+    accuracy: 92.3,
+    createdAt: '2023-01-02' 
+  }
 ];
 
 const mockVideos = [
-  { id: 'video1', filename: 'test-video1.mp4', status: 'completed', url: '/api/videos/video1/stream' },
-  { id: 'video2', filename: 'test-video2.mp4', status: 'completed', url: '/api/videos/video2/stream' }
+  { 
+    id: 'video1', 
+    projectId: '1',
+    filename: 'test-video1.mp4', 
+    originalName: 'test-video1.mp4',
+    size: 104857600,
+    uploadedAt: '2023-01-01T10:00:00Z',
+    status: 'completed' as const, 
+    url: '/api/videos/video1/stream' 
+  },
+  { 
+    id: 'video2', 
+    projectId: '2',
+    filename: 'test-video2.mp4', 
+    originalName: 'test-video2.mp4',
+    size: 209715200,
+    uploadedAt: '2023-01-02T11:00:00Z',
+    status: 'completed' as const, 
+    url: '/api/videos/video2/stream' 
+  }
 ];
 
 const mockTestSession = {
   id: 'session123',
   name: 'Test Session 1',
-  status: 'created',
+  status: 'pending' as const,
   projectId: '1',
   videoId: 'video1',
+  detectionEvents: [],
   createdAt: '2023-01-01T10:00:00Z'
 };
 
@@ -110,7 +151,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate successful connection
       const connectHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'connect'
-      )?.[1];
+      )?.[1] as Function;
       
       if (connectHandler) {
         connectHandler();
@@ -128,7 +169,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate connection error
       const errorHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'connect_error'
-      )?.[1];
+      )?.[1] as Function;
       
       if (errorHandler) {
         errorHandler(new Error('Connection failed'));
@@ -209,7 +250,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Setup active session state by simulating session start
       const sessionUpdateHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'test_session_update'
-      )?.[1];
+      )?.[1] as Function;
       
       if (sessionUpdateHandler) {
         sessionUpdateHandler({
@@ -239,7 +280,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Setup running session
       const sessionUpdateHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'test_session_update'
-      )?.[1];
+      )?.[1] as Function;
       
       if (sessionUpdateHandler) {
         sessionUpdateHandler({
@@ -271,7 +312,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate detection event reception
       const detectionHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'detection_event'
-      )?.[1];
+      )?.[1] as Function;
       
       const mockDetectionEvent = {
         id: 'detection123',
@@ -299,7 +340,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate multiple detection events
       const detectionHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'detection_event'
-      )?.[1];
+      )?.[1] as Function;
       
       const detectionEvents = [
         { id: '1', timestamp: 10, validationResult: 'TP', confidence: 0.9, classLabel: 'person' },
@@ -329,7 +370,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate disconnection
       const disconnectHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'disconnect'
-      )?.[1];
+      )?.[1] as Function;
       
       if (disconnectHandler) {
         disconnectHandler('transport error');
@@ -347,7 +388,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate connection error
       const errorHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'connect_error'
-      )?.[1];
+      )?.[1] as Function;
       
       if (errorHandler) {
         errorHandler(new Error('Connection failed'));
@@ -425,7 +466,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Set initial state with active session
       const sessionUpdateHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'test_session_update'
-      )?.[1];
+      )?.[1] as Function;
       
       if (sessionUpdateHandler) {
         sessionUpdateHandler({
@@ -437,11 +478,11 @@ describe('TestExecution Component - London School TDD', () => {
       // Simulate disconnection and reconnection
       const disconnectHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'disconnect'
-      )?.[1];
+      )?.[1] as Function;
       
       const connectHandler = mockSocket.on.mock.calls.find(
         call => call[0] === 'connect'
-      )?.[1];
+      )?.[1] as Function;
       
       if (disconnectHandler) {
         disconnectHandler('transport error');

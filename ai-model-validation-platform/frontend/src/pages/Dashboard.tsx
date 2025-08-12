@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -24,32 +24,32 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-      try {
-        setLoading(true);
-        const data = await getDashboardStats();
-        setStats(data);
-        setError(null);
-      } catch (err) {
-        console.error('Failed to fetch dashboard stats:', err);
-        setError('Failed to load dashboard statistics');
-        // Fallback data for demo purposes
-        setStats({
-          projectCount: 0,
-          videoCount: 0,
-          testCount: 0,
-          averageAccuracy: 94.2,
-          activeTests: 0,
-          totalDetections: 0
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboardStats();
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getDashboardStats();
+      setStats(data);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch dashboard stats:', err);
+      setError('Failed to load dashboard statistics');
+      // Fallback data for demo purposes
+      setStats({
+        projectCount: 0,
+        videoCount: 0,
+        testCount: 0,
+        averageAccuracy: 94.2,
+        activeTests: 0,
+        totalDetections: 0
+      });
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchDashboardStats();
+  }, [fetchDashboardStats]);
 
   if (loading) {
     return (
