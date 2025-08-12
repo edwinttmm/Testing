@@ -13,6 +13,9 @@ import {
   ChartData,
   User
 } from './types';
+import { NetworkError, ApiError as CustomApiError, ErrorFactory } from '../utils/errorTypes';
+import errorReporting from './errorReporting';
+import { apiCache } from '../utils/apiCache';
 
 class ApiService {
   private api: AxiosInstance;
@@ -58,6 +61,8 @@ class ApiService {
       status: 500,
     };
 
+    let customError: Error;
+
     if (error.response) {
       // Server responded with error status
       apiError.status = error.response.status;
@@ -65,101 +70,136 @@ class ApiService {
       apiError.message = responseData?.message || responseData?.detail || error.message;
       apiError.details = error.response.data;
 
+      // Create custom error for error boundary handling
+      customError = ErrorFactory.createApiError(
+        error.response,
+        responseData,
+        { 
+          originalError: error,
+          method: error.config?.method,
+          url: error.config?.url 
+        }
+      );
+
     } else if (error.request) {
       // Network error
       apiError.message = 'Network error - please check your connection';
       apiError.code = 'NETWORK_ERROR';
+      
+      customError = ErrorFactory.createNetworkError(
+        undefined,
+        { 
+          originalError: error,
+          method: error.config?.method,
+          url: error.config?.url 
+        }
+      );
+
     } else {
       // Request setup error
       apiError.message = error.message;
+      customError = new Error(`Request setup error: ${error.message}`);
     }
+
+    // Report error to error reporting service
+    errorReporting.reportApiError(customError, 'api-service', {
+      method: error.config?.method,
+      url: error.config?.url,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+    });
 
     console.error('API Error:', apiError);
     return apiError;
   }
 
 
+  // Enhanced request method with caching and deduplication
+  private async cachedRequest<T>(
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    url: string,
+    data?: any,
+    config?: any
+  ): Promise<T> {
+    const cacheKey = method + url;
+    const params = config?.params;
+    
+    // Only cache GET requests
+    if (method === 'GET') {
+      // Check cache first
+      const cached = apiCache.get<T>(method, url, params);
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Check for pending request to avoid duplication
+      const pending = apiCache.getPendingRequest(method, url, params);
+      if (pending) {
+        return pending;
+      }
+    }
+
+    // Make the actual request
+    const requestPromise = this.api.request<T>({
+      method: method.toLowerCase(),
+      url,
+      data,
+      ...config,
+    }).then(response => {
+      // Cache successful GET responses
+      if (method === 'GET') {
+        apiCache.set(method, url, response.data, params);
+      }
+      return response.data;
+    });
+
+    // Track pending request for deduplication
+    if (method === 'GET') {
+      apiCache.setPendingRequest(method, url, requestPromise, params);
+    }
+
+    return requestPromise;
+  }
+
   // Project CRUD
   async getProjects(skip: number = 0, limit: number = 100): Promise<Project[]> {
-    const response = await this.api.get<Project[]>('/api/projects', {
+    return this.cachedRequest<Project[]>('GET', '/api/projects', undefined, {
       params: { skip, limit }
     });
-    return response.data;
   }
 
   async getProject(id: string): Promise<Project> {
-    const response = await this.api.get<Project>(`/api/projects/${id}`);
-    return response.data;
+    return this.cachedRequest<Project>('GET', `/api/projects/${id}`);
   }
 
   async createProject(project: ProjectCreate): Promise<Project> {
-    console.log('API Service - Creating project with data:', project);
-    console.log('API Service - Base URL:', this.api.defaults.baseURL);
-    
-    // Try fetch first as a fallback
     try {
-      console.log('API Service - Trying fetch method first...');
-      const baseURL = this.api.defaults.baseURL || 'http://localhost:8001';
-      const url = `${baseURL}/api/projects`;
-      
-      console.log('API Service - Fetch URL:', url);
-      console.log('API Service - Fetch payload:', JSON.stringify(project));
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(project)
-      });
-      
-      console.log('API Service - Fetch response status:', response.status);
-      console.log('API Service - Fetch response headers:', response.headers);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Service - Fetch error response:', errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      
-      const result = await response.json();
-      console.log('API Service - Fetch success result:', result);
+      const result = await this.cachedRequest<Project>('POST', '/api/projects', project);
+      // Invalidate projects cache after creating a new project
+      apiCache.invalidatePattern('/api/projects');
+      apiCache.invalidatePattern('/api/dashboard');
       return result;
-      
-    } catch (fetchError: any) {
-      console.error('API Service - Fetch method failed:', fetchError);
-      
-      // Fallback to axios method
-      console.log('API Service - Falling back to axios method...');
-      try {
-        const response = await this.api.post<Project>('/api/projects', project);
-        console.log('API Service - Axios success response:', response.data);
-        return response.data;
-      } catch (axiosError: any) {
-        console.error('API Service - Both fetch and axios failed');
-        console.error('API Service - Fetch error:', fetchError);
-        console.error('API Service - Axios error:', axiosError);
-        console.error('API Service - Axios error details:', {
-          message: axiosError.message,
-          code: axiosError.code,
-          response: axiosError.response,
-          request: axiosError.request
-        });
-        
-        // Throw the more descriptive error
-        throw axiosError.response ? axiosError : fetchError;
-      }
+    } catch (error: any) {
+      console.error('API Service - Project creation failed:', error);
+      throw error;
     }
   }
 
   async updateProject(id: string, updates: ProjectUpdate): Promise<Project> {
-    const response = await this.api.put<Project>(`/api/projects/${id}`, updates);
-    return response.data;
+    const result = await this.cachedRequest<Project>('PUT', `/api/projects/${id}`, updates);
+    // Invalidate related cache entries
+    apiCache.invalidate('GET', `/api/projects/${id}`);
+    apiCache.invalidatePattern('/api/projects');
+    apiCache.invalidatePattern('/api/dashboard');
+    return result;
   }
 
   async deleteProject(id: string): Promise<void> {
-    await this.api.delete(`/api/projects/${id}`);
+    await this.cachedRequest<void>('DELETE', `/api/projects/${id}`);
+    // Invalidate related cache entries
+    apiCache.invalidate('GET', `/api/projects/${id}`);
+    apiCache.invalidatePattern('/api/projects');
+    apiCache.invalidatePattern('/api/dashboard');
   }
 
   // Video management
@@ -226,19 +266,16 @@ class ApiService {
 
   // Dashboard
   async getDashboardStats(): Promise<DashboardStats> {
-    const response = await this.api.get<DashboardStats>('/api/dashboard/stats');
-    return response.data;
+    return this.cachedRequest<DashboardStats>('GET', '/api/dashboard/stats');
   }
 
   async getChartData(): Promise<ChartData> {
-    const response = await this.api.get<ChartData>('/api/dashboard/charts');
-    return response.data;
+    return this.cachedRequest<ChartData>('GET', '/api/dashboard/charts');
   }
 
   // Health check
   async healthCheck(): Promise<{ status: string }> {
-    const response = await this.api.get<{ status: string }>('/health');
-    return response.data;
+    return this.cachedRequest<{ status: string }>('GET', '/health');
   }
 
   // Generic request methods for custom endpoints

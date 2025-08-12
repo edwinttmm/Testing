@@ -1,0 +1,130 @@
+import { useState, useCallback } from 'react';
+import { ErrorFactory, logError } from '../utils/errorTypes';
+
+interface ErrorBoundaryHook {
+  error: Error | null;
+  hasError: boolean;
+  captureError: (error: Error, context?: string) => void;
+  clearError: () => void;
+  throwError: (error: Error) => never;
+}
+
+/**
+ * Custom hook for manual error boundary functionality
+ * Useful for catching errors in event handlers, async operations, etc.
+ */
+export const useErrorBoundary = (): ErrorBoundaryHook => {
+  const [error, setError] = useState<Error | null>(null);
+
+  const captureError = useCallback((error: Error, context?: string) => {
+    // Log the error
+    logError(error, { context, source: 'useErrorBoundary' });
+    
+    // Set the error state
+    setError(error);
+    
+    // In development, also log to console
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error captured by useErrorBoundary:', { error, context });
+    }
+  }, []);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const throwError = useCallback((error: Error): never => {
+    // This will be caught by the nearest error boundary
+    throw error;
+  }, []);
+
+  return {
+    error,
+    hasError: error !== null,
+    captureError,
+    clearError,
+    throwError,
+  };
+};
+
+/**
+ * Hook for handling async errors
+ */
+export const useAsyncError = () => {
+  const { throwError } = useErrorBoundary();
+
+  const catchAsyncError = useCallback((error: Error) => {
+    // Transform the async error into a sync error that can be caught by error boundaries
+    setTimeout(() => {
+      throwError(error);
+    }, 0);
+  }, [throwError]);
+
+  return { catchAsyncError };
+};
+
+/**
+ * Hook for API error handling
+ */
+export const useApiError = () => {
+  const { captureError } = useErrorBoundary();
+
+  const handleApiError = useCallback((error: any, context?: string) => {
+    let formattedError: Error;
+
+    if (error.response) {
+      // API responded with an error status
+      formattedError = ErrorFactory.createApiError(
+        error.response, 
+        error.response.data, 
+        { context, originalError: error }
+      );
+    } else if (error.request) {
+      // Network error - no response received
+      formattedError = ErrorFactory.createNetworkError(
+        undefined, 
+        { context, originalError: error }
+      );
+    } else {
+      // Something else went wrong
+      formattedError = new Error(error.message || 'Unknown API error');
+    }
+
+    captureError(formattedError, context);
+    return formattedError;
+  }, [captureError]);
+
+  return { handleApiError };
+};
+
+/**
+ * Hook for WebSocket error handling
+ */
+export const useWebSocketError = () => {
+  const { captureError } = useErrorBoundary();
+
+  const handleWebSocketError = useCallback((event: Event, context?: string) => {
+    const error = ErrorFactory.createWebSocketError(event, { context });
+    captureError(error, context);
+    return error;
+  }, [captureError]);
+
+  return { handleWebSocketError };
+};
+
+/**
+ * Hook for form validation error handling
+ */
+export const useValidationError = () => {
+  const { captureError } = useErrorBoundary();
+
+  const handleValidationError = useCallback((field: string, value: any, rule: string) => {
+    const error = ErrorFactory.createValidationError(field, value, rule);
+    captureError(error, `validation-${field}`);
+    return error;
+  }, [captureError]);
+
+  return { handleValidationError };
+};
+
+export default useErrorBoundary;
