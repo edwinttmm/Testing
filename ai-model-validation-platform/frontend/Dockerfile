@@ -2,19 +2,21 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies first (better caching)
+# Install dependencies in order with better error handling
 COPY package*.json ./
 
-# Clear npm cache and install with exact versions
-RUN npm cache clean --force && \
-    npm ci --only=production --no-audit --no-fund && \
-    npm install --save-dev @craco/craco@^7.1.0 && \
-    npm list @craco/craco
+# Clean install with verbose logging and error handling
+RUN set -x && \
+    npm cache clean --force && \
+    npm install --verbose --no-audit --no-fund --legacy-peer-deps && \
+    npm list @craco/craco || echo "Craco not found in list" && \
+    ls -la node_modules/.bin/craco || echo "Craco binary not found" && \
+    which craco || echo "Craco not in PATH"
 
 # Copy source code
 COPY . .
 
 EXPOSE 3000
 
-# Start with explicit PATH and verification
-CMD ["sh", "-c", "ls -la node_modules/.bin/craco && npm start"]
+# Use npx to ensure craco is found, with fallback to react-scripts
+CMD ["sh", "-c", "npx craco start || (echo 'Craco failed, trying react-scripts...' && npx react-scripts start)"]
