@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import os
+import torch
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -13,6 +14,9 @@ from schemas import GroundTruthResponse, GroundTruthObject as GroundTruthObjectS
 
 class GroundTruthService:
     def __init__(self):
+        # Configure torch to allow unsafe loading for YOLO models
+        torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])
+        
         # Load YOLOv8 model
         self.model = YOLO('yolov8n.pt')  # Using nano version for speed
         self.executor = ThreadPoolExecutor(max_workers=2)
