@@ -1,0 +1,68 @@
+# Ubuntu 20.04 Compatibility Dockerfile
+# Handles transition from libgl1-mesa-glx to modern packages
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Ubuntu 20.04 compatible OpenGL installation with fallback strategy
+RUN apt-get update && apt-get install -y \
+    # Python 3.9 (default on Ubuntu 20.04)
+    python3.9 \
+    python3.9-dev \
+    python3.9-venv \
+    python3-pip \
+    # Try modern packages first, fallback to legacy if needed
+    && (apt-get install -y \
+        libgl1-mesa-dri \
+        libegl1-mesa \
+        libgles2-mesa \
+        libglx-mesa0 \
+        || apt-get install -y libgl1-mesa-glx) \
+    # Core graphics libraries
+    && apt-get install -y \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libxrandr2 \
+    libxss1 \
+    libxcursor1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxi6 \
+    libxtst6 \
+    # Performance libraries
+    libgomp1 \
+    # Font support
+    libfontconfig1 \
+    libfreetype6 \
+    # Utilities
+    ca-certificates \
+    curl \
+    # Cleanup
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get autoremove -y
+
+# Create python3 symlink
+RUN ln -sf /usr/bin/python3.9 /usr/bin/python
+
+# Install Python dependencies with compatibility checks
+COPY requirements.txt .
+RUN python -m pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Create app user
+RUN useradd -m -u 1000 app && chown -R app:app /app
+USER app
+
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
