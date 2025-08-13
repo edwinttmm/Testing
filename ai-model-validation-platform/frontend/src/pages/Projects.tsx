@@ -231,7 +231,7 @@ const Projects: React.FC = () => {
       {loading ? (
         <Grid container spacing={3}>
           {[1, 2, 3, 4, 5, 6].map((index) => (
-            <Grid item xs={12} md={6} lg={4} key={index}>
+            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={index}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -278,7 +278,7 @@ const Projects: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {projects.map((project) => (
-            <Grid item xs={12} md={6} lg={4} key={project.id}>
+            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={project.id}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -325,9 +325,9 @@ const Projects: React.FC = () => {
                       variant="outlined"
                       size="small"
                     />
-                    {project.accuracy > 0 && (
+                    {(project.accuracy ?? 0) > 0 && (
                       <Chip
-                        label={`${project.accuracy}% accuracy`}
+                        label={`${project.accuracy ?? 0}% accuracy`}
                         variant="outlined"
                         size="small"
                       />

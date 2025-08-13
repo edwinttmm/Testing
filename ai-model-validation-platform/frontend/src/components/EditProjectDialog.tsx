@@ -121,7 +121,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           fullWidth
           variant="outlined"
           value={formData.name || ''}
-          onChange={(e) => handleFormChange('name', e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFormChange('name', e.target.value)}
           error={!!formErrors.name}
           helperText={formErrors.name}
           disabled={loading}
@@ -136,7 +136,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           rows={3}
           variant="outlined"
           value={formData.description || ''}
-          onChange={(e) => handleFormChange('description', e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFormChange('description', e.target.value)}
           error={!!formErrors.description}
           helperText={formErrors.description}
           disabled={loading}
@@ -149,7 +149,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           fullWidth
           variant="outlined"
           value={formData.cameraModel || ''}
-          onChange={(e) => handleFormChange('cameraModel', e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFormChange('cameraModel', e.target.value)}
           error={!!formErrors.cameraModel}
           helperText={formErrors.cameraModel}
           disabled={loading}
@@ -162,7 +162,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <Select 
             label="Camera View"
             value={formData.cameraView || 'Front-facing VRU'}
-            onChange={(e) => handleFormChange('cameraView', e.target.value as any)}
+            onChange={(e: any) => handleFormChange('cameraView', e.target.value as any)}
             disabled={loading}
           >
             <MenuItem value="Front-facing VRU">Front-facing VRU</MenuItem>
@@ -176,7 +176,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <Select 
             label="Signal Type"
             value={formData.signalType || 'GPIO'}
-            onChange={(e) => handleFormChange('signalType', e.target.value)}
+            onChange={(e: any) => handleFormChange('signalType', e.target.value)}
             disabled={loading}
           >
             <MenuItem value="GPIO">GPIO</MenuItem>
@@ -190,7 +190,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <Select 
             label="Status"
             value={formData.status || 'Draft'}
-            onChange={(e) => handleFormChange('status', e.target.value as any)}
+            onChange={(e: any) => handleFormChange('status', e.target.value as any)}
             disabled={loading}
           >
             <MenuItem value="Draft">Draft</MenuItem>

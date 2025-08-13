@@ -448,7 +448,7 @@ const TestExecution: React.FC = memo(() => {
 
       <Grid container spacing={3}>
         {/* Video Player */}
-        <Grid item xs={12} md={8}>
+        <Grid size={{ xs: 12, md: 8 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -539,10 +539,10 @@ const TestExecution: React.FC = memo(() => {
         </Grid>
 
         {/* Real-time Results */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <Grid container spacing={2}>
             {/* Metrics */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -570,21 +570,21 @@ const TestExecution: React.FC = memo(() => {
                   </Box>
 
                   <Grid container spacing={1}>
-                    <Grid item xs={4}>
+                    <Grid size={{ xs: 4 }}>
                       <Chip 
                         label={`TP: ${metrics.tp}`} 
                         color="success" 
                         size="small" 
                       />
                     </Grid>
-                    <Grid item xs={4}>
+                    <Grid size={{ xs: 4 }}>
                       <Chip 
                         label={`FP: ${metrics.fp}`} 
                         color="error" 
                         size="small" 
                       />
                     </Grid>
-                    <Grid item xs={4}>
+                    <Grid size={{ xs: 4 }}>
                       <Chip 
                         label={`FN: ${metrics.fn}`} 
                         color="warning" 
@@ -597,7 +597,7 @@ const TestExecution: React.FC = memo(() => {
             </Grid>
 
             {/* Detection Log */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Card sx={{ height: 400 }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
