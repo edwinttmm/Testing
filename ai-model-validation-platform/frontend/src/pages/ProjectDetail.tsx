@@ -230,7 +230,7 @@ const ProjectDetail: React.FC = () => {
         
         <Grid container spacing={3} sx={{ mb: 3 }}>
           {[...Array(4)].map((_, index) => (
-            <Grid item xs={12} md={3} key={index}>
+            <Grid size={{ xs: 12, md: 3 }} key={index}>
               <Card>
                 <CardContent>
                   <Skeleton variant="text" width={150} height={24} />
@@ -284,7 +284,7 @@ const ProjectDetail: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -315,7 +315,7 @@ const ProjectDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -336,7 +336,7 @@ const ProjectDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -354,7 +354,7 @@ const ProjectDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -569,7 +569,7 @@ const ProjectDetail: React.FC = () => {
                         {session.metrics?.totalDetections || 0}
                       </TableCell>
                       <TableCell>
-                        {formatTimeAgo(session.completedAt || session.createdAt)}
+                        {formatTimeAgo((session.completedAt || session.createdAt) ?? null)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -585,7 +585,7 @@ const ProjectDetail: React.FC = () => {
           </Typography>
           
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -623,7 +623,7 @@ const ProjectDetail: React.FC = () => {
               </Card>
             </Grid>
             
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>

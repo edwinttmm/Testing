@@ -195,12 +195,12 @@ const AccessibleProjectCard: React.FC<AccessibleProjectCardProps> = ({
             size="small"
             aria-label={`Tests completed: ${project.testsCount}`}
           />
-          {project.accuracy > 0 && (
+          {(project.accuracy ?? 0) > 0 && (
             <Chip
-              label={`${project.accuracy}% accuracy`}
+              label={`${project.accuracy ?? 0}% accuracy`}
               variant="outlined"
               size="small"
-              aria-label={`Model accuracy: ${project.accuracy} percent`}
+              aria-label={`Model accuracy: ${project.accuracy ?? 0} percent`}
             />
           )}
         </Box>
