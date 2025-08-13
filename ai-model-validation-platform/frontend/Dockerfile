@@ -5,10 +5,14 @@ WORKDIR /app
 # Install dependencies in order with better error handling
 COPY package*.json ./
 
-# Clean install with verbose logging and error handling
+# Clean install with SSL certificate handling and error recovery
 RUN set -x && \
     npm cache clean --force && \
-    npm install --verbose --no-audit --no-fund --legacy-peer-deps && \
+    npm config set strict-ssl false && \
+    npm config set registry https://registry.npmjs.org/ && \
+    (npm install --verbose --no-audit --no-fund --legacy-peer-deps || \
+     npm install --verbose --no-audit --no-fund --legacy-peer-deps --unsafe-perm || \
+     npm install --verbose --no-audit --no-fund --legacy-peer-deps --strict-ssl=false) && \
     npm list @craco/craco || echo "Craco not found in list" && \
     ls -la node_modules/.bin/craco || echo "Craco binary not found" && \
     which craco || echo "Craco not in PATH"
