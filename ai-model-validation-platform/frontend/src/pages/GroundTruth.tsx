@@ -300,7 +300,7 @@ const GroundTruth: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -316,7 +316,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -332,7 +332,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -544,7 +544,7 @@ const GroundTruth: React.FC = () => {
           {selectedVideo && (
             <Box sx={{ mt: 2 }}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid item xs={12} md={6}>
                   <Typography variant="h6" gutterBottom>
                     Video Information
                   </Typography>
@@ -569,7 +569,7 @@ const GroundTruth: React.FC = () => {
                     </Typography>
                   </Box>
                 </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid item xs={12} md={6}>
                   <Typography variant="h6" gutterBottom>
                     Detection Summary
                   </Typography>

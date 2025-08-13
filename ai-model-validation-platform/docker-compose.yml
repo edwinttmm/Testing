@@ -34,6 +34,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/vru_validation
       - REDIS_URL=redis://redis:6379
+      - API_PORT=8000
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,9 +50,9 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://localhost:8001
     depends_on:
       - backend
     volumes:

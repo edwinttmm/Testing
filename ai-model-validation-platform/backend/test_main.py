@@ -72,7 +72,9 @@ def test_create_project_success(client):
     
     data = response.json()
     assert data["name"] == "Test Project"
-    assert data["camera_model"] == "Test Camera"
+    assert data["cameraModel"] == "Test Camera"  # API returns camelCase due to Field aliases
+    assert data["cameraView"] == "Front-facing VRU"
+    assert data["signalType"] == "GPIO"
     assert data["status"] == "Active"
 
 def test_create_project_validation_error(client):

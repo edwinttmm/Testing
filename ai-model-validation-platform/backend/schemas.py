@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 # Using str for UUID compatibility with SQLite
@@ -23,9 +23,12 @@ class ProjectCreate(ProjectBase):
 
 class ProjectUpdate(ProjectBase):
     name: Optional[str] = None
-    camera_model: Optional[str] = None
-    camera_view: Optional[str] = None
-    signal_type: Optional[str] = None
+    camera_model: Optional[str] = Field(None, alias="cameraModel")
+    camera_view: Optional[str] = Field(None, alias="cameraView")
+    lens_type: Optional[str] = Field(None, alias="lensType")
+    resolution: Optional[str] = None
+    frame_rate: Optional[int] = Field(None, alias="frameRate")
+    signal_type: Optional[str] = Field(None, alias="signalType")
     status: Optional[str] = None
 
 class ProjectResponse(ProjectBase):
@@ -85,6 +88,13 @@ class TestSessionBase(BaseModel):
     project_id: str
     video_id: str
     tolerance_ms: Optional[int] = 100
+    
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Test session name cannot be empty')
+        return v.strip()
 
 class TestSessionCreate(TestSessionBase):
     pass
@@ -101,10 +111,14 @@ class TestSessionResponse(TestSessionBase):
 
 # Detection Event schemas
 class DetectionEvent(BaseModel):
-    test_session_id: str
+    test_session_id: str = Field(alias="testSessionId")
     timestamp: float
     confidence: Optional[float] = None
-    class_label: Optional[str] = None
+    class_label: Optional[str] = Field(None, alias="classLabel")
+    validation_result: Optional[str] = Field(None, alias="validationResult")
+    
+    class Config:
+        populate_by_name = True
 
 class DetectionEventResponse(DetectionEvent):
     id: str

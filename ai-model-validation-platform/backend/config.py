@@ -16,14 +16,14 @@ class Settings(BaseSettings):
     
     # API settings
     api_host: str = "0.0.0.0"
-    api_port: int = 8001
+    api_port: int = 8000
     api_debug: bool = False
     api_reload: bool = False
     
     # CORS settings
     cors_origins: List[str] = [
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:8080",
         "http://127.0.0.1:8080"
     ]

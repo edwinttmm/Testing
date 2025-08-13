@@ -430,7 +430,7 @@ const TestExecution: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Video Player */}
-        <Grid size={{ xs: 12, md: 8 }}>
+        <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -521,10 +521,10 @@ const TestExecution: React.FC = () => {
         </Grid>
 
         {/* Real-time Results */}
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Grid container spacing={2}>
             {/* Metrics */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -552,21 +552,21 @@ const TestExecution: React.FC = () => {
                   </Box>
 
                   <Grid container spacing={1}>
-                    <Grid size={{ xs: 4 }}>
+                    <Grid item xs={4}>
                       <Chip 
                         label={`TP: ${metrics.tp}`} 
                         color="success" 
                         size="small" 
                       />
                     </Grid>
-                    <Grid size={{ xs: 4 }}>
+                    <Grid item xs={4}>
                       <Chip 
                         label={`FP: ${metrics.fp}`} 
                         color="error" 
                         size="small" 
                       />
                     </Grid>
-                    <Grid size={{ xs: 4 }}>
+                    <Grid item xs={4}>
                       <Chip 
                         label={`FN: ${metrics.fn}`} 
                         color="warning" 
@@ -579,7 +579,7 @@ const TestExecution: React.FC = () => {
             </Grid>
 
             {/* Detection Log */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card sx={{ height: 400 }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>

@@ -60,7 +60,7 @@ User Interaction → Frontend Component → API Service → Backend Endpoint →
 
 **Critical Issues Identified:**
 1. **Schema Field Naming**: `cameraModel` vs `camera_model` conflicts
-2. **Port Misconfigurations**: Frontend expects 8001, backend runs on 8000
+2. **Port Misconfigurations**: Fixed - Frontend uses 8001, backend runs on 8001
 3. **Missing Dependencies**: `react-router-dom` not properly installed
 4. **Test Configuration**: Jest not configured for ES modules
 5. **Pydantic V2 Migration**: Using deprecated V1 validators
@@ -106,7 +106,7 @@ class ProjectResponse(ProjectBase):
 
 3. **API Base URL Correction**:
 ```typescript
-const API_BASE_URL = 'http://localhost:8000'; // Changed from 8001
+const API_BASE_URL = 'http://localhost:8001'; // Standardized to 8001
 ```
 
 ---
@@ -114,7 +114,7 @@ const API_BASE_URL = 'http://localhost:8000'; // Changed from 8001
 ## Current Runtime Status
 
 ### ✅ Backend Status: OPERATIONAL
-- **Server**: Running successfully on http://localhost:8000
+- **Server**: Running successfully on http://localhost:8001
 - **Health Check**: ✅ Passing (`{"status": "healthy"}`)
 - **Database**: ✅ Connected and functional
 - **API Endpoints**: ✅ Responding correctly
@@ -203,8 +203,8 @@ def test_project_creation_coordinates_services():
 **Fix**: Add field aliases in Pydantic schemas with `populate_by_name=True`
 
 ### 2. Port Configuration Mismatch  
-**Issue**: Frontend configured for port 8001, backend runs on 8000
-**Fix**: Standardize on port 8000 across both services
+**Issue**: Port configuration conflicts resolved
+**Fix**: Standardized on port 8001 for backend, port 3001 for frontend
 
 ### 3. Missing Frontend Dependencies
 **Issue**: `react-router-dom` not installed, causing test failures

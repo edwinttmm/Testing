@@ -43,6 +43,6 @@ ai-model-validation-platform/
 
 ## Development
 
-- Frontend: `cd frontend && npm start`
-- Backend: `cd backend && uvicorn main:app --reload`
+- Frontend: `cd frontend && npm start` (runs on port 3000)
+- Backend: `cd backend && uvicorn main:app --reload` (runs on port 8000)
 - Database: PostgreSQL on port 5432
