@@ -10,16 +10,27 @@ export interface ApiResponse<T = any> {
 export interface Project {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   cameraModel: string;
+  camera_model?: string; // API response alias
   cameraView: 'Front-facing VRU' | 'Rear-facing VRU' | 'In-Cab Driver Behavior';
+  camera_view?: string; // API response alias
   signalType: string;
+  signal_type?: string; // API response alias
+  lensType?: string;
+  lens_type?: string; // API response alias
+  resolution?: string;
+  frameRate?: number;
+  frame_rate?: number; // API response alias
   createdAt: string;
+  created_at?: string; // API response alias
   updatedAt?: string;
+  updated_at?: string; // API response alias
   status: 'Active' | 'Completed' | 'Draft';
-  testsCount: number;
-  accuracy: number;
+  testsCount?: number;
+  accuracy?: number;
   userId?: string;
+  owner_id?: string; // API response alias
 }
 
 export interface ProjectCreate {

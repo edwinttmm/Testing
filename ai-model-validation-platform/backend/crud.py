@@ -12,8 +12,8 @@ from schemas import (
 
 # Project CRUD
 def create_project(db: Session, project: ProjectCreate, user_id: str = "anonymous") -> Project:
-    # Use model_dump instead of deprecated dict() method
-    project_data = project.model_dump(by_alias=True)
+    # Use model_dump without by_alias to get snake_case field names for database
+    project_data = project.model_dump()
     db_project = Project(
         **project_data,
         owner_id=user_id
@@ -34,12 +34,67 @@ def get_project(db: Session, project_id: str, user_id: str = "anonymous") -> Opt
 def update_project(db: Session, project_id: str, project_update: ProjectUpdate, user_id: str) -> Optional[Project]:
     db_project = get_project(db, project_id, user_id)
     if db_project:
+        # Use model_dump without by_alias to get snake_case field names for database
         update_data = project_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_project, field, value)
         db.commit()
         db.refresh(db_project)
     return db_project
+
+def delete_project(db: Session, project_id: str, user_id: str = "anonymous") -> bool:
+    """
+    Delete a project and all its associated data (videos, test sessions, etc.)
+    Returns True if deleted, False if not found
+    """
+    db_project = get_project(db, project_id, user_id)
+    if not db_project:
+        return False
+    
+    try:
+        # Delete in proper order to maintain referential integrity
+        # First delete detection events from test sessions of this project
+        from models import DetectionEvent, TestSession, Video, GroundTruthObject
+        
+        # Delete detection events for test sessions of this project
+        db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id.in_(
+                db.query(TestSession.id).filter(TestSession.project_id == project_id)
+            )
+        ).delete(synchronize_session=False)
+        
+        # Delete test sessions for this project
+        db.query(TestSession).filter(TestSession.project_id == project_id).delete(synchronize_session=False)
+        
+        # Delete ground truth objects for videos in this project
+        db.query(GroundTruthObject).filter(
+            GroundTruthObject.video_id.in_(
+                db.query(Video.id).filter(Video.project_id == project_id)
+            )
+        ).delete(synchronize_session=False)
+        
+        # Delete videos for this project (file cleanup should be handled separately)
+        videos_to_delete = db.query(Video).filter(Video.project_id == project_id).all()
+        for video in videos_to_delete:
+            # Clean up physical files if they exist
+            import os
+            if video.file_path and os.path.exists(video.file_path):
+                try:
+                    os.remove(video.file_path)
+                except OSError:
+                    pass  # File may already be deleted or inaccessible
+        
+        db.query(Video).filter(Video.project_id == project_id).delete(synchronize_session=False)
+        
+        # Finally delete the project itself
+        db.delete(db_project)
+        db.commit()
+        
+        return True
+        
+    except Exception as e:
+        db.rollback()
+        raise e
 
 # Video CRUD
 def create_video(db: Session, project_id: str, filename: str, file_path: str = None, file_size: int = None) -> Video:

@@ -27,7 +27,7 @@ from schemas import (
 )
 
 from crud import (
-    create_project, get_projects, get_project,
+    create_project, get_projects, get_project, update_project, delete_project,
     create_video, get_videos,
     create_test_session, get_test_sessions,
     create_detection_event
@@ -241,13 +241,7 @@ async def create_new_project(
     db: Session = Depends(get_db)
 ):
     try:
-        # Validate project data
-        if not project.name or not project.name.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Project name is required"
-            )
-        
+        # Pydantic already validates project data, no need for manual validation
         # Use default user for testing (no auth required)
         return create_project(db=db, project=project, user_id="anonymous")
     except HTTPException:
@@ -265,14 +259,7 @@ async def list_projects(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    # Debug: check what's in the database
-    from sqlalchemy import text
-    result = db.execute(text("SELECT COUNT(*) as count FROM projects")).fetchone()
-    logger.info(f"Database has {result.count} projects")
-    
     projects = get_projects(db=db, user_id="anonymous", skip=skip, limit=limit)
-    logger.info(f"get_projects returned {len(projects)} projects")
-    
     return projects
 
 @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
@@ -285,6 +272,51 @@ async def get_project_detail(
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 
+@app.put("/api/projects/{project_id}", response_model=ProjectResponse)
+async def update_project_endpoint(
+    project_id: str,
+    project_update: ProjectUpdate,
+    db: Session = Depends(get_db)
+):
+    try:
+        updated_project = update_project(db=db, project_id=project_id, project_update=project_update, user_id="anonymous")
+        if not updated_project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        return updated_project
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Project update error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update project"
+        )
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project_endpoint(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        deleted = delete_project(db=db, project_id=project_id, user_id="anonymous")
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        return {"message": "Project deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Project deletion error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete project"
+        )
+
 # Video and Ground Truth endpoints
 @app.post("/api/projects/{project_id}/videos", response_model=VideoUploadResponse)
 async def upload_video(
@@ -292,24 +324,12 @@ async def upload_video(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    temp_file_path = None
     try:
         # Generate secure filename and validate extension
         secure_filename, file_extension = generate_secure_filename(file.filename)
         
-        # Check if file is too large (100MB limit)
-        file_size = 0
-        if hasattr(file.file, 'seek') and hasattr(file.file, 'tell'):
-            file.file.seek(0, 2)  # Seek to end
-            file_size = file.file.tell()
-            file.file.seek(0)  # Reset to beginning
-            
-            if file_size > 100 * 1024 * 1024:  # 100MB
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail="File size exceeds 100MB limit"
-                )
-        
-        # Verify project exists
+        # Verify project exists early to avoid unnecessary file operations
         project = get_project(db=db, project_id=project_id)
         if not project:
             raise HTTPException(
@@ -317,26 +337,97 @@ async def upload_video(
                 detail="Project not found"
             )
         
-        # Save video file to disk using secure path
+        # Setup paths for chunked upload with temp file
         upload_dir = settings.upload_directory
         os.makedirs(upload_dir, exist_ok=True)
-        file_path = secure_join_path(upload_dir, secure_filename)
+        final_file_path = secure_join_path(upload_dir, secure_filename)
         
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+        # Use a temporary file during upload to prevent partial files in upload directory
+        import tempfile
+        temp_fd, temp_file_path = tempfile.mkstemp(suffix=file_extension, dir=upload_dir)
         
-        # Save video file and create database record with original filename stored
-        video_record = create_video(db=db, project_id=project_id, filename=file.filename, file_size=file_size, file_path=file_path)
+        # MEMORY OPTIMIZED: Chunked upload with size validation and progress tracking
+        # Uses smaller chunks (64KB) for better memory efficiency while maintaining good performance
+        chunk_size = 64 * 1024  # 64KB chunks - optimal balance of memory usage and I/O performance
+        max_file_size = 100 * 1024 * 1024  # 100MB limit
+        bytes_written = 0
+        
+        try:
+            with os.fdopen(temp_fd, 'wb') as temp_file:
+                # Process file in chunks without loading entire file into memory
+                while True:
+                    # Read chunk asynchronously
+                    chunk = await file.read(chunk_size)
+                    if not chunk:
+                        break
+                    
+                    # Check size limit during upload to fail fast
+                    bytes_written += len(chunk)
+                    if bytes_written > max_file_size:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail="File size exceeds 100MB limit"
+                        )
+                    
+                    # Write chunk to temporary file
+                    temp_file.write(chunk)
+                    
+                    # Log progress for large files (every 10MB) without memory overhead
+                    if bytes_written % (10 * 1024 * 1024) == 0:
+                        logger.info(f"Upload progress for {file.filename}: {bytes_written / (1024 * 1024):.1f}MB written")
+                
+                # Ensure all data is written to disk
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+        
+        except Exception as upload_error:
+            # Clean up temporary file on upload error
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            raise upload_error
+        
+        # Validate minimum file size (prevent empty files)
+        if bytes_written == 0:
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty file not allowed"
+            )
+        
+        # Atomically move temp file to final location (prevents partial uploads)
+        try:
+            os.rename(temp_file_path, final_file_path)
+            temp_file_path = None  # File successfully moved
+        except OSError as move_error:
+            # Clean up on move failure
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            logger.error(f"Failed to move uploaded file: {move_error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save uploaded file"
+            )
+        
+        # Create database record with actual file size
+        video_record = create_video(
+            db=db, 
+            project_id=project_id, 
+            filename=file.filename, 
+            file_size=bytes_written,  # Use actual bytes written
+            file_path=final_file_path
+        )
         
         # Start background processing for ground truth generation
         import asyncio
         try:
             # Create a task for ground truth processing
-            asyncio.create_task(ground_truth_service.process_video_async(video_record.id, file_path))
+            asyncio.create_task(ground_truth_service.process_video_async(video_record.id, final_file_path))
             logger.info(f"Started ground truth processing for video {video_record.id}")
         except Exception as e:
             logger.warning(f"Could not start ground truth processing: {str(e)}")
+        
+        logger.info(f"Successfully uploaded video {file.filename} ({bytes_written} bytes) to {final_file_path}")
         
         return {
             "video_id": video_record.id,
@@ -344,9 +435,22 @@ async def upload_video(
             "status": "uploaded",
             "message": "Video uploaded successfully. Processing started."
         }
+        
     except HTTPException:
+        # Clean up any remaining temp files on HTTP exceptions
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                logger.warning(f"Could not clean up temp file: {temp_file_path}")
         raise
     except Exception as e:
+        # Clean up any remaining temp files on unexpected errors
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                logger.warning(f"Could not clean up temp file: {temp_file_path}")
         logger.error(f"Video upload error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -367,52 +471,51 @@ async def get_project_videos(
                 detail="Project not found"
             )
         
-        # OPTIMIZED: Single query with subquery to get detection counts
-        # This eliminates the N+1 query problem (AP-01)
-        from sqlalchemy import func
+        # SUPER OPTIMIZED: Single query with CTE for ground truth counts
+        # This completely eliminates N+1 queries and uses efficient Common Table Expression
+        from sqlalchemy import func, text
         from models import GroundTruthObject
         
-        # Create subquery for ground truth counts
-        gt_count_subquery = (
-            db.query(
-                GroundTruthObject.video_id,
-                func.count(GroundTruthObject.id).label('detection_count')
+        # Use SQLAlchemy's text() for raw SQL with CTE for maximum performance
+        query = text("""
+            WITH ground_truth_counts AS (
+                SELECT 
+                    video_id,
+                    COUNT(*) as detection_count
+                FROM ground_truth_objects 
+                GROUP BY video_id
             )
-            .group_by(GroundTruthObject.video_id)
-            .subquery()
-        )
+            SELECT 
+                v.id,
+                v.filename,
+                v.status,
+                v.created_at,
+                v.duration,
+                v.file_size,
+                v.ground_truth_generated,
+                COALESCE(gtc.detection_count, 0) as detection_count
+            FROM videos v
+            LEFT JOIN ground_truth_counts gtc ON v.id = gtc.video_id
+            WHERE v.project_id = :project_id
+            ORDER BY v.created_at DESC
+        """)
         
-        # Single optimized query with left join for detection counts
-        videos_with_counts = (
-            db.query(
-                Video.id,
-                Video.filename,
-                Video.status,
-                Video.created_at,
-                Video.duration,
-                Video.file_size,
-                Video.ground_truth_generated,
-                func.coalesce(gt_count_subquery.c.detection_count, 0).label('detection_count')
-            )
-            .outerjoin(gt_count_subquery, Video.id == gt_count_subquery.c.video_id)
-            .filter(Video.project_id == project_id)
-            .order_by(Video.created_at.desc())
-            .all()
-        )
+        videos_with_counts = db.execute(query, {"project_id": project_id}).fetchall()
         
-        # Build response efficiently
-        video_list = []
-        for video_data in videos_with_counts:
-            video_list.append({
-                "id": video_data.id,
-                "filename": video_data.filename,
-                "status": video_data.status,
-                "created_at": video_data.created_at,
-                "duration": video_data.duration,
-                "file_size": video_data.file_size,
-                "ground_truth_generated": video_data.ground_truth_generated,
-                "detectionCount": int(video_data.detection_count)
-            })
+        # Build response efficiently using list comprehension
+        video_list = [
+            {
+                "id": row.id,
+                "filename": row.filename,
+                "status": row.status,
+                "created_at": row.created_at,
+                "duration": row.duration,
+                "file_size": row.file_size,
+                "ground_truth_generated": bool(row.ground_truth_generated),
+                "detectionCount": int(row.detection_count or 0)
+            }
+            for row in videos_with_counts
+        ]
         
         logger.info(f"Retrieved {len(video_list)} videos for project {project_id} in single query")
         return video_list
@@ -441,17 +544,52 @@ async def delete_video(
                 detail="Video not found"
             )
         
-        # Delete physical file if it exists
-        if video.file_path and os.path.exists(video.file_path):
-            try:
-                os.remove(video.file_path)
-                logger.info(f"Deleted video file: {video.file_path}")
-            except Exception as e:
-                logger.warning(f"Could not delete video file {video.file_path}: {str(e)}")
+        # FIXED: Proper transactional consistency to prevent orphaned files
+        # File deletion must succeed before database commit to maintain consistency
+        file_path_to_delete = None
         
-        # Delete from database
-        db.delete(video)
-        db.commit()
+        try:
+            # Phase 1: Prepare file path and validate file existence
+            file_path_to_delete = video.file_path if video.file_path and os.path.exists(video.file_path) else None
+            
+            # Phase 2: Delete physical file FIRST (if exists) to prevent orphans
+            if file_path_to_delete:
+                try:
+                    os.remove(file_path_to_delete)
+                    logger.info(f"Successfully deleted video file: {file_path_to_delete}")
+                except OSError as file_error:
+                    # File deletion failed - abort entire operation to prevent inconsistency
+                    logger.error(f"Critical: File deletion failed for {file_path_to_delete}: {file_error}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Cannot delete video: file removal failed ({file_error})"
+                    )
+            
+            # Phase 3: Delete database records only after successful file deletion
+            # Delete related records first (cascade should handle this, but being explicit)
+            from models import GroundTruthObject, DetectionEvent
+            db.query(GroundTruthObject).filter(GroundTruthObject.video_id == video_id).delete(synchronize_session=False)
+            
+            # Delete the video record
+            db.delete(video)
+            db.flush()  # Validate constraints before final commit
+            
+            # Phase 4: Commit transaction only after all operations succeed
+            db.commit()
+            logger.info(f"Successfully deleted video {video_id} and associated file")
+            
+        except HTTPException:
+            # Re-raise HTTP exceptions (already handled file deletion errors)
+            db.rollback()
+            raise
+        except Exception as e:
+            # Rollback database changes for any other errors
+            db.rollback()
+            logger.error(f"Failed to delete video {video_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete video - operation rolled back: {str(e)}"
+            )
         
         return {"message": "Video deleted successfully"}
         
@@ -492,13 +630,7 @@ async def create_test(
     db: Session = Depends(get_db)
 ):
     try:
-        # Validate test session data
-        if not test_session.name or not test_session.name.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Test session name is required"
-            )
-        
+        # Pydantic already validates test session data, no need for manual validation
         # Verify project and video exist
         project = get_project(db=db, project_id=test_session.project_id)
         if not project:
@@ -553,12 +685,12 @@ async def receive_detection(
         # Emit real-time detection event via Socket.IO
         await sio.emit('detection_event', {
             "id": detection_record.id,
-            "sessionId": detection.session_id,
+            "sessionId": detection.test_session_id,
             "timestamp": detection.timestamp,
             "classLabel": detection.class_label,
             "confidence": detection.confidence,
             "validationResult": detection.validation_result or "PENDING"
-        }, room=f"test_session_{detection.session_id}")
+        }, room=f"test_session_{detection.test_session_id}")
         
         # Return success response (validation service disabled)
         return {
@@ -650,4 +782,4 @@ async def health_check():
 socketio_app = create_socketio_app(app)
 
 if __name__ == "__main__":
-    uvicorn.run(socketio_app, host="0.0.0.0", port=8001)
+    uvicorn.run(socketio_app, host="0.0.0.0", port=settings.api_port)

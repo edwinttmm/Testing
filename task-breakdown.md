@@ -30,7 +30,7 @@
 ```
 Create API service layer for AI Model Validation Platform. Need:
 1. frontend/src/services/api.ts with axios instance and baseURL from environment
-2. frontend/.env file with API_BASE_URL=http://localhost:8000
+2. frontend/.env file with API_BASE_URL=http://localhost:8001
 3. frontend/src/services/types.ts with TypeScript interfaces for Project, Video, TestSession
 4. Request/response interceptors for auth headers and error handling
 5. Basic CRUD functions: createProject, getProjects, getProject, updateProject, deleteProject
