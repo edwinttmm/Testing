@@ -78,6 +78,7 @@ services:
       CVAT_REDIS_HOST: redis
       CVAT_POSTGRES_HOST: cvat_db
       CVAT_POSTGRES_PASSWORD: cvat_password
+      DJANGO_MODWSGI_EXTRA_ARGS: ""
     ports:
       - "8080:8080"
     volumes:

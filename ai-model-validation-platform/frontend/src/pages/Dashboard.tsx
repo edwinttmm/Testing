@@ -1,10 +1,9 @@
-import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
   Typography,
   Box,
-  LinearProgress,
   Skeleton,
   Alert,
 } from '@mui/material';
@@ -14,34 +13,60 @@ import {
   Assessment,
   TrendingUp,
 } from '@mui/icons-material';
-import { getDashboardStats } from '../services/enhancedApiService';
-import { DashboardStats } from '../services/types';
+import { getDashboardStats, getTestSessions } from '../services/enhancedApiService';
+import { DashboardStats, TestSession } from '../services/types';
 import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const formatTimeAgo = (dateString: string | null | undefined) => {
+    if (!dateString) return 'Unknown time';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)} hour${Math.floor(diffInMinutes / 60) > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffInMinutes / 1440)} day${Math.floor(diffInMinutes / 1440) > 1 ? 's' : ''} ago`;
+  };
 
   const fetchDashboardStats = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getDashboardStats();
-      setStats(data);
+      
+      // Fetch dashboard stats and recent test sessions
+      const [statsData, sessionsData] = await Promise.all([
+        getDashboardStats(),
+        getTestSessions()
+      ]);
+      
+      setStats(statsData);
+      // Get the 4 most recent sessions
+      const recentSessionsData = sessionsData
+        .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime())
+        .slice(0, 4);
+      setRecentSessions(recentSessionsData);
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch dashboard stats:', err);
+      console.error('Failed to fetch dashboard data:', err);
       setError('Failed to load dashboard statistics');
       // Fallback data for demo purposes
       setStats({
         projectCount: 0,
         videoCount: 0,
         testCount: 0,
-        averageAccuracy: 94.2,
+        averageAccuracy: 0,
         activeTests: 0,
         totalDetections: 0
       });
+      setRecentSessions([]);
     } finally {
       setLoading(false);
     }
@@ -187,20 +212,23 @@ const Dashboard: React.FC = () => {
             role="region"
           >
             <Box role="list" aria-label="Recent test sessions">
-              {[
-                { session: 1, type: "Front-facing VRU", timeAgo: "2 hours ago", accuracy: 92.5 },
-                { session: 2, type: "Side-view VRU", timeAgo: "4 hours ago", accuracy: 88.3 },
-                { session: 3, type: "Mixed-angle VRU", timeAgo: "6 hours ago", accuracy: 95.1 },
-                { session: 4, type: "Night-time VRU", timeAgo: "8 hours ago", accuracy: 87.9 }
-              ].map((item) => (
-                <AccessibleSessionItem
-                  key={item.session}
-                  sessionNumber={item.session}
-                  type={item.type}
-                  timeAgo={item.timeAgo}
-                  accuracy={item.accuracy}
-                />
-              ))}
+              {recentSessions.length > 0 ? (
+                recentSessions.map((session, index) => (
+                  <AccessibleSessionItem
+                    key={session.id || index}
+                    sessionNumber={index + 1}
+                    type={session.name || `Test Session ${index + 1}`}
+                    timeAgo={formatTimeAgo(session.createdAt || session.completedAt)}
+                    accuracy={session.metrics?.accuracy || 0}
+                  />
+                ))
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No recent test sessions
+                  </Typography>
+                </Box>
+              )}
             </Box>
           </AccessibleCard>
         </Box>
@@ -214,22 +242,22 @@ const Dashboard: React.FC = () => {
           >
             <Box role="group" aria-label="System performance indicators">
               <AccessibleProgressItem
-                label="YOLO Model Performance"
-                value={95}
+                label="Active Test Sessions"
+                value={Math.min((stats?.activeTests || 0) * 20, 100)}
                 color="success"
-                ariaLabel="YOLO Model Performance at 95% - Excellent"
+                ariaLabel={`Active test sessions: ${stats?.activeTests || 0}`}
               />
               <AccessibleProgressItem
-                label="Database Usage"
-                value={67}
+                label="Total Projects"
+                value={Math.min((stats?.projectCount || 0) * 10, 100)}
                 color="info"
-                ariaLabel="Database Usage at 67% - Normal"
+                ariaLabel={`Total projects: ${stats?.projectCount || 0}`}
               />
               <AccessibleProgressItem
-                label="Storage Usage"
-                value={43}
+                label="Videos Processed"
+                value={Math.min((stats?.videoCount || 0) * 5, 100)}
                 color="primary"
-                ariaLabel="Storage Usage at 43% - Good"
+                ariaLabel={`Videos processed: ${stats?.videoCount || 0}`}
               />
             </Box>
           </AccessibleCard>
