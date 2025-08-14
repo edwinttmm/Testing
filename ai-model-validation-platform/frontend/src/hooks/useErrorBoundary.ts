@@ -18,7 +18,7 @@ export const useErrorBoundary = (): ErrorBoundaryHook => {
 
   const captureError = useCallback((error: Error, context?: string) => {
     // Log the error
-    logError(error, { context, source: 'useErrorBoundary' });
+    logError(error, `useErrorBoundary ${context || ''}`);
     
     // Set the error state
     setError(error);
@@ -104,7 +104,7 @@ export const useWebSocketError = () => {
   const { captureError } = useErrorBoundary();
 
   const handleWebSocketError = useCallback((event: Event, context?: string) => {
-    const error = ErrorFactory.createWebSocketError(event, { context });
+    const error = ErrorFactory.createWebSocketError('WebSocket error', { context, event });
     captureError(error, context);
     return error;
   }, [captureError]);
@@ -119,7 +119,7 @@ export const useValidationError = () => {
   const { captureError } = useErrorBoundary();
 
   const handleValidationError = useCallback((field: string, value: any, rule: string) => {
-    const error = ErrorFactory.createValidationError(field, value, rule);
+    const error = ErrorFactory.createValidationError(`Validation error: ${field}`, { value, rule });
     captureError(error, `validation-${field}`);
     return error;
   }, [captureError]);

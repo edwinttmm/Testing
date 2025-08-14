@@ -80,7 +80,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     )}
     <LinearProgress
       variant={indeterminate ? 'indeterminate' : 'determinate'}
-      value={value}
+      {...(!indeterminate && value !== undefined ? { value } : {})}
       sx={{ height: 8, borderRadius: 4 }}
     />
     {!indeterminate && value !== undefined && (

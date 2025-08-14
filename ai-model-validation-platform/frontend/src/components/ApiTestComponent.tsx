@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Button, Typography, Alert, Paper } from '@mui/material';
 import { healthCheck, getProjects, createProject } from '../services/api';
 import ErrorBoundary from './ui/ErrorBoundary';
-import { NetworkError, ApiError, ErrorFactory } from '../utils/errorTypes';
+import { NetworkError, AppError as ApiError, ErrorFactory } from '../utils/errorTypes';
 
 const ApiTestComponent: React.FC = () => {
   const [healthStatus, setHealthStatus] = useState<string>('');

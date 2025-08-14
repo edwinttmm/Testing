@@ -46,7 +46,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
     if (project) {
       setFormData({
         name: project.name,
-        description: project.description,
+        description: project.description ?? '',
         cameraModel: project.cameraModel,
         cameraView: project.cameraView,
         signalType: project.signalType,
