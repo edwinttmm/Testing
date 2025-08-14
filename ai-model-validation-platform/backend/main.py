@@ -35,7 +35,7 @@ from crud import (
 # Import Socket.IO integration
 from socketio_server import sio, create_socketio_app
 
-# from services.ground_truth_service import GroundTruthService  # Temporarily disabled - requires OpenCV
+from services.ground_truth_service import GroundTruthService
 # from services.validation_service import ValidationService  # Temporarily disabled
 
 Base.metadata.create_all(bind=engine)
@@ -70,11 +70,56 @@ app.add_middleware(
     max_age=3600,
 )
 
-# ground_truth_service = GroundTruthService()  # Temporarily disabled - requires OpenCV
+ground_truth_service = GroundTruthService()
 # validation_service = ValidationService()  # Temporarily disabled
 
 # Security utilities
 ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv'}
+
+def extract_video_metadata(file_path: str) -> Optional[dict]:
+    """
+    Extract video metadata using OpenCV.
+    
+    Args:
+        file_path: Path to the video file
+        
+    Returns:
+        dict: Video metadata including duration and resolution, or None if extraction fails
+    """
+    try:
+        import cv2
+        
+        cap = cv2.VideoCapture(file_path)
+        if not cap.isOpened():
+            logger.warning(f"Could not open video file: {file_path}")
+            return None
+        
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Calculate duration
+        duration = frame_count / fps if fps > 0 else None
+        
+        cap.release()
+        
+        metadata = {
+            "duration": duration,
+            "fps": fps,
+            "resolution": f"{width}x{height}",
+            "width": width,
+            "height": height,
+            "frame_count": int(frame_count)
+        }
+        
+        logger.info(f"Extracted video metadata: {metadata}")
+        return metadata
+        
+    except Exception as e:
+        logger.error(f"Failed to extract video metadata from {file_path}: {str(e)}")
+        return None
 
 def generate_secure_filename(original_filename: str) -> tuple[str, str]:
     """
@@ -410,7 +455,10 @@ async def upload_video(
                 detail="Failed to save uploaded file"
             )
         
-        # Create database record with actual file size
+        # Extract video metadata
+        video_metadata = extract_video_metadata(final_file_path)
+        
+        # Create database record with actual file size and metadata
         video_record = create_video(
             db=db, 
             project_id=project_id, 
@@ -419,15 +467,21 @@ async def upload_video(
             file_path=final_file_path
         )
         
-        # Start background processing for ground truth generation - Temporarily disabled
-        # import asyncio
-        # try:
-        #     # Create a task for ground truth processing
-        #     asyncio.create_task(ground_truth_service.process_video_async(video_record.id, final_file_path))
-        #     logger.info(f"Started ground truth processing for video {video_record.id}")
-        # except Exception as e:
-        #     logger.warning(f"Could not start ground truth processing: {str(e)}")
-        logger.info(f"Ground truth processing temporarily disabled - requires ML dependencies")
+        # Update video record with metadata
+        if video_metadata:
+            video_record.duration = video_metadata.get('duration')
+            video_record.resolution = video_metadata.get('resolution')
+            db.commit()
+            db.refresh(video_record)
+        
+        # Start background processing for ground truth generation
+        import asyncio
+        try:
+            # Create a task for ground truth processing
+            asyncio.create_task(ground_truth_service.process_video_async(video_record.id, final_file_path))
+            logger.info(f"Started ground truth processing for video {video_record.id}")
+        except Exception as e:
+            logger.warning(f"Could not start ground truth processing: {str(e)}")
         
         logger.info(f"Successfully uploaded video {file.filename} ({bytes_written} bytes) to {final_file_path}")
         
