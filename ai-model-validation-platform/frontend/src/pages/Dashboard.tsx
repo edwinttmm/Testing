@@ -14,7 +14,7 @@ import {
   Assessment,
   TrendingUp,
 } from '@mui/icons-material';
-import { getDashboardStats } from '../services/api';
+import { getDashboardStats } from '../services/enhancedApiService';
 import { DashboardStats } from '../services/types';
 import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';

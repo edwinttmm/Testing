@@ -33,7 +33,7 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { createProject, getProjects } from '../services/api';
+import { createProject, getProjects } from '../services/enhancedApiService';
 import { Project as ApiProject, ProjectCreate } from '../services/types';
 import ProjectsDebug from '../components/ProjectsDebug';
 import ApiTestComponent from '../components/ApiTestComponent';

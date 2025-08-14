@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Box, CircularProgress, Typography } from '@mui/material';
-import ErrorBoundary from './components/ui/ErrorBoundary';
+import EnhancedErrorBoundary from './utils/enhancedErrorBoundary';
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 
@@ -56,119 +56,122 @@ const App: React.FC = () => {
   };
 
   return (
-    <ErrorBoundary
+    <EnhancedErrorBoundary
       level="app"
       context="application-root"
       onError={handleAppError}
       enableRetry={true}
       maxRetries={1}
+      enableRecovery={true}
     >
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-          <ErrorBoundary
+          <EnhancedErrorBoundary
             level="app" 
             context="router-navigation"
             enableRetry={true}
+            enableRecovery={true}
           >
             <Box sx={{ display: 'flex' }}>
-              <ErrorBoundary 
+              <EnhancedErrorBoundary 
                 level="component" 
                 context="sidebar"
                 enableRetry={false}
               >
                 <Sidebar />
-              </ErrorBoundary>
+              </EnhancedErrorBoundary>
               
               <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-                <ErrorBoundary 
+                <EnhancedErrorBoundary 
                   level="component" 
                   context="header"
                   enableRetry={false}
                 >
                   <Header />
-                </ErrorBoundary>
+                </EnhancedErrorBoundary>
                 
-                <ErrorBoundary
+                <EnhancedErrorBoundary
                   level="page"
                   context="main-content"
                   enableRetry={true}
                   maxRetries={2}
+                  enableRecovery={true}
                 >
                   <Suspense fallback={<LoadingFallback />}>
                     <Routes>
                       <Route path="/" element={
-                        <ErrorBoundary level="page" context="dashboard">
+                        <EnhancedErrorBoundary level="page" context="dashboard" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Dashboard..." />}>
                             <Dashboard />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/projects" element={
-                        <ErrorBoundary level="page" context="projects">
+                        <EnhancedErrorBoundary level="page" context="projects" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Projects..." />}>
                             <Projects />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/projects/:id" element={
-                        <ErrorBoundary level="page" context="project-detail">
+                        <EnhancedErrorBoundary level="page" context="project-detail" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Project Details..." />}>
                             <ProjectDetail />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/ground-truth" element={
-                        <ErrorBoundary level="page" context="ground-truth">
+                        <EnhancedErrorBoundary level="page" context="ground-truth" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Ground Truth..." />}>
                             <GroundTruth />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/test-execution" element={
-                        <ErrorBoundary level="page" context="test-execution">
+                        <EnhancedErrorBoundary level="page" context="test-execution" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Test Execution..." />}>
                             <TestExecution />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/results" element={
-                        <ErrorBoundary level="page" context="results">
+                        <EnhancedErrorBoundary level="page" context="results" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Results..." />}>
                             <Results />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/datasets" element={
-                        <ErrorBoundary level="page" context="datasets">
+                        <EnhancedErrorBoundary level="page" context="datasets" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Datasets..." />}>
                             <Datasets />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/audit-logs" element={
-                        <ErrorBoundary level="page" context="audit-logs">
+                        <EnhancedErrorBoundary level="page" context="audit-logs" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Audit Logs..." />}>
                             <AuditLogs />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                       <Route path="/settings" element={
-                        <ErrorBoundary level="page" context="settings">
+                        <EnhancedErrorBoundary level="page" context="settings" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Settings..." />}>
                             <Settings />
                           </Suspense>
-                        </ErrorBoundary>
+                        </EnhancedErrorBoundary>
                       } />
                     </Routes>
                   </Suspense>
-                </ErrorBoundary>
+                </EnhancedErrorBoundary>
               </Box>
             </Box>
-          </ErrorBoundary>
+          </EnhancedErrorBoundary>
         </Router>
       </ThemeProvider>
-    </ErrorBoundary>
+    </EnhancedErrorBoundary>
   );
 };
 
