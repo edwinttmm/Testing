@@ -35,7 +35,7 @@ from crud import (
 # Import Socket.IO integration
 from socketio_server import sio, create_socketio_app
 
-from services.ground_truth_service import GroundTruthService
+# from services.ground_truth_service import GroundTruthService  # Temporarily disabled - requires OpenCV
 # from services.validation_service import ValidationService  # Temporarily disabled
 
 Base.metadata.create_all(bind=engine)
@@ -70,7 +70,7 @@ app.add_middleware(
     max_age=3600,
 )
 
-ground_truth_service = GroundTruthService()
+# ground_truth_service = GroundTruthService()  # Temporarily disabled - requires OpenCV
 # validation_service = ValidationService()  # Temporarily disabled
 
 # Security utilities
@@ -418,14 +418,15 @@ async def upload_video(
             file_path=final_file_path
         )
         
-        # Start background processing for ground truth generation
-        import asyncio
-        try:
-            # Create a task for ground truth processing
-            asyncio.create_task(ground_truth_service.process_video_async(video_record.id, final_file_path))
-            logger.info(f"Started ground truth processing for video {video_record.id}")
-        except Exception as e:
-            logger.warning(f"Could not start ground truth processing: {str(e)}")
+        # Start background processing for ground truth generation - Temporarily disabled
+        # import asyncio
+        # try:
+        #     # Create a task for ground truth processing
+        #     asyncio.create_task(ground_truth_service.process_video_async(video_record.id, final_file_path))
+        #     logger.info(f"Started ground truth processing for video {video_record.id}")
+        # except Exception as e:
+        #     logger.warning(f"Could not start ground truth processing: {str(e)}")
+        logger.info(f"Ground truth processing temporarily disabled - requires ML dependencies")
         
         logger.info(f"Successfully uploaded video {file.filename} ({bytes_written} bytes) to {final_file_path}")
         
@@ -607,21 +608,16 @@ async def get_ground_truth(
     video_id: str,
     db: Session = Depends(get_db)
 ):
-    try:
-        ground_truth = ground_truth_service.get_ground_truth(video_id)
-        if not ground_truth:
-            raise HTTPException(status_code=404, detail="Ground truth not found")
-        return ground_truth
-    except Exception as e:
-        logger.error(f"Ground truth retrieval error: {str(e)}")
-        # Return fallback response
-        return {
-            "video_id": video_id,
-            "objects": [],
-            "total_detections": 0,
-            "status": "pending",
-            "message": "Ground truth processing in progress or failed"
-        }
+    # Ground truth service temporarily disabled
+    logger.info(f"Ground truth service temporarily disabled for video {video_id}")
+    # Return fallback response
+    return {
+        "video_id": video_id,
+        "objects": [],
+        "total_detections": 0,
+        "status": "pending", 
+        "message": "Ground truth processing temporarily disabled - requires ML dependencies"
+    }
 
 # Test Execution endpoints
 @app.post("/api/test-sessions", response_model=TestSessionResponse)
