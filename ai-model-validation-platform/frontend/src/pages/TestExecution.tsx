@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, memo, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -49,7 +49,7 @@ interface DetectionEvent {
   classLabel: string;
 }
 
-const TestExecution: React.FC = memo(() => {
+const TestExecution: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -73,11 +73,21 @@ const TestExecution: React.FC = memo(() => {
     loadProjects();
   }, []);
 
+  const loadVideos = useCallback(async (projectId: string) => {
+    try {
+      const videoList = await apiService.getVideos(projectId);
+      setVideos(videoList.filter(v => v.status === 'completed')); // Only show ready videos
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to load videos: ${apiError.message}`);
+    }
+  }, []);
+
   useEffect(() => {
     if (selectedProject) {
       loadVideos(selectedProject);
     }
-  }, [selectedProject]);
+  }, [selectedProject, loadVideos]);
 
   const loadProjects = async () => {
     try {
@@ -88,30 +98,6 @@ const TestExecution: React.FC = memo(() => {
       setError(`Failed to load projects: ${apiError.message}`);
     }
   };
-
-  const loadVideos = async (projectId: string) => {
-    try {
-      const videoList = await apiService.getVideos(projectId);
-      setVideos(videoList.filter(v => v.status === 'completed')); // Only show ready videos
-    } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to load videos: ${apiError.message}`);
-    }
-  };
-
-  // WebSocket connection with reconnection
-  useEffect(() => {
-    initializeWebSocket();
-
-    return () => {
-      if (socket) {
-        socket.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const initializeWebSocket = useCallback(() => {
     const wsUrl = process.env.REACT_APP_WS_URL || 'http://localhost:8001';
@@ -193,6 +179,20 @@ const TestExecution: React.FC = memo(() => {
       setConnectionError('Unable to connect to real-time server. Please refresh the page.');
     }
   }, [reconnectAttempts, initializeWebSocket]);
+
+  // WebSocket connection with reconnection
+  useEffect(() => {
+    initializeWebSocket();
+
+    return () => {
+      if (socket) {
+        socket.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, [initializeWebSocket, socket]);
 
   const handleStartTest = async () => {
     if (!selectedProject || !selectedVideo) {
@@ -715,8 +715,6 @@ const TestExecution: React.FC = memo(() => {
       </Snackbar>
     </Box>
   );
-});
-
-TestExecution.displayName = 'TestExecution';
+};
 
 export default TestExecution;

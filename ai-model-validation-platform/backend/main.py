@@ -330,11 +330,12 @@ async def upload_video(
         secure_filename, file_extension = generate_secure_filename(file.filename)
         
         # Verify project exists early to avoid unnecessary file operations
-        project = get_project(db=db, project_id=project_id)
+        project = get_project(db=db, project_id=project_id, user_id="anonymous")
         if not project:
+            logger.warning(f"Project not found: {project_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
+                detail=f"Project not found: {project_id}"
             )
         
         # Setup paths for chunked upload with temp file
@@ -467,9 +468,10 @@ async def get_project_videos(
         # Verify project exists first with minimal query
         project_exists = db.query(Project.id).filter(Project.id == project_id).first()
         if not project_exists:
+            logger.warning(f"Project not found for videos query: {project_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
+                detail=f"Project not found: {project_id}"
             )
         
         # SUPER OPTIMIZED: Single query with CTE for ground truth counts
@@ -742,11 +744,17 @@ async def get_dashboard_stats(
         test_count = db.query(func.count(TestSession.id)).scalar() or 0
         
         # Calculate average accuracy from completed test sessions
-        avg_accuracy_result = db.query(func.avg(DetectionEvent.confidence)).join(TestSession).filter(
-            TestSession.status == "completed",
-            DetectionEvent.validation_result == "TP"
-        ).scalar()
-        avg_accuracy = float(avg_accuracy_result) if avg_accuracy_result else 0.0
+        # Add null check for confidence field and ensure table exists
+        try:
+            avg_accuracy_result = db.query(func.avg(DetectionEvent.confidence)).join(TestSession).filter(
+                TestSession.status == "completed",
+                DetectionEvent.validation_result == "TP",
+                DetectionEvent.confidence.isnot(None)
+            ).scalar()
+            avg_accuracy = float(avg_accuracy_result) if avg_accuracy_result else 0.0
+        except Exception as confidence_error:
+            logger.warning(f"Could not calculate confidence average: {confidence_error}")
+            avg_accuracy = 0.0
         
         return {
             "projectCount": project_count,

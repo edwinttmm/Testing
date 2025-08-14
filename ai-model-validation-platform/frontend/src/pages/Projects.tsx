@@ -33,10 +33,11 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { createProject, getProjects } from '../services/enhancedApiService';
-import { Project as ApiProject, ProjectCreate } from '../services/types';
+import { createProject, getProjects, updateProject, deleteProject } from '../services/enhancedApiService';
+import { Project as ApiProject, ProjectCreate, ProjectUpdate } from '../services/types';
 import ProjectsDebug from '../components/ProjectsDebug';
 import ApiTestComponent from '../components/ApiTestComponent';
+import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog';
 
 // Use Project type from API services
 type Project = ApiProject;
@@ -51,6 +52,9 @@ const Projects: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   
   // Form state
   const [formData, setFormData] = useState<ProjectCreate>({
@@ -60,6 +64,7 @@ const Projects: React.FC = () => {
     cameraView: 'Front-facing VRU',
     signalType: 'GPIO'
   });
+  const [isEditing, setIsEditing] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
@@ -129,6 +134,8 @@ const Projects: React.FC = () => {
     });
     setFormErrors({});
     setFormError(null);
+    setIsEditing(false);
+    setEditingProject(null);
   };
 
   const handleCreateProject = async () => {
@@ -140,9 +147,20 @@ const Projects: React.FC = () => {
       setFormLoading(true);
       setFormError(null);
       
-      // Creating project with provided data
-      const result = await createProject(formData);
-      // Project created successfully
+      if (isEditing && editingProject) {
+        // Update existing project
+        const updateData: ProjectUpdate = {
+          name: formData.name,
+          description: formData.description,
+          cameraModel: formData.cameraModel,
+          cameraView: formData.cameraView,
+          signalType: formData.signalType
+        };
+        await updateProject(editingProject.id, updateData);
+      } else {
+        // Create new project
+        await createProject(formData);
+      }
       
       // Success - close dialog and refresh projects
       setOpenDialog(false);
@@ -150,18 +168,40 @@ const Projects: React.FC = () => {
       await loadProjects();
       
     } catch (error: any) {
-      console.error('Project creation error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
-      setFormError(error.message || 'Failed to create project. Please try again.');
+      console.error('Project save error:', error);
+      setFormError(error.message || `Failed to ${isEditing ? 'update' : 'create'} project. Please try again.`);
     } finally {
       setFormLoading(false);
     }
   };
+
+  const handleEditProject = () => {
+    const project = projects.find(p => p.id === selectedProject);
+    if (project) {
+      setEditingProject(project);
+      setIsEditing(true);
+      setFormData({
+        name: project.name,
+        description: project.description || '',
+        cameraModel: project.cameraModel || '',
+        cameraView: project.cameraView || 'Front-facing VRU',
+        signalType: project.signalType || 'GPIO'
+      });
+      setOpenDialog(true);
+    }
+    handleMenuClose();
+  };
+
+  const handleDeleteProject = () => {
+    const project = projects.find(p => p.id === selectedProject);
+    if (project) {
+      setDeletingProject(project);
+      setDeleteDialogOpen(true);
+    }
+    handleMenuClose();
+  };
+
+  // Delete confirmation handler is now inline in the DeleteConfirmationDialog
 
   const handleDialogClose = () => {
     if (!formLoading) {
@@ -355,18 +395,18 @@ const Projects: React.FC = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={handleEditProject}>
           <Edit sx={{ mr: 1 }} fontSize="small" />
           Edit
         </MenuItem>
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={handleDeleteProject}>
           <Delete sx={{ mr: 1 }} fontSize="small" />
           Delete
         </MenuItem>
       </Menu>
 
       <Dialog open={openDialog} onClose={handleDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Create New Project</DialogTitle>
+        <DialogTitle>{isEditing ? 'Edit Project' : 'Create New Project'}</DialogTitle>
         <DialogContent>
           {formError && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -456,10 +496,23 @@ const Projects: React.FC = () => {
             disabled={formLoading}
             startIcon={formLoading ? <CircularProgress size={20} /> : null}
           >
-            {formLoading ? 'Creating...' : 'Create'}
+            {formLoading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update' : 'Create')}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        project={deletingProject}
+        onConfirm={async (projectId: string) => {
+          await deleteProject(projectId);
+          setDeleteDialogOpen(false);
+          setDeletingProject(null);
+          await loadProjects();
+        }}
+      />
     </Box>
   );
 };

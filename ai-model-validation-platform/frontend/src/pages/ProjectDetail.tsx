@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -10,7 +10,6 @@ import {
   Button,
   Tab,
   Tabs,
-  CircularProgress,
   Alert,
   Table,
   TableBody,
@@ -20,6 +19,11 @@ import {
   TableRow,
   Paper,
   Skeleton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -30,7 +34,7 @@ import {
   Delete,
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import { Project, VideoFile, TestSession, TestMetrics } from '../services/types';
+import { Project, VideoFile, TestSession } from '../services/types';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -67,27 +71,42 @@ const ProjectDetail: React.FC = () => {
   const [testSessions, setTestSessions] = useState<TestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const [testError, setTestError] = useState<string | null>(null);
+  // Removed unused error state variables
   const [projectStats, setProjectStats] = useState<{
     totalTests: number;
     averageAccuracy: number;
     lastTestAccuracy: number | null;
     lastTestTime: string | null;
   }>({ totalTests: 0, averageAccuracy: 0, lastTestAccuracy: null, lastTestTime: null });
+  
+  // Video upload state
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  // Delete video functionality
+  const handleDeleteVideo = async (videoId: string) => {
+    if (!window.confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await apiService.deleteVideo(videoId);
+      // Refresh project data to update video list
+      await loadProjectData();
+    } catch (err: any) {
+      console.error('Video delete error:', err);
+      setError(err.message || 'Failed to delete video');
+    }
+  };
+
+  const loadProjectData = useCallback(async () => {
     if (!id) {
       setError('Project ID is required');
       setLoading(false);
       return;
     }
-    
-    loadProjectData();
-  }, [id]);
-
-  const loadProjectData = async () => {
-    if (!id) return;
     
     setLoading(true);
     setError(null);
@@ -98,71 +117,56 @@ const ProjectDetail: React.FC = () => {
       setProject(projectData);
       
       // Load videos and test sessions in parallel
-      const [videosData, testSessionsData] = await Promise.allSettled([
+      const [videosData, testSessionsData] = await Promise.all([
         apiService.getVideos(id),
         apiService.getTestSessions(id)
       ]);
       
-      if (videosData.status === 'fulfilled') {
-        setVideos(videosData.value);
-        setVideoError(null);
-      } else {
-        console.error('Failed to load videos:', videosData.reason);
-        setVideoError('Failed to load project videos');
-        setVideos([]);
-      }
+      setVideos(videosData);
+      setTestSessions(testSessionsData);
       
-      if (testSessionsData.status === 'fulfilled') {
-        setTestSessions(testSessionsData.value);
-        setTestError(null);
+      // Calculate project statistics locally
+      const completedSessions = testSessionsData.filter(s => s.status === 'completed' && s.metrics);
+      
+      if (completedSessions.length === 0) {
+        setProjectStats({ totalTests: 0, averageAccuracy: 0, lastTestAccuracy: null, lastTestTime: null });
+      } else {
+        const totalTests = completedSessions.length;
+        const averageAccuracy = completedSessions.reduce((sum, session) => {
+          return sum + (session.metrics?.accuracy || 0);
+        }, 0) / totalTests;
         
-        // Calculate project statistics
-        calculateProjectStats(testSessionsData.value);
-      } else {
-        console.error('Failed to load test sessions:', testSessionsData.reason);
-        setTestError('Failed to load test sessions');
-        setTestSessions([]);
+        // Find most recent test
+        const sortedSessions = [...completedSessions].sort((a, b) => {
+          const timeA = new Date(a.completedAt || a.createdAt || '').getTime();
+          const timeB = new Date(b.completedAt || b.createdAt || '').getTime();
+          return timeB - timeA;
+        });
+        
+        const lastTest = sortedSessions[0];
+        const lastTestAccuracy = lastTest?.metrics?.accuracy || null;
+        const lastTestTime = lastTest?.completedAt || lastTest?.createdAt || null;
+        
+        setProjectStats({
+          totalTests,
+          averageAccuracy: Math.round(averageAccuracy * 10) / 10,
+          lastTestAccuracy: lastTestAccuracy ? Math.round(lastTestAccuracy * 10) / 10 : null,
+          lastTestTime
+        });
       }
-      
     } catch (err: any) {
-      console.error('Failed to load project:', err);
-      setError(err.message || 'Failed to load project details');
+      console.error('Failed to load project data:', err);
+      setError('Failed to load project data');
     } finally {
       setLoading(false);
     }
-  };
-  
-  const calculateProjectStats = (sessions: TestSession[]) => {
-    const completedSessions = sessions.filter(s => s.status === 'completed' && s.metrics);
-    
-    if (completedSessions.length === 0) {
-      setProjectStats({ totalTests: 0, averageAccuracy: 0, lastTestAccuracy: null, lastTestTime: null });
-      return;
-    }
-    
-    const totalTests = completedSessions.length;
-    const averageAccuracy = completedSessions.reduce((sum, session) => {
-      return sum + (session.metrics?.accuracy || 0);
-    }, 0) / totalTests;
-    
-    // Find most recent test
-    const sortedSessions = [...completedSessions].sort((a, b) => {
-      const timeA = new Date(a.completedAt || a.createdAt || '').getTime();
-      const timeB = new Date(b.completedAt || b.createdAt || '').getTime();
-      return timeB - timeA;
-    });
-    
-    const lastTest = sortedSessions[0];
-    const lastTestAccuracy = lastTest?.metrics?.accuracy || null;
-    const lastTestTime = lastTest?.completedAt || lastTest?.createdAt || null;
-    
-    setProjectStats({
-      totalTests,
-      averageAccuracy: Math.round(averageAccuracy * 10) / 10,
-      lastTestAccuracy: lastTestAccuracy ? Math.round(lastTestAccuracy * 10) / 10 : null,
-      lastTestTime
-    });
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadProjectData();
+  }, [loadProjectData]);
+
+  // Project statistics are now calculated inline in loadProjectData
   
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -176,6 +180,61 @@ const ProjectDetail: React.FC = () => {
   const handleRunNewTest = () => {
     // Navigate to test execution page
     navigate(`/test-execution?projectId=${id}`);
+  };
+
+  // Video upload handlers
+  const handleUploadClick = () => {
+    setUploadDialogOpen(true);
+  };
+
+  const handleUploadDialogClose = () => {
+    setUploadDialogOpen(false);
+    setUploadFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/mkv'];
+      if (!allowedTypes.includes(file.type)) {
+        setError('Please select a valid video file (MP4, AVI, MOV, or MKV)');
+        return;
+      }
+      
+      // Validate file size (100MB limit)
+      const maxSize = 100 * 1024 * 1024; // 100MB
+      if (file.size > maxSize) {
+        setError('File size must be less than 100MB');
+        return;
+      }
+      
+      setUploadFile(file);
+      setError(null);
+    }
+  };
+
+  const handleUploadConfirm = async () => {
+    if (!uploadFile || !id) return;
+
+    setUploading(true);
+    try {
+      await apiService.uploadVideo(id, uploadFile);
+      
+      // Success - refresh videos list
+      await loadProjectData();
+      handleUploadDialogClose();
+      setError(null);
+      
+    } catch (err: any) {
+      console.error('Video upload error:', err);
+      setError(err.message || 'Failed to upload video');
+    } finally {
+      setUploading(false);
+    }
   };
   
   const formatTimeAgo = (dateString: string | null) => {
@@ -395,14 +454,20 @@ const ProjectDetail: React.FC = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
             <VideoLibrary />
             <Typography variant="h6">Ground Truth Videos ({videos.length})</Typography>
-            <Button variant="outlined" size="small" startIcon={<Upload />}>
+            <Button 
+              variant="outlined" 
+              size="small" 
+              startIcon={<Upload />}
+              onClick={handleUploadClick}
+              disabled={uploading}
+            >
               Upload Video
             </Button>
           </Box>
           
-          {videoError && (
+          {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {videoError}
+              {error}
             </Alert>
           )}
           
@@ -469,10 +534,7 @@ const ProjectDetail: React.FC = () => {
                           size="small" 
                           color="error" 
                           startIcon={<Delete />}
-                          onClick={() => {
-                            // Add delete functionality
-                            console.log('Delete video:', video.id);
-                          }}
+                          onClick={() => handleDeleteVideo(video.id)}
                         >
                           Delete
                         </Button>
@@ -494,9 +556,9 @@ const ProjectDetail: React.FC = () => {
             </Button>
           </Box>
           
-          {testError && (
+          {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {testError}
+              {error}
             </Alert>
           )}
           
@@ -653,6 +715,51 @@ const ProjectDetail: React.FC = () => {
           </Grid>
         </TabPanel>
       </Card>
+
+      {/* Video Upload Dialog */}
+      <Dialog open={uploadDialogOpen} onClose={handleUploadDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Upload Video</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleFileSelect}
+              style={{ marginBottom: 16 }}
+            />
+            
+            {uploadFile && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Typography variant="body2"><strong>File:</strong> {uploadFile.name}</Typography>
+                <Typography variant="body2"><strong>Size:</strong> {(uploadFile.size / (1024 * 1024)).toFixed(2)} MB</Typography>
+                <Typography variant="body2"><strong>Type:</strong> {uploadFile.type}</Typography>
+              </Box>
+            )}
+
+            {uploading && (
+              <Box sx={{ mt: 2 }}>
+                <LinearProgress />
+                <Typography variant="body2" sx={{ mt: 1, textAlign: 'center' }}>
+                  Uploading video...
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleUploadDialogClose} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleUploadConfirm} 
+            variant="contained" 
+            disabled={!uploadFile || uploading}
+          >
+            {uploading ? 'Uploading...' : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -35,7 +35,7 @@ import {
   FileDownload,
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import { TestSession, Project, ApiError } from '../services/types';
+import { Project } from '../services/types';
 
 interface TestResult {
   sessionId: string;
@@ -62,11 +62,7 @@ const Results: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<string>('7days');
 
-  useEffect(() => {
-    loadData();
-  }, [selectedProject, timeRange]);
-
-  const loadData = async () => {
+  const loadData = React.useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -80,93 +76,95 @@ const Results: React.FC = () => {
         selectedProject === 'all' ? undefined : selectedProject
       );
 
-      // Transform sessions into results with mock calculations
+      // Transform sessions into results
       const results: TestResult[] = await Promise.all(
         testSessions.map(async (session) => {
           try {
-            const sessionResults = await apiService.getTestResults(session.id);
+            // Try to load detailed results, fallback to session data
+            let sessionResults;
+            try {
+              sessionResults = await apiService.getTestResults(session.id);
+            } catch {
+              // Use metrics from session if available
+              sessionResults = session.metrics || {};
+            }
+
+            // Calculate duration from session timestamps
+            const startTime = session.createdAt ? new Date(session.createdAt).getTime() : Date.now();
+            const endTime = session.completedAt ? new Date(session.completedAt).getTime() : Date.now();
+            const durationSeconds = Math.max(Math.floor((endTime - startTime) / 1000), 60);
+
             return {
               sessionId: session.id,
-              sessionName: session.name,
-              projectName: projects.find(p => p.id === session.projectId)?.name || 'Unknown Project',
+              sessionName: session.name || `Test ${session.id.slice(0, 8)}`,
+              projectName: projectList.find(p => p.id === session.projectId)?.name || 'Unknown Project',
               status: session.status as 'completed' | 'failed' | 'running',
-              accuracy: sessionResults?.accuracy || Math.random() * 20 + 80, // Mock data
-              precision: sessionResults?.precision || Math.random() * 15 + 82,
-              recall: sessionResults?.recall || Math.random() * 12 + 85,
-              truePositives: sessionResults?.truePositives || Math.floor(Math.random() * 50 + 30),
-              falsePositives: sessionResults?.falsePositives || Math.floor(Math.random() * 10 + 2),
-              falseNegatives: sessionResults?.falseNegatives || Math.floor(Math.random() * 8 + 1),
-              totalDetections: sessionResults?.totalDetections || Math.floor(Math.random() * 100 + 50),
+              accuracy: sessionResults.accuracy || session.metrics?.accuracy || 0,
+              precision: sessionResults.precision || session.metrics?.precision || 0,
+              recall: sessionResults.recall || session.metrics?.recall || 0,
+              truePositives: sessionResults.truePositives || session.metrics?.truePositives || 0,
+              falsePositives: sessionResults.falsePositives || session.metrics?.falsePositives || 0,
+              falseNegatives: sessionResults.falseNegatives || session.metrics?.falseNegatives || 0,
+              totalDetections: sessionResults.totalDetections || session.metrics?.totalDetections || 0,
               startedAt: session.createdAt || new Date().toISOString(),
-              ...(session.completedAt ? { completedAt: session.completedAt } : {}),
-              duration: Math.floor(Math.random() * 300 + 60), // 1-5 minutes
+              completedAt: session.completedAt || new Date().toISOString(),
+              duration: durationSeconds,
             };
-          } catch {
-            // If results API fails, return mock data
+          } catch (error) {
+            console.error(`Failed to load results for session ${session.id}:`, error);
+            // Return failed result with minimal data
             return {
               sessionId: session.id,
-              sessionName: session.name,
-              projectName: projects.find(p => p.id === session.projectId)?.name || 'Unknown Project',
-              status: session.status as 'completed' | 'failed' | 'running',
-              accuracy: Math.random() * 20 + 80,
-              precision: Math.random() * 15 + 82,
-              recall: Math.random() * 12 + 85,
-              truePositives: Math.floor(Math.random() * 50 + 30),
-              falsePositives: Math.floor(Math.random() * 10 + 2),
-              falseNegatives: Math.floor(Math.random() * 8 + 1),
-              totalDetections: Math.floor(Math.random() * 100 + 50),
+              sessionName: session.name || `Test ${session.id.slice(0, 8)}`,
+              projectName: projectList.find(p => p.id === session.projectId)?.name || 'Unknown Project',
+              status: 'failed' as const,
+              accuracy: 0,
+              precision: 0,
+              recall: 0,
+              truePositives: 0,
+              falsePositives: 0,
+              falseNegatives: 0,
+              totalDetections: 0,
               startedAt: session.createdAt || new Date().toISOString(),
-              ...(session.completedAt ? { completedAt: session.completedAt } : {}),
-              duration: Math.floor(Math.random() * 300 + 60),
+              completedAt: session.completedAt || new Date().toISOString(),
+              duration: 60,
             };
           }
         })
       );
 
-      setTestResults(results.filter(r => r.status === 'completed'));
-    } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to load results: ${apiError.message}`);
-      
-      // Show mock data if API fails
-      setTestResults([
-        {
-          sessionId: 'mock-1',
-          sessionName: 'Highway Detection Test',
-          projectName: 'VRU Highway Detection',
-          status: 'completed',
-          accuracy: 94.2,
-          precision: 91.5,
-          recall: 89.3,
-          truePositives: 42,
-          falsePositives: 4,
-          falseNegatives: 5,
-          totalDetections: 51,
-          startedAt: new Date(Date.now() - 86400000).toISOString(),
-          completedAt: new Date(Date.now() - 86100000).toISOString(),
-          duration: 180,
-        },
-        {
-          sessionId: 'mock-2',
-          sessionName: 'Urban Cycling Test',
-          projectName: 'Cycling Detection',
-          status: 'completed',
-          accuracy: 87.6,
-          precision: 85.2,
-          recall: 92.1,
-          truePositives: 38,
-          falsePositives: 7,
-          falseNegatives: 3,
-          totalDetections: 48,
-          startedAt: new Date(Date.now() - 172800000).toISOString(),
-          completedAt: new Date(Date.now() - 172500000).toISOString(),
-          duration: 240,
-        },
-      ]);
+      // Filter based on time range if needed
+      let filteredResults = results;
+      if (timeRange !== 'all') {
+        const now = new Date();
+        const timeRangeMs = {
+          '24hours': 24 * 60 * 60 * 1000,
+          '7days': 7 * 24 * 60 * 60 * 1000,
+          '30days': 30 * 24 * 60 * 60 * 1000,
+          '90days': 90 * 24 * 60 * 60 * 1000,
+        }[timeRange];
+        
+        if (timeRangeMs) {
+          filteredResults = results.filter(result => {
+            const resultTime = new Date(result.startedAt).getTime();
+            return (now.getTime() - resultTime) <= timeRangeMs;
+          });
+        }
+      }
+
+      setTestResults(filteredResults.filter(r => r.status === 'completed'));
+    } catch (err: any) {
+      console.error('Failed to load results:', err);
+      setError('Failed to load test results');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedProject, timeRange]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -301,6 +299,7 @@ const Results: React.FC = () => {
                   <MenuItem value="7days">Last 7 Days</MenuItem>
                   <MenuItem value="30days">Last 30 Days</MenuItem>
                   <MenuItem value="90days">Last 90 Days</MenuItem>
+                  <MenuItem value="all">All Time</MenuItem>
                 </Select>
               </FormControl>
             </Grid>

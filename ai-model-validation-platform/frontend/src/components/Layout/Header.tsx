@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -16,9 +16,12 @@ import {
   AccountCircle,
   Person,
 } from '@mui/icons-material';
+import { apiService } from '../../services/api';
 
 const Header: React.FC = () => {
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [notificationCount, setNotificationCount] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -34,10 +37,27 @@ const Header: React.FC = () => {
     window.location.href = '/settings';
   };
 
-  const handleLogout = () => {
-    handleClose();
-    // No authentication - just close menu
-  };
+  // Load notification count from API
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        setLoading(true);
+        // Try to get notification count from dashboard stats
+        const stats = await apiService.getDashboardStats();
+        // For now, calculate from active tests or use a default
+        setNotificationCount(stats.activeTests || 0);
+      } catch (error) {
+        console.error('Failed to load notifications:', error);
+        // Fallback to 0 if API fails
+        setNotificationCount(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadNotifications();
+  }, []);
+
 
   return (
     <AppBar 
@@ -53,7 +73,7 @@ const Header: React.FC = () => {
         
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <IconButton size="large" color="inherit">
-            <Badge badgeContent={4} color="error">
+            <Badge badgeContent={loading ? 0 : notificationCount} color="error">
               <Notifications />
             </Badge>
           </IconButton>
