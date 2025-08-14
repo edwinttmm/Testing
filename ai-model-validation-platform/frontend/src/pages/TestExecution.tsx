@@ -99,6 +99,20 @@ const TestExecution: React.FC = () => {
     }
   };
 
+  const handleReconnect = useCallback(() => {
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      const delay = Math.pow(2, reconnectAttempts) * 1000; // Exponential backoff
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        // Attempting to reconnect
+        setReconnectAttempts(prev => prev + 1);
+        // Will trigger useEffect to reinitialize
+      }, delay);
+    } else {
+      setConnectionError('Unable to connect to real-time server. Please refresh the page.');
+    }
+  }, [reconnectAttempts]);
+
   const initializeWebSocket = useCallback(() => {
     const wsUrl = process.env.REACT_APP_WS_URL || 'http://localhost:8001';
     const token = localStorage.getItem('authToken') || 'dev-token';
@@ -137,7 +151,8 @@ const TestExecution: React.FC = () => {
     newSocket.on('connect_error', (error) => {
       console.error('WebSocket connection error:', error);
       setIsConnected(false);
-      setConnectionError(`Failed to connect to real-time server: ${error.message || 'Unknown error'}`);
+      const errorMessage = error?.message || (error as any)?.description || 'Unknown error';
+      setConnectionError(`Failed to connect to real-time server: ${errorMessage}`);
       handleReconnect();
     });
 
@@ -154,31 +169,18 @@ const TestExecution: React.FC = () => {
     newSocket.on('connection_status', (data) => {
       // Connection status update
       if (data.status === 'connected') {
-        setSuccessMessage(data.message);
+        setSuccessMessage(data.message || 'Connected successfully');
       }
     });
 
     newSocket.on('error', (data) => {
       console.error('Socket.IO error:', data);
-      setError(`Server error: ${data.message}`);
+      const errorMessage = data?.message || JSON.stringify(data) || 'Unknown server error';
+      setError(`Server error: ${errorMessage}`);
     });
 
     setSocket(newSocket);
-  }, []);
-
-  const handleReconnect = useCallback(() => {
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      const delay = Math.pow(2, reconnectAttempts) * 1000; // Exponential backoff
-      
-      reconnectTimeoutRef.current = setTimeout(() => {
-        // Attempting to reconnect
-        setReconnectAttempts(prev => prev + 1);
-        initializeWebSocket();
-      }, delay);
-    } else {
-      setConnectionError('Unable to connect to real-time server. Please refresh the page.');
-    }
-  }, [reconnectAttempts, initializeWebSocket]);
+  }, [handleReconnect]);
 
   // WebSocket connection with reconnection
   useEffect(() => {
@@ -192,7 +194,8 @@ const TestExecution: React.FC = () => {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [initializeWebSocket, socket]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initializeWebSocket]);
 
   const handleStartTest = async () => {
     if (!selectedProject || !selectedVideo) {
