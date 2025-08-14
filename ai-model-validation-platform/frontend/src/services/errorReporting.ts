@@ -241,9 +241,8 @@ class ErrorReportingService {
     level: 'app' | 'page' | 'component',
     context: string
   ): void {
-    this.reportError({
+    const errorReport: any = {
       message: error.message,
-      stack: error.stack,
       componentStack: errorInfo.componentStack,
       level,
       context,
@@ -251,7 +250,13 @@ class ErrorReportingService {
         errorName: error.name,
         errorBoundary: true,
       },
-    });
+    };
+    
+    if (error.stack) {
+      errorReport.stack = error.stack;
+    }
+    
+    this.reportError(errorReport);
   }
 
   public reportApiError(
@@ -264,16 +269,21 @@ class ErrorReportingService {
       statusText?: string;
     }
   ): void {
-    this.reportError({
+    const apiErrorReport: any = {
       message: error.message,
-      stack: error.stack,
       level: 'component',
       context: `api-${context}`,
       additionalData: {
         errorType: 'api',
         ...requestDetails,
       },
-    });
+    };
+    
+    if (error.stack) {
+      apiErrorReport.stack = error.stack;
+    }
+    
+    this.reportError(apiErrorReport);
   }
 
   public reportWebSocketError(
@@ -315,13 +325,20 @@ class ErrorReportingService {
   }
 }
 
-// Create singleton instance
-export const errorReporting = new ErrorReportingService({
-  // Configure based on environment
-  apiEndpoint: process.env.REACT_APP_ERROR_REPORTING_ENDPOINT,
-  apiKey: process.env.REACT_APP_ERROR_REPORTING_API_KEY,
+// Create singleton instance with safe configuration
+const errorConfig: any = {
   enableRemoteLogging: process.env.REACT_APP_ENABLE_ERROR_REPORTING === 'true',
-});
+};
+
+if (process.env.REACT_APP_ERROR_REPORTING_ENDPOINT) {
+  errorConfig.apiEndpoint = process.env.REACT_APP_ERROR_REPORTING_ENDPOINT;
+}
+
+if (process.env.REACT_APP_ERROR_REPORTING_API_KEY) {
+  errorConfig.apiKey = process.env.REACT_APP_ERROR_REPORTING_API_KEY;
+}
+
+export const errorReporting = new ErrorReportingService(errorConfig);
 
 export default errorReporting;
 export type { ErrorReport, ErrorReportingConfig };

@@ -12,7 +12,7 @@ import {
   withErrorBoundary
 } from '../components/ui';
 import { useErrorBoundary, useApiError, useWebSocketError } from '../hooks/useErrorBoundary';
-import { NetworkError, ApiError, ErrorFactory } from '../utils/errorTypes';
+import { NetworkError, AppError as ApiError, ErrorFactory } from '../utils/errorTypes';
 
 // Example 1: Basic Error Boundary Usage
 export const BasicErrorBoundaryExample: React.FC = () => {

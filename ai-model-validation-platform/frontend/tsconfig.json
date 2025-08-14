@@ -1,10 +1,14 @@
 {
   "compilerOptions": {
-    "target": "es2015",
+    "target": "ES2017",
     "lib": [
       "dom",
       "dom.iterable",
-      "esnext"
+      "esnext",
+      "ES2017",
+      "ES2018",
+      "ES2019",
+      "ES2020"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -19,9 +23,35 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "downlevelIteration": true
+    "downlevelIteration": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "useDefineForClassFields": true,
+    "types": ["node", "jest", "@testing-library/jest-dom"],
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["*"],
+      "@/components/*": ["components/*"],
+      "@/pages/*": ["pages/*"],
+      "@/services/*": ["services/*"],
+      "@/utils/*": ["utils/*"],
+      "@/types/*": ["types/*"],
+      "@/hooks/*": ["hooks/*"],
+      "@/tests/*": ["tests/*"]
+    }
   },
   "include": [
-    "src"
+    "src/**/*",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "coverage"
   ]
 }

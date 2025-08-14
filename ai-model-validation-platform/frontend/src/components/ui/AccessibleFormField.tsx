@@ -19,7 +19,7 @@ interface AccessibleFormFieldProps {
   value: string | number;
   onChange: (value: string | number) => void;
   onBlur?: () => void;
-  error?: string;
+  error?: string | undefined;
   required?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -66,7 +66,7 @@ const AccessibleFormField: React.FC<AccessibleFormFieldProps> = ({
   if (error) describedByIds.push(`${id}-error`);
   if (helperText) describedByIds.push(`${id}-helper-text`);
   
-  const ariaDescribedBy = describedByIds.length > 0 ? describedByIds.join(' ') : undefined;
+  const ariaDescribedBy = describedByIds.length > 0 ? describedByIds.join(' ') : '';
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const newValue = type === 'number' ? parseFloat(event.target.value) || 0 : event.target.value;
@@ -86,19 +86,23 @@ const AccessibleFormField: React.FC<AccessibleFormFieldProps> = ({
     onBlur?.();
   };
 
-  // Common props for all field types
-  const commonProps = {
+  // Common props for all field types - filter out undefined values
+  const commonProps: any = {
     id,
     value,
     disabled,
     required,
     'aria-required': required,
     'aria-invalid': hasError,
-    'aria-describedby': ariaDescribedBy,
     'data-testid': dataTestId,
     onFocus: handleFocus,
     onBlur: handleBlurInternal,
   };
+  
+  // Only add aria-describedby if it has content
+  if (ariaDescribedBy) {
+    commonProps['aria-describedby'] = ariaDescribedBy;
+  }
 
   // Render select field
   if (type === 'select') {
@@ -193,18 +197,18 @@ const AccessibleFormField: React.FC<AccessibleFormFieldProps> = ({
         label={label}
         type={type === 'textarea' ? 'text' : type}
         multiline={multiline || type === 'textarea'}
-        rows={multiline || type === 'textarea' ? rows : undefined}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
+        {...(multiline || type === 'textarea' ? { rows } : {})}
+        {...(placeholder ? { placeholder } : {})}
+        {...(autoComplete ? { autoComplete } : {})}
         fullWidth
         error={hasError}
         onChange={handleChange}
         inputProps={{
-          maxLength,
-          minLength,
-          min: type === 'number' ? min : undefined,
-          max: type === 'number' ? max : undefined,
           'aria-label': `${label}${required ? ' (required)' : ''}`,
+          ...(maxLength ? { maxLength } : {}),
+          ...(minLength ? { minLength } : {}),
+          ...(type === 'number' && min !== undefined ? { min } : {}),
+          ...(type === 'number' && max !== undefined ? { max } : {}),
         }}
         sx={{
           '& .MuiOutlinedInput-root': {

@@ -1,5 +1,5 @@
 // Performance monitoring utilities for React components
-import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+import { onCLS, onFID, onFCP, onLCP, onTTFB } from 'web-vitals';
 import React, { useEffect, memo, useRef, useLayoutEffect } from 'react';
 
 interface PerformanceMetric {
@@ -19,11 +19,11 @@ class PerformanceMonitor {
 
   private initWebVitals() {
     // Collect Core Web Vitals
-    getCLS((metric) => this.recordMetric('CLS', metric.value));
-    getFID((metric) => this.recordMetric('FID', metric.value));
-    getFCP((metric) => this.recordMetric('FCP', metric.value));
-    getLCP((metric) => this.recordMetric('LCP', metric.value));
-    getTTFB((metric) => this.recordMetric('TTFB', metric.value));
+    onCLS((metric) => this.recordMetric('CLS', metric.value));
+    onFID((metric) => this.recordMetric('FID', metric.value));
+    onFCP((metric) => this.recordMetric('FCP', metric.value));
+    onLCP((metric) => this.recordMetric('LCP', metric.value));
+    onTTFB((metric) => this.recordMetric('TTFB', metric.value));
   }
 
   private initCustomMetrics() {

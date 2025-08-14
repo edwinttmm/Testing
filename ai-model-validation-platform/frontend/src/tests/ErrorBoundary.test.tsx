@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 import ErrorBoundary, { withErrorBoundary } from '../components/ui/ErrorBoundary';
 import WebSocketErrorBoundary from '../components/ui/WebSocketErrorBoundary';
 import AsyncErrorBoundary from '../components/ui/AsyncErrorBoundary';
-import { NetworkError, ApiError, ErrorFactory } from '../utils/errorTypes';
+import { NetworkError, AppError as ApiError, ErrorFactory } from '../utils/errorTypes';
 
 // Mock console methods to avoid noise in tests
 const originalConsoleError = console.error;

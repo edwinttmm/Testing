@@ -98,7 +98,7 @@ const Results: React.FC = () => {
               falseNegatives: sessionResults?.falseNegatives || Math.floor(Math.random() * 8 + 1),
               totalDetections: sessionResults?.totalDetections || Math.floor(Math.random() * 100 + 50),
               startedAt: session.createdAt || new Date().toISOString(),
-              completedAt: session.completedAt,
+              ...(session.completedAt ? { completedAt: session.completedAt } : {}),
               duration: Math.floor(Math.random() * 300 + 60), // 1-5 minutes
             };
           } catch {
@@ -116,7 +116,7 @@ const Results: React.FC = () => {
               falseNegatives: Math.floor(Math.random() * 8 + 1),
               totalDetections: Math.floor(Math.random() * 100 + 50),
               startedAt: session.createdAt || new Date().toISOString(),
-              completedAt: session.completedAt,
+              ...(session.completedAt ? { completedAt: session.completedAt } : {}),
               duration: Math.floor(Math.random() * 300 + 60),
             };
           }

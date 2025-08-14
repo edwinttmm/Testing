@@ -13,7 +13,7 @@ import {
   ChartData,
   User
 } from './types';
-import { NetworkError, ApiError as CustomApiError, ErrorFactory } from '../utils/errorTypes';
+import { NetworkError, AppError as CustomApiError, ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 
@@ -102,12 +102,13 @@ class ApiService {
     }
 
     // Report error to error reporting service
-    errorReporting.reportApiError(customError, 'api-service', {
-      method: error.config?.method,
-      url: error.config?.url,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-    });
+    const errorContext: any = {};
+    if (error.config?.method) errorContext.method = error.config.method;
+    if (error.config?.url) errorContext.url = error.config.url;
+    if (error.response?.status) errorContext.status = error.response.status;
+    if (error.response?.statusText) errorContext.statusText = error.response.statusText;
+    
+    errorReporting.reportApiError(customError, 'api-service', errorContext);
 
     console.error('API Error:', apiError);
     return apiError;
