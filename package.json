@@ -1,0 +1,147 @@
+{
+  "name": "gpu-image-processing-system",
+  "version": "1.0.0",
+  "description": "GPU detection and library configuration system for image recognition capabilities",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "webpack serve --mode development",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "build:analyze": "npm run build && npx webpack-bundle-analyzer dist/stats.json",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint src --ext .ts,.tsx,.js,.jsx --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "dev": "npm run start",
+    "preview": "npm run build && npx serve dist",
+    "gpu-test": "node scripts/test-gpu-detection.js",
+    "library-test": "node scripts/test-libraries.js"
+  },
+  "keywords": [
+    "gpu",
+    "image-processing",
+    "tensorflow",
+    "opencv",
+    "react",
+    "typescript",
+    "webgl",
+    "computer-vision"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "css-loader": "^6.8.0",
+    "eslint": "^8.45.0",
+    "eslint-plugin-react": "^7.33.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "html-webpack-plugin": "^5.5.0",
+    "jest": "^29.6.0",
+    "rimraf": "^5.0.0",
+    "style-loader": "^3.3.0",
+    "ts-loader": "^9.4.0",
+    "typescript": "^5.1.0",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.0",
+    "webpack-dev-server": "^4.15.0",
+    "webpack-bundle-analyzer": "^4.9.0"
+  },
+  "optionalDependencies": {
+    "@tensorflow/tfjs": "^4.10.0",
+    "@tensorflow/tfjs-cpu": "^4.10.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.10.0",
+    "@tensorflow-models/coco-ssd": "^2.2.2",
+    "jimp": "^0.22.0",
+    "sharp": "^0.32.0",
+    "opencv.js": "^1.7.0",
+    "opencv4nodejs": "^5.6.0"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": ["<rootDir>/src/setupTests.ts"],
+    "moduleNameMapping": {
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "^@utils/(.*)$": "<rootDir>/src/utils/$1",
+      "^@config/(.*)$": "<rootDir>/src/config/$1",
+      "^@libs/(.*)$": "<rootDir>/src/libs/$1",
+      "^@components/(.*)$": "<rootDir>/src/components/$1",
+      "^@hooks/(.*)$": "<rootDir>/src/hooks/$1",
+      "^@types/(.*)$": "<rootDir>/src/types/$1"
+    },
+    "testMatch": [
+      "<rootDir>/src/**/__tests__/**/*.{js,jsx,ts,tsx}",
+      "<rootDir>/src/**/*.{test,spec}.{js,jsx,ts,tsx}"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.{js,jsx,ts,tsx}",
+      "!src/**/*.d.ts",
+      "!src/index.tsx",
+      "!src/setupTests.ts"
+    ]
+  },
+  "eslintConfig": {
+    "extends": [
+      "eslint:recommended",
+      "@typescript-eslint/recommended",
+      "plugin:react/recommended",
+      "plugin:react-hooks/recommended"
+    ],
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+      "ecmaVersion": 2020,
+      "sourceType": "module",
+      "ecmaFeatures": {
+        "jsx": true
+      }
+    },
+    "rules": {
+      "react/react-in-jsx-scope": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": "warn"
+    },
+    "settings": {
+      "react": {
+        "version": "detect"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/gpu-image-processing-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/gpu-image-processing-system/issues"
+  },
+  "homepage": "https://github.com/yourusername/gpu-image-processing-system#readme"
+}
