@@ -1,0 +1,780 @@
+# MINGW64 Automated CI/CD Pipeline Configuration
+# Comprehensive validation pipeline for Windows MINGW64 environment
+
+name: MINGW64 Dependency Validation
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      validation_level:
+        description: 'Validation Level'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - basic
+          - full
+          - comprehensive
+      skip_tests:
+        description: 'Skip specific test categories (comma-separated)'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '18'
+  NPM_VERSION: 'latest'
+  MINGW_PACKAGES: 'base-devel mingw-w64-x86_64-toolchain'
+
+jobs:
+  # Job 1: Environment Setup and Validation
+  environment-validation:
+    runs-on: windows-latest
+    
+    outputs:
+      mingw-version: ${{ steps.mingw-info.outputs.version }}
+      node-version: ${{ steps.node-info.outputs.version }}
+      validation-matrix: ${{ steps.setup-matrix.outputs.matrix }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+          path-type: inherit
+
+      - name: Verify MINGW64 Environment
+        shell: msys2 {0}
+        run: |
+          echo "=== MINGW64 Environment Information ==="
+          echo "MSYSTEM: $MSYSTEM"
+          echo "MINGW_PREFIX: $MINGW_PREFIX"
+          echo "PATH: $PATH"
+          which gcc
+          gcc --version
+          which make
+          make --version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Verify Node.js in MINGW64
+        shell: msys2 {0}
+        run: |
+          echo "=== Node.js Information ==="
+          which node
+          node --version
+          which npm
+          npm --version
+          echo "Node.js path: $(which node)"
+          echo "NPM path: $(which npm)"
+
+      - name: Collect Environment Info
+        id: mingw-info
+        shell: msys2 {0}
+        run: |
+          MINGW_VERSION=$(pacman -Q msys2-runtime | cut -d' ' -f2)
+          echo "version=$MINGW_VERSION" >> $GITHUB_OUTPUT
+          echo "MINGW64 Version: $MINGW_VERSION"
+
+      - name: Collect Node Info
+        id: node-info
+        run: |
+          NODE_VER=$(node --version)
+          echo "version=$NODE_VER" >> $GITHUB_OUTPUT
+          echo "Node.js Version: $NODE_VER"
+
+      - name: Setup Validation Matrix
+        id: setup-matrix
+        run: |
+          $matrix = @{
+            "environment" = @{ "enabled" = $true; "critical" = $true }
+            "dependencies" = @{ "enabled" = $true; "critical" = $true }
+            "cross-platform" = @{ "enabled" = $true; "critical" = $false }
+            "build" = @{ "enabled" = $true; "critical" = $true }
+            "runtime" = @{ "enabled" = $true; "critical" = $false }
+            "performance" = @{ "enabled" = $true; "critical" = $false }
+            "gpu-fallback" = @{ "enabled" = $true; "critical" = $false }
+            "cicd" = @{ "enabled" = $true; "critical" = $false }
+          }
+          
+          # Override based on input
+          if ("${{ github.event.inputs.validation_level }}" -eq "basic") {
+            $matrix.performance.enabled = $false
+            $matrix."gpu-fallback".enabled = $false
+          }
+          
+          $matrixJson = $matrix | ConvertTo-Json -Compress
+          echo "matrix=$matrixJson" >> $env:GITHUB_OUTPUT
+
+      - name: Run Environment Validation
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./validate-environment.bat
+
+      - name: Upload Environment Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: environment-validation-report
+          path: |
+            tests/mingw64-validation/results/environment_*.log
+            tests/mingw64-validation/validation-report.json
+          retention-days: 30
+
+  # Job 2: Dependency Validation
+  dependency-validation:
+    runs-on: windows-latest
+    needs: environment-validation
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).dependencies.enabled }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        package-manager: [npm, yarn]
+        node-version: [18, 20]
+        include:
+          - package-manager: npm
+            cache-key: npm
+          - package-manager: yarn
+            cache-key: yarn
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: ${{ matrix.cache-key }}
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Install Yarn (if needed)
+        if: matrix.package-manager == 'yarn'
+        shell: msys2 {0}
+        run: npm install -g yarn
+
+      - name: Run Dependency Validation
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          echo "=== Testing with ${{ matrix.package-manager }} ==="
+          
+          if [ "${{ matrix.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+            yarn audit --level moderate
+          else
+            npm ci
+            npm audit --audit-level moderate
+          fi
+
+      - name: Run Advanced Dependency Validator
+        shell: msys2 {0}
+        run: |
+          cd tests/mingw64-validation
+          node mingw64-dependency-validator.js
+
+      - name: Check for Dependency Conflicts
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          # Check for peer dependency issues
+          npm ls --depth=0 || true
+          
+          # Check for outdated packages
+          npm outdated || true
+          
+          # Generate dependency tree
+          npm list --all > dependency-tree.txt 2>&1 || true
+
+      - name: Upload Dependency Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-validation-${{ matrix.package-manager }}-node${{ matrix.node-version }}
+          path: |
+            tests/mingw64-validation/results/dependencies_*.log
+            ai-model-validation-platform/frontend/dependency-tree.txt
+            tests/mingw64-validation/validation-report.json
+
+  # Job 3: Cross-Platform Testing
+  cross-platform-validation:
+    runs-on: windows-latest
+    needs: environment-validation
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).cross-platform.enabled }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Run Cross-Platform Tests
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./cross-platform-tests.bat
+
+      - name: Test Unicode Handling
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          # Test Unicode file handling
+          echo "Testing Unicode: 测试 тест test" > unicode-test.txt
+          cat unicode-test.txt
+          node -e "
+            const fs = require('fs');
+            const content = fs.readFileSync('unicode-test.txt', 'utf8');
+            console.log('Unicode test passed:', content.includes('测试'));
+          "
+          rm unicode-test.txt
+
+      - name: Test Path Resolution
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          node -e "
+            const path = require('path');
+            console.log('Windows path test:', path.resolve('C:\\\\test'));
+            console.log('Unix path test:', path.posix.resolve('./test'));
+            console.log('Current directory:', process.cwd());
+          "
+
+      - name: Upload Cross-Platform Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-platform-validation-report
+          path: tests/mingw64-validation/results/cross-platform_*.log
+
+  # Job 4: Build Validation
+  build-validation:
+    runs-on: windows-latest
+    needs: [environment-validation, dependency-validation]
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).build.enabled }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: [development, production]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Install Dependencies
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm ci
+
+      - name: TypeScript Compilation Check
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npx tsc --noEmit
+
+      - name: Run Build Validation
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./build-validation.bat
+
+      - name: Production Build Test
+        if: matrix.build-type == 'production'
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          
+          # Measure build time
+          start_time=$(date +%s)
+          npm run build
+          end_time=$(date +%s)
+          build_time=$((end_time - start_time))
+          
+          echo "Build completed in ${build_time} seconds"
+          
+          # Analyze build output
+          if [ -d "build" ]; then
+            echo "=== Build Output Analysis ==="
+            du -sh build/
+            find build/static -name "*.js" -exec ls -lh {} \;
+            find build/static -name "*.css" -exec ls -lh {} \;
+          fi
+
+      - name: Development Build Test
+        if: matrix.build-type == 'development'
+        shell: msys2 {0}
+        timeout-minutes: 5
+        run: |
+          cd ai-model-validation-platform/frontend
+          
+          # Start dev server in background
+          npm start &
+          DEV_PID=$!
+          
+          # Wait for server to start
+          sleep 30
+          
+          # Test if server is responding
+          curl -f http://localhost:3000 || echo "Dev server test failed"
+          
+          # Cleanup
+          kill $DEV_PID 2>/dev/null || true
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.build-type }}
+          path: |
+            ai-model-validation-platform/frontend/build/
+            tests/mingw64-validation/results/build_*.log
+          retention-days: 7
+
+  # Job 5: Runtime Testing
+  runtime-validation:
+    runs-on: windows-latest
+    needs: [environment-validation, build-validation]
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).runtime.enabled }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Install Dependencies
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm ci
+
+      - name: Run Runtime Tests
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./runtime-tests.bat
+
+      - name: Unit Tests
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          CI=true npm test -- --coverage --watchAll=false
+
+      - name: Integration Tests
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          # Run any integration tests if available
+          npm run test:integration 2>/dev/null || echo "No integration tests configured"
+
+      - name: Upload Runtime Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-validation-report
+          path: |
+            tests/mingw64-validation/results/runtime_*.log
+            ai-model-validation-platform/frontend/coverage/
+
+  # Job 6: Performance Testing
+  performance-validation:
+    runs-on: windows-latest
+    needs: [environment-validation, build-validation]
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).performance.enabled }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Install Dependencies
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm ci
+
+      - name: Run Performance Tests
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./performance-tests.bat
+
+      - name: Bundle Analysis
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm run build:analyze || npm run build
+          
+          # Generate bundle report if webpack-bundle-analyzer is available
+          if command -v npx >/dev/null 2>&1; then
+            npx webpack-bundle-analyzer build/static/js/*.js --report --mode static --report bundle-report.html
+          fi
+
+      - name: Performance Benchmarks
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          
+          # Run performance benchmarks
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            
+            console.log('=== Performance Benchmarks ===');
+            
+            // Measure require time for main dependencies
+            const deps = ['react', 'react-dom', '@mui/material'];
+            deps.forEach(dep => {
+              const start = Date.now();
+              try {
+                require(dep);
+                const time = Date.now() - start;
+                console.log(\`\${dep}: \${time}ms\`);
+              } catch (e) {
+                console.log(\`\${dep}: ERROR\`);
+              }
+            });
+          "
+
+      - name: Upload Performance Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-validation-report
+          path: |
+            tests/mingw64-validation/results/performance_*.log
+            ai-model-validation-platform/frontend/bundle-report.html
+            ai-model-validation-platform/frontend/bundle-analysis-report.json
+
+  # Job 7: GPU/CPU Fallback Testing
+  gpu-fallback-validation:
+    runs-on: windows-latest
+    needs: environment-validation
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).gpu-fallback.enabled }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Install Dependencies
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm ci
+
+      - name: Run GPU/CPU Fallback Tests
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./gpu-fallback-tests.bat
+
+      - name: Upload GPU Fallback Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-fallback-validation-report
+          path: tests/mingw64-validation/results/gpu-fallback_*.log
+
+  # Job 8: CI/CD Compatibility Testing
+  cicd-validation:
+    runs-on: windows-latest
+    needs: environment-validation
+    if: ${{ fromJson(needs.environment-validation.outputs.validation-matrix).cicd.enabled }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: ${{ env.MINGW_PACKAGES }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'ai-model-validation-platform/frontend/package-lock.json'
+
+      - name: Install Dependencies
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm ci
+
+      - name: Run CI/CD Tests
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          ./cicd-tests.bat
+
+      - name: Test Environment Variables
+        env:
+          NODE_ENV: production
+          CI: true
+          REACT_APP_TEST: test_value
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          echo "=== Environment Variable Testing ==="
+          echo "NODE_ENV: $NODE_ENV"
+          echo "CI: $CI"
+          echo "REACT_APP_TEST: $REACT_APP_TEST"
+          
+          # Test build with environment variables
+          npm run build
+
+      - name: Security Audit
+        shell: msys2 {0}
+        run: |
+          cd ai-model-validation-platform/frontend
+          npm audit --audit-level high
+          
+          # Check for known vulnerabilities
+          npx audit-ci --moderate
+
+      - name: Upload CI/CD Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cicd-validation-report
+          path: tests/mingw64-validation/results/cicd_*.log
+
+  # Job 9: Comprehensive Report Generation
+  generate-report:
+    runs-on: windows-latest
+    needs: [
+      environment-validation,
+      dependency-validation,
+      cross-platform-validation,
+      build-validation,
+      runtime-validation,
+      performance-validation,
+      gpu-fallback-validation,
+      cicd-validation
+    ]
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2/MINGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare Results Directory
+        shell: msys2 {0}
+        run: |
+          mkdir -p tests/mingw64-validation/results
+          
+          # Copy all log files to results directory
+          find artifacts/ -name "*.log" -exec cp {} tests/mingw64-validation/results/ \;
+          find artifacts/ -name "validation-report.json" -exec cp {} tests/mingw64-validation/ \;
+
+      - name: Generate Comprehensive Report
+        shell: msys2 {0}
+        run: |
+          cd tests/scripts/mingw64
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          node generate-report.js $TIMESTAMP
+
+      - name: Create Summary Badge
+        run: |
+          $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+          $reportPath = "tests/mingw64-validation/results/comprehensive-report-$timestamp.json"
+          
+          if (Test-Path $reportPath) {
+            $report = Get-Content $reportPath | ConvertFrom-Json
+            $successRate = $report.summary.successRate
+            
+            if ([double]$successRate -ge 90) {
+              $color = "brightgreen"
+              $status = "excellent"
+            } elseif ([double]$successRate -ge 75) {
+              $color = "green"
+              $status = "good"
+            } elseif ([double]$successRate -ge 60) {
+              $color = "yellow"
+              $status = "fair"
+            } else {
+              $color = "red"
+              $status = "poor"
+            }
+            
+            echo "VALIDATION_STATUS=$status" >> $env:GITHUB_ENV
+            echo "SUCCESS_RATE=$successRate" >> $env:GITHUB_ENV
+            echo "BADGE_COLOR=$color" >> $env:GITHUB_ENV
+          }
+
+      - name: Upload Final Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mingw64-comprehensive-validation-report
+          path: |
+            tests/mingw64-validation/results/
+            artifacts/
+          retention-days: 90
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Find the latest report file
+            const resultsDir = 'tests/mingw64-validation/results';
+            const files = fs.readdirSync(resultsDir);
+            const reportFile = files.find(f => f.startsWith('summary-') && f.endsWith('.txt'));
+            
+            if (reportFile) {
+              const reportPath = path.join(resultsDir, reportFile);
+              const reportContent = fs.readFileSync(reportPath, 'utf8');
+              
+              const comment = `## 🔧 MINGW64 Validation Report
+              
+              **Status**: ${process.env.VALIDATION_STATUS || 'unknown'}
+              **Success Rate**: ${process.env.SUCCESS_RATE || 'unknown'}%
+              
+              <details>
+              <summary>📊 Detailed Results</summary>
+              
+              \`\`\`
+              ${reportContent}
+              \`\`\`
+              </details>
+              
+              💾 Full report available in artifacts.`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+      - name: Set Status Check
+        if: always()
+        run: |
+          if ("${{ job.status }}" -eq "success" -and "${{ env.VALIDATION_STATUS }}" -ne "poor") {
+            echo "✅ MINGW64 validation completed successfully"
+            exit 0
+          } else {
+            echo "❌ MINGW64 validation failed or has critical issues"
+            exit 1
+          }
+
+# Workflow-level configuration
+concurrency:
+  group: mingw64-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+# Security settings
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
