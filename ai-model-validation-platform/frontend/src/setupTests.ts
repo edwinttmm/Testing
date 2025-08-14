@@ -9,65 +9,21 @@ global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
 import '@testing-library/jest-dom';
-import { setupServer } from 'msw/node';
-import { apiMockHandlers } from './tests/mocks/api.mock';
-import { setupTestEnvironment } from './tests/helpers/test-utils';
 
-// Setup MSW server globally
-export const server = setupServer(...apiMockHandlers);
-
-// Polyfill for Node.js environment
-if (typeof global.TextEncoder === 'undefined') {
-  const { TextEncoder, TextDecoder } = require('util');
-  global.TextEncoder = TextEncoder;
-  global.TextDecoder = TextDecoder;
-}
-
-// Global test setup
-beforeAll(() => {
-  // Start MSW server
-  server.listen({
-    onUnhandledRequest: 'warn',
-  });
-  
-  // Setup test environment
-  setupTestEnvironment();
-  
-  // Global console warnings suppression for known issues
-  const originalConsoleWarn = console.warn;
-  console.warn = (...args: any[]) => {
-    // Suppress known React 19 warnings during testing
-    if (
-      typeof args[0] === 'string' &&
-      (args[0].includes('ReactDOM.render is deprecated') ||
-       args[0].includes('Warning: validateDOMNesting'))
-    ) {
-      return;
-    }
-    originalConsoleWarn.apply(console, args);
-  };
-});
-
-// Clean up after each test
-afterEach(() => {
-  server.resetHandlers();
-  
-  // Clear any remaining timeouts/intervals
-  jest.clearAllTimers();
-  
-  // Clean up any open modals or overlays
-  const modals = document.querySelectorAll('[role="dialog"]');
-  modals.forEach(modal => modal.remove());
-  
-  // Clean up any tooltip portals
-  const tooltips = document.querySelectorAll('[role="tooltip"]');
-  tooltips.forEach(tooltip => tooltip.remove());
-});
-
-// Global cleanup
-afterAll(() => {
-  server.close();
-});
+// Basic test environment setup without MSW for now
+// Global console warnings suppression for known issues
+const originalConsoleWarn = console.warn;
+console.warn = (...args: any[]) => {
+  // Suppress known React 19 warnings during testing
+  if (
+    typeof args[0] === 'string' &&
+    (args[0].includes('ReactDOM.render is deprecated') ||
+     args[0].includes('Warning: validateDOMNesting'))
+  ) {
+    return;
+  }
+  originalConsoleWarn.apply(console, args);
+};
 
 // Global error handler for unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {

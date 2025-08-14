@@ -55,63 +55,123 @@ class ApiService {
     );
   }
 
-  private handleError(error: AxiosError): ApiError {
+  private handleError(error: AxiosError | any): ApiError {
     const apiError: ApiError = {
       message: 'An unexpected error occurred',
       status: 500,
     };
 
     let customError: Error;
+    let errorMessage = 'An unexpected error occurred';
 
-    if (error.response) {
-      // Server responded with error status
-      apiError.status = error.response.status;
-      const responseData = error.response.data as any;
-      apiError.message = responseData?.message || responseData?.detail || error.message;
-      apiError.details = error.response.data;
-
-      // Create custom error for error boundary handling
-      customError = ErrorFactory.createApiError(
-        error.response,
-        responseData,
-        { 
-          originalError: error,
-          method: error.config?.method,
-          url: error.config?.url 
+    try {
+      if (error?.response) {
+        // Server responded with error status
+        apiError.status = error.response.status;
+        const responseData = error.response.data;
+        
+        // Safely extract error message
+        if (typeof responseData === 'string') {
+          errorMessage = responseData;
+        } else if (responseData && typeof responseData === 'object') {
+          errorMessage = responseData.message || 
+                       responseData.detail || 
+                       responseData.error || 
+                       `Server error: ${error.response.status}`;
+        } else {
+          errorMessage = `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`;
         }
-      );
+        
+        apiError.message = errorMessage;
+        apiError.details = responseData;
 
-    } else if (error.request) {
-      // Network error
-      apiError.message = 'Network error - please check your connection';
-      apiError.code = 'NETWORK_ERROR';
+        // Create custom error for error boundary handling
+        customError = ErrorFactory.createApiError(
+          error.response,
+          responseData,
+          { 
+            originalError: error,
+            method: error.config?.method,
+            url: error.config?.url 
+          }
+        );
+
+      } else if (error?.request) {
+        // Network error - no response received
+        errorMessage = 'Network error - please check your connection';
+        apiError.message = errorMessage;
+        apiError.code = 'NETWORK_ERROR';
+        
+        customError = ErrorFactory.createNetworkError(
+          undefined,
+          { 
+            originalError: error,
+            method: error.config?.method,
+            url: error.config?.url 
+          }
+        );
+
+      } else if (error?.code === 'ECONNABORTED') {
+        // Request timeout
+        errorMessage = 'Request timeout - please try again';
+        apiError.message = errorMessage;
+        apiError.code = 'TIMEOUT_ERROR';
+        customError = new Error(errorMessage);
+
+      } else {
+        // Request setup error or other error
+        errorMessage = error?.message || 'Unknown error occurred';
+        
+        // Prevent [object Object] error messages
+        if (errorMessage === '[object Object]' || typeof errorMessage !== 'string') {
+          errorMessage = 'An error occurred while processing your request';
+        }
+        
+        apiError.message = errorMessage;
+        customError = new Error(`Request error: ${errorMessage}`);
+      }
+
+      // Safely build error context
+      const errorContext: Record<string, any> = {
+        timestamp: new Date().toISOString(),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+      };
       
-      customError = ErrorFactory.createNetworkError(
-        undefined,
-        { 
-          originalError: error,
-          method: error.config?.method,
-          url: error.config?.url 
-        }
-      );
+      if (error?.config?.method) errorContext.method = error.config.method;
+      if (error?.config?.url) errorContext.url = error.config.url;
+      if (error?.response?.status) errorContext.status = error.response.status;
+      if (error?.response?.statusText) errorContext.statusText = error.response.statusText;
+      if (error?.code) errorContext.errorCode = error.code;
+      
+      // Report error to error reporting service
+      try {
+        errorReporting.reportApiError(customError, 'api-service', errorContext);
+      } catch (reportingError) {
+        console.warn('Failed to report error:', reportingError);
+      }
 
-    } else {
-      // Request setup error
-      apiError.message = error.message;
-      customError = new Error(`Request setup error: ${error.message}`);
+      // Safe console logging
+      console.error('API Error:', {
+        message: apiError.message,
+        status: apiError.status,
+        code: apiError.code,
+        context: errorContext
+      });
+
+      return apiError;
+
+    } catch (handlingError) {
+      // Fallback error handling if something goes wrong in error processing
+      console.error('Error in error handling:', handlingError);
+      
+      const fallbackError: ApiError = {
+        message: 'An unexpected error occurred',
+        status: 500,
+        code: 'UNKNOWN_ERROR'
+      };
+
+      return fallbackError;
     }
-
-    // Report error to error reporting service
-    const errorContext: any = {};
-    if (error.config?.method) errorContext.method = error.config.method;
-    if (error.config?.url) errorContext.url = error.config.url;
-    if (error.response?.status) errorContext.status = error.response.status;
-    if (error.response?.statusText) errorContext.statusText = error.response.statusText;
-    
-    errorReporting.reportApiError(customError, 'api-service', errorContext);
-
-    console.error('API Error:', apiError);
-    return apiError;
   }
 
 
