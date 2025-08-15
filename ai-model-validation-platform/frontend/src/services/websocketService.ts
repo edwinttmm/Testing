@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
 
 export interface WebSocketMessage {
   type: string;
@@ -104,7 +105,7 @@ class WebSocketService {
 
         // Connection error
         this.socket.on('connect_error', (error) => {
-          console.error('❌ WebSocket connection error:', error.message);
+          logWebSocketError('Connection failed', error, { function: 'connect_error' });
           this.connectionState = 'error';
           this.lastError = error;
           this.metrics.isStable = false;
@@ -115,7 +116,7 @@ class WebSocketService {
 
         // Disconnection
         this.socket.on('disconnect', (reason) => {
-          console.warn('⚠️ WebSocket disconnected:', reason);
+          safeConsoleWarn('WebSocket disconnected', reason, { function: 'disconnect', component: 'websocket-service' });
           this.connectionState = 'disconnected';
           this.metrics.lastDisconnected = new Date();
           this.metrics.isStable = false;
@@ -149,7 +150,7 @@ class WebSocketService {
 
         // Failed to reconnect
         this.socket.on('reconnect_failed', () => {
-          console.error('❌ WebSocket failed to reconnect');
+          logWebSocketError('Failed to reconnect after all attempts', 'Maximum reconnection attempts exceeded', { function: 'reconnect_failed' });
           this.connectionState = 'error';
           this.metrics.isStable = false;
           
@@ -174,7 +175,7 @@ class WebSocketService {
         });
 
       } catch (error) {
-        console.error('💥 WebSocket setup error:', error);
+        logWebSocketError('Setup failed', error, { function: 'connect' });
         this.connectionState = 'error';
         this.lastError = error as Error;
         reject(error);
@@ -208,7 +209,7 @@ class WebSocketService {
     this.reconnectTimer = setTimeout(() => {
       if (this.connectionState !== 'connected') {
         this.connect().catch(error => {
-          console.error('Scheduled reconnection failed:', error);
+          logWebSocketError('Scheduled reconnection failed', error, { function: 'scheduleReconnection' });
         });
       }
     }, delay);
@@ -260,7 +261,7 @@ class WebSocketService {
         try {
           callback(data);
         } catch (error) {
-          console.error(`Error in WebSocket subscriber for ${eventType}:`, error);
+          logWebSocketError(`Subscriber callback failed for ${eventType}`, error, { function: 'notifySubscribers', eventType });
         }
       });
     }
@@ -292,7 +293,7 @@ class WebSocketService {
   // Send message to server
   emit(eventType: string, data?: any): boolean {
     if (this.connectionState !== 'connected' || !this.socket) {
-      console.warn(`⚠️ Cannot emit ${eventType}: WebSocket not connected`);
+      safeConsoleWarn(`Cannot emit ${eventType}: WebSocket not connected`, { connectionState: this.connectionState, hasSocket: !!this.socket }, { function: 'emit', eventType });
       return false;
     }
 
@@ -301,7 +302,7 @@ class WebSocketService {
       this.socket.emit(eventType, data);
       return true;
     } catch (error) {
-      console.error(`❌ WebSocket emit error [${eventType}]:`, error);
+      logWebSocketError(`Emit failed for ${eventType}`, error, { function: 'emit', eventType });
       return false;
     }
   }

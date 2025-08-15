@@ -28,6 +28,7 @@ aiofiles==23.2.1
 python-socketio==5.11.0
 python-engineio>=4.8.0
 
-# Basic dependencies only - no ML stack for now
+# Basic dependencies + OpenCV for ground truth processing
 pillow==10.1.0
 numpy==1.25.2
+opencv-python==4.8.1.78
