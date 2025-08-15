@@ -92,7 +92,8 @@ const Projects: React.FC = () => {
       setProjects(projectsData);
     } catch (error: any) {
       console.error('Failed to load projects:', error);
-      setError(error.message || 'Failed to load projects. Please try again.');
+      const errorMessage = error?.message || (typeof error === 'string' ? error : 'Failed to load projects. Please try again.');
+      setError(errorMessage);
       setProjects([]);
     } finally {
       setLoading(false);
@@ -169,7 +170,8 @@ const Projects: React.FC = () => {
       
     } catch (error: any) {
       console.error('Project save error:', error);
-      setFormError(error.message || `Failed to ${isEditing ? 'update' : 'create'} project. Please try again.`);
+      const errorMessage = error?.message || (typeof error === 'string' ? error : `Failed to ${isEditing ? 'update' : 'create'} project. Please try again.`);
+      setFormError(errorMessage);
     } finally {
       setFormLoading(false);
     }

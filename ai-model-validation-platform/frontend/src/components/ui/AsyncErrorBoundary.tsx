@@ -29,7 +29,9 @@ const AsyncErrorBoundary = ({
       setAsyncError(null);
       await asyncOperation();
     } catch (error) {
-      setAsyncError(error instanceof Error ? error : new Error(String(error)));
+      setAsyncError(error instanceof Error ? error : new Error(
+        (error as any)?.message || (typeof error === 'string' ? error : 'Unknown async error')
+      ));
     } finally {
       setLoading(false);
     }
