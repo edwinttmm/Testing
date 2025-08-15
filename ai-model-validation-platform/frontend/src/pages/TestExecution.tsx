@@ -38,6 +38,7 @@ import {
   Wifi,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
+import { getWebSocketErrorMessage } from '../utils/errorUtils';
 import { apiService } from '../services/api';
 import { TestSession as TestSessionType, VideoFile, Project, ApiError } from '../services/types';
 
@@ -175,7 +176,7 @@ const TestExecution: React.FC = () => {
 
     newSocket.on('error', (data) => {
       console.error('Socket.IO error:', data);
-      const errorMessage = data?.message || JSON.stringify(data) || 'Unknown server error';
+      const errorMessage = getWebSocketErrorMessage(data);
       setError(`Server error: ${errorMessage}`);
     });
 
