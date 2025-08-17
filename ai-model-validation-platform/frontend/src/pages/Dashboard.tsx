@@ -51,7 +51,10 @@ const Dashboard: React.FC = () => {
       if (statsResult.status === 'fulfilled') {
         setStats(statsResult.value);
       } else {
-        console.error('Failed to fetch dashboard stats:', statsResult.reason);
+        const errorMsg = statsResult.reason instanceof Error 
+          ? statsResult.reason.message 
+          : 'Backend connection failed';
+        console.error('Failed to fetch dashboard stats:', errorMsg, statsResult.reason);
         setStats({
           projectCount: 0,
           videoCount: 0,
@@ -86,7 +89,10 @@ const Dashboard: React.FC = () => {
           .slice(0, 4);
         setRecentSessions(recentSessionsData);
       } else {
-        console.error('Failed to fetch test sessions:', sessionsResult.reason);
+        const errorMsg = sessionsResult.reason instanceof Error 
+          ? sessionsResult.reason.message 
+          : 'Backend connection failed';
+        console.error('Failed to fetch test sessions:', errorMsg, sessionsResult.reason);
         setRecentSessions([]);
       }
       

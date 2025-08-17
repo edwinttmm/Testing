@@ -88,7 +88,7 @@ class EnhancedApiService {
       },
       (error) => {
         console.error('Request interceptor error:', error);
-        return Promise.reject(this.handleError(error));
+        throw this.handleError(error);
       }
     );
 
@@ -116,7 +116,7 @@ class EnhancedApiService {
             console.error(`❌ API Error [${requestId}]: ${metrics.duration}ms - ${error.message}`);
           }
         }
-        return Promise.reject(this.handleError(error));
+        throw this.handleError(error);
       }
     );
   }
