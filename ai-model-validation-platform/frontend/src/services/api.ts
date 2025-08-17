@@ -11,7 +11,18 @@ import {
   TestSessionCreate,
   DashboardStats,
   ChartData,
-  User
+  User,
+  PassFailCriteria,
+  StatisticalValidation,
+  VideoAssignment,
+  SignalProcessingResult,
+  VideoLibraryOrganization,
+  VideoQualityAssessment,
+  DetectionPipelineConfig,
+  DetectionPipelineResult,
+  EnhancedDashboardStats,
+  CameraType,
+  SignalType
 } from './types';
 import { NetworkError, AppError as CustomApiError, ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
@@ -326,8 +337,8 @@ class ApiService {
   }
 
   // Dashboard
-  async getDashboardStats(): Promise<DashboardStats> {
-    return this.cachedRequest<DashboardStats>('GET', '/api/dashboard/stats');
+  async getDashboardStats(): Promise<EnhancedDashboardStats> {
+    return this.cachedRequest<EnhancedDashboardStats>('GET', '/api/dashboard/stats');
   }
 
   async getChartData(): Promise<ChartData> {
@@ -337,6 +348,78 @@ class ApiService {
   // Health check
   async healthCheck(): Promise<{ status: string }> {
     return this.cachedRequest<{ status: string }>('GET', '/health');
+  }
+
+  // Video Library Management
+  async organizeVideoLibrary(projectId: string): Promise<VideoLibraryOrganization> {
+    return this.cachedRequest<VideoLibraryOrganization>('GET', `/api/video-library/organize/${projectId}`);
+  }
+
+  async assessVideoQuality(videoId: string): Promise<VideoQualityAssessment> {
+    return this.cachedRequest<VideoQualityAssessment>('GET', `/api/video-library/quality-assessment/${videoId}`);
+  }
+
+  // Detection Pipeline
+  async runDetectionPipeline(videoId: string, config: DetectionPipelineConfig): Promise<DetectionPipelineResult> {
+    return this.cachedRequest<DetectionPipelineResult>('POST', '/api/detection/pipeline/run', { 
+      video_id: videoId,
+      confidence_threshold: config.confidenceThreshold,
+      nms_threshold: config.nmsThreshold,
+      model_name: config.modelName,
+      target_classes: config.targetClasses
+    });
+  }
+
+  async getAvailableModels(): Promise<{models: string[], default: string, recommended: string}> {
+    return this.cachedRequest('GET', '/api/detection/models/available');
+  }
+
+  // Signal Processing
+  async processSignal(signalType: SignalType, signalData: any, config?: any): Promise<SignalProcessingResult> {
+    return this.cachedRequest<SignalProcessingResult>('POST', '/api/signals/process', {
+      signal_type: signalType,
+      signal_data: signalData,
+      processing_config: config
+    });
+  }
+
+  async getSupportedProtocols(): Promise<{protocols: string[], capabilities: Record<string, string[]>}> {
+    return this.cachedRequest('GET', '/api/signals/protocols/supported');
+  }
+
+  // Enhanced Project Management
+  async configurePassFailCriteria(projectId: string, criteria: Omit<PassFailCriteria, 'id' | 'projectId' | 'createdAt'>): Promise<PassFailCriteria> {
+    return this.cachedRequest<PassFailCriteria>('POST', `/api/projects/${projectId}/criteria/configure`, {
+      min_precision: criteria.minPrecision,
+      min_recall: criteria.minRecall,
+      min_f1_score: criteria.minF1Score,
+      max_latency_ms: criteria.maxLatencyMs
+    });
+  }
+
+  async getIntelligentAssignments(projectId: string): Promise<VideoAssignment[]> {
+    return this.cachedRequest<VideoAssignment[]>('GET', `/api/projects/${projectId}/assignments/intelligent`);
+  }
+
+  // Statistical Validation
+  async runStatisticalValidation(testSessionId: string, confidenceLevel: number = 0.95): Promise<StatisticalValidation> {
+    return this.cachedRequest<StatisticalValidation>('POST', '/api/validation/statistical/run', {
+      test_session_id: testSessionId,
+      confidence_level: confidenceLevel
+    });
+  }
+
+  async getConfidenceIntervals(sessionId: string): Promise<{precision: [number, number], recall: [number, number], f1_score: [number, number], accuracy: [number, number], confidence_level: number, sample_size: number}> {
+    return this.cachedRequest('GET', `/api/validation/confidence-intervals/${sessionId}`);
+  }
+
+  // ID Generation
+  async generateId(strategy: 'uuid4' | 'snowflake' | 'composite'): Promise<{id: string, strategy: string, timestamp: string}> {
+    return this.cachedRequest('POST', `/api/ids/generate/${strategy}`);
+  }
+
+  async getAvailableIdStrategies(): Promise<{strategies: string[], default: string, descriptions: Record<string, string>}> {
+    return this.cachedRequest('GET', '/api/ids/strategies/available');
   }
 
   // Generic request methods for custom endpoints
@@ -381,6 +464,18 @@ export const getTestSession = apiServiceInstance.getTestSession.bind(apiServiceI
 export const createTestSession = apiServiceInstance.createTestSession.bind(apiServiceInstance);
 export const getTestResults = apiServiceInstance.getTestResults.bind(apiServiceInstance);
 export const getDashboardStats = apiServiceInstance.getDashboardStats.bind(apiServiceInstance);
+export const organizeVideoLibrary = apiServiceInstance.organizeVideoLibrary.bind(apiServiceInstance);
+export const assessVideoQuality = apiServiceInstance.assessVideoQuality.bind(apiServiceInstance);
+export const runDetectionPipeline = apiServiceInstance.runDetectionPipeline.bind(apiServiceInstance);
+export const getAvailableModels = apiServiceInstance.getAvailableModels.bind(apiServiceInstance);
+export const processSignal = apiServiceInstance.processSignal.bind(apiServiceInstance);
+export const getSupportedProtocols = apiServiceInstance.getSupportedProtocols.bind(apiServiceInstance);
+export const configurePassFailCriteria = apiServiceInstance.configurePassFailCriteria.bind(apiServiceInstance);
+export const getIntelligentAssignments = apiServiceInstance.getIntelligentAssignments.bind(apiServiceInstance);
+export const runStatisticalValidation = apiServiceInstance.runStatisticalValidation.bind(apiServiceInstance);
+export const getConfidenceIntervals = apiServiceInstance.getConfidenceIntervals.bind(apiServiceInstance);
+export const generateId = apiServiceInstance.generateId.bind(apiServiceInstance);
+export const getAvailableIdStrategies = apiServiceInstance.getAvailableIdStrategies.bind(apiServiceInstance);
 export const getChartData = apiServiceInstance.getChartData.bind(apiServiceInstance);
 export const healthCheck = apiServiceInstance.healthCheck.bind(apiServiceInstance);
 

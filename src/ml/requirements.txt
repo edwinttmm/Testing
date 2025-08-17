@@ -1,0 +1,39 @@
+# ML Pipeline Requirements for VRU Detection
+
+# Core ML Framework
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics==8.0.196
+opencv-python==4.8.1.78
+
+# Image Processing
+pillow>=10.0.0
+numpy>=1.24.0
+
+# Performance & GPU
+onnxruntime-gpu>=1.15.0  # GPU acceleration
+onnxruntime>=1.15.0      # CPU fallback
+
+# Tracking & Detection
+filterpy>=1.4.5          # Kalman filtering for tracking
+scipy>=1.10.0
+
+# Utilities
+pydantic>=2.0.0
+fastapi>=0.104.0
+asyncio-throttle>=1.0.0
+
+# Monitoring & Metrics
+psutil>=5.9.0
+GPUtil>=1.4.0            # GPU monitoring
+
+# Data Science
+pandas>=2.0.0
+matplotlib>=3.7.0        # For visualization
+
+# Optional: TensorRT for NVIDIA optimization
+# tensorrt>=8.6.0
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

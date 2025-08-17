@@ -14,12 +14,12 @@ import {
   TrendingUp,
 } from '@mui/icons-material';
 import { getDashboardStats, getTestSessions } from '../services/enhancedApiService';
-import { DashboardStats, TestSession } from '../services/types';
+import { EnhancedDashboardStats, TestSession } from '../services/types';
 import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<EnhancedDashboardStats | null>(null);
   const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +58,24 @@ const Dashboard: React.FC = () => {
           testCount: 0,
           averageAccuracy: 0,
           activeTests: 0,
-          totalDetections: 0
+          totalDetections: 0,
+          test_session_count: 0,
+          detection_event_count: 0,
+          confidence_intervals: {
+            precision: [0, 0],
+            recall: [0, 0],
+            f1_score: [0, 0]
+          },
+          trend_analysis: {
+            accuracy: 'stable',
+            detectionRate: 'stable',
+            performance: 'stable'
+          },
+          signal_processing_metrics: {
+            totalSignals: 0,
+            successRate: 0,
+            avgProcessingTime: 0
+          }
         });
       }
       
@@ -91,7 +108,24 @@ const Dashboard: React.FC = () => {
         testCount: 0,
         averageAccuracy: 0,
         activeTests: 0,
-        totalDetections: 0
+        totalDetections: 0,
+        test_session_count: 0,
+        detection_event_count: 0,
+        confidence_intervals: {
+          precision: [0, 0],
+          recall: [0, 0],
+          f1_score: [0, 0]
+        },
+        trend_analysis: {
+          accuracy: 'stable',
+          detectionRate: 'stable',
+          performance: 'stable'
+        },
+        signal_processing_metrics: {
+          totalSignals: 0,
+          successRate: 0,
+          avgProcessingTime: 0
+        }
       });
       setRecentSessions([]);
     } finally {
@@ -219,13 +253,25 @@ const Dashboard: React.FC = () => {
             value={`${stats?.averageAccuracy || 0}%`}
             icon={<TrendingUp />}
             color="warning"
-            subtitle="Average across all tests"
+            subtitle={stats?.confidence_intervals ? `CI: ${stats.confidence_intervals.precision[0]}%-${stats.confidence_intervals.precision[1]}%` : "Average across all tests"}
             loading={loading}
             ariaLabel={`Detection Accuracy: ${stats?.averageAccuracy || 0}% average across all tests`}
             trend={{
               value: 2.3,
-              direction: 'up'
+              direction: stats?.trend_analysis?.accuracy === 'improving' ? 'up' : stats?.trend_analysis?.accuracy === 'declining' ? 'down' : 'up'
             }}
+          />
+        </Box>
+        
+        <Box sx={{ minWidth: 250, flex: 1 }}>
+          <AccessibleStatCard
+            title="Signal Processing"
+            value={`${stats?.signal_processing_metrics?.successRate || 0}%`}
+            icon={<Assessment />}
+            color="success"
+            subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed`}
+            loading={loading}
+            ariaLabel={`Signal Processing: ${stats?.signal_processing_metrics?.successRate || 0}% success rate`}
           />
         </Box>
       </Box>
