@@ -89,4 +89,5 @@ export const logError = (error: Error, context = '') => {
   console.error(`[Error ${context}]:`, error.message, error.stack);
 };
 
-export default { NetworkError, WebSocketError, ValidationError, createAppError, ErrorFactory, logError };
+const errorTypes = { NetworkError, WebSocketError, ValidationError, createAppError, ErrorFactory, logError };
+export default errorTypes;

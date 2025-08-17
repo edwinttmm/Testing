@@ -397,7 +397,7 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
   };
 
   private handleRetry = (isAutomatic: boolean = false) => {
-    const { maxRetries = 3, retryDelay = 1000 } = this.props;
+    const { retryDelay = 1000 } = this.props;
     const { retryCount, maxRetryCount } = this.state;
 
     if (retryCount >= maxRetryCount) {
@@ -537,7 +537,7 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
 
   render() {
     const { hasError, error, errorInfo, errorType, errorId, showDetails, isRetrying } = this.state;
-    const { children, fallback, fallbackDelay = 100 } = this.props;
+    const { children, fallback } = this.props;
 
     if (hasError) {
       // Use custom fallback if provided

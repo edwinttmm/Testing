@@ -96,16 +96,9 @@ const GroundTruth: React.FC = () => {
   
   // Get project ID from URL params or use default
   const { id: urlProjectId } = useParams<{ id: string }>();
-  const [projectId, setProjectId] = useState<string | null>(urlProjectId || null);
+  const [projectId] = useState<string | null>(urlProjectId || null);
 
-  // Load videos on component mount
-  useEffect(() => {
-    if (projectId) {
-      loadVideos();
-    }
-  }, [projectId, loadVideos]);
-
-  const loadVideos = async () => {
+  const loadVideos = useCallback(async () => {
     if (!projectId) {
       setError('No project ID provided');
       return;
@@ -117,9 +110,17 @@ const GroundTruth: React.FC = () => {
       setVideos(videoList);
     } catch (err) {
       const apiError = err as ApiError;
-      setError(apiError.message || 'Failed to load videos');
+      setError(`Failed to load videos: ${apiError.message}`);
+      console.error('Error loading videos:', err);
     }
-  };
+  }, [projectId]);
+
+  // Load videos on component mount
+  useEffect(() => {
+    if (projectId) {
+      loadVideos();
+    }
+  }, [projectId, loadVideos]);
 
   const getStatusIcon = (status: VideoFile['status'] | UploadingVideo['status']) => {
     switch (status) {
@@ -160,9 +161,9 @@ const GroundTruth: React.FC = () => {
     if (validFiles.length > 0) {
       uploadFiles(validFiles);
     }
-  }, [uploadFiles]);
+  }, []);
 
-  const uploadFiles = async (files: File[]) => {
+  const uploadFiles = useCallback(async (files: File[]) => {
     const newUploadingVideos: UploadingVideo[] = files.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
@@ -231,7 +232,7 @@ const GroundTruth: React.FC = () => {
     });
     
     await Promise.allSettled(uploadPromises);
-  };
+  }, [projectId]);
 
   // Drag and drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
