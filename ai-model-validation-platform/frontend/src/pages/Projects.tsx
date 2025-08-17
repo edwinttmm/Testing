@@ -34,7 +34,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { createProject, getProjects, updateProject, deleteProject } from '../services/enhancedApiService';
-import { Project as ApiProject, ProjectCreate, ProjectUpdate } from '../services/types';
+import { Project as ApiProject, ProjectCreate, ProjectUpdate, CameraType, SignalType, ProjectStatus } from '../services/types';
 import ProjectsDebug from '../components/ProjectsDebug';
 import ApiTestComponent from '../components/ApiTestComponent';
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog';
@@ -61,8 +61,8 @@ const Projects: React.FC = () => {
     name: '',
     description: '',
     cameraModel: '',
-    cameraView: 'Front-facing VRU',
-    signalType: 'GPIO'
+    cameraView: CameraType.FRONT_FACING_VRU,
+    signalType: SignalType.GPIO
   });
   const [isEditing, setIsEditing] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
@@ -130,8 +130,8 @@ const Projects: React.FC = () => {
       name: '',
       description: '',
       cameraModel: '',
-      cameraView: 'Front-facing VRU',
-      signalType: 'GPIO'
+      cameraView: CameraType.FRONT_FACING_VRU,
+      signalType: SignalType.GPIO
     });
     setFormErrors({});
     setFormError(null);
@@ -464,12 +464,13 @@ const Projects: React.FC = () => {
             <Select 
               label="Camera View"
               value={formData.cameraView}
-              onChange={(e) => handleFormChange('cameraView', e.target.value as any)}
+              onChange={(e) => handleFormChange('cameraView', e.target.value as CameraType)}
               disabled={formLoading}
             >
-              <MenuItem value="Front-facing VRU">Front-facing VRU</MenuItem>
-              <MenuItem value="Rear-facing VRU">Rear-facing VRU</MenuItem>
-              <MenuItem value="In-Cab Driver Behavior">In-Cab Driver Behavior</MenuItem>
+              <MenuItem value={CameraType.FRONT_FACING_VRU}>Front-facing VRU</MenuItem>
+              <MenuItem value={CameraType.REAR_FACING_VRU}>Rear-facing VRU</MenuItem>
+              <MenuItem value={CameraType.IN_CAB_DRIVER_BEHAVIOR}>In-Cab Driver Behavior</MenuItem>
+              <MenuItem value={CameraType.MULTI_ANGLE_SCENARIOS}>Multi-angle</MenuItem>
             </Select>
           </FormControl>
           
@@ -478,12 +479,13 @@ const Projects: React.FC = () => {
             <Select 
               label="Signal Type"
               value={formData.signalType}
-              onChange={(e) => handleFormChange('signalType', e.target.value)}
+              onChange={(e) => handleFormChange('signalType', e.target.value as SignalType)}
               disabled={formLoading}
             >
-              <MenuItem value="GPIO">GPIO</MenuItem>
-              <MenuItem value="Network Packet">Network Packet</MenuItem>
-              <MenuItem value="Serial">Serial</MenuItem>
+              <MenuItem value={SignalType.GPIO}>GPIO</MenuItem>
+              <MenuItem value={SignalType.NETWORK_PACKET}>Network Packet</MenuItem>
+              <MenuItem value={SignalType.SERIAL}>Serial</MenuItem>
+              <MenuItem value={SignalType.CAN_BUS}>CAN Bus</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>

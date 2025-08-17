@@ -1,3 +1,27 @@
+// Architecture-compliant enums
+export enum CameraType {
+  FRONT_FACING_VRU = "Front-facing VRU",
+  REAR_FACING_VRU = "Rear-facing VRU",
+  IN_CAB_DRIVER_BEHAVIOR = "In-Cab Driver Behavior",
+  MULTI_ANGLE_SCENARIOS = "Multi-angle"
+}
+
+export enum SignalType {
+  GPIO = "GPIO",
+  NETWORK_PACKET = "Network Packet",
+  SERIAL = "Serial",
+  CAN_BUS = "CAN Bus"
+}
+
+export enum ProjectStatus {
+  DRAFT = "draft",
+  ACTIVE = "active",
+  TESTING = "testing",
+  ANALYSIS = "analysis",
+  COMPLETED = "completed",
+  ARCHIVED = "archived"
+}
+
 // API Response Types
 export interface ApiResponse<T = any> {
   data?: T;
@@ -13,10 +37,10 @@ export interface Project {
   description?: string;
   cameraModel: string;
   camera_model?: string; // API response alias
-  cameraView: 'Front-facing VRU' | 'Rear-facing VRU' | 'In-Cab Driver Behavior';
-  camera_view?: string; // API response alias
-  signalType: string;
-  signal_type?: string; // API response alias
+  cameraView: CameraType;
+  camera_view?: CameraType; // API response alias
+  signalType: SignalType;
+  signal_type?: SignalType; // API response alias
   lensType?: string;
   lens_type?: string; // API response alias
   resolution?: string;
@@ -26,7 +50,7 @@ export interface Project {
   created_at?: string; // API response alias
   updatedAt?: string;
   updated_at?: string; // API response alias
-  status: 'Active' | 'Completed' | 'Draft';
+  status: ProjectStatus;
   testsCount?: number;
   accuracy?: number;
   userId?: string;
@@ -37,17 +61,17 @@ export interface ProjectCreate {
   name: string;
   description: string;
   cameraModel: string;
-  cameraView: 'Front-facing VRU' | 'Rear-facing VRU' | 'In-Cab Driver Behavior';
-  signalType: string;
+  cameraView: CameraType;
+  signalType: SignalType;
 }
 
 export interface ProjectUpdate {
   name?: string;
   description?: string;
   cameraModel?: string;
-  cameraView?: 'Front-facing VRU' | 'Rear-facing VRU' | 'In-Cab Driver Behavior';
-  signalType?: string;
-  status?: 'Active' | 'Completed' | 'Draft';
+  cameraView?: CameraType;
+  signalType?: SignalType;
+  status?: ProjectStatus;
 }
 
 // Video Types
@@ -123,7 +147,7 @@ export interface DetectionEvent {
   id: string;
   testSessionId: string;
   timestamp: number;
-  detectionType: 'pedestrian' | 'cyclist' | 'vehicle';
+  detectionType: 'pedestrian' | 'cyclist' | 'motorcyclist' | 'vehicle';
   confidence: number;
   boundingBox: BoundingBox;
   isGroundTruth: boolean;
@@ -177,6 +201,98 @@ export interface User {
   updatedAt?: string;
 }
 
+
+// New interfaces for architectural features
+export interface PassFailCriteria {
+  id?: string;
+  projectId?: string;
+  minPrecision: number;
+  minRecall: number;
+  minF1Score: number;
+  maxLatencyMs: number;
+  createdAt?: string;
+}
+
+export interface StatisticalValidation {
+  id: string;
+  testSessionId: string;
+  confidenceInterval: number;
+  pValue: number;
+  statisticalSignificance: boolean;
+  trendAnalysis: Record<string, any>;
+  createdAt: string;
+}
+
+export interface VideoAssignment {
+  id: string;
+  projectId: string;
+  videoId: string;
+  assignmentReason: string;
+  intelligentMatch: boolean;
+  createdAt: string;
+}
+
+export interface SignalProcessingResult {
+  id: string;
+  signalType: SignalType;
+  processingTime: number;
+  success: boolean;
+  metadata: Record<string, any>;
+  createdAt: string;
+}
+
+export interface VideoLibraryOrganization {
+  organizedFolders: string[];
+  totalVideos: number;
+  organizationStrategy: string;
+  metadataExtracted: boolean;
+}
+
+export interface VideoQualityAssessment {
+  videoId: string;
+  qualityScore: number;
+  resolutionQuality: string;
+  frameRateQuality: string;
+  brightnessAnalysis: Record<string, any>;
+  noiseAnalysis: Record<string, any>;
+}
+
+export interface DetectionPipelineConfig {
+  confidenceThreshold: number;
+  nmsThreshold: number;
+  modelName: string;
+  targetClasses: string[];
+}
+
+export interface DetectionPipelineResult {
+  videoId: string;
+  detections: Array<Record<string, any>>;
+  processingTime: number;
+  modelUsed: string;
+  totalDetections: number;
+  confidenceDistribution: Record<string, number>;
+}
+
+export interface EnhancedDashboardStats extends DashboardStats {
+  confidence_intervals: {
+    precision: [number, number];
+    recall: [number, number];
+    f1_score: [number, number];
+  };
+  trend_analysis: {
+    accuracy: 'improving' | 'declining' | 'stable';
+    detectionRate: 'improving' | 'declining' | 'stable';
+    performance: 'improving' | 'declining' | 'stable';
+  };
+  signal_processing_metrics: {
+    totalSignals: number;
+    successRate: number;
+    avgProcessingTime: number;
+  };
+  average_accuracy: number;
+  active_tests: number;
+  total_detections: number;
+}
 
 // Error Types
 export interface ApiError {
