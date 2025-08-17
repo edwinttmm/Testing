@@ -41,19 +41,46 @@ const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       
-      // Fetch dashboard stats and recent test sessions
-      const [statsData, sessionsData] = await Promise.all([
+      // Fetch dashboard stats and recent test sessions with individual error handling
+      const [statsResult, sessionsResult] = await Promise.allSettled([
         getDashboardStats(),
         getTestSessions()
       ]);
       
-      setStats(statsData);
-      // Get the 4 most recent sessions
-      const recentSessionsData = sessionsData
-        .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime())
-        .slice(0, 4);
-      setRecentSessions(recentSessionsData);
-      setError(null);
+      // Handle stats data
+      if (statsResult.status === 'fulfilled') {
+        setStats(statsResult.value);
+      } else {
+        console.error('Failed to fetch dashboard stats:', statsResult.reason);
+        setStats({
+          projectCount: 0,
+          videoCount: 0,
+          testCount: 0,
+          averageAccuracy: 0,
+          activeTests: 0,
+          totalDetections: 0
+        });
+      }
+      
+      // Handle sessions data
+      if (sessionsResult.status === 'fulfilled') {
+        const recentSessionsData = sessionsResult.value
+          .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime())
+          .slice(0, 4);
+        setRecentSessions(recentSessionsData);
+      } else {
+        console.error('Failed to fetch test sessions:', sessionsResult.reason);
+        setRecentSessions([]);
+      }
+      
+      // Only set error if both requests failed
+      if (statsResult.status === 'rejected' && sessionsResult.status === 'rejected') {
+        setError('Failed to load dashboard data');
+      } else if (statsResult.status === 'rejected' || sessionsResult.status === 'rejected') {
+        setError('Some dashboard data may be incomplete');
+      } else {
+        setError(null);
+      }
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
       setError('Failed to load dashboard statistics');
