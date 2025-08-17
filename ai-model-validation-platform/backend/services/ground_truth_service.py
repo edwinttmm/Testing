@@ -1,12 +1,24 @@
 import cv2
 import numpy as np
-from ultralytics import YOLO
 from typing import List, Dict, Any
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import os
-import torch
+import logging
 from sqlalchemy.orm import Session
+
+# Optional ML dependencies - make them optional for Docker environments without ML packages
+try:
+    from ultralytics import YOLO
+    import torch
+    ML_AVAILABLE = True
+except ImportError as e:
+    YOLO = None
+    torch = None
+    ML_AVAILABLE = False
+    logging.warning(f"ML dependencies not available: {e}. Using fallback mode.")
+
+logger = logging.getLogger(__name__)
 
 from database import SessionLocal
 from crud import create_ground_truth_object, update_video_status, get_video
@@ -14,12 +26,23 @@ from schemas import GroundTruthResponse, GroundTruthObject as GroundTruthObjectS
 
 class GroundTruthService:
     def __init__(self):
-        # Configure torch to allow unsafe loading for YOLO models
-        torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])
-        
-        # Load YOLOv8 model
-        self.model = YOLO('yolov8n.pt')  # Using nano version for speed
+        self.ml_available = ML_AVAILABLE
+        self.model = None
         self.executor = ThreadPoolExecutor(max_workers=2)
+        
+        if self.ml_available:
+            try:
+                # Configure torch to allow unsafe loading for YOLO models
+                torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])
+                
+                # Load YOLOv8 model
+                self.model = YOLO('yolov8n.pt')  # Using nano version for speed
+                logger.info("YOLO model loaded successfully")
+            except Exception as e:
+                logger.warning(f"Failed to load YOLO model: {e}. Using fallback mode.")
+                self.ml_available = False
+        else:
+            logger.warning("ML dependencies not available. Using fallback mode.")
         
         # Class mapping for VRU detection
         self.vru_classes = {
@@ -53,6 +76,12 @@ class GroundTruthService:
             # Update video status to processing
             update_video_status(db, video_id, "processing")
             
+            if not self.ml_available:
+                logger.warning(f"ML not available. Skipping ground truth generation for video {video_id}")
+                # Update video status to indicate ML is not available
+                update_video_status(db, video_id, "ml_unavailable")
+                return
+            
             # Process video with YOLO  
             detections = self._extract_detections(video_file_path)
             
@@ -82,17 +111,22 @@ class GroundTruthService:
     
     def _extract_detections(self, video_path: str) -> List[Dict[str, Any]]:
         """Extract detections from video using YOLO"""
+        if not self.ml_available or not self.model:
+            logger.warning("ML not available. Returning empty detections.")
+            return []
+        
         detections = []
         
-        # Open video
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = 0
-        
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        try:
+            # Open video
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = 0
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
             
             # Calculate timestamp in seconds
             timestamp = frame_count / fps
@@ -133,8 +167,12 @@ class GroundTruthService:
             if frame_count % 5 != 0:
                 continue
         
-        cap.release()
-        return detections
+            cap.release()
+            return detections
+            
+        except Exception as e:
+            logger.error(f"Error processing video {video_path}: {e}")
+            return []
     
     def get_ground_truth(self, video_id: str) -> GroundTruthResponse:
         """Get ground truth data for a video"""
