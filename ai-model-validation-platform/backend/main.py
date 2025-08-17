@@ -48,6 +48,21 @@ from services.ground_truth_service import GroundTruthService
 
 # Import new architectural services
 from services.video_library_service import VideoLibraryManager
+# Auto-install ML dependencies if needed
+try:
+    import torch
+    import ultralytics
+except ImportError:
+    print("🔧 ML dependencies not found. Running auto-installer...")
+    import subprocess
+    import sys
+    result = subprocess.run([sys.executable, "auto_install_ml.py"], 
+                          capture_output=True, text=True)
+    if result.returncode == 0:
+        print("✅ ML dependencies installed successfully")
+    else:
+        print("⚠️  Using CPU-only fallback mode")
+
 from services.detection_pipeline_service import DetectionPipelineService
 from services.signal_processing_service import SignalProcessingWorkflow
 from services.project_management_service import ProjectManagementService

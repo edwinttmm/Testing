@@ -157,7 +157,6 @@ class ApiCache {
 
   // Get cache statistics
   getStats() {
-    const now = Date.now();
     const entries = Array.from(this.cache.values());
     const expired = entries.filter(entry => this.isExpired(entry)).length;
     const valid = entries.length - expired;

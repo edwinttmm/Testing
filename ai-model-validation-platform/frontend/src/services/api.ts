@@ -1,17 +1,12 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import {
-  ApiResponse,
-  ApiError,
   Project,
   ProjectCreate,
   ProjectUpdate,
   VideoFile,
-  VideoUpload,
   TestSession,
   TestSessionCreate,
-  DashboardStats,
   ChartData,
-  User,
   PassFailCriteria,
   StatisticalValidation,
   VideoAssignment,
@@ -21,10 +16,9 @@ import {
   DetectionPipelineConfig,
   DetectionPipelineResult,
   EnhancedDashboardStats,
-  CameraType,
   SignalType
 } from './types';
-import { NetworkError, AppError as CustomApiError, ErrorFactory } from '../utils/errorTypes';
+import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 
@@ -193,7 +187,7 @@ class ApiService {
     data?: any,
     config?: any
   ): Promise<T> {
-    const cacheKey = method + url;
+    // Cache key generation for request tracking
     const params = config?.params;
     
     // Only cache GET requests

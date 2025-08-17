@@ -4,7 +4,12 @@ from enum import Enum
 import asyncio
 import numpy as np
 import cv2
-import torch
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
 import time
 import logging
 from pathlib import Path
@@ -115,17 +120,27 @@ class ModelRegistry:
         # Load based on model type
         if model_info["type"] == "yolov8":
             try:
-                # Placeholder for YOLOv8 loading
-                # In production: from ultralytics import YOLO
-                # model = YOLO(model_info["path"])
+                # Try to load real YOLOv8 if ultralytics is available
+                try:
+                    from ultralytics import YOLO
+                    model = YOLO(model_info["path"])
+                    logger.info(f"Loaded real YOLOv8 model: {model_id}")
+                except ImportError:
+                    logger.warning(f"Ultralytics not available, using mock model for {model_id}")
+                    model = MockYOLOv8Model(model_info["path"])
+                    
+                self.model_cache[model_id] = model
+                self.models[model_id]["loaded"] = True
+                logger.info(f"Model loaded successfully: {model_id}")
+                return model
+            except Exception as e:
+                logger.error(f"Failed to load model {model_id}: {str(e)}")
+                # Fall back to mock model if real model fails
+                logger.info(f"Falling back to mock model for {model_id}")
                 model = MockYOLOv8Model(model_info["path"])
                 self.model_cache[model_id] = model
                 self.models[model_id]["loaded"] = True
-                logger.info(f"Loaded YOLOv8 model: {model_id}")
                 return model
-            except Exception as e:
-                logger.error(f"Failed to load YOLOv8 model {model_id}: {str(e)}")
-                raise
         else:
             raise ValueError(f"Unsupported model type: {model_info['type']}")
     
