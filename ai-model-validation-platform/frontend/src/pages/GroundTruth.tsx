@@ -110,8 +110,9 @@ const GroundTruth: React.FC = () => {
       setVideos(videoList);
     } catch (err) {
       const apiError = err as ApiError;
-      setError(`Failed to load videos: ${apiError.message}`);
-      console.error('Error loading videos:', err);
+      const errorMsg = apiError.message || 'Backend connection failed';
+      setError(`Failed to load videos: ${errorMsg}`);
+      console.error('Error loading videos:', errorMsg, err);
     }
   }, [projectId]);
 
@@ -216,18 +217,21 @@ const GroundTruth: React.FC = () => {
         
       } catch (err) {
         const apiError = err as ApiError;
+        const errorMsg = apiError.message || 'Backend connection failed - upload failed';
         setUploadingVideos(prev => 
           prev.map(v => 
             v.id === uploadingVideo.id 
-              ? { ...v, status: 'failed', error: apiError.message }
+              ? { ...v, status: 'failed', error: errorMsg }
               : v
           )
         );
         
         setUploadErrors(prev => [...prev, {
-          message: apiError.message || 'Upload failed',
+          message: errorMsg,
           fileName: uploadingVideo.name
         }]);
+        
+        console.error('Upload failed:', errorMsg, err);
       }
     });
     

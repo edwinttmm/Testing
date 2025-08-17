@@ -45,7 +45,7 @@ class ApiService {
         return config;
       },
       (error) => {
-        return Promise.reject(this.handleError(error));
+        throw this.handleError(error);
       }
     );
 
@@ -55,7 +55,7 @@ class ApiService {
         return response;
       },
       (error: AxiosError) => {
-        return Promise.reject(this.handleError(error));
+        throw this.handleError(error);
       }
     );
   }

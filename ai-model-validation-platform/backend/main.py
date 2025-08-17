@@ -63,7 +63,7 @@ except ImportError:
     else:
         print("⚠️  Using CPU-only fallback mode")
 
-from services.detection_pipeline_service import DetectionPipelineService
+from services.detection_pipeline_service import DetectionPipeline as DetectionPipelineService
 from services.signal_processing_service import SignalProcessingWorkflow
 from services.project_management_service import ProjectManagementService
 from services.validation_analysis_service import ValidationAnalysisService

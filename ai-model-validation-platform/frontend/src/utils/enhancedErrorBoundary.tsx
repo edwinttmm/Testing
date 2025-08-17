@@ -105,10 +105,17 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
 
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     if (this.props.context && event.reason) {
-      console.warn(`Unhandled promise rejection in ${this.props.context}:`, event.reason);
+      // Safely serialize the rejection reason
+      const reasonStr = this.serializeError(event.reason);
+      console.warn(`Unhandled promise rejection in ${this.props.context}:`, reasonStr, event.reason);
+      
+      // Prevent default unhandled rejection behavior
+      event.preventDefault();
       
       // Create synthetic error for error boundary
-      const syntheticError = new Error(`Unhandled Promise Rejection: ${event.reason}`);
+      const syntheticError = new Error(`Unhandled Promise Rejection: ${reasonStr}`);
+      // Preserve original error details
+      (syntheticError as any).originalReason = event.reason;
       this.handleSyntheticError(syntheticError, 'promise-rejection');
     }
   };
@@ -285,6 +292,40 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
 
   private static generateErrorId(): string {
     return `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private serializeError(error: any): string {
+    try {
+      // Handle different error types
+      if (error === null) return 'null';
+      if (error === undefined) return 'undefined';
+      if (typeof error === 'string') return error;
+      if (typeof error === 'number' || typeof error === 'boolean') return String(error);
+      
+      // Handle Error objects
+      if (error instanceof Error) {
+        return `${error.name}: ${error.message}`;
+      }
+      
+      // Handle objects with message property
+      if (error && typeof error === 'object' && error.message) {
+        return String(error.message);
+      }
+      
+      // Handle objects with toString method
+      if (error && typeof error.toString === 'function') {
+        const str = error.toString();
+        if (str !== '[object Object]') {
+          return str;
+        }
+      }
+      
+      // Fallback to JSON serialization
+      return JSON.stringify(error, null, 2);
+    } catch (serializationError) {
+      // Ultimate fallback
+      return `[Unserializable Error: ${typeof error}]`;
+    }
   }
 
   private logError(error: Error, errorInfo: EnhancedErrorInfo, errorType: EnhancedErrorType, errorId: string) {
