@@ -1,5 +1,5 @@
 // Test suite to verify Projects page functionality
-import { Project, ProjectCreate } from '../services/types';
+import { Project, ProjectCreate, CameraType, SignalType, ProjectStatus } from '../services/types';
 
 // Test scenarios for the Projects page
 export const projectTestScenarios = {
@@ -40,11 +40,11 @@ export const expectedProjectStructure: Project = {
   name: 'string',
   description: 'string',
   cameraModel: 'string',
-  cameraView: 'Front-facing VRU',
-  signalType: 'string',
+  cameraView: 'Front-facing VRU' as CameraType, // Assuming 'Front-facing VRU' is a valid CameraType
+  signalType: 'string' as SignalType, // Assuming 'string' is a valid SignalType, replace with actual value if needed
   createdAt: 'ISO date string',
   updatedAt: 'ISO date string',
-  status: 'Active',
+  status: ProjectStatus.ACTIVE, // Using the correct enum value
   testsCount: 0,
   accuracy: 0,
   userId: 'string'
