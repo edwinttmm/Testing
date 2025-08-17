@@ -128,15 +128,19 @@ class GroundTruthService:
                 if not ret:
                     break
             
-            # Calculate timestamp in seconds
-            timestamp = frame_count / fps
-            
-            # Run YOLO inference
-            results = self.model(frame, verbose=False)
-            
-            # Process detections
-            for result in results:
-                boxes = result.boxes
+                frame_count += 1
+
+                # Process every 5th frame for efficiency
+                if frame_count % 5 != 0:
+                    continue
+
+                # Calculate timestamp in seconds
+                timestamp = (frame_count - 1) / fps
+                
+                # Run YOLO inference
+                results = self.model(frame, verbose=False)
+
+                # Process detections
                 if boxes is not None:
                     for box in boxes:
                         # Get class ID and confidence
@@ -160,12 +164,6 @@ class GroundTruthService:
                                 "confidence": confidence
                             }
                             detections.append(detection)
-            
-            frame_count += 1
-            
-            # Process every 5th frame for efficiency
-            if frame_count % 5 != 0:
-                continue
         
             cap.release()
             return detections
