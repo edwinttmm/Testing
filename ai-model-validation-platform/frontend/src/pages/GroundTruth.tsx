@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -93,15 +94,23 @@ const GroundTruth: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Mock project ID - in real app this would come from route params or context
-  const projectId = 'f4ad5fe6-9cdf-450e-8897-bf0d719b25c2'; // Using first available project ID
+  // Get project ID from URL params or use default
+  const { id: urlProjectId } = useParams<{ id: string }>();
+  const [projectId, setProjectId] = useState<string | null>(urlProjectId || null);
 
   // Load videos on component mount
   useEffect(() => {
-    loadVideos();
+    if (projectId) {
+      loadVideos();
+    }
   }, [projectId]);
 
   const loadVideos = async () => {
+    if (!projectId) {
+      setError('No project ID provided');
+      return;
+    }
+    
     try {
       setError(null);
       const videoList = await apiService.getVideos(projectId);
@@ -168,6 +177,11 @@ const GroundTruth: React.FC = () => {
     
     // Upload files concurrently
     const uploadPromises = newUploadingVideos.map(async (uploadingVideo) => {
+      if (!projectId) {
+        setError('No project ID available for upload');
+        return;
+      }
+      
       try {
         const uploadedVideo = await apiService.uploadVideo(
           projectId,
