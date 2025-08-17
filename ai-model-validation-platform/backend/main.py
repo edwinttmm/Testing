@@ -23,7 +23,7 @@ from schemas import (
     ProjectCreate, ProjectResponse, ProjectUpdate,
     VideoUploadResponse, GroundTruthResponse,
     TestSessionCreate, TestSessionResponse,
-    DetectionEvent, ValidationResult
+    DetectionEvent as DetectionEventSchema, ValidationResult
 )
 
 from crud import (
@@ -713,7 +713,7 @@ async def list_test_sessions(
 # Raspberry Pi detection endpoint
 @app.post("/api/detection-events")
 async def receive_detection(
-    detection: DetectionEvent,
+    detection: DetectionEventSchema,
     db: Session = Depends(get_db)
 ):
     """Receive detection events from Raspberry Pi"""

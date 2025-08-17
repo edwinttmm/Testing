@@ -25,7 +25,8 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8080",
-        "http://127.0.0.1:8080"
+        "http://127.0.0.1:8080",
+        "https://3000-firebase-testinggit-1755382041749.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev"
     ]
     cors_credentials: bool = True
     cors_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
