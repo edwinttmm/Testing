@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pyth
 
 COPY . .
 
+# Auto-detect GPU and install appropriate ML dependencies
+RUN python auto_install_ml.py || echo "Using CPU-only fallback mode"
+
 EXPOSE 8000
 
 CMD ["uvicorn", "main:socketio_app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,19 +1,16 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import {
-  ApiResponse,
   ApiError,
   Project,
   ProjectCreate,
   ProjectUpdate,
   VideoFile,
-  VideoUpload,
   TestSession,
   TestSessionCreate,
   DashboardStats,
-  ChartData,
-  User
+  ChartData
 } from './types';
-import { NetworkError, AppError as CustomApiError, ErrorFactory } from '../utils/errorTypes';
+import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 

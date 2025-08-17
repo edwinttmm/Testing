@@ -1,0 +1,14 @@
+# Auto-generated ML requirements based on detected hardware
+# GPU detected: False (none)
+# Generated on: Linux-6.6.93+-x86_64-with-glibc2.39
+
+opencv-python-headless>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+torch>=2.0.0+cpu
+torchvision>=0.15.0+cpu
+torchaudio>=2.0.0+cpu
+ultralytics>=8.0.0
+
+# Extra index URLs used:
+# https://download.pytorch.org/whl/cpu

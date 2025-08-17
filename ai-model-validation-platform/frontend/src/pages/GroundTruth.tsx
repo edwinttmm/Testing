@@ -103,7 +103,7 @@ const GroundTruth: React.FC = () => {
     if (projectId) {
       loadVideos();
     }
-  }, [projectId]);
+  }, [projectId, loadVideos]);
 
   const loadVideos = async () => {
     if (!projectId) {
@@ -160,7 +160,7 @@ const GroundTruth: React.FC = () => {
     if (validFiles.length > 0) {
       uploadFiles(validFiles);
     }
-  }, []);
+  }, [uploadFiles]);
 
   const uploadFiles = async (files: File[]) => {
     const newUploadingVideos: UploadingVideo[] = files.map(file => ({
