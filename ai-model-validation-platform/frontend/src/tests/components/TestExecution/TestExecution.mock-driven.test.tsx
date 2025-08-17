@@ -8,6 +8,7 @@ import { jest } from '@jest/globals';
 import TestExecution from '../../../pages/TestExecution';
 import { apiService } from '../../../services/api';
 import { io } from 'socket.io-client';
+import { Project, CameraType, SignalType, ProjectStatus } from '../../../services/types';
 
 // Mock dependencies using London School approach - focus on interactions
 jest.mock('../../../services/api');
@@ -27,15 +28,15 @@ const createMockSocket = () => ({
 });
 
 // Mock data contracts
-const mockProjects = [
+const mockProjects: Project[] = [
   { 
     id: '1', 
     name: 'Test Project 1', 
     description: 'Description 1', 
     cameraModel: 'Test Camera Model 1',
-    cameraView: 'Front-facing VRU' as const,
-    signalType: 'Detection Signal',
-    status: 'Active' as const,
+    cameraView: CameraType.FrontFacingVRU,
+    signalType: SignalType.DetectionSignal,
+    status: ProjectStatus.ACTIVE,
     testsCount: 5,
     accuracy: 85.5,
     createdAt: '2023-01-01' 
@@ -46,8 +47,8 @@ const mockProjects = [
     description: 'Description 2',
     cameraModel: 'Test Camera Model 2',
     cameraView: 'Rear-facing VRU' as const,
-    signalType: 'Detection Signal',
-    status: 'Completed' as const,
+    signalType: SignalType.DetectionSignal,
+    status: ProjectStatus.COMPLETED,
     testsCount: 8,
     accuracy: 92.3,
     createdAt: '2023-01-02' 

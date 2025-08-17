@@ -280,6 +280,9 @@ class DetectionPipelineConfigSchema(BaseModel):
     model_name: str = "yolov8n"
     target_classes: List[str] = ["pedestrian", "cyclist", "motorcyclist"]
 
+    model_config = {'protected_namespaces': ()}
+
+
 class DetectionPipelineResponse(BaseModel):
     video_id: str
     detections: List[Dict[str, Any]]
@@ -287,6 +290,9 @@ class DetectionPipelineResponse(BaseModel):
     model_used: str
     total_detections: int
     confidence_distribution: Dict[str, int]
+
+    model_config = {'protected_namespaces': ()}
+
 
 class EnhancedDashboardStats(DashboardStats):
     confidence_intervals: Dict[str, List[float]]
