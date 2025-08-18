@@ -39,7 +39,7 @@ class WebSocketService {
   private lastError: Error | null = null;
 
   constructor(options: WebSocketServiceOptions = {}) {
-    this.url = options.url || process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
+    this.url = options.url || process.env.REACT_APP_WS_URL || 'ws://155.138.239.131:8000';
     this.options = {
       autoConnect: true,
       reconnection: true,
