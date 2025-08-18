@@ -1,5 +1,5 @@
 import { apiService } from '../api';
-import { Project, ProjectCreate } from '../types';
+import { Project, ProjectCreate, CameraType, SignalType, ProjectStatus } from '../types';
 
 // Mock axios
 jest.mock('axios');
@@ -17,10 +17,10 @@ describe('API Service', () => {
           name: 'Test Project',
           description: 'Test Description',
           cameraModel: 'Test Camera',
-          cameraView: 'Front-facing VRU',
-          signalType: 'GPIO',
+          cameraView: CameraType.FRONT_FACING_VRU,
+          signalType: SignalType.GPIO,
           createdAt: '2023-01-01',
-          status: 'Active',
+          status: ProjectStatus.ACTIVE,
           testsCount: 0,
           accuracy: 95.5,
         },
@@ -40,15 +40,15 @@ describe('API Service', () => {
         name: 'New Project',
         description: 'New Description',
         cameraModel: 'New Camera',
-        cameraView: 'Front-facing VRU',
-        signalType: 'GPIO',
+        cameraView: CameraType.FRONT_FACING_VRU,
+        signalType: SignalType.GPIO,
       };
 
       const createdProject: Project = {
         id: '2',
         ...newProject,
         createdAt: '2023-01-01',
-        status: 'Active',
+        status: ProjectStatus.ACTIVE,
         testsCount: 0,
         accuracy: 0,
       };
@@ -68,10 +68,10 @@ describe('API Service', () => {
         name: 'Test Project',
         description: 'Test Description',
         cameraModel: 'Test Camera',
-        cameraView: 'Front-facing VRU',
-        signalType: 'GPIO',
+        cameraView: CameraType.FRONT_FACING_VRU,
+        signalType: SignalType.GPIO,
         createdAt: '2023-01-01',
-        status: 'Active',
+        status: ProjectStatus.ACTIVE,
         testsCount: 0,
         accuracy: 95.5,
       };

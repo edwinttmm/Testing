@@ -55,13 +55,7 @@ describe('WebSocket Service Contracts - London School TDD', () => {
       const token = 'test-auth-token';
       
       // Simulate connection establishment
-      mockIo('http://localhost:8001', {
-        auth: { token },
-        transports: ['websocket', 'polling'],
-        timeout: 10000,
-        forceNew: true,
-        path: '/socket.io/'
-      });
+      mockIo();
       
       // Verify connection contract
       expect(mockIo).toHaveBeenCalledWith(
@@ -263,7 +257,7 @@ describe('WebSocket Service Contracts - London School TDD', () => {
       
       // Simulate connection error
       const mockError = new Error('Connection failed');
-      errorHandler(mockError);
+      errorHandler();
       
       expect(mockSocket.connected).toBe(false);
       expect(errorHandler).toHaveBeenCalledWith(mockError);
