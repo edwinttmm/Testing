@@ -1171,7 +1171,15 @@ async def generate_id(strategy: str):
         if strategy not in ["uuid4", "snowflake", "composite"]:
             raise HTTPException(status_code=400, detail="Invalid ID generation strategy")
         
-        generated_id = id_generation_service.generate_id(strategy)
+        # Map strategy string to appropriate method call
+        if strategy == "uuid4":
+            generated_id = id_generation_service._generate_uuid4_id()
+        elif strategy == "snowflake":
+            generated_id = id_generation_service._generate_snowflake_id()
+        elif strategy == "composite":
+            generated_id = id_generation_service._generate_composite_id()
+        else:
+            generated_id = id_generation_service._generate_uuid4_id()
         
         return {
             "id": generated_id,
