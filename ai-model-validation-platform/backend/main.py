@@ -66,7 +66,7 @@ except ImportError:
 from services.detection_pipeline_service import DetectionPipeline as DetectionPipelineService
 from services.signal_processing_service import SignalProcessingWorkflow
 from services.project_management_service import ProjectManager as ProjectManagementService
-from services.validation_analysis_service import ValidationAnalysisService
+from services.validation_analysis_service import ValidationWorkflow as ValidationAnalysisService
 # ID Generation Service - multiple classes available, importing the main one
 try:
     from services.id_generation_service import IDGenerator as IDGenerationService
