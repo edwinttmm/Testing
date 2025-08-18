@@ -162,6 +162,7 @@ const GroundTruth: React.FC = () => {
     if (validFiles.length > 0) {
       uploadFiles(validFiles);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const uploadFiles = useCallback(async (files: File[]) => {

@@ -165,14 +165,12 @@ export interface TestMetrics {
   totalDetections: number;
 }
 
-// Dashboard Types
+// Dashboard Types - Aligned with backend snake_case
 export interface DashboardStats {
-  projectCount: number;
-  videoCount: number;
-  testCount: number;
-  averageAccuracy: number;
-  activeTests: number;
-  totalDetections: number;
+  project_count: number;
+  video_count: number;
+  test_session_count: number;
+  detection_event_count: number;
 }
 
 export interface ChartData {
@@ -292,8 +290,6 @@ export interface EnhancedDashboardStats extends DashboardStats {
   average_accuracy: number;
   active_tests: number;
   total_detections: number;
-  testSessionCount: number;
-  detectionEventCount: number;
 }
 
 // Error Types

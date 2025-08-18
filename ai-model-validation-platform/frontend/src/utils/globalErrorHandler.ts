@@ -94,4 +94,5 @@ export const setupGlobalErrorHandling = () => {
 };
 
 // Export for use in components
-export default { serializeError, setupGlobalErrorHandling };
+const globalErrorHandler = { serializeError, setupGlobalErrorHandling };
+export default globalErrorHandler;

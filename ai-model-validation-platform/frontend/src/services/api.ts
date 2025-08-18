@@ -63,6 +63,7 @@ class ApiService {
 
   private handleError(error: AxiosError | any): AppError {
     const apiError: AppError = {
+      name: 'ApiError',
       message: 'An unexpected error occurred',
       status: 500,
     };
@@ -171,6 +172,7 @@ class ApiService {
       console.error('Error in error handling:', handlingError);
       
       const fallbackError: AppError = {
+        name: 'UnknownError',
         message: 'An unexpected error occurred',
         status: 500,
         code: 'UNKNOWN_ERROR'

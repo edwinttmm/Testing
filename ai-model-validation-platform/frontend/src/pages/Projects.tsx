@@ -34,7 +34,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { createProject, getProjects, updateProject, deleteProject } from '../services/enhancedApiService';
-import { Project as ApiProject, ProjectCreate, ProjectUpdate, CameraType, SignalType } from '../services/types';
+import { Project as ApiProject, ProjectCreate, ProjectUpdate, CameraType, SignalType, ProjectStatus } from '../services/types';
 import ProjectsDebug from '../components/ProjectsDebug';
 import ApiTestComponent from '../components/ApiTestComponent';
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog';
