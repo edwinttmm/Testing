@@ -67,7 +67,16 @@ from services.detection_pipeline_service import DetectionPipeline as DetectionPi
 from services.signal_processing_service import SignalProcessingWorkflow
 from services.project_management_service import ProjectManagementService
 from services.validation_analysis_service import ValidationAnalysisService
-from services.id_generation_service import IDGenerationService
+# ID Generation Service - multiple classes available, importing the main one
+try:
+    from services.id_generation_service import IDGenerator as IDGenerationService
+except ImportError:
+    # Fallback - create a simple ID generator
+    class IDGenerationService:
+        @staticmethod
+        def generate_id():
+            import uuid
+            return str(uuid.uuid4())
 
 Base.metadata.create_all(bind=engine)
 

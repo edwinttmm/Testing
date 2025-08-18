@@ -133,6 +133,11 @@ def create_ml_requirements():
         "numpy>=1.24.0"
     ]
     
+    # Hardware interface requirements (always try to install)
+    hardware_requirements = [
+        "pyserial>=3.5"  # For serial communication
+    ]
+    
     # GPU-specific requirements
     gpu_requirements = []
     extra_index_urls = []
@@ -179,6 +184,9 @@ def create_ml_requirements():
     # Install packages
     logger.info("📥 Installing base ML packages...")
     install_packages(base_requirements)
+    
+    logger.info("🔌 Installing hardware interface packages...")
+    install_packages(hardware_requirements)
     
     if gpu_requirements:
         logger.info("🚀 Installing GPU/compute packages...")

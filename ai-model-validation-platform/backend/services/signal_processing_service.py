@@ -5,7 +5,12 @@ import asyncio
 import time
 import logging
 import json
-import serial
+try:
+    import serial
+    SERIAL_AVAILABLE = True
+except ImportError:
+    SERIAL_AVAILABLE = False
+    serial = None
 import socket
 import struct
 from abc import ABC, abstractmethod
@@ -272,6 +277,11 @@ class SerialSignalHandler(SignalHandler):
     
     async def connect(self):
         """Connect to serial device"""
+        if not SERIAL_AVAILABLE:
+            logger.warning("pyserial not available - using mock serial connection")
+            self.serial_connection = MockSerialConnection()
+            return
+            
         try:
             self.serial_connection = serial.Serial(
                 self.device_path,
@@ -281,6 +291,8 @@ class SerialSignalHandler(SignalHandler):
             logger.info(f"Connected to serial device {self.device_path}")
         except Exception as e:
             logger.error(f"Failed to connect to serial device: {str(e)}")
+            # Fallback to mock connection
+            self.serial_connection = MockSerialConnection()
             # Create mock connection for testing
             self.serial_connection = MockSerialConnection()
     
