@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import { AppError } from '../utils/errorTypes';
 import {
   Project,
   ProjectCreate,
@@ -60,8 +61,8 @@ class ApiService {
     );
   }
 
-  private handleError(error: AxiosError | any): ApiError {
-    const apiError: ApiError = {
+  private handleError(error: AxiosError | any): AppError {
+    const apiError: AppError = {
       message: 'An unexpected error occurred',
       status: 500,
     };
@@ -169,7 +170,7 @@ class ApiService {
       // Fallback error handling if something goes wrong in error processing
       console.error('Error in error handling:', handlingError);
       
-      const fallbackError: ApiError = {
+      const fallbackError: AppError = {
         message: 'An unexpected error occurred',
         status: 500,
         code: 'UNKNOWN_ERROR'

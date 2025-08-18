@@ -3,6 +3,7 @@ import { Box, Button, Typography, Alert, Paper } from '@mui/material';
 import { healthCheck, getProjects, createProject } from '../services/api';
 import ErrorBoundary from './ui/ErrorBoundary';
 import { ErrorFactory } from '../utils/errorTypes';
+import { CameraType, SignalType } from '../services/types';
 
 const ApiTestComponent: React.FC = () => {
   const [healthStatus, setHealthStatus] = useState<string>('');
@@ -63,8 +64,8 @@ const ApiTestComponent: React.FC = () => {
         name: 'Test Project ' + Date.now(),
         description: 'API Test Project',
         cameraModel: 'Test Camera',
-        cameraView: 'Front-facing VRU' as const,
-        signalType: 'pedestrian'
+        cameraView: CameraType.FRONT_FACING_VRU,
+        signalType: SignalType.GPIO
       };
       const result = await createProject(testProject);
       // Create project completed

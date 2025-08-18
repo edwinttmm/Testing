@@ -214,11 +214,11 @@ const Projects: React.FC = () => {
 
   const getStatusColor = (status: Project['status']) => {
     switch (status) {
-      case 'Active':
+      case ProjectStatus.ACTIVE:
         return 'success';
-      case 'Completed':
+      case ProjectStatus.COMPLETED:
         return 'info';
-      case 'Draft':
+      case ProjectStatus.DRAFT:
         return 'warning';
       default:
         return 'default';

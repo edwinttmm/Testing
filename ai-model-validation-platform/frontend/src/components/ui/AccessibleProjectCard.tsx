@@ -20,7 +20,7 @@ import {
   Delete,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { Project } from '../../services/types';
+import { Project, ProjectStatus } from '../../services/types';
 
 interface AccessibleProjectCardProps {
   project: Project;
@@ -40,11 +40,11 @@ const AccessibleProjectCard: React.FC<AccessibleProjectCardProps> = ({
 
   const getStatusColor = (status: Project['status']): "success" | "info" | "warning" | "default" => {
     switch (status) {
-      case 'Active':
+      case ProjectStatus.ACTIVE:
         return 'success';
-      case 'Completed':
+      case ProjectStatus.COMPLETED:
         return 'info';
-      case 'Draft':
+      case ProjectStatus.DRAFT:
         return 'warning';
       default:
         return 'default';

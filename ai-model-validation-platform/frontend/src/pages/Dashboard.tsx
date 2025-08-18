@@ -62,8 +62,8 @@ const Dashboard: React.FC = () => {
           averageAccuracy: 0,
           activeTests: 0,
           totalDetections: 0,
-          test_session_count: 0,
-          detection_event_count: 0,
+          testSessionCount: 0,
+          detectionEventCount: 0,
           confidence_intervals: {
             precision: [0, 0],
             recall: [0, 0],
@@ -115,8 +115,8 @@ const Dashboard: React.FC = () => {
         averageAccuracy: 0,
         activeTests: 0,
         totalDetections: 0,
-        test_session_count: 0,
-        detection_event_count: 0,
+        testSessionCount: 0,
+        detectionEventCount: 0,
         confidence_intervals: {
           precision: [0, 0],
           recall: [0, 0],
