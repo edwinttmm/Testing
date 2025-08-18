@@ -99,10 +99,14 @@ def install_packages(packages, extra_index_urls=None):
     for package in packages:
         logger.info(f"📦 Installing {package}...")
         
-        cmd = f'"{python_exe}" -m pip install {package}'
+        # Add SSL and certificate options for Docker environments
+        cmd = f'"{python_exe}" -m pip install {package} --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org'
         if extra_index_urls:
             for url in extra_index_urls:
                 cmd += f' --extra-index-url {url}'
+                # Add trusted host for extra index URLs
+                if 'pytorch.org' in url:
+                    cmd += ' --trusted-host download.pytorch.org'
         
         result = run_command(cmd, check=False, capture_output=True)
         
@@ -115,7 +119,7 @@ def install_packages(packages, extra_index_urls=None):
             # Try alternative installation methods
             if 'torch' in package:
                 logger.info("🔄 Trying CPU-only PyTorch installation...")
-                cpu_cmd = f'"{python_exe}" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu'
+                cpu_cmd = f'"{python_exe}" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --trusted-host download.pytorch.org --trusted-host pypi.org --trusted-host files.pythonhosted.org'
                 cpu_result = run_command(cpu_cmd, check=False)
                 if cpu_result and cpu_result.returncode == 0:
                     logger.info("✅ CPU-only PyTorch installed successfully")
@@ -258,6 +262,15 @@ def main():
     logger.info("🚀 Starting intelligent ML dependency installation...")
     logger.info(f"🖥️  Platform: {platform.platform()}")
     logger.info(f"🐍 Python: {sys.version}")
+    
+    # Apply SSL fixes for Docker environments
+    try:
+        from pip_ssl_fix import fix_ssl_certificates
+        fix_ssl_certificates()
+    except ImportError:
+        logger.info("🔧 Applying basic SSL bypass...")
+        import os
+        os.environ['PYTHONHTTPSVERIFY'] = '0'
     
     try:
         # Detect hardware and install appropriate packages
