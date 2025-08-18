@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "155.138.239.131:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -22,7 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "155.138.239.131:6379:6379"
     volumes:
       - redis_data:/data
 
@@ -30,7 +30,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "155.138.239.131:8000:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/vru_validation
       - REDIS_URL=redis://redis:6379
@@ -50,9 +50,9 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      - "155.138.239.131:3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://155.138.239.131:8000
       - NODE_ENV=development
     depends_on:
       - backend
@@ -80,7 +80,7 @@ services:
       CVAT_POSTGRES_PASSWORD: cvat_password
       DJANGO_MODWSGI_EXTRA_ARGS: ""
     ports:
-      - "8080:8080"
+      - "155.138.239.131:8080:8080"
     volumes:
       - cvat_data:/home/django/data
       - cvat_keys:/home/django/keys

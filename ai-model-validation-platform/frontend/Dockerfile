@@ -22,5 +22,5 @@ COPY . .
 
 EXPOSE 3000
 
-# Use npx to ensure craco is found, with fallback to react-scripts
-CMD ["sh", "-c", "npx craco start || (echo 'Craco failed, trying react-scripts...' && npx react-scripts start)"]
+# Use npx to ensure craco is found, with fallback to react-scripts, bind to all interfaces
+CMD ["sh", "-c", "HOST=0.0.0.0 PORT=3000 npx craco start || (echo 'Craco failed, trying react-scripts...' && HOST=0.0.0.0 PORT=3000 npx react-scripts start)"]
