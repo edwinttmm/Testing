@@ -13,7 +13,8 @@ import {
   Assessment,
   TrendingUp,
 } from '@mui/icons-material';
-import { getDashboardStats, getTestSessions } from '../services/enhancedApiService';
+import { getDashboardStats } from '../services/api';
+import { getTestSessions } from '../services/enhancedApiService';
 import { EnhancedDashboardStats, TestSession } from '../services/types';
 import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
@@ -49,6 +50,7 @@ const Dashboard: React.FC = () => {
       
       // Handle stats data
       if (statsResult.status === 'fulfilled') {
+        // Backend already returns EnhancedDashboardStats
         setStats(statsResult.value);
       } else {
         const errorMsg = statsResult.reason instanceof Error 
@@ -56,29 +58,28 @@ const Dashboard: React.FC = () => {
           : 'Backend connection failed';
         console.error('Failed to fetch dashboard stats:', errorMsg, statsResult.reason);
         setStats({
-          projectCount: 0,
-          videoCount: 0,
-          testCount: 0,
-          averageAccuracy: 0,
-          activeTests: 0,
-          totalDetections: 0,
-          testSessionCount: 0,
-          detectionEventCount: 0,
+          project_count: 0,
+          video_count: 0,
+          test_session_count: 0,
+          detection_event_count: 0,
           confidence_intervals: {
             precision: [0, 0],
             recall: [0, 0],
             f1_score: [0, 0]
           },
           trend_analysis: {
-            accuracy: 'stable',
-            detectionRate: 'stable',
-            performance: 'stable'
+            accuracy: 'stable' as const,
+            detectionRate: 'stable' as const,
+            performance: 'stable' as const
           },
           signal_processing_metrics: {
             totalSignals: 0,
             successRate: 0,
             avgProcessingTime: 0
-          }
+          },
+          average_accuracy: 0,
+          active_tests: 0,
+          total_detections: 0
         });
       }
       
@@ -109,29 +110,28 @@ const Dashboard: React.FC = () => {
       setError('Failed to load dashboard statistics');
       // Fallback data for demo purposes
       setStats({
-        projectCount: 0,
-        videoCount: 0,
-        testCount: 0,
-        averageAccuracy: 0,
-        activeTests: 0,
-        totalDetections: 0,
-        testSessionCount: 0,
-        detectionEventCount: 0,
+        project_count: 0,
+        video_count: 0,
+        test_session_count: 0,
+        detection_event_count: 0,
         confidence_intervals: {
           precision: [0, 0],
           recall: [0, 0],
           f1_score: [0, 0]
         },
         trend_analysis: {
-          accuracy: 'stable',
-          detectionRate: 'stable',
-          performance: 'stable'
+          accuracy: 'stable' as const,
+          detectionRate: 'stable' as const,
+          performance: 'stable' as const
         },
         signal_processing_metrics: {
           totalSignals: 0,
           successRate: 0,
           avgProcessingTime: 0
-        }
+        },
+        average_accuracy: 0,
+        active_tests: 0,
+        total_detections: 0
       });
       setRecentSessions([]);
     } finally {
@@ -220,48 +220,48 @@ const Dashboard: React.FC = () => {
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <AccessibleStatCard
             title="Active Projects"
-            value={stats?.projectCount || 0}
+            value={stats?.project_count || 0}
             icon={<FolderOpen />}
             color="primary"
-            subtitle={stats?.projectCount ? `${stats.projectCount} total projects` : 'No projects yet'}
+            subtitle={stats?.project_count ? `${stats.project_count} total projects` : 'No projects yet'}
             loading={loading}
-            ariaLabel={`Active Projects: ${stats?.projectCount || 0} total projects`}
+            ariaLabel={`Active Projects: ${stats?.project_count || 0} total projects`}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <AccessibleStatCard
             title="Videos Processed"
-            value={stats?.videoCount || 0}
+            value={stats?.video_count || 0}
             icon={<VideoLibrary />}
             color="success"
-            subtitle={stats?.videoCount ? `${stats.videoCount} videos uploaded` : 'No videos yet'}
+            subtitle={stats?.video_count ? `${stats.video_count} videos uploaded` : 'No videos yet'}
             loading={loading}
-            ariaLabel={`Videos Processed: ${stats?.videoCount || 0} videos uploaded`}
+            ariaLabel={`Videos Processed: ${stats?.video_count || 0} videos uploaded`}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <AccessibleStatCard
             title="Tests Completed"
-            value={stats?.testCount || 0}
+            value={stats?.test_session_count || 0}
             icon={<Assessment />}
             color="info"
-            subtitle={stats?.testCount ? `${stats.testCount} test sessions` : 'No tests yet'}
+            subtitle={stats?.test_session_count ? `${stats.test_session_count} test sessions` : 'No tests yet'}
             loading={loading}
-            ariaLabel={`Tests Completed: ${stats?.testCount || 0} test sessions`}
+            ariaLabel={`Tests Completed: ${stats?.test_session_count || 0} test sessions`}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <AccessibleStatCard
             title="Detection Accuracy"
-            value={`${stats?.averageAccuracy || 0}%`}
+            value={`${stats?.average_accuracy || 0}%`}
             icon={<TrendingUp />}
             color="warning"
             subtitle={stats?.confidence_intervals ? `CI: ${stats.confidence_intervals.precision[0]}%-${stats.confidence_intervals.precision[1]}%` : "Average across all tests"}
             loading={loading}
-            ariaLabel={`Detection Accuracy: ${stats?.averageAccuracy || 0}% average across all tests`}
+            ariaLabel={`Detection Accuracy: ${stats?.average_accuracy || 0}% average across all tests`}
             trend={{
               value: 2.3,
               direction: stats?.trend_analysis?.accuracy === 'improving' ? 'up' : stats?.trend_analysis?.accuracy === 'declining' ? 'down' : 'up'
@@ -322,21 +322,21 @@ const Dashboard: React.FC = () => {
             <Box role="group" aria-label="System performance indicators">
               <AccessibleProgressItem
                 label="Active Test Sessions"
-                value={Math.min((stats?.activeTests || 0) * 20, 100)}
+                value={Math.min((stats?.active_tests || 0) * 20, 100)}
                 color="success"
-                ariaLabel={`Active test sessions: ${stats?.activeTests || 0}`}
+                ariaLabel={`Active test sessions: ${stats?.active_tests || 0}`}
               />
               <AccessibleProgressItem
                 label="Total Projects"
-                value={Math.min((stats?.projectCount || 0) * 10, 100)}
+                value={Math.min((stats?.project_count || 0) * 10, 100)}
                 color="info"
-                ariaLabel={`Total projects: ${stats?.projectCount || 0}`}
+                ariaLabel={`Total projects: ${stats?.project_count || 0}`}
               />
               <AccessibleProgressItem
                 label="Videos Processed"
-                value={Math.min((stats?.videoCount || 0) * 5, 100)}
+                value={Math.min((stats?.video_count || 0) * 5, 100)}
                 color="primary"
-                ariaLabel={`Videos processed: ${stats?.videoCount || 0}`}
+                ariaLabel={`Videos processed: ${stats?.video_count || 0}`}
               />
             </Box>
           </AccessibleCard>

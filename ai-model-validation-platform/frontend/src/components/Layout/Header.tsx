@@ -45,7 +45,7 @@ const Header: React.FC = () => {
         // Try to get notification count from dashboard stats
         const stats = await apiService.getDashboardStats();
         // For now, calculate from active tests or use a default
-        setNotificationCount(stats.activeTests || 0);
+        setNotificationCount(stats.active_tests || 0);
       } catch (error) {
         console.error('Failed to load notifications:', error);
         // Fallback to 0 if API fails

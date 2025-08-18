@@ -15,7 +15,7 @@ import {
   TrendingUp,
 } from '@mui/icons-material';
 import { getDashboardStats } from '../services/api';
-import { DashboardStats } from '../services/types';
+import { EnhancedDashboardStats } from '../services/types';
 
 interface StatCardProps {
   title: string;
@@ -59,7 +59,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, subtitle
 );
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<EnhancedDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,12 +75,28 @@ const Dashboard: React.FC = () => {
         setError('Failed to load dashboard statistics');
         // Fallback data for demo purposes
         setStats({
-          projectCount: 0,
-          videoCount: 0,
-          testCount: 0,
-          averageAccuracy: 94.2,
-          activeTests: 0,
-          totalDetections: 0
+          project_count: 0,
+          video_count: 0,
+          test_session_count: 0,
+          detection_event_count: 0,
+          confidence_intervals: {
+            precision: [0, 0],
+            recall: [0, 0],
+            f1_score: [0, 0]
+          },
+          trend_analysis: {
+            accuracy: 'stable' as const,
+            detectionRate: 'stable' as const,
+            performance: 'stable' as const
+          },
+          signal_processing_metrics: {
+            totalSignals: 0,
+            successRate: 0,
+            avgProcessingTime: 0
+          },
+          average_accuracy: 94.2,
+          active_tests: 0,
+          total_detections: 0
         });
       } finally {
         setLoading(false);
@@ -167,37 +183,37 @@ const Dashboard: React.FC = () => {
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <StatCard
             title="Active Projects"
-            value={stats?.projectCount || 0}
+            value={stats?.project_count || 0}
             icon={<FolderOpen />}
             color="primary"
-            subtitle={stats?.projectCount ? `${stats.projectCount} total projects` : 'No projects yet'}
+            subtitle={stats?.project_count ? `${stats.project_count} total projects` : 'No projects yet'}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <StatCard
             title="Videos Processed"
-            value={stats?.videoCount || 0}
+            value={stats?.video_count || 0}
             icon={<VideoLibrary />}
             color="success"
-            subtitle={stats?.videoCount ? `${stats.videoCount} videos uploaded` : 'No videos yet'}
+            subtitle={stats?.video_count ? `${stats.video_count} videos uploaded` : 'No videos yet'}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <StatCard
             title="Tests Completed"
-            value={stats?.testCount || 0}
+            value={stats?.test_session_count || 0}
             icon={<Assessment />}
             color="info"
-            subtitle={stats?.testCount ? `${stats.testCount} test sessions` : 'No tests yet'}
+            subtitle={stats?.test_session_count ? `${stats.test_session_count} test sessions` : 'No tests yet'}
           />
         </Box>
         
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <StatCard
             title="Detection Accuracy"
-            value={stats?.averageAccuracy || 0}
+            value={stats?.average_accuracy || 0}
             icon={<TrendingUp />}
             color="warning"
             subtitle="Average across all tests"

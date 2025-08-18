@@ -3,6 +3,8 @@
 export interface AppError extends Error {
   code?: string;
   statusCode?: number;
+  status?: number;
+  details?: any;
   context?: Record<string, any>;
   timestamp?: string;
   retry?: boolean;
