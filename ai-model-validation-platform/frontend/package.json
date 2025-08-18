@@ -42,7 +42,7 @@
     "webpack-bundle-analyzer": "^4.9.0"
   },
   "scripts": {
-    "start": "PORT=3000 craco start",
+    "start": "HOST=0.0.0.0 PORT=3000 craco start",
     "start:windows": "set PORT=3000 && craco start",
     "build": "craco build",
     "build:windows": "set NODE_ENV=production && craco build",

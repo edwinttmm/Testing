@@ -1,0 +1,25 @@
+# Lightweight ML alternatives for timeout/resource constrained environments
+# Use these instead of full PyTorch/OpenCV when builds timeout
+
+# Core image processing - lightweight alternatives
+pillow>=10.0.0
+numpy>=1.24.0
+imageio>=2.31.0  # Lightweight image I/O
+scikit-image>=0.21.0  # Lightweight image processing
+
+# Machine Learning - lightweight alternatives  
+scikit-learn>=1.3.0  # Traditional ML, much smaller than PyTorch
+joblib>=1.3.0  # Parallel processing for sklearn
+
+# Computer Vision - lightweight
+matplotlib>=3.7.0  # Basic plotting and image display
+opencv-python-headless>=4.8.0  # Try this first, fall back if it fails
+
+# Hardware interface
+pyserial>=3.5
+
+# Minimal PyTorch CPU (if timeouts allow)
+# torch==2.0.1+cpu --find-links https://download.pytorch.org/whl/torch_stable.html
+
+# Note: This provides basic functionality without huge downloads
+# Real PyTorch can be installed later via auto-installer if needed
