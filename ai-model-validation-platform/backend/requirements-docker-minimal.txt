@@ -1,0 +1,47 @@
+# Minimal requirements for Docker environments with SSL issues
+# Core framework - these should install successfully
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database - essential for backend
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+python-dotenv==1.0.0
+
+# Core validation
+pydantic[email]==2.5.0
+pydantic-settings==2.1.0
+
+# HTTP client
+httpx==0.25.2
+
+# File handling
+aiofiles==23.2.1
+
+# Logging
+structlog==23.2.0
+
+# WebSocket
+python-socketio==5.11.0
+python-engineio>=4.8.0
+
+# Basic image processing (fallback)
+pillow>=10.0.0
+numpy>=1.24.0
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+
+# Hardware interface (if SSL works)
+# pyserial>=3.5
+
+# Note: OpenCV, PyTorch, Ultralytics will be handled by auto-installer
+# with proper SSL bypass and fallback modes
