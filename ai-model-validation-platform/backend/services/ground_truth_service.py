@@ -139,6 +139,9 @@ class GroundTruthService:
                 
                 # Run YOLO inference
                 results = self.model(frame, verbose=False)
+                
+                # Extract boxes from results
+                boxes = results[0].boxes if results and len(results) > 0 else None
 
                 # Process detections
                 if boxes is not None:

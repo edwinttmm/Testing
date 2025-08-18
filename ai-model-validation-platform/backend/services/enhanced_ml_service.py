@@ -138,13 +138,12 @@ class EnhancedMLService:
                     timestamp=gt_obj["timestamp"],
                     class_label=gt_obj["class_label"],
                     confidence=gt_obj["confidence"],
-                    bbox_x1=gt_obj["bbox"]["x1"],
-                    bbox_y1=gt_obj["bbox"]["y1"],
-                    bbox_x2=gt_obj["bbox"]["x2"],
-                    bbox_y2=gt_obj["bbox"]["y2"],
-                    track_id=gt_obj.get("track_id"),
-                    detection_id=gt_obj.get("detection_id"),
-                    frame_number=gt_obj.get("frame_number")
+                    bounding_box={
+                        "x": gt_obj["bbox"]["x1"],
+                        "y": gt_obj["bbox"]["y1"],
+                        "width": gt_obj["bbox"]["x2"] - gt_obj["bbox"]["x1"],
+                        "height": gt_obj["bbox"]["y2"] - gt_obj["bbox"]["y1"]
+                    }
                 )
                 db.add(db_gt_obj)
             
