@@ -29,7 +29,7 @@ module.exports = {
     },
     proxy: {
       '/api': {
-        target: process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000',
+        target: process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000',
         changeOrigin: true,
         secure: false,
         logLevel: 'debug',

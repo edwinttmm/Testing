@@ -1,145 +1,80 @@
 /**
- * GPU Detection Utility
- * Based on environment analysis from System Analysis Agent
+ * GPU Detection Utility for Browser Environment
+ * Detects available GPU capabilities and provides fallback information
  */
 
-const detectGPU = () => {
-  try {
-    if (typeof window === 'undefined') {
-      // Node.js environment - check for GPU via system commands
-      const { execSync } = require('child_process');
-      
-      try {
-        // Try NVIDIA first
-        const nvidiaOutput = execSync('nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null', {
-          encoding: 'utf8',
-          timeout: 5000
-        });
-        if (nvidiaOutput.trim()) {
-          return {
-            available: true,
-            vendor: 'nvidia',
-            name: nvidiaOutput.trim(),
-            mode: 'gpu'
-          };
+function detectGPU() {
+    try {
+        // Check if we're in a browser environment
+        if (typeof document === 'undefined' || typeof window === 'undefined') {
+            return {
+                vendor: 'Server Environment',
+                renderer: 'Node.js Runtime',
+                supported: false,
+                webgl: false,
+                environment: 'server'
+            };
         }
-      } catch (e) {}
 
-      try {
-        // Try AMD
-        const amdOutput = execSync('rocm-smi --showproductname 2>/dev/null', {
-          encoding: 'utf8',
-          timeout: 5000
-        });
-        if (amdOutput.trim()) {
-          return {
-            available: true,
-            vendor: 'amd',
-            name: amdOutput.trim(),
-            mode: 'gpu'
-          };
-        }
-      } catch (e) {}
-
-      // No GPU detected - CPU only
-      return {
-        available: false,
-        vendor: 'none',
-        name: 'CPU-only',
-        mode: 'cpu'
-      };
-    } else {
-      // Browser environment - check WebGL
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      
-      if (gl) {
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'unknown';
-        const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
+        // Create canvas for WebGL testing
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
         
-        return {
-          available: true,
-          vendor: parseGpuVendor(vendor),
-          name: renderer,
-          mode: 'webgl'
-        };
-      }
-
-      // Check WebGPU support
-      if ('gpu' in navigator) {
-        return {
-          available: true,
-          vendor: 'unknown',
-          name: 'WebGPU',
-          mode: 'webgpu'
-        };
-      }
-
-      return {
-        available: false,
-        vendor: 'none',
-        name: 'CPU-only',
-        mode: 'cpu'
-      };
-    }
-  } catch (error) {
-    console.warn('GPU detection failed:', error);
-    return {
-      available: false,
-      vendor: 'error',
-      name: 'CPU-only (fallback)',
-      mode: 'cpu'
-    };
-  }
-};
-
-const parseGpuVendor = (vendor) => {
-  const v = vendor.toLowerCase();
-  if (v.includes('nvidia')) return 'nvidia';
-  if (v.includes('amd') || v.includes('ati')) return 'amd';
-  if (v.includes('intel')) return 'intel';
-  return 'unknown';
-};
-
-const getOptimalConfig = (gpuInfo) => {
-  if (!gpuInfo.available) {
-    return {
-      imageProcessing: {
-        maxSize: 2048,
-        quality: 0.8,
-        format: 'jpeg',
-        batchSize: 1
-      },
-      tensorflow: {
-        backend: 'cpu',
-        flags: {
-          WEBGL_FORCE_F16_TEXTURES: false,
-          WEBGL_PACK: false
+        if (gl) {
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+                const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                
+                return {
+                    vendor: vendor || 'Unknown Vendor',
+                    renderer: renderer || 'Unknown Renderer',
+                    supported: true,
+                    webgl: true,
+                    webglVersion: gl.getParameter(gl.VERSION),
+                    shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+                    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+                    environment: 'browser'
+                };
+            } else {
+                return {
+                    vendor: 'WebGL Available',
+                    renderer: 'Debug Info Not Available',
+                    supported: true,
+                    webgl: true,
+                    webglVersion: gl.getParameter(gl.VERSION),
+                    environment: 'browser'
+                };
+            }
         }
-      }
-    };
-  }
-
-  return {
-    imageProcessing: {
-      maxSize: 4096,
-      quality: 0.9,
-      format: 'webp',
-      batchSize: 4
-    },
-    tensorflow: {
-      backend: gpuInfo.mode === 'webgl' ? 'webgl' : 'cpu',
-      flags: {
-        WEBGL_FORCE_F16_TEXTURES: true,
-        WEBGL_PACK: true
-      }
+        
+        // WebGL not available
+        return {
+            vendor: 'No GPU Acceleration',
+            renderer: 'Software Rendering',
+            supported: false,
+            webgl: false,
+            environment: 'browser'
+        };
+        
+    } catch (error) {
+        return {
+            vendor: 'Detection Failed',
+            renderer: 'CPU-only mode',
+            supported: false,
+            webgl: false,
+            error: error.message,
+            environment: typeof window !== 'undefined' ? 'browser' : 'server'
+        };
     }
-  };
-};
+}
 
-module.exports = {
-  detectGPU,
-  getOptimalConfig,
-  parseGpuVendor
-};
+// Export for both CommonJS and ES modules
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { detectGPU };
+} else if (typeof window !== 'undefined') {
+    window.GPUDetection = { detectGPU };
+}
+
+// Default export for ES modules
+export { detectGPU };
