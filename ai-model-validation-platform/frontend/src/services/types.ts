@@ -292,6 +292,8 @@ export interface EnhancedDashboardStats extends DashboardStats {
   average_accuracy: number;
   active_tests: number;
   total_detections: number;
+  testSessionCount: number;
+  detectionEventCount: number;
 }
 
 // Error Types

@@ -13,6 +13,7 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { CameraType, SignalType, ProjectStatus } from '../services/types';
 import { ProjectUpdate, Project } from '../services/types';
 
 interface EditProjectDialogProps {
@@ -34,9 +35,9 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
     name: '',
     description: '',
     cameraModel: '',
-    cameraView: 'Front-facing VRU',
-    signalType: 'GPIO',
-    status: 'Draft',
+    cameraView: CameraType.FRONT_FACING_VRU,
+    signalType: SignalType.GPIO,
+    status: ProjectStatus.DRAFT,
   });
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
   const [error, setError] = useState<string | null>(null);
