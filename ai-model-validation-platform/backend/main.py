@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, status
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -1180,8 +1180,8 @@ async def get_ground_truth(
 @app.post("/api/videos/{video_id}/process-ground-truth")
 async def trigger_ground_truth_processing(
     video_id: str,
-    db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
 ):
     """Trigger ground truth processing for a video"""
     try:
@@ -1421,20 +1421,6 @@ async def get_test_session_status(session_id: str):
     except Exception as e:
         logger.error(f"Error getting test session status {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
-    
-    # Return mock validation results for testing
-    return {
-        "session_id": session_id,
-        "accuracy": 94.2,
-        "precision": 92.5,
-        "recall": 95.8,
-        "f1_score": 94.1,
-        "total_detections": 150,
-        "true_positives": 142,
-        "false_positives": 8,
-        "false_negatives": 6,
-        "status": "completed"
-    }
 
 # Dashboard endpoints
 @app.get("/api/dashboard/stats", response_model=DashboardStats)
