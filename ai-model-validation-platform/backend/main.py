@@ -508,9 +508,7 @@ async def upload_video_central(
             file_path=final_file_path,
             file_size=bytes_written,
             status="uploaded",
-            project_id=None,  # No project assignment - central store
-            created_at=datetime.utcnow(),
-            user_id="anonymous"
+            project_id=None  # No project assignment - central store
         )
         
         # Update video record with metadata
