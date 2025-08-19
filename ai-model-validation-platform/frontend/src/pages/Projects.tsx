@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getErrorMessage } from '../utils/errorUtils';
 import {
   Box,
   Typography,
@@ -31,7 +32,6 @@ import {
   Delete,
   Camera,
   Refresh,
-  VideoLibrary,
   Link,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -94,11 +94,11 @@ const Projects: React.FC = () => {
   // Load linked videos for all projects
   useEffect(() => {
     if (projects.length > 0) {
-      loadAllProjectVideos();
+      loadAllProjectVideos(); // eslint-disable-line @typescript-eslint/no-use-before-define
     }
-  }, [projects]);
+  }, [projects, loadAllProjectVideos]);
 
-  const loadAllProjectVideos = async () => {
+  const loadAllProjectVideos = useCallback(async () => {
     try {
       const videoPromises = projects.map(async (project) => {
         try {
@@ -123,7 +123,7 @@ const Projects: React.FC = () => {
     } catch (error) {
       console.error('Failed to load project videos:', error);
     }
-  };
+  }, [projects]);
 
   const loadProjects = async () => {
     try {
@@ -274,7 +274,7 @@ const Projects: React.FC = () => {
       
     } catch (err: any) {
       console.error('Failed to link videos:', err);
-      setError(err.message || 'Failed to link videos to project');
+      setError(getErrorMessage(err, 'Failed to link videos to project'));
     } finally {
       setFormLoading(false);
       setLinkingProject(null);

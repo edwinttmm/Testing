@@ -28,7 +28,8 @@ import {
   VideoFile as VideoIcon,
 } from '@mui/icons-material';
 import { VideoFile } from '../services/types';
-import { apiService } from '../services/api';
+import { apiService, getAllVideos } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface VideoSelectionDialogProps {
   open: boolean;
@@ -93,10 +94,35 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<VideoFile['status'] | 'all'>('all');
+  const [filterStatus] = useState<VideoFile['status'] | 'all'>('all');
 
-  // Load available videos from ground truth library
+  // Load available videos from central store
   const loadAvailableVideos = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Get unassigned videos from central store
+      const response = await getAllVideos(true); // Only unassigned videos
+      setAvailableVideos(response.videos || []);
+      
+    } catch (err) {
+      console.error('Failed to load available videos:', err);
+      setError(getErrorMessage(err, 'Failed to load available videos'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load videos on dialog open
+  useEffect(() => {
+    if (open) {
+      loadAvailableVideos();
+    }
+  }, [open, loadAvailableVideos]);
+
+  // Original loadAvailableVideos implementation (kept for backwards compatibility)
+  const loadAvailableVideosOld = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);

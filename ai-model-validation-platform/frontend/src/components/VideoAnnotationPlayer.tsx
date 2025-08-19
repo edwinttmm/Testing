@@ -19,7 +19,7 @@ import {
   SkipNext,
   SkipPrevious,
 } from '@mui/icons-material';
-import { VideoFile, GroundTruthAnnotation, BoundingBox } from '../services/types';
+import { VideoFile, GroundTruthAnnotation } from '../services/types';
 
 interface VideoAnnotationPlayerProps {
   video: VideoFile;
@@ -32,10 +32,6 @@ interface VideoAnnotationPlayerProps {
   frameRate?: number;
 }
 
-interface AnnotationOverlay {
-  annotation: GroundTruthAnnotation;
-  visible: boolean;
-}
 
 const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   video,
@@ -56,7 +52,6 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
 
   // Calculate current frame number

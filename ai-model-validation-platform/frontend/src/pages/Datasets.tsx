@@ -52,10 +52,8 @@ import {
   Clear,
   TrendingUp,
 } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
 import {
   VideoFile,
-  Project,
   GroundTruthAnnotation,
   VRUType,
   ApiError,
@@ -63,7 +61,6 @@ import {
   DetectionTypeMetrics,
 } from '../services/types';
 import { 
-  getProjects,
   getAvailableGroundTruthVideos,
   getAnnotations,
   exportAnnotations,
@@ -136,11 +133,9 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const Datasets: React.FC = () => {
-  const navigate = useNavigate();
 
   // Core state
   const [videos, setVideos] = useState<VideoWithAnnotations[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -148,7 +143,6 @@ const Datasets: React.FC = () => {
   // Filter and search state
   const [filter, setFilter] = useState<DatasetFilter>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [showFilterDialog, setShowFilterDialog] = useState(false);
 
   // View state
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -175,30 +169,19 @@ const Datasets: React.FC = () => {
     recentActivity: [],
   });
 
-  // Load data on component mount
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-
   const loadInitialData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Load projects and videos in parallel
-      const [projectsData, videosData] = await Promise.all([
-        getProjects(),
-        getAvailableGroundTruthVideos(),
-      ]);
-
-      setProjects(projectsData);
+      // Load videos
+      const videosData = await getAvailableGroundTruthVideos();
       
       // Enhance videos with annotation data and project info
       const enhancedVideos = await Promise.all(
         videosData.map(async (video) => {
           try {
             const annotations = await getAnnotations(video.id);
-            const project = projectsData.find(p => p.id === video.projectId);
             
             return {
               ...video,
@@ -206,7 +189,7 @@ const Datasets: React.FC = () => {
               annotationCount: annotations.length,
               detectionTypes: [...new Set(annotations.map(a => a.vruType))],
               quality: assessVideoQuality(video),
-              projectName: project?.name || 'Unknown Project',
+              projectName: 'Unknown Project',
               thumbnail: generateThumbnail(video),
             } as VideoWithAnnotations;
           } catch (err) {
@@ -225,7 +208,7 @@ const Datasets: React.FC = () => {
       );
 
       setVideos(enhancedVideos);
-      calculateStats(enhancedVideos, projectsData);
+      calculateStats(enhancedVideos); // eslint-disable-line @typescript-eslint/no-use-before-define
 
     } catch (err) {
       const apiError = err as ApiError;
@@ -234,9 +217,14 @@ const Datasets: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [calculateStats]);
 
-  const calculateStats = useCallback((videosData: VideoWithAnnotations[], projectsData: Project[]) => {
+  // Load data on component mount
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  const calculateStats = useCallback((videosData: VideoWithAnnotations[]) => {
     const totalVideos = videosData.length;
     const totalAnnotations = videosData.reduce((sum, v) => sum + v.annotationCount, 0);
     const totalDuration = videosData.reduce((sum, v) => sum + (v.duration || 0), 0);

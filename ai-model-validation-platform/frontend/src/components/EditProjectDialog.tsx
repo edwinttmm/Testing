@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import { CameraType, SignalType, ProjectStatus } from '../services/types';
 import { ProjectUpdate, Project } from '../services/types';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface EditProjectDialogProps {
   open: boolean;
@@ -95,7 +96,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
       onClose();
     } catch (error: any) {
       console.error('Error updating project:', error);
-      setError(error.message || 'Failed to update project. Please try again.');
+      setError(getErrorMessage(error, 'Failed to update project. Please try again.'));
     }
   };
 

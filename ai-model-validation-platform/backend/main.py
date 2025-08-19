@@ -32,7 +32,8 @@ from schemas import (
     StatisticalValidationSchema, StatisticalValidationResponse,
     VideoLibraryOrganizeResponse, VideoQualityAssessmentResponse,
     DetectionPipelineConfigSchema, DetectionPipelineResponse,
-    EnhancedDashboardStats, CameraTypeEnum, SignalTypeEnum, ProjectStatusEnum
+    EnhancedDashboardStats, CameraTypeEnum, SignalTypeEnum, ProjectStatusEnum,
+    DashboardStats
 )
 from schemas_annotation import (
     AnnotationCreate, AnnotationUpdate, AnnotationResponse,
@@ -418,6 +419,157 @@ async def delete_project_endpoint(
         )
 
 # Video and Ground Truth endpoints
+
+# Central video upload endpoint (no project required)
+@app.post("/api/videos", response_model=VideoUploadResponse)
+async def upload_video_central(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload video to central store without project assignment"""
+    temp_file_path = None
+    try:
+        # Generate secure filename and validate extension
+        secure_filename, file_extension = generate_secure_filename(file.filename)
+        
+        # Setup paths for chunked upload with temp file
+        upload_dir = settings.upload_directory
+        os.makedirs(upload_dir, exist_ok=True)
+        final_file_path = secure_join_path(upload_dir, secure_filename)
+        
+        # Use a temporary file during upload to prevent partial files in upload directory
+        import tempfile
+        temp_fd, temp_file_path = tempfile.mkstemp(suffix=file_extension, dir=upload_dir)
+        
+        # MEMORY OPTIMIZED: Chunked upload with size validation
+        chunk_size = 64 * 1024  # 64KB chunks
+        max_file_size = 100 * 1024 * 1024  # 100MB limit
+        bytes_written = 0
+        
+        try:
+            with os.fdopen(temp_fd, 'wb') as temp_file:
+                # Process file in chunks without loading entire file into memory
+                while True:
+                    chunk = await file.read(chunk_size)
+                    if not chunk:
+                        break
+                    
+                    # Check size limit during upload to fail fast
+                    bytes_written += len(chunk)
+                    if bytes_written > max_file_size:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail="File size exceeds 100MB limit"
+                        )
+                    
+                    # Write chunk to temporary file
+                    temp_file.write(chunk)
+                
+                # Ensure all data is written to disk
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+        
+        except Exception as upload_error:
+            # Clean up temporary file on upload error
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            raise upload_error
+        
+        # Validate minimum file size (prevent empty files)
+        if bytes_written == 0:
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty file not allowed"
+            )
+        
+        # Atomically move temp file to final location
+        try:
+            os.rename(temp_file_path, final_file_path)
+            temp_file_path = None  # File successfully moved
+        except OSError as move_error:
+            # Clean up on move failure
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            logger.error(f"Failed to move uploaded file: {move_error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save uploaded file"
+            )
+        
+        # Extract video metadata
+        video_metadata = extract_video_metadata(final_file_path)
+        
+        # Create database record WITHOUT project_id (central store)
+        video_record = Video(
+            id=str(uuid.uuid4()),
+            filename=file.filename,
+            file_path=final_file_path,
+            file_size=bytes_written,
+            status="uploaded",
+            project_id=None,  # No project assignment - central store
+            created_at=datetime.utcnow(),
+            user_id="anonymous"
+        )
+        
+        # Update video record with metadata
+        if video_metadata:
+            video_record.duration = video_metadata.get('duration')
+            video_record.resolution = video_metadata.get('resolution')
+        
+        db.add(video_record)
+        db.commit()
+        db.refresh(video_record)
+        
+        # Start background processing for ground truth generation
+        import asyncio
+        try:
+            asyncio.create_task(ground_truth_service.process_video_async(video_record.id, final_file_path))
+            logger.info(f"Started ground truth processing for video {video_record.id}")
+        except Exception as e:
+            logger.warning(f"Could not start ground truth processing: {str(e)}")
+        
+        logger.info(f"Successfully uploaded video {file.filename} ({bytes_written} bytes) to central store")
+        
+        return {
+            "id": video_record.id,
+            "projectId": None,  # No project assignment
+            "filename": file.filename,
+            "originalName": file.filename,
+            "size": bytes_written,
+            "fileSize": bytes_written,
+            "duration": video_metadata.get('duration') if video_metadata else None,
+            "uploadedAt": video_record.created_at.isoformat(),
+            "createdAt": video_record.created_at.isoformat(),
+            "status": "uploaded",
+            "groundTruthGenerated": False,
+            "groundTruthStatus": "pending",
+            "detectionCount": 0,
+            "message": "Video uploaded to central store successfully. Processing started."
+        }
+        
+    except HTTPException:
+        # Clean up any remaining temp files on HTTP exceptions
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                logger.warning(f"Could not clean up temp file: {temp_file_path}")
+        raise
+    except Exception as e:
+        # Clean up any remaining temp files on unexpected errors
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                logger.warning(f"Could not clean up temp file: {temp_file_path}")
+        logger.error(f"Central video upload error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload video to central store"
+        )
+
 @app.post("/api/projects/{project_id}/videos", response_model=VideoUploadResponse)
 async def upload_video(
     project_id: str,
@@ -541,9 +693,19 @@ async def upload_video(
         logger.info(f"Successfully uploaded video {file.filename} ({bytes_written} bytes) to {final_file_path}")
         
         return {
-            "video_id": video_record.id,
+            "id": video_record.id,
+            "projectId": project_id,
             "filename": file.filename,
+            "originalName": file.filename,
+            "size": bytes_written,
+            "fileSize": bytes_written,
+            "duration": video_metadata.get('duration') if video_metadata else None,
+            "uploadedAt": video_record.created_at.isoformat(),
+            "createdAt": video_record.created_at.isoformat(),
             "status": "uploaded",
+            "groundTruthGenerated": False,
+            "groundTruthStatus": "pending",
+            "detectionCount": 0,
             "message": "Video uploaded successfully. Processing started."
         }
         
@@ -614,16 +776,21 @@ async def get_project_videos(
         
         videos_with_counts = db.execute(query, {"project_id": project_id}).fetchall()
         
-        # Build response efficiently using list comprehension
+        # Build response efficiently using list comprehension with frontend-compatible field names
         video_list = [
             {
                 "id": row.id,
+                "projectId": project_id,
                 "filename": row.filename,
+                "originalName": row.filename,
                 "status": row.status,
-                "created_at": row.created_at,
+                "createdAt": row.created_at.isoformat() if row.created_at else None,
+                "uploadedAt": row.created_at.isoformat() if row.created_at else None,
                 "duration": row.duration,
-                "file_size": row.file_size,
-                "ground_truth_generated": bool(row.ground_truth_generated),
+                "size": row.file_size or 0,
+                "fileSize": row.file_size or 0,
+                "groundTruthGenerated": bool(row.ground_truth_generated),
+                "groundTruthStatus": "completed" if bool(row.ground_truth_generated) else "pending",
                 "detectionCount": int(row.detection_count or 0)
             }
             for row in videos_with_counts
@@ -639,6 +806,197 @@ async def get_project_videos(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get project videos"
+        )
+
+# Central video library endpoint (all videos)
+@app.get("/api/videos")
+async def get_all_videos(
+    skip: int = 0,
+    limit: int = 100,
+    unassigned: bool = False,
+    db: Session = Depends(get_db)
+):
+    """Get all videos from central store"""
+    try:
+        from sqlalchemy import func, text
+        
+        # Build query with optional filtering
+        base_query = """
+            WITH ground_truth_counts AS (
+                SELECT 
+                    video_id,
+                    COUNT(*) as detection_count
+                FROM ground_truth_objects 
+                GROUP BY video_id
+            )
+            SELECT 
+                v.id,
+                v.filename,
+                v.status,
+                v.created_at,
+                v.duration,
+                v.file_size,
+                v.ground_truth_generated,
+                v.project_id,
+                COALESCE(gtc.detection_count, 0) as detection_count
+            FROM videos v
+            LEFT JOIN ground_truth_counts gtc ON v.id = gtc.video_id
+        """
+        
+        # Add filtering conditions
+        conditions = []
+        if unassigned:
+            conditions.append("v.project_id IS NULL")
+        
+        if conditions:
+            base_query += " WHERE " + " AND ".join(conditions)
+        
+        base_query += """
+            ORDER BY v.created_at DESC
+            LIMIT :limit OFFSET :skip
+        """
+        
+        query = text(base_query)
+        videos_with_counts = db.execute(query, {"skip": skip, "limit": limit}).fetchall()
+        
+        # Build response efficiently
+        video_list = [
+            {
+                "id": row.id,
+                "projectId": row.project_id,
+                "filename": row.filename,
+                "originalName": row.filename,
+                "status": row.status,
+                "createdAt": row.created_at.isoformat() if row.created_at else None,
+                "uploadedAt": row.created_at.isoformat() if row.created_at else None,
+                "duration": row.duration,
+                "size": row.file_size or 0,
+                "fileSize": row.file_size or 0,
+                "groundTruthGenerated": bool(row.ground_truth_generated),
+                "groundTruthStatus": "completed" if bool(row.ground_truth_generated) else "pending",
+                "detectionCount": int(row.detection_count or 0),
+                "assigned": row.project_id is not None
+            }
+            for row in videos_with_counts
+        ]
+        
+        logger.info(f"Retrieved {len(video_list)} videos from central store (skip={skip}, limit={limit}, unassigned={unassigned})")
+        return {"videos": video_list, "total": len(video_list)}
+        
+    except Exception as e:
+        logger.error(f"Get all videos error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get videos from central store"
+        )
+
+# Video linking endpoints
+@app.post("/api/projects/{project_id}/videos/link")
+async def link_videos_to_project(
+    project_id: str,
+    video_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Link videos to a project"""
+    try:
+        # Verify project exists
+        project = get_project(db=db, project_id=project_id, user_id="anonymous")
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {project_id}"
+            )
+        
+        video_ids = video_data.get('video_ids', [])
+        if not video_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No video IDs provided"
+            )
+        
+        # Update videos to link them to the project
+        updated_count = db.query(Video).filter(
+            Video.id.in_(video_ids),
+            Video.project_id.is_(None)  # Only link unassigned videos
+        ).update(
+            {Video.project_id: project_id},
+            synchronize_session=False
+        )
+        
+        db.commit()
+        
+        logger.info(f"Linked {updated_count} videos to project {project_id}")
+        return {"message": f"Successfully linked {updated_count} videos to project", "linked_count": updated_count}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Link videos to project error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to link videos to project"
+        )
+
+@app.get("/api/projects/{project_id}/videos/linked")
+async def get_linked_videos(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get videos linked to a project"""
+    try:
+        # This is the same as get_project_videos but explicitly for linked videos
+        return await get_project_videos(project_id, db)
+    except Exception as e:
+        logger.error(f"Get linked videos error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get linked videos"
+        )
+
+@app.delete("/api/projects/{project_id}/videos/{video_id}/unlink")
+async def unlink_video_from_project(
+    project_id: str,
+    video_id: str,
+    db: Session = Depends(get_db)
+):
+    """Unlink a video from a project (return to central store)"""
+    try:
+        # Verify project exists
+        project = get_project(db=db, project_id=project_id, user_id="anonymous")
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {project_id}"
+            )
+        
+        # Verify video exists and is linked to this project
+        video = db.query(Video).filter(
+            Video.id == video_id,
+            Video.project_id == project_id
+        ).first()
+        
+        if not video:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video not found or not linked to this project"
+            )
+        
+        # Unlink the video (return to central store)
+        video.project_id = None
+        db.commit()
+        
+        logger.info(f"Unlinked video {video_id} from project {project_id}")
+        return {"message": "Video unlinked successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unlink video from project error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to unlink video from project"
         )
 
 @app.delete("/api/videos/{video_id}")
@@ -841,7 +1199,7 @@ async def get_test_results(
     }
 
 # Dashboard endpoints
-@app.get("/api/dashboard/stats")
+@app.get("/api/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(
     db: Session = Depends(get_db)
 ):
@@ -865,13 +1223,14 @@ async def get_dashboard_stats(
             logger.warning(f"Could not calculate confidence average: {confidence_error}")
             avg_accuracy = 0.0
         
+        total_detections = db.query(func.count(DetectionEvent.id)).scalar() or 0
         return {
             "projectCount": project_count,
             "videoCount": video_count,
             "testCount": test_count,
             "averageAccuracy": round(avg_accuracy * 100, 1) if avg_accuracy > 0 else 94.2,
             "activeTests": 0,
-            "totalDetections": db.query(func.count(DetectionEvent.id)).scalar() or 0
+            "totalDetections": total_detections
         }
         
     except Exception as e:
