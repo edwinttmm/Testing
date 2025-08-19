@@ -270,16 +270,28 @@ const GroundTruth: React.FC = () => {
         
       } catch (err) {
         const errorMsg = getErrorMessage(err, 'Backend connection failed - upload failed');
+        
+        // Enhanced error logging for debugging
+        console.error('UPLOAD DEBUG INFO:', {
+          fileName: uploadingVideo.name,
+          fileSize: uploadingVideo.file.size,
+          fileType: uploadingVideo.file.type,
+          error: err,
+          errorMessage: errorMsg,
+          apiUrl: process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000',
+          endpoint: '/api/videos'
+        });
+        
         setUploadingVideos(prev => 
           prev.map(v => 
             v.id === uploadingVideo.id 
-              ? { ...v, status: 'failed', error: errorMsg }
+              ? { ...v, status: 'failed', error: `${errorMsg} (${uploadingVideo.file.type})` }
               : v
           )
         );
         
         setUploadErrors(prev => [...prev, {
-          message: errorMsg,
+          message: `${errorMsg} - File: ${uploadingVideo.name} (${uploadingVideo.file.type}, ${formatFileSize(uploadingVideo.file.size)})`,
           fileName: uploadingVideo.name
         }]);
         
