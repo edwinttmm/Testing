@@ -46,7 +46,7 @@ import {
 } from '@mui/icons-material';
 import { 
   VideoFile, 
-  ApiError, 
+ 
   VRUType, 
   GroundTruthAnnotation, 
   AnnotationSession,

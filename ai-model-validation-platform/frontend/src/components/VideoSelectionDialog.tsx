@@ -121,30 +121,6 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
     }
   }, [open, loadAvailableVideos]);
 
-  // Original loadAvailableVideos implementation (kept for backwards compatibility)
-  const loadAvailableVideosOld = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get all completed videos from ground truth library
-      const allVideos = await apiService.get<VideoFile[]>('/api/ground-truth/videos/available');
-      
-      // Filter out videos already linked to this project and only show completed ones
-      const availableForLinking = allVideos.filter(video => 
-        video.status === 'completed' && 
-        (video.groundTruthGenerated || video.ground_truth_generated) === true &&
-        video.projectId !== projectId // Don't show videos from the same project
-      );
-      
-      setAvailableVideos(availableForLinking);
-    } catch (err: any) {
-      console.error('Failed to load available videos:', err);
-      setError(err.message || 'Failed to load available videos');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
 
   useEffect(() => {
     if (open) {
