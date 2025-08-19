@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -10,10 +10,6 @@ import {
   Chip,
   Tooltip,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Card,
   CardContent,
   Divider,
@@ -30,7 +26,6 @@ import {
   Timeline,
   Add,
   Delete,
-  Edit,
   Visibility,
   VisibilityOff,
   KeyboardArrowLeft,
@@ -55,11 +50,12 @@ interface TemporalAnnotationInterfaceProps {
   selectedVRUType: VRUType;
 }
 
-interface AnnotationKeyframe {
-  frame: number;
-  timestamp: number;
-  annotations: GroundTruthAnnotation[];
-}
+// TODO: Implement keyframe annotations
+// interface AnnotationKeyframe {
+//   frame: number;
+//   timestamp: number;
+//   annotations: GroundTruthAnnotation[];
+// }
 
 interface TemporalRange {
   start: number;
@@ -85,7 +81,8 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
 }) => {
   const [selectedRange, setSelectedRange] = useState<TemporalRange | null>(null);
   const [showAllAnnotations, setShowAllAnnotations] = useState(true);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  // TODO: Implement playback speed control
+  // const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [annotationMode, setAnnotationMode] = useState<'single' | 'temporal' | 'track'>('single');
   const [trackingDetectionId, setTrackingDetectionId] = useState<string | null>(null);
 
@@ -142,7 +139,8 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
   const frameToTimestamp = useCallback((frame: number) => frame / frameRate, [frameRate]);
   
   // Convert timestamp to frame
-  const timestampToFrame = useCallback((timestamp: number) => Math.round(timestamp * frameRate), [frameRate]);
+  // TODO: Implement timestamp to frame conversion utility
+  // const timestampToFrame = useCallback((timestamp: number) => Math.round(timestamp * frameRate), [frameRate]);
 
   // Format time display
   const formatTime = useCallback((seconds: number) => {

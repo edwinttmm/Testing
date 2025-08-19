@@ -60,7 +60,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       reconnectCountRef.current++;
       connect();
     }, reconnectDelay * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
-  }, [reconnectAttempts, reconnectDelay]);
+  }, [reconnectAttempts, reconnectDelay, clearReconnectTimeout, connect]);
 
   const connect = useCallback(() => {
     if (socketRef.current?.connected) {

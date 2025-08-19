@@ -220,7 +220,7 @@ async def unlink_video_from_project(
 
 async def export_annotations(
     video_id: str,
-    format: str = Query("json", regex="^(json|coco|yolo|pascal_voc)$"),
+    format: str = Query("json", pattern="^(json|coco|yolo|pascal_voc)$"),
     db: Session = Depends(get_db)
 ):
     """Export annotations in specified format"""
@@ -244,7 +244,7 @@ async def export_annotations(
 
 async def import_annotations(
     video_id: str,
-    format: str = Query("json", regex="^(json|coco|yolo|pascal_voc)$"),
+    format: str = Query("json", pattern="^(json|coco|yolo|pascal_voc)$"),
     # file: UploadFile = File(...),  # TODO: Add file upload support
     db: Session = Depends(get_db)
 ):
