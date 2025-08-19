@@ -105,9 +105,9 @@ const Results: React.FC = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   
-  // Comparison view state
-  const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
-  const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  // Comparison view state (commented out until implemented)
+  // const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
+  // const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
   // Analytics and export state
   const [showStatistics, setShowStatistics] = useState(false);
@@ -473,8 +473,8 @@ const Results: React.FC = () => {
           includeStatisticalAnalysis: true,
         },
       });
-      setDetectionComparisons([]);
-      setSelectedSession(sessionId);
+      // setDetectionComparisons([]);
+      // setSelectedSession(sessionId);
       setDetailDialogOpen(true);
     } finally {
       setLoadingDetails(false);
