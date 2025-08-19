@@ -17,6 +17,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from config import settings, setup_logging, create_directories, validate_environment
 from socketio_server import sio, create_socketio_app
+from constants import CENTRAL_STORE_PROJECT_ID, CENTRAL_STORE_PROJECT_NAME, CENTRAL_STORE_PROJECT_DESCRIPTION
 
 from database import SessionLocal, engine
 from models import Base, Project, Video, TestSession, DetectionEvent
@@ -330,6 +331,41 @@ def get_db():
     finally:
         db.close()
 
+def ensure_central_store_project(db: Session):
+    """Ensure the central store project exists in the database"""
+    try:
+        # Check if central store project exists
+        existing_project = db.query(Project).filter(Project.id == CENTRAL_STORE_PROJECT_ID).first()
+        
+        if not existing_project:
+            # Create the central store project
+            from schemas import ProjectCreate
+            central_store_project = ProjectCreate(
+                id=CENTRAL_STORE_PROJECT_ID,
+                name=CENTRAL_STORE_PROJECT_NAME,
+                description=CENTRAL_STORE_PROJECT_DESCRIPTION,
+                camera_model="Multi-format",
+                camera_view="Universal", 
+                signal_type="Universal",
+                status="active"
+            )
+            
+            # Use the existing create_project function
+            from crud import create_project
+            created_project = create_project(db, central_store_project, user_id="system")
+            
+            logger.info(f"Created central store project: {created_project.id}")
+            return created_project
+        
+        return existing_project
+        
+    except Exception as e:
+        logger.error(f"Error ensuring central store project exists: {e}")
+        # If we can't create the project, we'll have to fail the upload
+        raise HTTPException(
+            status_code=500, 
+            detail="Failed to initialize central store project"
+        )
 
 @app.get("/")
 async def root():
@@ -501,14 +537,16 @@ async def upload_video_central(
         # Extract video metadata
         video_metadata = extract_video_metadata(final_file_path)
         
-        # Create database record WITHOUT project_id (central store)
+        # Ensure central store project exists
+        ensure_central_store_project(db)
+        
         video_record = Video(
             id=str(uuid.uuid4()),
             filename=file.filename,
             file_path=final_file_path,
             file_size=bytes_written,
             status="uploaded",
-            project_id=None  # No project assignment - central store
+            project_id=CENTRAL_STORE_PROJECT_ID  # Central store system project
         )
         
         # Update video record with metadata
@@ -844,7 +882,7 @@ async def get_all_videos(
         # Add filtering conditions
         conditions = []
         if unassigned:
-            conditions.append("v.project_id IS NULL")
+            conditions.append(f"v.project_id = '{CENTRAL_STORE_PROJECT_ID}'")
         
         if conditions:
             base_query += " WHERE " + " AND ".join(conditions)
@@ -873,7 +911,7 @@ async def get_all_videos(
                 "groundTruthGenerated": bool(row.ground_truth_generated),
                 "groundTruthStatus": "completed" if bool(row.ground_truth_generated) else "pending",
                 "detectionCount": int(row.detection_count or 0),
-                "assigned": row.project_id is not None
+                "assigned": row.project_id is not None and row.project_id != CENTRAL_STORE_PROJECT_ID
             }
             for row in videos_with_counts
         ]
@@ -912,10 +950,10 @@ async def link_videos_to_project(
                 detail="No video IDs provided"
             )
         
-        # Update videos to link them to the project
+        # Update videos to link them to the project (from central store)
         updated_count = db.query(Video).filter(
             Video.id.in_(video_ids),
-            Video.project_id.is_(None)  # Only link unassigned videos
+            Video.project_id == CENTRAL_STORE_PROJECT_ID  # Only link videos from central store
         ).update(
             {Video.project_id: project_id},
             synchronize_session=False
@@ -981,7 +1019,7 @@ async def unlink_video_from_project(
             )
         
         # Unlink the video (return to central store)
-        video.project_id = None
+        video.project_id = CENTRAL_STORE_PROJECT_ID
         db.commit()
         
         logger.info(f"Unlinked video {video_id} from project {project_id}")
