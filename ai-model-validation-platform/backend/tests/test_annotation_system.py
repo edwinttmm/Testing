@@ -9,7 +9,7 @@ from datetime import datetime
 
 from main import app
 from database import Base, get_db
-from models_annotation import Annotation, AnnotationSession, VideoProjectLink
+from models import Annotation, AnnotationSession, VideoProjectLink
 from models import Project, Video
 
 # Create test database

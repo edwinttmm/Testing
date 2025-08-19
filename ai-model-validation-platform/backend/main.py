@@ -22,7 +22,7 @@ from constants import CENTRAL_STORE_PROJECT_ID, CENTRAL_STORE_PROJECT_NAME, CENT
 
 from database import SessionLocal, engine
 from models import Base, Project, Video, TestSession, DetectionEvent
-from models_annotation import Annotation, AnnotationSession, VideoProjectLink, TestResult, DetectionComparison
+from models import Annotation, AnnotationSession, VideoProjectLink, TestResult, DetectionComparison
 from schemas import (
     ProjectCreate, ProjectResponse, ProjectUpdate,
     VideoUploadResponse, GroundTruthResponse,

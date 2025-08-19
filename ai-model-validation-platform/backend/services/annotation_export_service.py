@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
-from models_annotation import Annotation
+from models import Annotation
 
 class AnnotationExportService:
     """Service for exporting annotations in various formats"""
