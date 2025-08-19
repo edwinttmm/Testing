@@ -49,6 +49,18 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+def get_db():
+    """Database dependency with proper error handling"""
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database error: {str(e)}")
+        raise
+    finally:
+        db.close()
+
 def get_database_health() -> dict:
     """Check database connectivity and return health status"""
     try:

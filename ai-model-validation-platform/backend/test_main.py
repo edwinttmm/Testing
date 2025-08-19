@@ -5,7 +5,8 @@ from sqlalchemy.orm import sessionmaker
 import tempfile
 import os
 
-from main import app, get_db
+from main import app
+from database import get_db
 from database import Base
 from models import Project, Video, TestSession
 from config import settings

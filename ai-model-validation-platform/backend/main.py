@@ -87,10 +87,6 @@ except ImportError:
 
 Base.metadata.create_all(bind=engine)
 
-# Integrate annotation system
-from integration_main import integrate_annotation_system
-integrate_annotation_system(app)
-
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
@@ -1275,6 +1271,10 @@ async def get_enhanced_dashboard_stats(
             active_tests=0,
             total_detections=0
         )
+
+# Integrate annotation system after app is fully configured
+from integration_main import integrate_annotation_system
+integrate_annotation_system(app)
 
 # Create the combined FastAPI + Socket.IO ASGI app
 socketio_app = create_socketio_app(app)

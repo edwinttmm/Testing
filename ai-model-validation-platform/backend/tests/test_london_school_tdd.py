@@ -224,7 +224,7 @@ class TestDatabaseSessionManagement:
         
         # Simulate successful database operation
         def mock_db_operation():
-            from main import get_db
+            from database import get_db
             db_gen = get_db()
             db = next(db_gen)
             # Simulate successful operation
