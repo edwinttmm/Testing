@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
 
-from models_annotation import Annotation, AnnotationSession, VideoProjectLink
+from models import Annotation, AnnotationSession, VideoProjectLink
 from schemas_annotation import (
     AnnotationCreate, AnnotationUpdate, AnnotationResponse,
     AnnotationSessionCreate, AnnotationSessionResponse,
