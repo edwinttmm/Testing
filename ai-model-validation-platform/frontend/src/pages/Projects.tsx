@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getErrorMessage } from '../utils/errorUtils';
 import {
   Box,
@@ -91,13 +91,7 @@ const Projects: React.FC = () => {
     loadProjects();
   }, []);
 
-  // Load linked videos for all projects
-  useEffect(() => {
-    if (projects.length > 0) {
-      loadAllProjectVideos(); // eslint-disable-line @typescript-eslint/no-use-before-define
-    }
-  }, [projects, loadAllProjectVideos]);
-
+  // Load all project videos function - defined before useEffect
   const loadAllProjectVideos = useCallback(async () => {
     try {
       const videoPromises = projects.map(async (project) => {
@@ -124,6 +118,13 @@ const Projects: React.FC = () => {
       console.error('Failed to load project videos:', error);
     }
   }, [projects]);
+
+  // Load linked videos for all projects
+  useEffect(() => {
+    if (projects.length > 0) {
+      loadAllProjectVideos();
+    }
+  }, [projects, loadAllProjectVideos]);
 
   const loadProjects = async () => {
     try {

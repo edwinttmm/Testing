@@ -180,21 +180,7 @@ const GroundTruth: React.FC = () => {
   const { id: urlProjectId } = useParams<{ id: string }>();
   const [projectId] = useState<string | null>(urlProjectId || null);
 
-  // Load videos on component mount
-  useEffect(() => {
-    if (projectId) {
-      loadVideos(); // eslint-disable-line @typescript-eslint/no-use-before-define
-    }
-  }, [projectId, loadVideos]);
-
-  // Load annotations when video is selected
-  useEffect(() => {
-    if (selectedVideo) {
-      loadAnnotations(selectedVideo.id); // eslint-disable-line @typescript-eslint/no-use-before-define
-      setTotalFrames(Math.floor((selectedVideo.duration || 0) * frameRate));
-    }
-  }, [selectedVideo, frameRate, loadAnnotations]);
-
+  // Function definitions moved before useEffect hooks to respect hoisting rules
   const loadVideos = useCallback(async () => {
     if (!projectId) {
       setError('No project ID provided');
@@ -234,6 +220,90 @@ const GroundTruth: React.FC = () => {
       setAnnotations([]);
     }
   }, []);
+
+  const uploadFiles = useCallback(async (files: File[]) => {
+    const newUploadingVideos: UploadingVideo[] = files.map(file => ({
+      id: Math.random().toString(36).substr(2, 9),
+      file,
+      name: file.name,
+      size: formatFileSize(file.size),
+      progress: 0,
+      status: 'uploading'
+    }));
+    
+    setUploadingVideos(prev => [...prev, ...newUploadingVideos]);
+    setUploadDialog(false);
+    
+    // Upload files concurrently to central store (no project required)
+    const uploadPromises = newUploadingVideos.map(async (uploadingVideo) => {
+      
+      try {
+        // Upload to central store instead of project-specific upload
+        const uploadedVideo = await apiService.uploadVideoCentral(
+          uploadingVideo.file,
+          (progress) => {
+            setUploadingVideos(prev => 
+              prev.map(v => 
+                v.id === uploadingVideo.id 
+                  ? { ...v, progress }
+                  : v
+              )
+            );
+          }
+        );
+        
+        // Update status to processing
+        setUploadingVideos(prev => 
+          prev.map(v => 
+            v.id === uploadingVideo.id 
+              ? { ...v, status: 'processing', progress: 100 }
+              : v
+          )
+        );
+        
+        // Add to main videos list and remove from uploading
+        setTimeout(() => {
+          setVideos(prev => [uploadedVideo, ...prev]);
+          setUploadingVideos(prev => prev.filter(v => v.id !== uploadingVideo.id));
+          setSuccessMessage(`Successfully uploaded ${uploadingVideo.name}`);
+        }, 1000);
+        
+      } catch (err) {
+        const errorMsg = getErrorMessage(err, 'Backend connection failed - upload failed');
+        setUploadingVideos(prev => 
+          prev.map(v => 
+            v.id === uploadingVideo.id 
+              ? { ...v, status: 'failed', error: errorMsg }
+              : v
+          )
+        );
+        
+        setUploadErrors(prev => [...prev, {
+          message: errorMsg,
+          fileName: uploadingVideo.name
+        }]);
+        
+        console.error('Upload failed:', errorMsg, err);
+      }
+    });
+    
+    await Promise.allSettled(uploadPromises);
+  }, []); // No longer depends on projectId
+
+  // Load videos on component mount
+  useEffect(() => {
+    if (projectId) {
+      loadVideos();
+    }
+  }, [projectId, loadVideos]);
+
+  // Load annotations when video is selected
+  useEffect(() => {
+    if (selectedVideo) {
+      loadAnnotations(selectedVideo.id);
+      setTotalFrames(Math.floor((selectedVideo.duration || 0) * frameRate));
+    }
+  }, [selectedVideo, frameRate, loadAnnotations]);
 
   const createAnnotationSession = useCallback(async (videoId: string) => {
     if (!projectId) return;
@@ -399,78 +469,9 @@ const GroundTruth: React.FC = () => {
     setUploadErrors(newUploadErrors);
     
     if (validFiles.length > 0) {
-      uploadFiles(validFiles); // eslint-disable-line @typescript-eslint/no-use-before-define
+      uploadFiles(validFiles);
     }
   }, [uploadFiles]);
-
-  const uploadFiles = useCallback(async (files: File[]) => {
-    const newUploadingVideos: UploadingVideo[] = files.map(file => ({
-      id: Math.random().toString(36).substr(2, 9),
-      file,
-      name: file.name,
-      size: formatFileSize(file.size),
-      progress: 0,
-      status: 'uploading'
-    }));
-    
-    setUploadingVideos(prev => [...prev, ...newUploadingVideos]);
-    setUploadDialog(false);
-    
-    // Upload files concurrently to central store (no project required)
-    const uploadPromises = newUploadingVideos.map(async (uploadingVideo) => {
-      
-      try {
-        // Upload to central store instead of project-specific upload
-        const uploadedVideo = await apiService.uploadVideoCentral(
-          uploadingVideo.file,
-          (progress) => {
-            setUploadingVideos(prev => 
-              prev.map(v => 
-                v.id === uploadingVideo.id 
-                  ? { ...v, progress }
-                  : v
-              )
-            );
-          }
-        );
-        
-        // Update status to processing
-        setUploadingVideos(prev => 
-          prev.map(v => 
-            v.id === uploadingVideo.id 
-              ? { ...v, status: 'processing', progress: 100 }
-              : v
-          )
-        );
-        
-        // Add to main videos list and remove from uploading
-        setTimeout(() => {
-          setVideos(prev => [uploadedVideo, ...prev]);
-          setUploadingVideos(prev => prev.filter(v => v.id !== uploadingVideo.id));
-          setSuccessMessage(`Successfully uploaded ${uploadingVideo.name}`);
-        }, 1000);
-        
-      } catch (err) {
-        const errorMsg = getErrorMessage(err, 'Backend connection failed - upload failed');
-        setUploadingVideos(prev => 
-          prev.map(v => 
-            v.id === uploadingVideo.id 
-              ? { ...v, status: 'failed', error: errorMsg }
-              : v
-          )
-        );
-        
-        setUploadErrors(prev => [...prev, {
-          message: errorMsg,
-          fileName: uploadingVideo.name
-        }]);
-        
-        console.error('Upload failed:', errorMsg, err);
-      }
-    });
-    
-    await Promise.allSettled(uploadPromises);
-  }, []); // No longer depends on projectId
 
   // Drag and drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {

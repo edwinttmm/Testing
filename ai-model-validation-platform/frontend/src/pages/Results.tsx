@@ -57,7 +57,7 @@ import { apiService } from '../services/api';
 import { 
   Project, 
   DetailedTestResults, 
- 
+  DetectionComparison,
   ResultsFilter,
   PassFailResult,
 } from '../services/types';
@@ -106,6 +106,8 @@ const Results: React.FC = () => {
   const [loadingDetails, setLoadingDetails] = useState(false);
   
   // Comparison view state
+  const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
   // Analytics and export state
   const [showStatistics, setShowStatistics] = useState(false);
