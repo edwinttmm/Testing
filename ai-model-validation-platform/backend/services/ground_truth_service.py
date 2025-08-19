@@ -54,14 +54,12 @@ class GroundTruthService:
             logger.warning("❌ ML dependencies not available - ground truth generation disabled")
             logger.info("💡 To enable: pip install torch ultralytics")
         
-        # Class mapping for VRU detection
+        # Class mapping for VRU detection (YOLO COCO classes to VRU types)
         self.vru_classes = {
-            0: 'person',  # pedestrian
-            1: 'bicycle',  # cyclist
-            2: 'car',
-            3: 'motorcycle',
-            5: 'bus',
-            7: 'truck'
+            0: 'pedestrian',      # person -> pedestrian
+            1: 'cyclist',         # bicycle -> cyclist  
+            3: 'motorcyclist',    # motorcycle -> motorcyclist
+            # Note: wheelchair_user and scooter_rider would need custom training
         }
         
         # Driver behavior classes (would need custom trained model)
@@ -83,39 +81,89 @@ class GroundTruthService:
         db = SessionLocal()
         
         try:
+            logger.info(f"🚀 Starting ground truth processing for video {video_id} at {video_file_path}")
+            
+            # Check if video file exists
+            import os
+            if not os.path.exists(video_file_path):
+                logger.error(f"❌ Video file not found: {video_file_path}")
+                update_video_status(db, video_id, "failed")
+                return
+            
             # Update video status to processing
-            update_video_status(db, video_id, "processing")
+            video = get_video(db, video_id)
+            if video:
+                video.status = "processing"
+                video.processing_status = "processing"
+                db.commit()
+                logger.info(f"📝 Updated video {video_id} status to processing")
             
             if not self.ml_available:
-                logger.warning(f"ML not available. Skipping ground truth generation for video {video_id}")
-                # Update video status to indicate ML is not available
-                update_video_status(db, video_id, "ml_unavailable")
+                logger.error(f"❌ ML not available. Cannot process ground truth for video {video_id}")
+                video = get_video(db, video_id)
+                if video:
+                    video.status = "failed"
+                    video.processing_status = "failed"
+                    db.commit()
                 return
             
             # Process video with YOLO  
+            logger.info(f"🔍 Extracting detections using YOLOv8...")
             detections = self._extract_detections(video_file_path)
             
+            logger.info(f"✅ Extracted {len(detections)} detections from video {video_id}")
+            
+            if len(detections) == 0:
+                logger.warning(f"⚠️  No VRU detections found in video {video_id}")
+            
             # Store ground truth objects in database
+            detection_count = 0
             for detection in detections:
-                create_ground_truth_object(
-                    db=db,
-                    video_id=video_id,
-                    timestamp=detection["timestamp"],
-                    class_label=detection["class_label"],
-                    bounding_box=detection["bounding_box"],
-                    confidence=detection["confidence"]
-                )
+                try:
+                    create_ground_truth_object(
+                        db=db,
+                        video_id=video_id,
+                        frame_number=detection.get("frame_number"),
+                        timestamp=detection["timestamp"],
+                        class_label=detection["class_label"],
+                        x=detection["x"],
+                        y=detection["y"],
+                        width=detection["width"],
+                        height=detection["height"],
+                        confidence=detection["confidence"],
+                        validated=detection.get("validated", True),
+                        difficult=detection.get("difficult", False)
+                    )
+                    detection_count += 1
+                except Exception as e:
+                    logger.error(f"❌ Failed to store detection: {str(e)}")
+                    continue
+            
+            logger.info(f"💾 Stored {detection_count} detections in database")
             
             # Update video status and mark ground truth as generated
             video = get_video(db, video_id)
             if video:
                 video.status = "completed"
+                video.processing_status = "completed"
                 video.ground_truth_generated = True
                 db.commit()
+                logger.info(f"✅ Ground truth processing completed for video {video_id} with {detection_count} detections")
             
         except Exception as e:
-            print(f"Error processing video {video_id}: {str(e)}")
-            update_video_status(db, video_id, "failed")
+            logger.error(f"💥 Error processing video {video_id}: {str(e)}")
+            logger.exception("Full error details:")
+            
+            # Update video status to failed
+            try:
+                video = get_video(db, video_id)
+                if video:
+                    video.status = "failed"
+                    video.processing_status = "failed"
+                    db.commit()
+            except Exception as db_error:
+                logger.error(f"Failed to update video status: {str(db_error)}")
+                
         finally:
             db.close()
     
@@ -166,15 +214,16 @@ class GroundTruthService:
                             x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                             
                             detection = {
+                                "frame_number": frame_count,
                                 "timestamp": timestamp,
                                 "class_label": self.vru_classes[class_id],
-                                "bounding_box": {
-                                    "x": float(x1),
-                                    "y": float(y1),
-                                    "width": float(x2 - x1),
-                                    "height": float(y2 - y1)
-                                },
-                                "confidence": confidence
+                                "x": float(x1),
+                                "y": float(y1),
+                                "width": float(x2 - x1),
+                                "height": float(y2 - y1),
+                                "confidence": confidence,
+                                "validated": True,  # Mark AI detections as validated ground truth
+                                "difficult": False  # YOLO confident detections are not difficult
                             }
                             detections.append(detection)
         
