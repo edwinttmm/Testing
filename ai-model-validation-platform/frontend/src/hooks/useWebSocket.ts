@@ -49,19 +49,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, []);
 
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectCountRef.current >= reconnectAttempts) {
-      setError(new Error(`Failed to reconnect after ${reconnectAttempts} attempts`));
-      return;
-    }
-
-    clearReconnectTimeout();
-    reconnectTimeoutRef.current = setTimeout(() => {
-      reconnectCountRef.current++;
-      connect();
-    }, reconnectDelay * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
-  }, [reconnectAttempts, reconnectDelay, clearReconnectTimeout, connect]);
-
+  // Define connect function first, before scheduleReconnect
   const connect = useCallback(() => {
     if (socketRef.current?.connected) {
       return;
@@ -122,7 +110,21 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       setError(error);
       onError?.(error);
     }
-  }, [url, onConnect, onDisconnect, onError, scheduleReconnect, clearReconnectTimeout]);
+  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout]);
+
+  // Now define scheduleReconnect with connect in scope
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectCountRef.current >= reconnectAttempts) {
+      setError(new Error(`Failed to reconnect after ${reconnectAttempts} attempts`));
+      return;
+    }
+
+    clearReconnectTimeout();
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectCountRef.current++;
+      connect();
+    }, reconnectDelay * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
+  }, [reconnectAttempts, reconnectDelay, clearReconnectTimeout, connect]);
 
   const disconnect = useCallback(() => {
     clearReconnectTimeout();

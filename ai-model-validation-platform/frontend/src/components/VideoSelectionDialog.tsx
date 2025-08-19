@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -93,17 +93,10 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  // TODO: Implement status filtering functionality
-  // const [filterStatus, setFilterStatus] = useState<VideoFile['status'] | 'all'>('all');
+  const [filterStatus, setFilterStatus] = useState<VideoFile['status'] | 'all'>('all');
 
   // Load available videos from ground truth library
-  useEffect(() => {
-    if (open) {
-      loadAvailableVideos();
-    }
-  }, [open, loadAvailableVideos]);
-
-  const loadAvailableVideos = async () => {
+  const loadAvailableVideos = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -125,7 +118,13 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (open) {
+      loadAvailableVideos();
+    }
+  }, [open, loadAvailableVideos]);
 
   const handleVideoToggle = (videoId: string) => {
     const newSelection = new Set(selectedVideos);
@@ -136,6 +135,16 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
     }
     setSelectedVideos(newSelection);
   };
+
+  const getFilteredVideos = useCallback(() => {
+    return availableVideos.filter(video => {
+      const matchesSearch = video.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           video.originalName?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = filterStatus === 'all' || video.status === filterStatus;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [availableVideos, searchTerm, filterStatus]);
 
   const handleSelectAll = () => {
     const filteredVideos = getFilteredVideos();
@@ -154,16 +163,6 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
       const newSelection = new Set([...selectedVideos, ...allFilteredIds]);
       setSelectedVideos(newSelection);
     }
-  };
-
-  const getFilteredVideos = () => {
-    return availableVideos.filter(video => {
-      const matchesSearch = video.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           video.originalName?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = filterStatus === 'all' || video.status === filterStatus;
-      
-      return matchesSearch && matchesStatus;
-    });
   };
 
   const handleConfirm = () => {
