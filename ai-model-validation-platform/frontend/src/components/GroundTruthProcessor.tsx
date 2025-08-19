@@ -42,8 +42,8 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error((errorData as any).detail || 'Failed to start processing');
+        const errorData = await response.json() as { detail?: string };
+        throw new Error(errorData.detail || 'Failed to start processing');
       }
       
       const result = await response.json();
