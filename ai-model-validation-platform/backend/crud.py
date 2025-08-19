@@ -130,13 +130,26 @@ def update_video_status(db: Session, video_id: str, status: str, duration: float
 
 # Ground Truth CRUD
 def create_ground_truth_object(db: Session, video_id: str, timestamp: float, 
-                              class_label: str, bounding_box: dict, confidence: float) -> GroundTruthObject:
+                              class_label: str, x: float, y: float, width: float, height: float,
+                              confidence: float, frame_number: int = None, validated: bool = True, 
+                              difficult: bool = False, bounding_box: dict = None) -> GroundTruthObject:
+    # Create bounding_box dict for backward compatibility if not provided
+    if bounding_box is None:
+        bounding_box = {"x": x, "y": y, "width": width, "height": height}
+    
     db_object = GroundTruthObject(
         video_id=video_id,
+        frame_number=frame_number,
         timestamp=timestamp,
         class_label=class_label,
-        bounding_box=bounding_box,
-        confidence=confidence
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        bounding_box=bounding_box,  # Keep for backward compatibility
+        confidence=confidence,
+        validated=validated,
+        difficult=difficult
     )
     db.add(db_object)
     db.commit()

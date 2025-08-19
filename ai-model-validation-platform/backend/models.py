@@ -38,6 +38,7 @@ class Video(Base):
     fps = Column(Float)
     resolution = Column(String)
     status = Column(String, default="uploaded", index=True)  # Index for status filtering
+    processing_status = Column(String, default="pending", index=True)  # Ground truth processing status
     ground_truth_generated = Column(Boolean, default=False, index=True)  # Index for filtering
     project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -60,10 +61,17 @@ class GroundTruthObject(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
+    frame_number = Column(Integer, nullable=True, index=True)  # Frame number for video synchronization
     timestamp = Column(Float, nullable=False, index=True)  # Index for temporal queries
     class_label = Column(String, nullable=False, index=True)  # Index for filtering by type
-    bounding_box = Column(JSON)  # {"x": 0, "y": 0, "width": 100, "height": 100}
+    x = Column(Float, nullable=False)  # Bounding box x coordinate
+    y = Column(Float, nullable=False)  # Bounding box y coordinate
+    width = Column(Float, nullable=False)  # Bounding box width
+    height = Column(Float, nullable=False)  # Bounding box height
+    bounding_box = Column(JSON)  # Deprecated - keeping for backward compatibility
     confidence = Column(Float, index=True)  # Index for confidence-based queries
+    validated = Column(Boolean, default=False, index=True)  # Whether this detection has been validated
+    difficult = Column(Boolean, default=False)  # Whether this is a difficult detection
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     video = relationship("Video", back_populates="ground_truth_objects")
