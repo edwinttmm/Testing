@@ -290,8 +290,14 @@ const GroundTruth: React.FC = () => {
           )
         );
         
+        // Provide more specific error guidance
+        let userFriendlyError = errorMsg;
+        if (errorMsg.includes('Failed to upload video to central store')) {
+          userFriendlyError = `Server storage issue - please try again later or contact administrator. The central video store is currently experiencing problems.`;
+        }
+        
         setUploadErrors(prev => [...prev, {
-          message: `${errorMsg} - File: ${uploadingVideo.name} (${uploadingVideo.file.type}, ${formatFileSize(uploadingVideo.file.size)})`,
+          message: `${userFriendlyError} - File: ${uploadingVideo.name} (${uploadingVideo.file.type}, ${formatFileSize(uploadingVideo.file.size)})`,
           fileName: uploadingVideo.name
         }]);
         
