@@ -30,11 +30,12 @@ import {
   VideoLibrary,
   Assessment,
   Edit,
-  Upload,
   Delete,
+  Link,
 } from '@mui/icons-material';
-import { apiService } from '../services/api';
+import { apiService, getLinkedVideos, linkVideosToProject, unlinkVideoFromProject } from '../services/api';
 import { Project, VideoFile, TestSession } from '../services/types';
+import VideoSelectionDialog from '../components/VideoSelectionDialog';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -79,25 +80,24 @@ const ProjectDetail: React.FC = () => {
     lastTestTime: string | null;
   }>({ totalTests: 0, averageAccuracy: 0, lastTestAccuracy: null, lastTestTime: null });
   
-  // Video upload state
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Video linking state
+  const [videoSelectionOpen, setVideoSelectionOpen] = useState(false);
+  const [linkingVideos, setLinkingVideos] = useState(false);
 
-  // Delete video functionality
-  const handleDeleteVideo = async (videoId: string) => {
-    if (!window.confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
+  // Unlink video functionality
+  const handleUnlinkVideo = async (videoId: string) => {
+    if (!window.confirm('Are you sure you want to unlink this video from the project?')) {
       return;
     }
 
     try {
-      await apiService.deleteVideo(videoId);
+      if (!id) return;
+      await unlinkVideoFromProject(id, videoId);
       // Refresh project data to update video list
       await loadProjectData();
     } catch (err: any) {
-      console.error('Video delete error:', err);
-      setError(err.message || 'Failed to delete video');
+      console.error('Video unlink error:', err);
+      setError(err.message || 'Failed to unlink video');
     }
   };
 
@@ -116,9 +116,9 @@ const ProjectDetail: React.FC = () => {
       const projectData = await apiService.getProject(id);
       setProject(projectData);
       
-      // Load videos and test sessions in parallel
+      // Load linked videos and test sessions in parallel  
       const [videosData, testSessionsData] = await Promise.all([
-        apiService.getVideos(id),
+        getLinkedVideos(id),
         apiService.getTestSessions(id)
       ]);
       
@@ -182,58 +182,29 @@ const ProjectDetail: React.FC = () => {
     navigate(`/test-execution?projectId=${id}`);
   };
 
-  // Video upload handlers
-  const handleUploadClick = () => {
-    setUploadDialogOpen(true);
+  // Video linking handlers
+  const handleLinkVideosClick = () => {
+    setVideoSelectionOpen(true);
   };
 
-  const handleUploadDialogClose = () => {
-    setUploadDialogOpen(false);
-    setUploadFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Validate file type
-      const allowedTypes = ['video/mp4', 'video/avi', 'video/mov', 'video/mkv'];
-      if (!allowedTypes.includes(file.type)) {
-        setError('Please select a valid video file (MP4, AVI, MOV, or MKV)');
-        return;
-      }
-      
-      // Validate file size (100MB limit)
-      const maxSize = 100 * 1024 * 1024; // 100MB
-      if (file.size > maxSize) {
-        setError('File size must be less than 100MB');
-        return;
-      }
-      
-      setUploadFile(file);
-      setError(null);
-    }
-  };
-
-  const handleUploadConfirm = async () => {
-    if (!uploadFile || !id) return;
-
-    setUploading(true);
+  const handleVideoSelectionComplete = async (selectedVideos: VideoFile[]) => {
+    if (!id) return;
+    
     try {
-      await apiService.uploadVideo(id, uploadFile);
-      
-      // Success - refresh videos list
-      await loadProjectData();
-      handleUploadDialogClose();
+      setLinkingVideos(true);
       setError(null);
+      
+      const videoIds = selectedVideos.map(video => video.id);
+      await linkVideosToProject(id, videoIds);
+      
+      // Refresh project data to update video list
+      await loadProjectData();
       
     } catch (err: any) {
-      console.error('Video upload error:', err);
-      setError(err.message || 'Failed to upload video');
+      console.error('Failed to link videos:', err);
+      setError(err.message || 'Failed to link videos to project');
     } finally {
-      setUploading(false);
+      setLinkingVideos(false);
     }
   };
   
@@ -457,11 +428,11 @@ const ProjectDetail: React.FC = () => {
             <Button 
               variant="outlined" 
               size="small" 
-              startIcon={<Upload />}
-              onClick={handleUploadClick}
-              disabled={uploading}
+              startIcon={<Link />}
+              onClick={handleLinkVideosClick}
+              disabled={linkingVideos}
             >
-              Upload Video
+              Link Videos
             </Button>
           </Box>
           
@@ -475,10 +446,10 @@ const ProjectDetail: React.FC = () => {
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <VideoLibrary sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
               <Typography variant="body1" color="text.secondary" gutterBottom>
-                No videos uploaded yet
+                No videos linked yet
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Upload ground truth videos to start testing your AI model
+                Link ground truth videos from the library to start testing your AI model
               </Typography>
             </Box>
           ) : (
@@ -491,7 +462,7 @@ const ProjectDetail: React.FC = () => {
                     <TableCell>Duration</TableCell>
                     <TableCell>Ground Truth</TableCell>
                     <TableCell>Detections</TableCell>
-                    <TableCell>Uploaded</TableCell>
+                    <TableCell>Linked</TableCell>
                     <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -532,11 +503,11 @@ const ProjectDetail: React.FC = () => {
                       <TableCell>
                         <Button 
                           size="small" 
-                          color="error" 
+                          color="warning" 
                           startIcon={<Delete />}
-                          onClick={() => handleDeleteVideo(video.id)}
+                          onClick={() => handleUnlinkVideo(video.id)}
                         >
-                          Delete
+                          Unlink
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -716,50 +687,14 @@ const ProjectDetail: React.FC = () => {
         </TabPanel>
       </Card>
 
-      {/* Video Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onClose={handleUploadDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Upload Video</DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              onChange={handleFileSelect}
-              style={{ marginBottom: 16 }}
-            />
-            
-            {uploadFile && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Typography variant="body2"><strong>File:</strong> {uploadFile.name}</Typography>
-                <Typography variant="body2"><strong>Size:</strong> {(uploadFile.size / (1024 * 1024)).toFixed(2)} MB</Typography>
-                <Typography variant="body2"><strong>Type:</strong> {uploadFile.type}</Typography>
-              </Box>
-            )}
-
-            {uploading && (
-              <Box sx={{ mt: 2 }}>
-                <LinearProgress />
-                <Typography variant="body2" sx={{ mt: 1, textAlign: 'center' }}>
-                  Uploading video...
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleUploadDialogClose} disabled={uploading}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleUploadConfirm} 
-            variant="contained" 
-            disabled={!uploadFile || uploading}
-          >
-            {uploading ? 'Uploading...' : 'Upload'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Video Selection Dialog */}
+      <VideoSelectionDialog
+        open={videoSelectionOpen}
+        onClose={() => setVideoSelectionOpen(false)}
+        projectId={id || ''}
+        onSelectionComplete={handleVideoSelectionComplete}
+        selectedVideoIds={videos.map(v => v.id)}
+      />
     </Box>
   );
 };

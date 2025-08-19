@@ -20,6 +20,16 @@ import {
   IconButton,
   Alert,
   Snackbar,
+  Tab,
+  Tabs,
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Paper,
+  Divider,
+  Tooltip,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -29,9 +39,35 @@ import {
   Visibility,
   Delete,
   Cancel,
+  Edit,
+  Save,
+  GetApp,
+  Publish,
+  PlayArrow,
+  Pause,
+  Stop,
+  Timeline,
+  CropFree,
 } from '@mui/icons-material';
-import { VideoFile, ApiError } from '../services/types';
+import { 
+  VideoFile, 
+  ApiError, 
+  VRUType, 
+  GroundTruthAnnotation, 
+  AnnotationSession,
+  BoundingBox,
+ 
+} from '../services/types';
 import { apiService } from '../services/api';
+import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
+import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
+import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
+import { 
+  detectionIdManager, 
+  generateDetectionId, 
+  createDetectionTracker,
+  getDetectionStatistics 
+} from '../utils/detectionIdManager';
 
 interface UploadingVideo {
   id: string;
@@ -46,6 +82,28 @@ interface UploadingVideo {
 interface UploadError {
   message: string;
   fileName: string;
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
+    </div>
+  );
 }
 
 // Video format validation
@@ -83,20 +141,63 @@ const validateVideoFile = (file: File): string | null => {
 };
 
 const GroundTruth: React.FC = () => {
+  // State management
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [uploadingVideos, setUploadingVideos] = useState<UploadingVideo[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<VideoFile | null>(null);
+  const [annotations, setAnnotations] = useState<GroundTruthAnnotation[]>([]);
+  const [selectedAnnotation, setSelectedAnnotation] = useState<GroundTruthAnnotation | null>(null);
+  const [annotationSession, setAnnotationSession] = useState<AnnotationSession | null>(null);
+  
+  // UI state
+  const [activeTab, setActiveTab] = useState(0);
   const [uploadDialog, setUploadDialog] = useState(false);
   const [viewDialog, setViewDialog] = useState(false);
-  const [selectedVideo, setSelectedVideo] = useState<VideoFile | null>(null);
+  const [annotationMode, setAnnotationMode] = useState(false);
+  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [selectedTool, setSelectedTool] = useState<AnnotationTool>({
+    id: 'default',
+    name: 'Rectangle',
+    type: 'rectangle',
+    icon: <CropFree />,
+    cursor: 'crosshair'
+  });
+  const [selectedVRUType, setSelectedVRUType] = useState<VRUType>('pedestrian');
+  
+  // Video player state
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [totalFrames, setTotalFrames] = useState(0);
+  const [frameRate] = useState(30); // Default frame rate
+  
+  // Error and success handling
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [uploadErrors, setUploadErrors] = useState<UploadError[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // File input ref for upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Get project ID from URL params or use default
   const { id: urlProjectId } = useParams<{ id: string }>();
   const [projectId] = useState<string | null>(urlProjectId || null);
+
+  // Load videos on component mount
+  useEffect(() => {
+    if (projectId) {
+      loadVideos();
+    }
+  }, [projectId]);
+
+  // Load annotations when video is selected
+  useEffect(() => {
+    if (selectedVideo) {
+      loadAnnotations(selectedVideo.id);
+      setTotalFrames(Math.floor((selectedVideo.duration || 0) * frameRate));
+    }
+  }, [selectedVideo, frameRate]);
 
   const loadVideos = useCallback(async () => {
     if (!projectId) {
@@ -116,27 +217,175 @@ const GroundTruth: React.FC = () => {
     }
   }, [projectId]);
 
-  // Load videos on component mount
-  useEffect(() => {
-    if (projectId) {
-      loadVideos();
+  const loadAnnotations = useCallback(async (videoId: string) => {
+    try {
+      const annotationList = await apiService.getAnnotations(videoId);
+      setAnnotations(annotationList);
+      
+      // Import annotations into detection ID manager
+      detectionIdManager.clear();
+      annotationList.forEach(annotation => {
+        createDetectionTracker(
+          annotation.detectionId,
+          annotation.vruType,
+          annotation.frameNumber,
+          annotation.timestamp,
+          annotation.boundingBox,
+          1.0
+        );
+      });
+    } catch (err) {
+      console.error('Error loading annotations:', err);
+      setAnnotations([]);
     }
-  }, [projectId, loadVideos]);
+  }, []);
 
-  const getStatusIcon = (status: VideoFile['status'] | UploadingVideo['status']) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle color="success" />;
-      case 'processing':
-      case 'uploading':
-        return <HourglassEmpty color="warning" />;
-      case 'failed':
-        return <Error color="error" />;
-      default:
-        return <HourglassEmpty color="info" />;
+  const createAnnotationSession = useCallback(async (videoId: string) => {
+    if (!projectId) return;
+    
+    try {
+      const session = await apiService.createAnnotationSession(videoId, projectId);
+      setAnnotationSession(session);
+      setSuccessMessage('Annotation session started');
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to create annotation session: ${apiError.message}`);
     }
-  };
+  }, [projectId]);
 
+  // Annotation handlers
+  const handleAnnotationCreate = useCallback(async (
+    vruType: VRUType, 
+    boundingBox?: Partial<BoundingBox>
+  ) => {
+    if (!selectedVideo) return;
+
+    const detectionId = generateDetectionId(vruType, currentFrame);
+    const annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
+      videoId: selectedVideo.id,
+      detectionId,
+      frameNumber: currentFrame,
+      timestamp: currentTime,
+      vruType,
+      boundingBox: boundingBox ? { 
+        x: boundingBox.x || 100,
+        y: boundingBox.y || 100,
+        width: boundingBox.width || 50,
+        height: boundingBox.height || 100,
+        label: vruType, 
+        confidence: 1.0 
+      } : { 
+        x: 100, 
+        y: 100, 
+        width: 50, 
+        height: 100, 
+        label: vruType, 
+        confidence: 1.0 
+      },
+      occluded: false,
+      truncated: false,
+      difficult: false,
+      validated: false,
+    };
+
+    try {
+      const newAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
+      setAnnotations(prev => [...prev, newAnnotation]);
+      setSelectedAnnotation(newAnnotation);
+      
+      // Add to detection tracker
+      createDetectionTracker(
+        newAnnotation.detectionId,
+        newAnnotation.vruType,
+        newAnnotation.frameNumber,
+        newAnnotation.timestamp,
+        newAnnotation.boundingBox,
+        1.0
+      );
+      
+      setSuccessMessage(`Created ${vruType} annotation`);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to create annotation: ${apiError.message}`);
+    }
+  }, [selectedVideo, currentFrame, currentTime]);
+
+  const handleAnnotationUpdate = useCallback(async (updates: Partial<GroundTruthAnnotation>) => {
+    if (!selectedAnnotation) return;
+
+    try {
+      const updatedAnnotation = await apiService.updateAnnotation(selectedAnnotation.id, updates);
+      setAnnotations(prev => 
+        prev.map(ann => ann.id === selectedAnnotation.id ? updatedAnnotation : ann)
+      );
+      setSelectedAnnotation(updatedAnnotation);
+      setSuccessMessage('Annotation updated');
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to update annotation: ${apiError.message}`);
+    }
+  }, [selectedAnnotation]);
+
+  // Wrapper functions for TemporalAnnotationInterface
+  const handleTemporalAnnotationCreate = useCallback(async (annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>) => {
+    await handleAnnotationCreate(annotation.vruType, annotation.boundingBox);
+  }, [handleAnnotationCreate]);
+
+  const handleTemporalAnnotationUpdate = useCallback(async (id: string, updates: Partial<GroundTruthAnnotation>) => {
+    // Find the annotation and set it as selected, then update
+    const annotation = annotations.find(ann => ann.id === id);
+    if (annotation) {
+      setSelectedAnnotation(annotation);
+      await handleAnnotationUpdate(updates);
+    }
+  }, [annotations, handleAnnotationUpdate]);
+
+  const handleAnnotationDelete = useCallback(async (annotationId: string) => {
+    try {
+      await apiService.deleteAnnotation(annotationId);
+      setAnnotations(prev => prev.filter(ann => ann.id !== annotationId));
+      if (selectedAnnotation?.id === annotationId) {
+        setSelectedAnnotation(null);
+      }
+      setSuccessMessage('Annotation deleted');
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to delete annotation: ${apiError.message}`);
+    }
+  }, [selectedAnnotation]);
+
+  const handleAnnotationValidate = useCallback(async (annotationId: string, validated: boolean) => {
+    try {
+      const updatedAnnotation = await apiService.validateAnnotation(annotationId, validated);
+      setAnnotations(prev => 
+        prev.map(ann => ann.id === annotationId ? updatedAnnotation : ann)
+      );
+      if (selectedAnnotation?.id === annotationId) {
+        setSelectedAnnotation(updatedAnnotation);
+      }
+      setSuccessMessage(`Annotation ${validated ? 'validated' : 'marked as pending'}`);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to validate annotation: ${apiError.message}`);
+    }
+  }, [selectedAnnotation]);
+
+  // Video player handlers
+  const handleTimeUpdate = useCallback((time: number, frame: number) => {
+    setCurrentTime(time);
+    setCurrentFrame(frame);
+  }, []);
+
+  const handleCanvasClick = useCallback((x: number, y: number, frame: number, timestamp: number) => {
+    if (!annotationMode) return;
+    
+    handleAnnotationCreate(selectedVRUType, { x, y, width: 50, height: 100 });
+  }, [annotationMode, selectedVRUType, handleAnnotationCreate]);
+
+  const handleFrameChange = useCallback((frame: number) => {
+    setCurrentFrame(frame);
+    setCurrentTime(frame / frameRate);
+  }, [frameRate]);
 
   // File upload handlers
   const handleFileSelect = useCallback((files: FileList | null) => {
@@ -162,7 +411,6 @@ const GroundTruth: React.FC = () => {
     if (validFiles.length > 0) {
       uploadFiles(validFiles);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const uploadFiles = useCallback(async (files: File[]) => {
@@ -291,18 +539,65 @@ const GroundTruth: React.FC = () => {
   const handleViewVideo = async (video: VideoFile) => {
     setSelectedVideo(video);
     setViewDialog(true);
+    setActiveTab(0); // Default to video player tab
     
     // Load ground truth data if available
     if (video.ground_truth_generated || video.groundTruthGenerated) {
       try {
         const groundTruth = await apiService.getGroundTruth(video.id);
-        // Could store ground truth data in state if needed for detailed view
         console.log('Ground truth data:', groundTruth);
       } catch (err) {
         console.warn('Could not load ground truth data:', err);
       }
     }
   };
+
+  // Start annotation session
+  const handleStartAnnotation = useCallback(async (video: VideoFile) => {
+    setSelectedVideo(video);
+    await createAnnotationSession(video.id);
+    setAnnotationMode(true);
+    setViewDialog(true);
+    setActiveTab(1); // Switch to annotation tab
+  }, [createAnnotationSession]);
+
+  // Export annotations
+  const handleExportAnnotations = useCallback(async (format: 'coco' | 'yolo' | 'pascal' | 'json') => {
+    if (!selectedVideo) return;
+
+    try {
+      const blob = await apiService.exportAnnotations(selectedVideo.id, format);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${selectedVideo.filename}_annotations.${format === 'json' ? 'json' : format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      setSuccessMessage(`Annotations exported as ${format.toUpperCase()}`);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to export annotations: ${apiError.message}`);
+    }
+  }, [selectedVideo]);
+
+  const getStatusIcon = (status: VideoFile['status'] | UploadingVideo['status']) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle color="success" />;
+      case 'processing':
+      case 'uploading':
+        return <HourglassEmpty color="warning" />;
+      case 'failed':
+        return <Error color="error" />;
+      default:
+        return <HourglassEmpty color="info" />;
+    }
+  };
+
+  // Get detection statistics
+  const detectionStats = getDetectionStatistics();
 
   const allVideos = [...uploadingVideos, ...videos];
 
@@ -319,8 +614,9 @@ const GroundTruth: React.FC = () => {
         </Button>
       </Box>
 
+      {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -336,7 +632,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -352,23 +648,61 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Total Detections
+                Total Annotations
               </Typography>
               <Typography variant="h3" color="success.main">
-                {videos.reduce((sum, v) => sum + (v.detectionCount || 0), 0)}
+                {detectionStats.totalDetections}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Ground truth objects
+                Ground truth detections
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Validated
+              </Typography>
+              <Typography variant="h3" color="info.main">
+                {detectionStats.validatedDetections}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Validated annotations
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
+      {/* VRU Type Distribution */}
+      {detectionStats.totalDetections > 0 && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Detection Distribution
+            </Typography>
+            <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+              {Object.entries(detectionStats.detectionsByType).map(([vruType, count]) => (
+                <Chip
+                  key={vruType}
+                  label={`${vruType}: ${count}`}
+                  color={count > 0 ? 'primary' : 'default'}
+                  variant={count > 0 ? 'filled' : 'outlined'}
+                />
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Video Library */}
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -444,7 +778,7 @@ const GroundTruth: React.FC = () => {
                       {(video.status === 'completed' || video.groundTruthGenerated) && (
                         <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                           <Chip
-                            label={`Ready for testing`}
+                            label="Ready for annotation"
                             size="small"
                             color="success"
                           />
@@ -456,20 +790,32 @@ const GroundTruth: React.FC = () => {
                 
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <IconButton 
-                      size="small" 
-                      title="View details"
-                      onClick={() => handleViewVideo(video)}
-                    >
-                      <Visibility />
-                    </IconButton>
-                    <IconButton 
-                      size="small" 
-                      title="Delete video"
-                      onClick={() => handleDeleteVideo(video.id)}
-                    >
-                      <Delete />
-                    </IconButton>
+                    {video.status === 'completed' && (
+                      <Tooltip title="Start Annotation">
+                        <IconButton 
+                          size="small"
+                          onClick={() => handleStartAnnotation(video)}
+                        >
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Tooltip title="View Details">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleViewVideo(video)}
+                      >
+                        <Visibility />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete Video">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleDeleteVideo(video.id)}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Tooltip>
                   </Box>
                 </ListItemSecondaryAction>
               </ListItem>
@@ -489,6 +835,7 @@ const GroundTruth: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Upload Dialog */}
       <Dialog open={uploadDialog} onClose={() => setUploadDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Upload Test Video</DialogTitle>
         <DialogContent>
@@ -522,7 +869,7 @@ const GroundTruth: React.FC = () => {
           </Box>
           
           <Typography variant="body2" sx={{ mt: 2 }}>
-            After upload, the system will automatically process the video using YOLOv8 to generate initial ground truth data.
+            After upload, you can create ground truth annotations using our annotation tools.
           </Typography>
           
           <input
@@ -555,101 +902,215 @@ const GroundTruth: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Video View Dialog */}
-      <Dialog open={viewDialog} onClose={() => setViewDialog(false)} maxWidth="md" fullWidth>
+      {/* Video Annotation Dialog */}
+      <Dialog 
+        open={viewDialog} 
+        onClose={() => {
+          setViewDialog(false);
+          setAnnotationMode(false);
+          setSelectedVideo(null);
+          setSelectedAnnotation(null);
+        }} 
+        maxWidth="xl" 
+        fullWidth
+        PaperProps={{
+          sx: { height: '90vh' }
+        }}
+      >
         <DialogTitle>
-          Video Details: {selectedVideo?.filename || selectedVideo?.name}
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">
+              {selectedVideo?.filename || selectedVideo?.name} - Ground Truth Annotation
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>VRU Type</InputLabel>
+                <Select
+                  value={selectedVRUType}
+                  label="VRU Type"
+                  onChange={(e) => setSelectedVRUType(e.target.value as VRUType)}
+                >
+                  <MenuItem value="pedestrian">Pedestrian</MenuItem>
+                  <MenuItem value="cyclist">Cyclist</MenuItem>
+                  <MenuItem value="motorcyclist">Motorcyclist</MenuItem>
+                  <MenuItem value="wheelchair_user">Wheelchair User</MenuItem>
+                  <MenuItem value="scooter_rider">Scooter Rider</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+          </Stack>
         </DialogTitle>
-        <DialogContent>
-          {selectedVideo && (
-            <Box sx={{ mt: 2 }}>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Video Information
-                  </Typography>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Filename:</strong> {selectedVideo.filename || selectedVideo.name}
+        
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ width: '100%' }}>
+            <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
+              <Tab label="Video Player" />
+              <Tab label="Annotation Tools" />
+              <Tab label="Timeline" />
+              <Tab label="Export" />
+            </Tabs>
+
+            <TabPanel value={activeTab} index={0}>
+              {selectedVideo && (
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, lg: 8 }}>
+                    <VideoAnnotationPlayer
+                      video={selectedVideo}
+                      annotations={annotations}
+                      onAnnotationSelect={setSelectedAnnotation}
+                      onTimeUpdate={handleTimeUpdate}
+                      onCanvasClick={handleCanvasClick}
+                      annotationMode={annotationMode}
+                      selectedAnnotation={selectedAnnotation}
+                      frameRate={frameRate}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, lg: 4 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Video Information
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Size:</strong> {formatFileSize(selectedVideo.file_size || selectedVideo.fileSize || selectedVideo.size || 0)}
+                    <Paper sx={{ p: 2, mb: 2 }}>
+                      <Typography variant="body2">
+                        <strong>Duration:</strong> {selectedVideo.duration?.toFixed(2)}s<br/>
+                        <strong>Current Time:</strong> {currentTime.toFixed(2)}s<br/>
+                        <strong>Current Frame:</strong> {currentFrame} / {totalFrames}<br/>
+                        <strong>Frame Rate:</strong> {frameRate} fps
+                      </Typography>
+                    </Paper>
+                    
+                    <Typography variant="h6" gutterBottom>
+                      Session Stats
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Duration:</strong> {formatDuration(selectedVideo.duration)}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Status:</strong> {selectedVideo.status}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Uploaded:</strong> {new Date(selectedVideo.created_at || selectedVideo.createdAt || selectedVideo.uploadedAt).toLocaleString()}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Ground Truth:</strong> {selectedVideo.ground_truth_generated || selectedVideo.groundTruthGenerated ? 'Generated' : 'Pending'}
-                    </Typography>
-                  </Box>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="body2">
+                        <strong>Total Annotations:</strong> {annotations.length}<br/>
+                        <strong>Validated:</strong> {annotations.filter(a => a.validated).length}<br/>
+                        <strong>Current Frame:</strong> {annotations.filter(a => a.frameNumber === currentFrame).length}
+                      </Typography>
+                    </Paper>
+                  </Grid>
                 </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Detection Summary
-                  </Typography>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Total Detections:</strong> {selectedVideo.detectionCount || 0}
-                    </Typography>
-                    {selectedVideo.status === 'processing' && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="body2" color="warning.main">
-                          Processing ground truth data...
-                        </Typography>
-                        <LinearProgress sx={{ mt: 1 }} />
-                      </Box>
-                    )}
-                    {selectedVideo.status === 'completed' && (
-                      <Chip
-                        label="Ready for Testing"
-                        color="success"
-                        size="small"
-                        sx={{ mt: 1 }}
-                      />
-                    )}
-                    {selectedVideo.status === 'failed' && (
-                      <Alert severity="error" sx={{ mt: 1 }}>
-                        Processing failed. Please try re-uploading the video.
-                      </Alert>
-                    )}
-                  </Box>
+              )}
+            </TabPanel>
+
+            <TabPanel value={activeTab} index={1}>
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12, lg: 8 }}>
+                  {selectedVideo && (
+                    <VideoAnnotationPlayer
+                      video={selectedVideo}
+                      annotations={annotations}
+                      onAnnotationSelect={setSelectedAnnotation}
+                      onTimeUpdate={handleTimeUpdate}
+                      onCanvasClick={handleCanvasClick}
+                      annotationMode={annotationMode}
+                      selectedAnnotation={selectedAnnotation}
+                      frameRate={frameRate}
+                    />
+                  )}
+                </Grid>
+                <Grid size={{ xs: 12, lg: 4 }}>
+                  <AnnotationTools
+                    selectedAnnotation={selectedAnnotation}
+                    onAnnotationUpdate={handleAnnotationUpdate}
+                    onAnnotationDelete={handleAnnotationDelete}
+                    onAnnotationValidate={handleAnnotationValidate}
+                    onToolSelect={setSelectedTool}
+                    selectedTool={selectedTool}
+                    onCreateAnnotation={handleAnnotationCreate}
+                    annotationMode={annotationMode}
+                    onAnnotationModeToggle={setAnnotationMode}
+                    showAnnotations={showAnnotations}
+                    onShowAnnotationsToggle={setShowAnnotations}
+                    frameNumber={currentFrame}
+                    timestamp={currentTime}
+                  />
                 </Grid>
               </Grid>
-              
-              {/* Actions */}
-              <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+            </TabPanel>
+
+            <TabPanel value={activeTab} index={2}>
+              <TemporalAnnotationInterface
+                annotations={annotations}
+                currentFrame={currentFrame}
+                totalFrames={totalFrames}
+                frameRate={frameRate}
+                duration={selectedVideo?.duration || 0}
+                onFrameChange={handleFrameChange}
+                onAnnotationCreate={handleTemporalAnnotationCreate}
+                onAnnotationUpdate={handleTemporalAnnotationUpdate}
+                onAnnotationDelete={handleAnnotationDelete}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                isPlaying={isPlaying}
+                selectedVRUType={selectedVRUType}
+              />
+            </TabPanel>
+
+            <TabPanel value={activeTab} index={3}>
+              <Box sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Export Annotations
+                </Typography>
+                <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<GetApp />}
+                    onClick={() => handleExportAnnotations('json')}
+                  >
+                    Export JSON
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<GetApp />}
+                    onClick={() => handleExportAnnotations('coco')}
+                  >
+                    Export COCO
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<GetApp />}
+                    onClick={() => handleExportAnnotations('yolo')}
+                  >
+                    Export YOLO
+                  </Button>
+                  <Button 
+                    variant="outlined" 
+                    startIcon={<GetApp />}
+                    onClick={() => handleExportAnnotations('pascal')}
+                  >
+                    Export Pascal VOC
+                  </Button>
+                </Stack>
+
+                <Typography variant="h6" gutterBottom>
+                  Import Annotations
+                </Typography>
                 <Button
                   variant="outlined"
-                  color="error"
-                  startIcon={<Delete />}
-                  onClick={() => {
-                    setViewDialog(false);
-                    handleDeleteVideo(selectedVideo.id);
-                  }}
+                  startIcon={<Publish />}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  Delete Video
+                  Import Annotations
                 </Button>
-                {selectedVideo.status === 'completed' && (
-                  <Button
-                    variant="contained"
-                    startIcon={<CheckCircle />}
-                    disabled
-                  >
-                    Ready for Testing
-                  </Button>
-                )}
               </Box>
-            </Box>
-          )}
+            </TabPanel>
+          </Box>
         </DialogContent>
+        
         <DialogActions>
           <Button onClick={() => setViewDialog(false)}>Close</Button>
+          {annotationSession && (
+            <Button 
+              variant="contained" 
+              startIcon={<Save />}
+              onClick={() => {
+                setSuccessMessage('Annotation session saved');
+              }}
+            >
+              Save Session
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

@@ -31,13 +31,17 @@ import {
   Delete,
   Camera,
   Refresh,
+  VideoLibrary,
+  Link,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { createProject, getProjects, updateProject, deleteProject } from '../services/enhancedApiService';
-import { Project as ApiProject, ProjectCreate, ProjectUpdate, CameraType, SignalType, ProjectStatus } from '../services/types';
+import { createProject, getProjects, updateProject, deleteProject } from '../services/api';
+import { linkVideosToProject, getLinkedVideos } from '../services/api';
+import { Project as ApiProject, ProjectCreate, ProjectUpdate, CameraType, SignalType, ProjectStatus, VideoFile } from '../services/types';
 import ProjectsDebug from '../components/ProjectsDebug';
 import ApiTestComponent from '../components/ApiTestComponent';
 import DeleteConfirmationDialog from '../components/DeleteConfirmationDialog';
+import VideoSelectionDialog from '../components/VideoSelectionDialog';
 
 // Use Project type from API services
 type Project = ApiProject;
@@ -55,6 +59,9 @@ const Projects: React.FC = () => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [videoSelectionOpen, setVideoSelectionOpen] = useState(false);
+  const [linkingProject, setLinkingProject] = useState<Project | null>(null);
+  const [projectVideos, setProjectVideos] = useState<{[key: string]: VideoFile[]}>({});
   
   // Form state
   const [formData, setFormData] = useState<ProjectCreate>({
@@ -83,6 +90,40 @@ const Projects: React.FC = () => {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  // Load linked videos for all projects
+  useEffect(() => {
+    if (projects.length > 0) {
+      loadAllProjectVideos();
+    }
+  }, [projects]);
+
+  const loadAllProjectVideos = async () => {
+    try {
+      const videoPromises = projects.map(async (project) => {
+        try {
+          const videos = await getLinkedVideos(project.id);
+          return { projectId: project.id, videos };
+        } catch (err) {
+          console.warn(`Failed to load videos for project ${project.id}:`, err);
+          return { projectId: project.id, videos: [] };
+        }
+      });
+      
+      const results = await Promise.allSettled(videoPromises);
+      const newProjectVideos: {[key: string]: VideoFile[]} = {};
+      
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          newProjectVideos[result.value.projectId] = result.value.videos;
+        }
+      });
+      
+      setProjectVideos(newProjectVideos);
+    } catch (error) {
+      console.error('Failed to load project videos:', error);
+    }
+  };
 
   const loadProjects = async () => {
     try {
@@ -203,6 +244,43 @@ const Projects: React.FC = () => {
     handleMenuClose();
   };
 
+  const handleLinkVideos = () => {
+    const project = projects.find(p => p.id === selectedProject);
+    if (project) {
+      setLinkingProject(project);
+      setVideoSelectionOpen(true);
+    }
+    handleMenuClose();
+  };
+
+  const handleVideoSelectionComplete = async (selectedVideos: VideoFile[]) => {
+    if (!linkingProject) return;
+    
+    try {
+      setFormLoading(true);
+      setError(null);
+      
+      const videoIds = selectedVideos.map(video => video.id);
+      await linkVideosToProject(linkingProject.id, videoIds);
+      
+      // Update local project videos state
+      setProjectVideos(prev => ({
+        ...prev,
+        [linkingProject.id]: [...(prev[linkingProject.id] || []), ...selectedVideos]
+      }));
+      
+      // Refresh projects to get updated counts
+      await loadProjects();
+      
+    } catch (err: any) {
+      console.error('Failed to link videos:', err);
+      setError(err.message || 'Failed to link videos to project');
+    } finally {
+      setFormLoading(false);
+      setLinkingProject(null);
+    }
+  };
+
   // Delete confirmation handler is now inline in the DeleteConfirmationDialog
 
   const handleDialogClose = () => {
@@ -305,7 +383,8 @@ const Projects: React.FC = () => {
             No projects yet
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
-            Create your first project to start validating AI model performance for VRU detection
+            Create your first project to start validating AI model performance for VRU detection.
+            After creating a project, you can link videos from the Ground Truth library.
           </Typography>
           <Button 
             variant="contained" 
@@ -356,16 +435,22 @@ const Projects: React.FC = () => {
                     </Typography>
                   </Box>
 
-                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                     <Chip
                       label={project.status}
                       color={getStatusColor(project.status)}
                       size="small"
                     />
                     <Chip
-                      label={`${project.testsCount} tests`}
+                      label={`${project.testsCount || 0} tests`}
                       variant="outlined"
                       size="small"
+                    />
+                    <Chip
+                      label={`${(projectVideos[project.id] || []).length} videos`}
+                      variant="outlined"
+                      size="small"
+                      color="primary"
                     />
                     {(project.accuracy ?? 0) > 0 && (
                       <Chip
@@ -400,6 +485,10 @@ const Projects: React.FC = () => {
         <MenuItem onClick={handleEditProject}>
           <Edit sx={{ mr: 1 }} fontSize="small" />
           Edit
+        </MenuItem>
+        <MenuItem onClick={handleLinkVideos}>
+          <Link sx={{ mr: 1 }} fontSize="small" />
+          Link Videos
         </MenuItem>
         <MenuItem onClick={handleDeleteProject}>
           <Delete sx={{ mr: 1 }} fontSize="small" />
@@ -516,6 +605,18 @@ const Projects: React.FC = () => {
           setDeletingProject(null);
           await loadProjects();
         }}
+      />
+
+      {/* Video Selection Dialog */}
+      <VideoSelectionDialog
+        open={videoSelectionOpen}
+        onClose={() => {
+          setVideoSelectionOpen(false);
+          setLinkingProject(null);
+        }}
+        projectId={linkingProject?.id || ''}
+        onSelectionComplete={handleVideoSelectionComplete}
+        selectedVideoIds={(linkingProject ? projectVideos[linkingProject.id] || [] : []).map(v => v.id)}
       />
     </Box>
   );

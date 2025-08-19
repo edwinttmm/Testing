@@ -146,7 +146,7 @@ const TestExecution: React.FC = () => {
     try {
       const projectList = await apiService.getProjects();
       // Only show projects with active status and proper configuration
-      setProjects(projectList.filter((p: Project) => p.status === 'active' || p.status === 'testing'));
+      setProjects(projectList.filter(p => p.status === 'active' || p.status === 'testing'));
     } catch (err: any) {
       setError(`Failed to load projects: ${err.message}`);
     }

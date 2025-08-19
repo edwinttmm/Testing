@@ -17,7 +17,9 @@ import {
   DetectionPipelineConfig,
   DetectionPipelineResult,
   EnhancedDashboardStats,
-  SignalType
+  SignalType,
+  GroundTruthAnnotation,
+  AnnotationSession
 } from './types';
 import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
@@ -185,7 +187,7 @@ class ApiService {
 
   // Enhanced request method with caching and deduplication
   private async cachedRequest<T>(
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     url: string,
     data?: any,
     config?: any
@@ -311,6 +313,117 @@ class ApiService {
     return response.data;
   }
 
+  // Annotation endpoints
+  async getAnnotations(videoId: string): Promise<GroundTruthAnnotation[]> {
+    return this.cachedRequest<GroundTruthAnnotation[]>('GET', `/api/videos/${videoId}/annotations`);
+  }
+
+  async createAnnotation(videoId: string, annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>): Promise<GroundTruthAnnotation> {
+    const result = await this.cachedRequest<GroundTruthAnnotation>('POST', `/api/videos/${videoId}/annotations`, {
+      detection_id: annotation.detectionId,
+      frame_number: annotation.frameNumber,
+      timestamp: annotation.timestamp,
+      vru_type: annotation.vruType,
+      bounding_box: annotation.boundingBox,
+      occluded: annotation.occluded,
+      truncated: annotation.truncated,
+      difficult: annotation.difficult,
+      notes: annotation.notes,
+      annotator: annotation.annotator,
+      validated: annotation.validated
+    });
+    // Invalidate cache for video annotations
+    apiCache.invalidatePattern(`/api/videos/${videoId}/annotations`);
+    return result;
+  }
+
+  async updateAnnotation(annotationId: string, updates: Partial<GroundTruthAnnotation>): Promise<GroundTruthAnnotation> {
+    const result = await this.cachedRequest<GroundTruthAnnotation>('PUT', `/api/annotations/${annotationId}`, {
+      detection_id: updates.detectionId,
+      frame_number: updates.frameNumber,
+      timestamp: updates.timestamp,
+      vru_type: updates.vruType,
+      bounding_box: updates.boundingBox,
+      occluded: updates.occluded,
+      truncated: updates.truncated,
+      difficult: updates.difficult,
+      notes: updates.notes,
+      annotator: updates.annotator,
+      validated: updates.validated
+    });
+    // Invalidate related cache entries
+    apiCache.invalidatePattern('/api/videos');
+    apiCache.invalidatePattern('/api/annotations');
+    return result;
+  }
+
+  async deleteAnnotation(annotationId: string): Promise<void> {
+    await this.cachedRequest<void>('DELETE', `/api/annotations/${annotationId}`);
+    // Invalidate related cache entries
+    apiCache.invalidatePattern('/api/videos');
+    apiCache.invalidatePattern('/api/annotations');
+  }
+
+  async validateAnnotation(annotationId: string, validated: boolean): Promise<GroundTruthAnnotation> {
+    const result = await this.cachedRequest<GroundTruthAnnotation>('PATCH', `/api/annotations/${annotationId}/validate`, {
+      validated
+    });
+    // Invalidate related cache entries
+    apiCache.invalidatePattern('/api/videos');
+    apiCache.invalidatePattern('/api/annotations');
+    return result;
+  }
+
+  async getAnnotationsByDetection(detectionId: string): Promise<GroundTruthAnnotation[]> {
+    return this.cachedRequest<GroundTruthAnnotation[]>('GET', `/api/annotations/detection/${detectionId}`);
+  }
+
+  async createAnnotationSession(videoId: string, projectId: string): Promise<AnnotationSession> {
+    const result = await this.cachedRequest<AnnotationSession>('POST', '/api/annotation-sessions', {
+      video_id: videoId,
+      project_id: projectId
+    });
+    return result;
+  }
+
+  async getAnnotationSession(sessionId: string): Promise<AnnotationSession> {
+    return this.cachedRequest<AnnotationSession>('GET', `/api/annotation-sessions/${sessionId}`);
+  }
+
+  async updateAnnotationSession(sessionId: string, updates: Partial<AnnotationSession>): Promise<AnnotationSession> {
+    const result = await this.cachedRequest<AnnotationSession>('PUT', `/api/annotation-sessions/${sessionId}`, {
+      status: updates.status,
+      current_frame: updates.currentFrame,
+      total_detections: updates.totalDetections,
+      validated_detections: updates.validatedDetections
+    });
+    return result;
+  }
+
+  async exportAnnotations(videoId: string, format: 'coco' | 'yolo' | 'pascal' | 'json' = 'json'): Promise<Blob> {
+    const response = await this.api.get(`/api/videos/${videoId}/annotations/export`, {
+      params: { format },
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async importAnnotations(videoId: string, file: File, format: 'coco' | 'yolo' | 'pascal' | 'json' = 'json'): Promise<{imported: number, errors: string[]}> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('format', format);
+
+    const result = await this.cachedRequest<{imported: number, errors: string[]}>('POST', `/api/videos/${videoId}/annotations/import`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    // Invalidate cache after import
+    apiCache.invalidatePattern(`/api/videos/${videoId}/annotations`);
+    return result;
+  }
+
   // Test sessions
   async getTestSessions(projectId?: string): Promise<TestSession[]> {
     const params = projectId ? { project_id: projectId } : {};
@@ -419,6 +532,34 @@ class ApiService {
     return this.cachedRequest('GET', '/api/ids/strategies/available');
   }
 
+  // Video Library and Ground Truth Integration
+  async getAvailableGroundTruthVideos(): Promise<VideoFile[]> {
+    return this.cachedRequest<VideoFile[]>('GET', '/api/ground-truth/videos/available');
+  }
+
+  async linkVideosToProject(projectId: string, videoIds: string[]): Promise<VideoAssignment[]> {
+    const result = await this.cachedRequest<VideoAssignment[]>('POST', `/api/projects/${projectId}/videos/link`, {
+      video_ids: videoIds
+    });
+    // Invalidate related cache entries
+    apiCache.invalidate('GET', `/api/projects/${projectId}`);
+    apiCache.invalidatePattern('/api/projects');
+    apiCache.invalidatePattern(`/api/projects/${projectId}/videos`);
+    return result;
+  }
+
+  async getLinkedVideos(projectId: string): Promise<VideoFile[]> {
+    return this.cachedRequest<VideoFile[]>('GET', `/api/projects/${projectId}/videos/linked`);
+  }
+
+  async unlinkVideoFromProject(projectId: string, videoId: string): Promise<void> {
+    await this.cachedRequest<void>('DELETE', `/api/projects/${projectId}/videos/${videoId}/unlink`);
+    // Invalidate related cache entries
+    apiCache.invalidate('GET', `/api/projects/${projectId}`);
+    apiCache.invalidatePattern('/api/projects');
+    apiCache.invalidatePattern(`/api/projects/${projectId}/videos`);
+  }
+
   // Generic request methods for custom endpoints
   async get<T = any>(url: string, config?: any): Promise<T> {
     const response = await this.api.get<T>(url, config);
@@ -475,5 +616,20 @@ export const generateId = apiServiceInstance.generateId.bind(apiServiceInstance)
 export const getAvailableIdStrategies = apiServiceInstance.getAvailableIdStrategies.bind(apiServiceInstance);
 export const getChartData = apiServiceInstance.getChartData.bind(apiServiceInstance);
 export const healthCheck = apiServiceInstance.healthCheck.bind(apiServiceInstance);
+export const getAvailableGroundTruthVideos = apiServiceInstance.getAvailableGroundTruthVideos.bind(apiServiceInstance);
+export const linkVideosToProject = apiServiceInstance.linkVideosToProject.bind(apiServiceInstance);
+export const getLinkedVideos = apiServiceInstance.getLinkedVideos.bind(apiServiceInstance);
+export const unlinkVideoFromProject = apiServiceInstance.unlinkVideoFromProject.bind(apiServiceInstance);
+export const getAnnotations = apiServiceInstance.getAnnotations.bind(apiServiceInstance);
+export const createAnnotation = apiServiceInstance.createAnnotation.bind(apiServiceInstance);
+export const updateAnnotation = apiServiceInstance.updateAnnotation.bind(apiServiceInstance);
+export const deleteAnnotation = apiServiceInstance.deleteAnnotation.bind(apiServiceInstance);
+export const validateAnnotation = apiServiceInstance.validateAnnotation.bind(apiServiceInstance);
+export const getAnnotationsByDetection = apiServiceInstance.getAnnotationsByDetection.bind(apiServiceInstance);
+export const createAnnotationSession = apiServiceInstance.createAnnotationSession.bind(apiServiceInstance);
+export const getAnnotationSession = apiServiceInstance.getAnnotationSession.bind(apiServiceInstance);
+export const updateAnnotationSession = apiServiceInstance.updateAnnotationSession.bind(apiServiceInstance);
+export const exportAnnotations = apiServiceInstance.exportAnnotations.bind(apiServiceInstance);
+export const importAnnotations = apiServiceInstance.importAnnotations.bind(apiServiceInstance);
 
 export default apiService;
