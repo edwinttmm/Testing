@@ -120,27 +120,52 @@ class ModelRegistry:
         # Load based on model type
         if model_info["type"] == "yolov8":
             try:
-                # Try to load real YOLOv8 if ultralytics is available
+                # Try to load real YOLOv8 first
                 try:
                     from ultralytics import YOLO
-                    model = YOLO(model_info["path"])
-                    logger.info(f"Loaded real YOLOv8 model: {model_id}")
-                except ImportError:
-                    logger.warning(f"Ultralytics not available, using mock model for {model_id}")
-                    model = MockYOLOv8Model(model_info["path"])
+                    import torch
                     
-                self.model_cache[model_id] = model
-                self.models[model_id]["loaded"] = True
-                logger.info(f"Model loaded successfully: {model_id}")
-                return model
+                    # Check if model file exists
+                    from pathlib import Path
+                    model_path = Path(model_info["path"])
+                    
+                    if not model_path.exists():
+                        logger.info(f"Model file not found at {model_path}, downloading default model...")
+                        # Download default YOLOv8 model
+                        model = YOLO('yolov8n.pt')  # This will auto-download if needed
+                        # Save to expected location
+                        model_path.parent.mkdir(parents=True, exist_ok=True)
+                        # Note: YOLO handles model downloading automatically
+                    else:
+                        model = YOLO(str(model_path))
+                    
+                    # Validate model works
+                    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                    model.to(device)
+                    
+                    # Test with dummy input
+                    test_input = torch.randn(1, 3, 640, 640).to(device)
+                    with torch.no_grad():
+                        _ = model.model(test_input)
+                    
+                    logger.info(f"✅ Loaded real YOLOv8 model: {model_id} on {device}")
+                    self.model_cache[model_id] = RealYOLOv8Wrapper(model)
+                    self.models[model_id]["loaded"] = True
+                    return self.model_cache[model_id]
+                    
+                except ImportError as e:
+                    logger.error(f"❌ ML dependencies not available: {e}")
+                    raise RuntimeError(f"ML dependencies required: {e}. Please install: pip install torch ultralytics")
+                except Exception as e:
+                    logger.error(f"❌ Failed to load real YOLOv8 model: {str(e)}")
+                    raise RuntimeError(f"Model loading failed: {e}")
+                    
+            except RuntimeError:
+                # Re-raise runtime errors (dependency issues)
+                raise
             except Exception as e:
-                logger.error(f"Failed to load model {model_id}: {str(e)}")
-                # Fall back to mock model if real model fails
-                logger.info(f"Falling back to mock model for {model_id}")
-                model = MockYOLOv8Model(model_info["path"])
-                self.model_cache[model_id] = model
-                self.models[model_id]["loaded"] = True
-                return model
+                logger.error(f"Unexpected error loading model {model_id}: {str(e)}")
+                raise ValueError(f"Model loading failed: {e}")
         else:
             raise ValueError(f"Unsupported model type: {model_info['type']}")
     
@@ -161,6 +186,78 @@ class ModelRegistry:
             raise ValueError(f"Model {model_id} not registered")
         self.active_model_id = model_id
         logger.info(f"Set active model to: {model_id}")
+
+class RealYOLOv8Wrapper:
+    """Wrapper for real YOLOv8 model to match interface"""
+    
+    def __init__(self, yolo_model):
+        self.model = yolo_model
+        self.class_names = list(VRU_DETECTION_CONFIG.keys())
+        # Map YOLO class IDs to VRU classes
+        self.yolo_to_vru_mapping = {
+            0: 'pedestrian',  # person
+            1: 'cyclist',     # bicycle
+            2: 'motorcyclist', # motorcycle
+            # Add more mappings as needed
+        }
+    
+    async def predict(self, frame: np.ndarray) -> List[Detection]:
+        """Real prediction using YOLOv8"""
+        try:
+            # Run inference
+            results = self.model(frame, verbose=False)
+            
+            detections = []
+            
+            for r in results:
+                boxes = r.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        # Extract box data
+                        xyxy = box.xyxy[0].cpu().numpy()
+                        conf = box.conf[0].cpu().numpy()
+                        cls = int(box.cls[0].cpu().numpy())
+                        
+                        # Convert to our bounding box format
+                        x1, y1, x2, y2 = xyxy
+                        width = x2 - x1
+                        height = y2 - y1
+                        
+                        # Map YOLO class to VRU class
+                        if cls in self.yolo_to_vru_mapping:
+                            class_label = self.yolo_to_vru_mapping[cls]
+                        else:
+                            continue  # Skip non-VRU objects
+                        
+                        # Filter by confidence threshold
+                        min_confidence = VRU_DETECTION_CONFIG.get(class_label, {}).get("min_confidence", 0.5)
+                        if conf < min_confidence:
+                            continue
+                        
+                        detection = Detection(
+                            class_label=class_label,
+                            confidence=float(conf),
+                            bounding_box=BoundingBox(x=float(x1), y=float(y1), width=float(width), height=float(height)),
+                            timestamp=time.time(),
+                            frame_number=0,  # Will be set by caller
+                            detection_id=str(uuid.uuid4())
+                        )
+                        
+                        detections.append(detection)
+            
+            return detections
+            
+        except Exception as e:
+            logger.error(f"Real YOLOv8 prediction failed: {str(e)}")
+            raise
+    
+    async def predict_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
+        """Batch prediction for multiple frames"""
+        results = []
+        for frame in frames:
+            detections = await self.predict(frame)
+            results.append(detections)
+        return results
 
 class MockYOLOv8Model:
     """Mock YOLOv8 model for testing without ML dependencies"""
