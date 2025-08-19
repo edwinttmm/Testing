@@ -1,3 +1,5 @@
+import os
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"  # Disable OpenEXR support
 import cv2
 import numpy as np
 from typing import List, Dict, Any

@@ -550,13 +550,13 @@ async def upload_video_central(
             file_path=final_file_path,
             file_size=bytes_written,
             status="uploaded",
-            project_id=CENTRAL_STORE_PROJECT_ID  # Central store system project
+            processing_status="pending",
+            ground_truth_generated=False,
+            project_id=CENTRAL_STORE_PROJECT_ID,  # Central store system project
+            duration=video_metadata.get('duration') if video_metadata else None,
+            fps=video_metadata.get('fps') if video_metadata else None,
+            resolution=video_metadata.get('resolution') if video_metadata else None
         )
-        
-        # Update video record with metadata
-        if video_metadata:
-            video_record.duration = video_metadata.get('duration')
-            video_record.resolution = video_metadata.get('resolution')
         
         db.add(video_record)
         db.commit()
