@@ -98,7 +98,7 @@ class VideoUploadResponse(BaseModel):
     created_at: str = Field(alias="createdAt")
     status: str
     ground_truth_generated: bool = Field(alias="groundTruthGenerated")
-    ground_truth_status: str = Field(alias="groundTruthStatus")
+    processing_status: str = Field(alias="processingStatus")  # Fixed: Use actual model field
     detection_count: int = Field(alias="detectionCount")
     message: str
     

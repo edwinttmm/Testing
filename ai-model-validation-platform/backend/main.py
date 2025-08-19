@@ -585,7 +585,7 @@ async def upload_video_central(
             "createdAt": video_record.created_at.isoformat(),
             "status": "uploaded",
             "groundTruthGenerated": False,
-            "groundTruthStatus": "pending",
+            "processingStatus": video_record.processing_status,  # Fixed: Use actual model field
             "detectionCount": 0,
             "message": "Video uploaded to central store successfully. Processing started."
         }
