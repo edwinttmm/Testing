@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -100,82 +100,45 @@ const TestExecution: React.FC = () => {
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Load projects and sessions
-  useEffect(() => {
-    loadProjects(); // eslint-disable-line @typescript-eslint/no-use-before-define
-  }, [loadProjects]);
-
-  useEffect(() => {
-    if (selectedProject) {
-      loadTestSessions(); // eslint-disable-line @typescript-eslint/no-use-before-define
-    }
-  }, [selectedProject, loadTestSessions]);
-
-  // WebSocket connection for real-time updates
-  useEffect(() => {
-    if (isRunning && currentSession) {
-      connectWebSocket(); // eslint-disable-line @typescript-eslint/no-use-before-define
-    }
-    
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [isRunning, currentSession, connectWebSocket]);
-
-  const loadProjects = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.get<Project[]>('/api/projects');
-      setProjects(response);
-      if (response.length > 0) {
-        setSelectedProject(response[0]);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load projects');
-      showSnackbar('Failed to load projects', 'error');
-    } finally {
-      setLoading(false);
-    }
+  // Helper functions
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setSnackbarOpen(true);
   }, []);
 
-  const loadTestSessions = useCallback(async () => {
-    if (!selectedProject) return;
-    
-    try {
-      setLoading(true);
-      const response = await apiService.get<TestSession[]>(`/api/projects/${selectedProject.id}/test-sessions`);
-      setSessions(response);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load test sessions');
-      showSnackbar('Failed to load test sessions', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedProject]);
+  const updateTestProgress = useCallback((progress: any) => {
+    // Update progress indicators
+    console.log('Test progress:', progress);
+  }, []);
 
-  const connectWebSocket = useCallback(() => {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
-    wsRef.current = new WebSocket(`${wsUrl}/ws/test-execution/${currentSession?.id}`);
+  const addTestResult = useCallback((result: TestResults) => {
+    setTestResults(prev => [...prev, result]);
+  }, []);
+
+  const handleTestCompletion = useCallback((data: any) => {
+    setIsRunning(false);
+    showSnackbar('Test execution completed', 'success');
     
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      handleWebSocketMessage(data); // eslint-disable-line @typescript-eslint/no-use-before-define
-    };
+    // Update session status
+    setSessions(prevSessions =>
+      prevSessions.map(s => 
+        s.id === currentSession?.id ? { ...s, status: 'completed' as const } : s
+      )
+    );
+  }, [currentSession?.id, showSnackbar]);
+
+  const handleTestError = useCallback((error: any) => {
+    setIsRunning(false);
+    showSnackbar(`Test execution failed: ${error.message}`, 'error');
     
-    wsRef.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      showSnackbar('WebSocket connection error', 'error');
-    };
-    
-    wsRef.current.onclose = () => {
-      if (isRunning) {
-        // Attempt to reconnect
-        setTimeout(connectWebSocket, 3000);
-      }
-    };
-  }, [currentSession, handleWebSocketMessage, isRunning]);
+    // Update session status
+    setSessions(prevSessions =>
+      prevSessions.map(s => 
+        s.id === currentSession?.id ? { ...s, status: 'failed' as const } : s
+      )
+    );
+  }, [currentSession?.id, showSnackbar]);
 
   const handleWebSocketMessage = useCallback((data: any) => {
     switch (data.type) {
@@ -194,7 +157,84 @@ const TestExecution: React.FC = () => {
       default:
         console.log('Unknown WebSocket message:', data);
     }
-  }, [handleTestCompletion, handleTestError]);
+  }, [updateTestProgress, addTestResult, handleTestCompletion, handleTestError]);
+
+  const connectWebSocket = useCallback(() => {
+    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
+    wsRef.current = new WebSocket(`${wsUrl}/ws/test-execution/${currentSession?.id}`);
+    
+    wsRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handleWebSocketMessage(data);
+    };
+    
+    wsRef.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      showSnackbar('WebSocket connection error', 'error');
+    };
+    
+    wsRef.current.onclose = () => {
+      if (isRunning) {
+        // Attempt to reconnect
+        setTimeout(connectWebSocket, 3000);
+      }
+    };
+  }, [currentSession, handleWebSocketMessage, isRunning, showSnackbar]);
+
+  const loadProjects = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.get<Project[]>('/api/projects');
+      setProjects(response);
+      if (response.length > 0) {
+        setSelectedProject(response[0]);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load projects');
+      showSnackbar('Failed to load projects', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showSnackbar]);
+
+  const loadTestSessions = useCallback(async () => {
+    if (!selectedProject) return;
+    
+    try {
+      setLoading(true);
+      const response = await apiService.get<TestSession[]>(`/api/projects/${selectedProject.id}/test-sessions`);
+      setSessions(response);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load test sessions');
+      showSnackbar('Failed to load test sessions', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedProject, showSnackbar]);
+
+  // Load projects and sessions
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  useEffect(() => {
+    if (selectedProject) {
+      loadTestSessions();
+    }
+  }, [selectedProject, loadTestSessions]);
+
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    if (isRunning && currentSession) {
+      connectWebSocket();
+    }
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [isRunning, currentSession, connectWebSocket]);
 
   const handleVideoSelection = (videos: VideoFile[]) => {
     setSelectedVideos(videos);
@@ -296,46 +336,8 @@ const TestExecution: React.FC = () => {
     }
   };
 
-  const updateTestProgress = (progress: any) => {
-    // Update progress indicators
-    console.log('Test progress:', progress);
-  };
 
-  const addTestResult = (result: TestResults) => {
-    setTestResults(prev => [...prev, result]);
-  };
-
-  const handleTestCompletion = useCallback((data: any) => {
-    setIsRunning(false);
-    showSnackbar('Test execution completed', 'success');
-    
-    // Update session status
-    setSessions(prevSessions =>
-      prevSessions.map(s => 
-        s.id === currentSession?.id ? { ...s, status: 'completed' as const } : s
-      )
-    );
-  }, [currentSession?.id]);
-
-  const handleTestError = useCallback((error: any) => {
-    setIsRunning(false);
-    showSnackbar(`Test execution failed: ${error.message}`, 'error');
-    
-    // Update session status
-    setSessions(prevSessions =>
-      prevSessions.map(s => 
-        s.id === currentSession?.id ? { ...s, status: 'failed' as const } : s
-      )
-    );
-  }, [currentSession?.id]);
-
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
-    setSnackbarMessage(message);
-    setSnackbarSeverity(severity);
-    setSnackbarOpen(true);
-  };
-
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = useCallback((status: string) => {
     switch (status) {
       case 'completed':
         return <CheckCircleIcon color="success" />;
@@ -348,9 +350,9 @@ const TestExecution: React.FC = () => {
       default:
         return <InfoIcon color="info" />;
     }
-  };
+  }, []);
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case 'completed': return 'success';
       case 'running': return 'primary';
@@ -358,7 +360,12 @@ const TestExecution: React.FC = () => {
       case 'cancelled': return 'warning';
       default: return 'default';
     }
-  };
+  }, []);
+
+  const getModelConfigsCount = useCallback((project: Project) => {
+    const modelConfigs = (project as any).modelConfigurations || (project as any).models || [];
+    return modelConfigs.length;
+  }, []);
 
   if (loading && projects.length === 0) {
     return (
@@ -368,10 +375,6 @@ const TestExecution: React.FC = () => {
     );
   }
 
-  const getModelConfigsCount = (project: Project) => {
-    const modelConfigs = (project as any).modelConfigurations || (project as any).models || [];
-    return modelConfigs.length;
-  };
 
   return (
     <Box>

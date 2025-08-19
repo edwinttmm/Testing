@@ -154,6 +154,7 @@ const Datasets: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = useState<VideoWithAnnotations | null>(null);
   const [viewDialog, setViewDialog] = useState(false);
   const [exportDialog, setExportDialog] = useState(false);
+  const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
 
@@ -168,61 +169,6 @@ const Datasets: React.FC = () => {
     qualityMetrics: { highQuality: 0, mediumQuality: 0, lowQuality: 0 },
     recentActivity: [],
   });
-
-  const loadInitialData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Load videos
-      const videosData = await getAvailableGroundTruthVideos();
-      
-      // Enhance videos with annotation data and project info
-      const enhancedVideos = await Promise.all(
-        videosData.map(async (video) => {
-          try {
-            const annotations = await getAnnotations(video.id);
-            
-            return {
-              ...video,
-              groundTruthAnnotations: annotations,
-              annotationCount: annotations.length,
-              detectionTypes: [...new Set(annotations.map(a => a.vruType))],
-              quality: assessVideoQuality(video),
-              projectName: 'Unknown Project',
-              thumbnail: generateThumbnail(video),
-            } as VideoWithAnnotations;
-          } catch (err) {
-            console.warn(`Failed to load annotations for video ${video.id}:`, err);
-            return {
-              ...video,
-              groundTruthAnnotations: [],
-              annotationCount: 0,
-              detectionTypes: [],
-              quality: 'medium' as const,
-              projectName: 'Unknown Project',
-              thumbnail: generateThumbnail(video),
-            } as VideoWithAnnotations;
-          }
-        })
-      );
-
-      setVideos(enhancedVideos);
-      calculateStats(enhancedVideos); // eslint-disable-line @typescript-eslint/no-use-before-define
-
-    } catch (err) {
-      const apiError = err as ApiError;
-      setError(apiError.message || 'Failed to load dataset information');
-      console.error('Failed to load dataset data:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [calculateStats]);
-
-  // Load data on component mount
-  useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
 
   const calculateStats = useCallback((videosData: VideoWithAnnotations[]) => {
     const totalVideos = videosData.length;
@@ -275,6 +221,61 @@ const Datasets: React.FC = () => {
       recentActivity,
     });
   }, []);
+
+  const loadInitialData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Load videos
+      const videosData = await getAvailableGroundTruthVideos();
+      
+      // Enhance videos with annotation data and project info
+      const enhancedVideos = await Promise.all(
+        videosData.map(async (video) => {
+          try {
+            const annotations = await getAnnotations(video.id);
+            
+            return {
+              ...video,
+              groundTruthAnnotations: annotations,
+              annotationCount: annotations.length,
+              detectionTypes: [...new Set(annotations.map(a => a.vruType))],
+              quality: assessVideoQuality(video),
+              projectName: 'Unknown Project',
+              thumbnail: generateThumbnail(video),
+            } as VideoWithAnnotations;
+          } catch (err) {
+            console.warn(`Failed to load annotations for video ${video.id}:`, err);
+            return {
+              ...video,
+              groundTruthAnnotations: [],
+              annotationCount: 0,
+              detectionTypes: [],
+              quality: 'medium' as const,
+              projectName: 'Unknown Project',
+              thumbnail: generateThumbnail(video),
+            } as VideoWithAnnotations;
+          }
+        })
+      );
+
+      setVideos(enhancedVideos);
+      calculateStats(enhancedVideos);
+
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || 'Failed to load dataset information');
+      console.error('Failed to load dataset data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [calculateStats]);
+
+  // Load data on component mount
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
 
   const calculateDetectionMetrics = (videos: VideoWithAnnotations[], vruType: VRUType | null): DetectionTypeMetrics => {
     const relevantAnnotations = videos.flatMap(v => 
