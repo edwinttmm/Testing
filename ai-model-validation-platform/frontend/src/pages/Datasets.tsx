@@ -270,7 +270,7 @@ const Datasets: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [calculateStats]);
+  }, []);
 
   // Load data on component mount
   useEffect(() => {
