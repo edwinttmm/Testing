@@ -100,13 +100,16 @@ def install_packages(packages, extra_index_urls=None):
         logger.info(f"📦 Installing {package}...")
         
         # Add SSL and certificate options for Docker environments
-        cmd = f'"{python_exe}" -m pip install {package} --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org'
+        cmd = f'"{python_exe}" -m pip install {package} --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org --no-cache-dir'
         if extra_index_urls:
             for url in extra_index_urls:
                 cmd += f' --extra-index-url {url}'
                 # Add trusted host for extra index URLs
                 if 'pytorch.org' in url:
                     cmd += ' --trusted-host download.pytorch.org'
+        
+        # Add timeout and retry logic
+        cmd += ' --timeout 300 --retries 3'
         
         result = run_command(cmd, check=False, capture_output=True)
         

@@ -32,17 +32,27 @@ class GroundTruthService:
         
         if self.ml_available:
             try:
-                # Configure torch to allow unsafe loading for YOLO models
-                torch.serialization.add_safe_globals(['ultralytics.nn.tasks.DetectionModel'])
-                
-                # Load YOLOv8 model
+                # Load YOLOv8 model with proper configuration
+                logger.info("🚀 Loading YOLOv8 model for ground truth generation...")
                 self.model = YOLO('yolov8n.pt')  # Using nano version for speed
-                logger.info("YOLO model loaded successfully")
+                
+                # Test the model with a dummy input to ensure it works
+                import torch
+                device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                logger.info(f"✅ YOLOv8 model loaded successfully on {device}")
+                
+                # Test inference
+                dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
+                _ = self.model(dummy_img, verbose=False)
+                logger.info("✅ YOLOv8 model inference test successful")
+                
             except Exception as e:
-                logger.warning(f"Failed to load YOLO model: {e}. Using fallback mode.")
+                logger.error(f"❌ Failed to load YOLOv8 model: {e}")
+                logger.warning("🔧 Falling back to disabled mode - install ML dependencies to enable ground truth generation")
                 self.ml_available = False
         else:
-            logger.warning("ML dependencies not available. Using fallback mode.")
+            logger.warning("❌ ML dependencies not available - ground truth generation disabled")
+            logger.info("💡 To enable: pip install torch ultralytics")
         
         # Class mapping for VRU detection
         self.vru_classes = {

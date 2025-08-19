@@ -1120,16 +1120,111 @@ async def get_ground_truth(
     video_id: str,
     db: Session = Depends(get_db)
 ):
-    # Ground truth service temporarily disabled
-    logger.info(f"Ground truth service temporarily disabled for video {video_id}")
-    # Return fallback response
-    return {
-        "video_id": video_id,
-        "objects": [],
-        "total_detections": 0,
-        "status": "pending", 
-        "message": "Ground truth processing temporarily disabled - requires ML dependencies"
-    }
+    """Get ground truth data for a video"""
+    try:
+        # Check if video exists
+        video = db.query(models.Video).filter(models.Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        # Get ground truth objects from database
+        ground_truth_objects = db.query(models.GroundTruthObject).filter(
+            models.GroundTruthObject.video_id == video_id
+        ).all()
+        
+        # Convert to response format
+        objects = []
+        for obj in ground_truth_objects:
+            objects.append({
+                "id": obj.id,
+                "frame_number": obj.frame_number,
+                "timestamp": obj.timestamp,
+                "class_label": obj.class_label,
+                "confidence": obj.confidence or 1.0,
+                "bounding_box": {
+                    "x": obj.x,
+                    "y": obj.y,
+                    "width": obj.width,
+                    "height": obj.height,
+                    "confidence": obj.confidence or 1.0
+                },
+                "validated": obj.validated,
+                "difficult": obj.difficult or False
+            })
+        
+        # Determine status based on ground truth availability
+        if video.ground_truth_generated:
+            status = "completed"
+            message = f"Ground truth contains {len(objects)} validated objects"
+        elif len(objects) > 0:
+            status = "processing"
+            message = f"Ground truth processing in progress - {len(objects)} objects found"
+        else:
+            status = "pending"
+            message = "Ground truth processing not started - trigger processing"
+        
+        return {
+            "video_id": video_id,
+            "objects": objects,
+            "total_detections": len(objects),
+            "status": status,
+            "message": message
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting ground truth for video {video_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get ground truth: {str(e)}")
+
+@app.post("/api/videos/{video_id}/process-ground-truth")
+async def trigger_ground_truth_processing(
+    video_id: str,
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks
+):
+    """Trigger ground truth processing for a video"""
+    try:
+        # Check if video exists
+        video = db.query(models.Video).filter(models.Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        # Check if processing is already in progress or completed
+        if video.ground_truth_generated:
+            return {
+                "video_id": video_id,
+                "status": "already_completed",
+                "message": "Ground truth already generated for this video"
+            }
+        
+        # Start background processing
+        try:
+            import asyncio
+            asyncio.create_task(ground_truth_service.process_video_async(video_id, video.file_path))
+            
+            # Update status
+            video.processing_status = "processing"
+            db.commit()
+            
+            return {
+                "video_id": video_id,
+                "status": "started",
+                "message": "Ground truth processing started"
+            }
+        except Exception as e:
+            logger.error(f"Failed to start ground truth processing: {str(e)}")
+            return {
+                "video_id": video_id,
+                "status": "failed",
+                "message": f"Failed to start processing: {str(e)}"
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error triggering ground truth processing for video {video_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger processing: {str(e)}")
 
 @app.get("/api/videos/{video_id}/annotations")
 async def get_video_annotations(video_id: str, db: Session = Depends(get_db)):
@@ -1238,11 +1333,94 @@ async def get_test_results(
     session_id: str,
     db: Session = Depends(get_db)
 ):
-    # Validation service temporarily disabled
-    # results = validation_service.get_session_results(session_id)
-    # if not results:
-    #     raise HTTPException(status_code=404, detail="Test session not found")
-    # return results
+    """Get results for a completed test session"""
+    try:
+        from services.test_execution_service import test_execution_service
+        
+        results = test_execution_service.get_session_results(session_id)
+        if not results:
+            # Check if session exists but isn't completed
+            test_session = db.query(models.TestSession).filter(models.TestSession.id == session_id).first()
+            if not test_session:
+                raise HTTPException(status_code=404, detail="Test session not found")
+            
+            if test_session.status == "running":
+                raise HTTPException(status_code=202, detail="Test session is still running")
+            elif test_session.status == "failed":
+                raise HTTPException(status_code=500, detail=f"Test session failed: {test_session.error_message or 'Unknown error'}")
+            else:
+                raise HTTPException(status_code=404, detail="Test results not available")
+        
+        return results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting test results for session {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get test results: {str(e)}")
+
+@app.post("/api/projects/{project_id}/execute-test")
+async def execute_test_session(
+    project_id: str,
+    db: Session = Depends(get_db)
+):
+    """Execute a new test session for a project"""
+    try:
+        # Verify project exists
+        project = db.query(models.Project).filter(models.Project.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Check if project has videos with ground truth
+        video_count = db.query(models.Video).filter(
+            models.Video.project_id == project_id,
+            models.Video.ground_truth_generated == True,
+            models.Video.status == 'completed'
+        ).count()
+        
+        if video_count == 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="No videos with ground truth found. Upload videos and generate ground truth data first."
+            )
+        
+        # Start test execution
+        from services.test_execution_service import test_execution_service
+        await test_execution_service.initialize()
+        
+        session_id = await test_execution_service.execute_test_session(project_id)
+        
+        return {
+            "session_id": session_id,
+            "status": "started",
+            "message": f"Test execution started for project {project.name}",
+            "video_count": video_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting test execution for project {project_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start test execution: {str(e)}")
+
+@app.get("/api/test-sessions/{session_id}/status")
+async def get_test_session_status(session_id: str):
+    """Get current status of a test session"""
+    try:
+        from services.test_execution_service import test_execution_service
+        
+        status = test_execution_service.get_session_status(session_id)
+        
+        if "error" in status and status["error"] == "Session not found":
+            raise HTTPException(status_code=404, detail="Test session not found")
+        
+        return status
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting test session status {session_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
     
     # Return mock validation results for testing
     return {
