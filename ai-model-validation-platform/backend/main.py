@@ -338,21 +338,21 @@ def ensure_central_store_project(db: Session):
         existing_project = db.query(Project).filter(Project.id == CENTRAL_STORE_PROJECT_ID).first()
         
         if not existing_project:
-            # Create the central store project
-            from schemas import ProjectCreate
-            central_store_project = ProjectCreate(
+            # Create the central store project directly with specific ID
+            created_project = Project(
                 id=CENTRAL_STORE_PROJECT_ID,
                 name=CENTRAL_STORE_PROJECT_NAME,
                 description=CENTRAL_STORE_PROJECT_DESCRIPTION,
                 camera_model="Multi-format",
-                camera_view="Universal", 
-                signal_type="Universal",
-                status="active"
+                camera_view="Multi-angle",  # Valid enum value for comprehensive coverage
+                signal_type="Network Packet",  # Valid enum value for network-based communication
+                status="active",
+                owner_id="system"
             )
             
-            # Use the existing create_project function
-            from crud import create_project
-            created_project = create_project(db, central_store_project, user_id="system")
+            db.add(created_project)
+            db.commit()
+            db.refresh(created_project)
             
             logger.info(f"Created central store project: {created_project.id}")
             return created_project
