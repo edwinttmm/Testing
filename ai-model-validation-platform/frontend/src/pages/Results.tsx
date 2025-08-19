@@ -106,8 +106,8 @@ const Results: React.FC = () => {
   const [loadingDetails, setLoadingDetails] = useState(false);
   
   // Comparison view state
-  // const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
-  // const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
   // Analytics and export state
   const [showStatistics, setShowStatistics] = useState(false);

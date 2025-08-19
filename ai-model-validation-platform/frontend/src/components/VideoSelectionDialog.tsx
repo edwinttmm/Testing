@@ -28,7 +28,7 @@ import {
   VideoFile as VideoIcon,
 } from '@mui/icons-material';
 import { VideoFile } from '../services/types';
-import { apiService, getAllVideos } from '../services/api';
+import { getAllVideos } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 
 interface VideoSelectionDialogProps {
