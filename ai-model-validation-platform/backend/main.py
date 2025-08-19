@@ -570,7 +570,7 @@ async def upload_video_central(
         
         return {
             "id": video_record.id,
-            "projectId": None,  # No project assignment
+            "projectId": CENTRAL_STORE_PROJECT_ID,  # Central store project assignment
             "filename": file.filename,
             "originalName": file.filename,
             "size": bytes_written,
