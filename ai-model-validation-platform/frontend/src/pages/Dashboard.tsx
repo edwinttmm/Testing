@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -6,24 +6,38 @@ import {
   Box,
   Skeleton,
   Alert,
+  Chip,
 } from '@mui/material';
 import {
   FolderOpen,
   VideoLibrary,
   Assessment,
   TrendingUp,
+  Wifi,
+  WifiOff,
 } from '@mui/icons-material';
 import { getDashboardStats } from '../services/api';
-import { getTestSessions } from '../services/enhancedApiService';
-import { EnhancedDashboardStats, TestSession } from '../services/types';
+import { getTestSessions } from '../services/api';
+import { EnhancedDashboardStats, TestSession, VideoFile, Project } from '../services/types';
 import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<EnhancedDashboardStats | null>(null);
   const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [realtimeUpdates, setRealtimeUpdates] = useState(0);
+  const lastStatsRef = useRef<EnhancedDashboardStats | null>(null);
+
+  // WebSocket connection for real-time updates
+  const { 
+    isConnected, 
+    on: subscribe, 
+    emit,
+    error: wsError 
+  } = useWebSocket();
 
   const formatTimeAgo = (dateString: string | null | undefined) => {
     if (!dateString) return 'Unknown time';
@@ -37,6 +51,99 @@ const Dashboard: React.FC = () => {
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)} hour${Math.floor(diffInMinutes / 60) > 1 ? 's' : ''} ago`;
     return `${Math.floor(diffInMinutes / 1440)} day${Math.floor(diffInMinutes / 1440) > 1 ? 's' : ''} ago`;
   };
+
+  // Real-time update handlers
+  const updateStatsSafely = useCallback((updater: (prevStats: EnhancedDashboardStats) => EnhancedDashboardStats) => {
+    setStats(prevStats => {
+      if (!prevStats) return prevStats;
+      const newStats = updater(prevStats);
+      lastStatsRef.current = newStats;
+      return newStats;
+    });
+  }, []);
+
+  const handleVideoUploaded = useCallback((data: VideoFile) => {
+    console.log('📹 Video uploaded event received:', data);
+    updateStatsSafely(prevStats => ({
+      ...prevStats,
+      video_count: prevStats.video_count + 1
+    }));
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
+
+  const handleProjectCreated = useCallback((data: Project) => {
+    console.log('📁 Project created event received:', data);
+    updateStatsSafely(prevStats => ({
+      ...prevStats,
+      project_count: prevStats.project_count + 1
+    }));
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
+
+  const handleTestCompleted = useCallback((data: TestSession) => {
+    console.log('🧪 Test completed event received:', data);
+    updateStatsSafely(prevStats => ({
+      ...prevStats,
+      test_session_count: prevStats.test_session_count + 1,
+      average_accuracy: data.metrics?.accuracy || prevStats.average_accuracy,
+      active_tests: Math.max(0, prevStats.active_tests - 1)
+    }));
+
+    // Add to recent sessions
+    setRecentSessions(prevSessions => {
+      const newSession = {
+        ...data,
+        createdAt: data.completedAt || new Date().toISOString()
+      };
+      const updatedSessions = [newSession, ...prevSessions.slice(0, 3)];
+      return updatedSessions;
+    });
+    
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
+
+  const handleTestStarted = useCallback((data: TestSession) => {
+    console.log('🚀 Test started event received:', data);
+    updateStatsSafely(prevStats => ({
+      ...prevStats,
+      active_tests: prevStats.active_tests + 1
+    }));
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
+
+  const handleDetectionEvent = useCallback((data: any) => {
+    console.log('🎯 Detection event received:', data);
+    updateStatsSafely(prevStats => ({
+      ...prevStats,
+      detection_event_count: prevStats.detection_event_count + 1,
+      total_detections: prevStats.total_detections + 1,
+      signal_processing_metrics: {
+        ...prevStats.signal_processing_metrics,
+        totalSignals: prevStats.signal_processing_metrics.totalSignals + 1
+      }
+    }));
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
+
+  const handleSignalProcessed = useCallback((data: any) => {
+    console.log('📡 Signal processed event received:', data);
+    updateStatsSafely(prevStats => {
+      const totalSignals = prevStats.signal_processing_metrics.totalSignals + 1;
+      const successfulSignals = data.success 
+        ? prevStats.signal_processing_metrics.totalSignals * (prevStats.signal_processing_metrics.successRate / 100) + 1
+        : prevStats.signal_processing_metrics.totalSignals * (prevStats.signal_processing_metrics.successRate / 100);
+      
+      return {
+        ...prevStats,
+        signal_processing_metrics: {
+          totalSignals,
+          successRate: totalSignals > 0 ? (successfulSignals / totalSignals) * 100 : 0,
+          avgProcessingTime: data.processingTime || prevStats.signal_processing_metrics.avgProcessingTime
+        }
+      };
+    });
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
 
   const fetchDashboardStats = useCallback(async () => {
     try {
@@ -84,12 +191,12 @@ const Dashboard: React.FC = () => {
       }
       
       // Handle sessions data
-      if (sessionsResult.status === 'fulfilled') {
+      if (sessionsResult.status === 'fulfilled' && Array.isArray(sessionsResult.value)) {
         const recentSessionsData = sessionsResult.value
           .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime())
           .slice(0, 4);
         setRecentSessions(recentSessionsData);
-      } else {
+      } else if (sessionsResult.status === 'rejected') {
         const errorMsg = sessionsResult.reason instanceof Error 
           ? sessionsResult.reason.message 
           : 'Backend connection failed';
@@ -138,6 +245,73 @@ const Dashboard: React.FC = () => {
       setLoading(false);
     }
   }, []);
+
+  // WebSocket subscriptions for real-time updates
+  useEffect(() => {
+    if (!isConnected) {
+      console.log('WebSocket not connected, skipping subscriptions');
+      return;
+    }
+
+    console.log('🔗 Setting up Dashboard WebSocket subscriptions');
+
+    // Subscribe to various real-time events
+    const unsubscribeVideo = subscribe('video_uploaded', handleVideoUploaded);
+    const unsubscribeVideoComplete = subscribe('video_processed', handleVideoUploaded);
+    const unsubscribeProject = subscribe('project_created', handleProjectCreated);
+    const unsubscribeProjectUpdated = subscribe('project_updated', handleProjectCreated);
+    const unsubscribeTestComplete = subscribe('test_completed', handleTestCompleted);
+    const unsubscribeTestSessionComplete = subscribe('test_session_completed', handleTestCompleted);
+    const unsubscribeTestStart = subscribe('test_started', handleTestStarted);
+    const unsubscribeTestSessionStart = subscribe('test_session_started', handleTestStarted);
+    const unsubscribeDetection = subscribe('detection_event', handleDetectionEvent);
+    const unsubscribeDetectionResult = subscribe('detection_result', handleDetectionEvent);
+    const unsubscribeSignal = subscribe('signal_processed', handleSignalProcessed);
+    const unsubscribeSignalProcessing = subscribe('signal_processing_result', handleSignalProcessed);
+
+    // Request dashboard updates when connected
+    emit('subscribe_dashboard_updates', { 
+      clientId: 'dashboard',
+      events: [
+        'video_uploaded', 'video_processed',
+        'project_created', 'project_updated', 
+        'test_completed', 'test_session_completed',
+        'test_started', 'test_session_started',
+        'detection_event', 'detection_result',
+        'signal_processed', 'signal_processing_result'
+      ]
+    });
+
+    // Cleanup subscriptions
+    return () => {
+      console.log('🧹 Cleaning up Dashboard WebSocket subscriptions');
+      unsubscribeVideo?.();
+      unsubscribeVideoComplete?.();
+      unsubscribeProject?.();
+      unsubscribeProjectUpdated?.();
+      unsubscribeTestComplete?.();
+      unsubscribeTestSessionComplete?.();
+      unsubscribeTestStart?.();
+      unsubscribeTestSessionStart?.();
+      unsubscribeDetection?.();
+      unsubscribeDetectionResult?.();
+      unsubscribeSignal?.();
+      unsubscribeSignalProcessing?.();
+      
+      // Unsubscribe from dashboard updates
+      emit('unsubscribe_dashboard_updates', { clientId: 'dashboard' });
+    };
+  }, [
+    isConnected, 
+    subscribe, 
+    emit,
+    handleVideoUploaded,
+    handleProjectCreated,
+    handleTestCompleted,
+    handleTestStarted,
+    handleDetectionEvent,
+    handleSignalProcessed
+  ]);
 
   useEffect(() => {
     fetchDashboardStats();
@@ -206,14 +380,40 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4" gutterBottom>
+          Dashboard
+        </Typography>
+        
+        {/* Connection Status Indicator */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Chip
+            icon={isConnected ? <Wifi /> : <WifiOff />}
+            label={isConnected ? 'Live Updates' : 'Offline'}
+            color={isConnected ? 'success' : 'default'}
+            variant={isConnected ? 'filled' : 'outlined'}
+            size="small"
+          />
+          {realtimeUpdates > 0 && (
+            <Chip
+              label={`${realtimeUpdates} live updates`}
+              color="info"
+              variant="outlined"
+              size="small"
+            />
+          )}
+        </Box>
+      </Box>
       
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
         {error && (
-          <Alert severity="warning" sx={{ mb: 3 }}>
-            {error} - Showing demo data
+          <Alert severity="warning" sx={{ mb: 3, width: '100%' }}>
+            {error} - {isConnected ? 'Real-time updates active' : 'Showing cached data'}
+          </Alert>
+        )}
+        {wsError && (
+          <Alert severity="error" sx={{ mb: 3, width: '100%' }}>
+            WebSocket Error: {wsError?.message || 'Connection error'} - Real-time updates unavailable
           </Alert>
         )}
         
@@ -272,12 +472,16 @@ const Dashboard: React.FC = () => {
         <Box sx={{ minWidth: 250, flex: 1 }}>
           <AccessibleStatCard
             title="Signal Processing"
-            value={`${stats?.signal_processing_metrics?.successRate || 0}%`}
+            value={`${Math.round(stats?.signal_processing_metrics?.successRate || 0)}%`}
             icon={<Assessment />}
-            color="success"
-            subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed`}
+            color={isConnected ? "success" : "warning"}
+            subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed ${isConnected ? '(Live)' : '(Cached)'}`}
             loading={loading}
             ariaLabel={`Signal Processing: ${stats?.signal_processing_metrics?.successRate || 0}% success rate`}
+            trend={{
+              value: isConnected ? 2.1 : 0,
+              direction: stats?.trend_analysis?.performance === 'improving' ? 'up' : 'up'
+            }}
           />
         </Box>
       </Box>
@@ -314,12 +518,18 @@ const Dashboard: React.FC = () => {
 
         <Box sx={{ minWidth: 400, flex: 1 }}>
           <AccessibleCard
-            title="System Status"
+            title={`System Status ${isConnected ? '🔴 LIVE' : '⚪ OFFLINE'}`}
             loading={loading}
-            ariaLabel="System performance metrics"
+            ariaLabel="System performance metrics and connection status"
             role="region"
           >
             <Box role="group" aria-label="System performance indicators">
+              <AccessibleProgressItem
+                label={`WebSocket Connection ${isConnected ? '✅' : '❌'}`}
+                value={isConnected ? 100 : 0}
+                color={isConnected ? "success" : "error"}
+                ariaLabel={`WebSocket connection: ${isConnected ? 'Connected' : 'Disconnected'}`}
+              />
               <AccessibleProgressItem
                 label="Active Test Sessions"
                 value={Math.min((stats?.active_tests || 0) * 20, 100)}
@@ -337,6 +547,12 @@ const Dashboard: React.FC = () => {
                 value={Math.min((stats?.video_count || 0) * 5, 100)}
                 color="primary"
                 ariaLabel={`Videos processed: ${stats?.video_count || 0}`}
+              />
+              <AccessibleProgressItem
+                label="Signal Processing Rate"
+                value={Math.round(stats?.signal_processing_metrics?.successRate || 0)}
+                color={stats?.signal_processing_metrics?.successRate && stats.signal_processing_metrics.successRate > 80 ? "success" : "warning"}
+                ariaLabel={`Signal processing success rate: ${stats?.signal_processing_metrics?.successRate || 0}%`}
               />
             </Box>
           </AccessibleCard>

@@ -24,6 +24,8 @@ class Project(Base):
 
     videos = relationship("Video", back_populates="project", cascade="all, delete-orphan")
     test_sessions = relationship("TestSession", back_populates="project", cascade="all, delete-orphan")
+    annotation_sessions = relationship("AnnotationSession", back_populates="project", cascade="all, delete-orphan")
+    video_links = relationship("VideoProjectLink", back_populates="project", cascade="all, delete-orphan")
 
 class Video(Base):
     __tablename__ = "videos"
@@ -43,6 +45,9 @@ class Video(Base):
 
     project = relationship("Project", back_populates="videos")
     ground_truth_objects = relationship("GroundTruthObject", back_populates="video", cascade="all, delete-orphan")
+    annotations = relationship("Annotation", back_populates="video", cascade="all, delete-orphan")
+    annotation_sessions = relationship("AnnotationSession", back_populates="video", cascade="all, delete-orphan")
+    project_links = relationship("VideoProjectLink", back_populates="video", cascade="all, delete-orphan")
 
     # Composite index for common queries
     __table_args__ = (
@@ -85,6 +90,8 @@ class TestSession(Base):
 
     project = relationship("Project", back_populates="test_sessions")
     detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
+    results = relationship("TestResult", back_populates="test_session", cascade="all, delete-orphan")
+    detection_comparisons = relationship("DetectionComparison", back_populates="test_session", cascade="all, delete-orphan")
 
     # Composite index for common queries
     __table_args__ = (

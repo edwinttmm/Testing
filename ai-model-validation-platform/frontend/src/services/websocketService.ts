@@ -1,3 +1,4 @@
+import React from 'react';
 import { io, Socket } from 'socket.io-client';
 import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
 
@@ -434,6 +435,3 @@ export const useWebSocket = (eventType?: string) => {
 };
 
 export default websocketService;
-
-// Import React for the hook
-import React from 'react';

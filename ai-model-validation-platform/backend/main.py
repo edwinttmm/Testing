@@ -20,6 +20,7 @@ from socketio_server import sio, create_socketio_app
 
 from database import SessionLocal, engine
 from models import Base, Project, Video, TestSession, DetectionEvent
+from models_annotation import Annotation, AnnotationSession, VideoProjectLink, TestResult, DetectionComparison
 from schemas import (
     ProjectCreate, ProjectResponse, ProjectUpdate,
     VideoUploadResponse, GroundTruthResponse,
@@ -32,6 +33,12 @@ from schemas import (
     VideoLibraryOrganizeResponse, VideoQualityAssessmentResponse,
     DetectionPipelineConfigSchema, DetectionPipelineResponse,
     EnhancedDashboardStats, CameraTypeEnum, SignalTypeEnum, ProjectStatusEnum
+)
+from schemas_annotation import (
+    AnnotationCreate, AnnotationUpdate, AnnotationResponse,
+    AnnotationSessionCreate, AnnotationSessionResponse,
+    VideoProjectLinkCreate, VideoProjectLinkResponse,
+    AnnotationExportRequest, TestResultResponse, DetectionComparisonResponse
 )
 
 from crud import (

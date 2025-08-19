@@ -102,14 +102,33 @@ export interface VideoUpload {
   file: File;
 }
 
+// VRU Detection Types
+export type VRUType = 'pedestrian' | 'cyclist' | 'motorcyclist' | 'wheelchair_user' | 'scooter_rider';
+
 // Annotation Types
+export interface Detection {
+  id: string;
+  detectionId: string;
+  timestamp: number;
+  boundingBox: BoundingBox;
+  vruType: VRUType;
+  confidence: number;
+  isGroundTruth: boolean;
+  notes?: string;
+  validated: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Annotation {
   id: string;
   videoId: string;
   timestamp: number;
+  endTimestamp?: number; // For temporal annotations
   boundingBoxes: BoundingBox[];
   detectionType: 'pedestrian' | 'cyclist' | 'vehicle' | 'other';
   confidence: number;
+  detections: Detection[];
 }
 
 export interface BoundingBox {
@@ -119,6 +138,48 @@ export interface BoundingBox {
   height: number;
   label: string;
   confidence: number;
+}
+
+// Ground Truth Annotation Types
+export interface GroundTruthAnnotation {
+  id: string;
+  videoId: string;
+  detectionId: string;
+  frameNumber: number;
+  timestamp: number;
+  vruType: VRUType;
+  boundingBox: BoundingBox;
+  occluded: boolean;
+  truncated: boolean;
+  difficult: boolean;
+  notes?: string;
+  annotator?: string;
+  validated: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AnnotationSession {
+  id: string;
+  videoId: string;
+  projectId: string;
+  annotatorId?: string;
+  status: 'active' | 'paused' | 'completed' | 'cancelled';
+  totalDetections: number;
+  validatedDetections: number;
+  currentFrame: number;
+  totalFrames: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AnnotationTool {
+  id: string;
+  name: string;
+  type: 'rectangle' | 'polygon' | 'circle' | 'point';
+  color: string;
+  strokeWidth: number;
+  fillOpacity: number;
 }
 
 // Test Session Types
@@ -163,6 +224,104 @@ export interface TestMetrics {
   falsePositives: number;
   falseNegatives: number;
   totalDetections: number;
+}
+
+// New types for Results component
+export interface DetectionComparison {
+  id: string;
+  frameNumber: number;
+  timestamp: number;
+  groundTruthDetection?: Detection;
+  testDetection?: Detection;
+  matchType: 'true_positive' | 'false_positive' | 'false_negative' | 'true_negative';
+  confidence?: number;
+  iouScore?: number;
+  distanceError?: number;
+  notes?: string;
+}
+
+export interface LatencyStats {
+  averageLatency: number;
+  minLatency: number;
+  maxLatency: number;
+  medianLatency: number;
+  latencyDistribution: { range: string; count: number }[];
+  frameProcessingTimes: { frame: number; processingTime: number }[];
+}
+
+export interface DetailedTestResults {
+  sessionId: string;
+  sessionName: string;
+  projectName: string;
+  videoName: string;
+  status: 'completed' | 'failed' | 'running';
+  metrics: TestMetrics;
+  statisticalAnalysis: StatisticalAnalysis;
+  detectionBreakdown: DetectionTypeBreakdown;
+  latencyAnalysis: LatencyStats;
+  passFailResult: PassFailResult;
+  detectionComparisons: DetectionComparison[];
+  groundTruthDetections: Detection[];
+  testDetections: Detection[];
+  exportOptions: ExportOptions;
+}
+
+export interface StatisticalAnalysis {
+  confidenceIntervals: {
+    precision: [number, number];
+    recall: [number, number];
+    f1Score: [number, number];
+    accuracy: [number, number];
+  };
+  pValue: number;
+  statisticalSignificance: boolean;
+  sampleSize: number;
+  standardDeviations: {
+    precision: number;
+    recall: number;
+    f1Score: number;
+    accuracy: number;
+  };
+}
+
+export interface DetectionTypeBreakdown {
+  pedestrian: DetectionTypeMetrics;
+  cyclist: DetectionTypeMetrics;
+  motorcyclist: DetectionTypeMetrics;
+  wheelchair_user: DetectionTypeMetrics;
+  scooter_rider: DetectionTypeMetrics;
+  overall: DetectionTypeMetrics;
+}
+
+export interface DetectionTypeMetrics {
+  totalGroundTruth: number;
+  totalDetected: number;
+  truePositives: number;
+  falsePositives: number;
+  falseNegatives: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
+  averageConfidence: number;
+}
+
+export interface PassFailResult {
+  overall: 'PASS' | 'FAIL' | 'WARNING';
+  criteria: {
+    minPrecision: { required: number; actual: number; status: 'PASS' | 'FAIL' };
+    minRecall: { required: number; actual: number; status: 'PASS' | 'FAIL' };
+    minF1Score: { required: number; actual: number; status: 'PASS' | 'FAIL' };
+    maxLatency: { required: number; actual: number; status: 'PASS' | 'FAIL' };
+  };
+  recommendations: string[];
+  score: number; // 0-100
+}
+
+export interface ExportOptions {
+  formats: ('csv' | 'json' | 'pdf' | 'excel')[];
+  includeVisualizations: boolean;
+  includeDetectionComparisons: boolean;
+  includeStatisticalAnalysis: boolean;
 }
 
 // Dashboard Types - Aligned with backend snake_case
@@ -290,6 +449,37 @@ export interface EnhancedDashboardStats extends DashboardStats {
   average_accuracy: number;
   active_tests: number;
   total_detections: number;
+}
+
+// Result Visualization Types
+export interface ComparisonViewMode {
+  type: 'side_by_side' | 'overlay' | 'difference' | 'timeline';
+  showGroundTruth: boolean;
+  showTestResults: boolean;
+  highlightDifferences: boolean;
+  filterBy?: {
+    detectionType?: VRUType[];
+    matchType?: ('true_positive' | 'false_positive' | 'false_negative')[];
+    confidenceRange?: [number, number];
+    timeRange?: [number, number];
+  };
+}
+
+export interface ResultsFilter {
+  projectId?: string;
+  sessionIds?: string[];
+  dateRange?: {
+    start: string;
+    end: string;
+  };
+  performanceRange?: {
+    minAccuracy?: number;
+    minPrecision?: number;
+    minRecall?: number;
+  };
+  status?: ('completed' | 'failed' | 'running')[];
+  sortBy?: 'accuracy' | 'precision' | 'recall' | 'f1Score' | 'date' | 'name';
+  sortOrder?: 'asc' | 'desc';
 }
 
 // Error Types
