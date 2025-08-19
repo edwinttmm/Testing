@@ -114,7 +114,7 @@ class VideoProjectLinkResponse(BaseModel):
         populate_by_name = True
 
 class AnnotationExportRequest(BaseModel):
-    format: str = Field(default="json", regex="^(json|coco|yolo|pascal_voc)$")
+    format: str = Field(default="json", pattern="^(json|coco|yolo|pascal_voc)$")
     video_ids: Optional[List[str]] = Field(None, alias="videoIds")
     include_validated_only: bool = Field(default=False, alias="includeValidatedOnly")
     

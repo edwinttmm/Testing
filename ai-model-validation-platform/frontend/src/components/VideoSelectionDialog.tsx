@@ -10,7 +10,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   Checkbox,
   Alert,
   CircularProgress,
@@ -94,14 +93,15 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<VideoFile['status'] | 'all'>('all');
+  // TODO: Implement status filtering functionality
+  // const [filterStatus, setFilterStatus] = useState<VideoFile['status'] | 'all'>('all');
 
   // Load available videos from ground truth library
   useEffect(() => {
     if (open) {
       loadAvailableVideos();
     }
-  }, [open]);
+  }, [open, loadAvailableVideos]);
 
   const loadAvailableVideos = async () => {
     try {

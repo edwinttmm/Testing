@@ -87,6 +87,10 @@ except ImportError:
 
 Base.metadata.create_all(bind=engine)
 
+# Integrate annotation system
+from integration_main import integrate_annotation_system
+integrate_annotation_system(app)
+
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,

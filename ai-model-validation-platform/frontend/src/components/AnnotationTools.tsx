@@ -26,12 +26,9 @@ import {
   Edit,
   Save,
   Delete,
-  Visibility,
-  VisibilityOff,
   Check,
   Clear,
   Add,
-  Remove,
 } from '@mui/icons-material';
 import { VRUType, GroundTruthAnnotation, BoundingBox } from '../services/types';
 

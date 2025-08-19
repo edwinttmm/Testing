@@ -130,7 +130,7 @@ async def unlink_video_from_project(
 @router.get("/videos/{video_id}/annotations/export")
 async def export_annotations(
     video_id: str,
-    format: str = Query("json", regex="^(json|coco|yolo|pascal_voc)$"),
+    format: str = Query("json", pattern="^(json|coco|yolo|pascal_voc)$"),
     db: Session = Depends(get_db)
 ):
     """Export annotations in specified format"""
@@ -139,7 +139,7 @@ async def export_annotations(
 @router.post("/videos/{video_id}/annotations/import")
 async def import_annotations(
     video_id: str,
-    format: str = Query("json", regex="^(json|coco|yolo|pascal_voc)$"),
+    format: str = Query("json", pattern="^(json|coco|yolo|pascal_voc)$"),
     # file: UploadFile = File(...),  # TODO: Add when import is implemented
     db: Session = Depends(get_db)
 ):
