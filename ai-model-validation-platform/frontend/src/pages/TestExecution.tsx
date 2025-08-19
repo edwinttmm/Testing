@@ -19,7 +19,6 @@ import {
   LinearProgress,
   Alert,
   Snackbar,
-  IconButton,
   Switch,
   FormControlLabel,
   CircularProgress,
@@ -30,7 +29,6 @@ import {
   Edit as EditIcon,
   PlayArrow as PlayIcon,
   Stop as StopIcon,
-  Settings as SettingsIcon,
   Assessment as ReportIcon,
   VideoLibrary as VideoIcon,
   Warning as WarningIcon,
@@ -82,7 +80,6 @@ const TestExecution: React.FC = () => {
   // Dialog states
   const [videoSelectionOpen, setVideoSelectionOpen] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   
   // Form states
   const [sessionName, setSessionName] = useState('');
@@ -105,19 +102,19 @@ const TestExecution: React.FC = () => {
 
   // Load projects and sessions
   useEffect(() => {
-    loadProjects();
-  }, []);
+    loadProjects(); // eslint-disable-line @typescript-eslint/no-use-before-define
+  }, [loadProjects]);
 
   useEffect(() => {
     if (selectedProject) {
-      loadTestSessions();
+      loadTestSessions(); // eslint-disable-line @typescript-eslint/no-use-before-define
     }
-  }, [selectedProject]);
+  }, [selectedProject, loadTestSessions]);
 
   // WebSocket connection for real-time updates
   useEffect(() => {
     if (isRunning && currentSession) {
-      connectWebSocket();
+      connectWebSocket(); // eslint-disable-line @typescript-eslint/no-use-before-define
     }
     
     return () => {
@@ -125,9 +122,9 @@ const TestExecution: React.FC = () => {
         wsRef.current.close();
       }
     };
-  }, [isRunning, currentSession]);
+  }, [isRunning, currentSession, connectWebSocket]);
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     try {
       setLoading(true);
       const response = await apiService.get<Project[]>('/api/projects');
@@ -141,9 +138,9 @@ const TestExecution: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadTestSessions = async () => {
+  const loadTestSessions = useCallback(async () => {
     if (!selectedProject) return;
     
     try {
@@ -156,15 +153,15 @@ const TestExecution: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedProject]);
 
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
     wsRef.current = new WebSocket(`${wsUrl}/ws/test-execution/${currentSession?.id}`);
     
     wsRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      handleWebSocketMessage(data);
+      handleWebSocketMessage(data); // eslint-disable-line @typescript-eslint/no-use-before-define
     };
     
     wsRef.current.onerror = (error) => {
@@ -178,9 +175,9 @@ const TestExecution: React.FC = () => {
         setTimeout(connectWebSocket, 3000);
       }
     };
-  };
+  }, [currentSession, handleWebSocketMessage, isRunning]);
 
-  const handleWebSocketMessage = (data: any) => {
+  const handleWebSocketMessage = useCallback((data: any) => {
     switch (data.type) {
       case 'test_progress':
         updateTestProgress(data.payload);
@@ -197,7 +194,7 @@ const TestExecution: React.FC = () => {
       default:
         console.log('Unknown WebSocket message:', data);
     }
-  };
+  }, [handleTestCompletion, handleTestError]);
 
   const handleVideoSelection = (videos: VideoFile[]) => {
     setSelectedVideos(videos);
@@ -308,7 +305,7 @@ const TestExecution: React.FC = () => {
     setTestResults(prev => [...prev, result]);
   };
 
-  const handleTestCompletion = (data: any) => {
+  const handleTestCompletion = useCallback((data: any) => {
     setIsRunning(false);
     showSnackbar('Test execution completed', 'success');
     
@@ -318,9 +315,9 @@ const TestExecution: React.FC = () => {
         s.id === currentSession?.id ? { ...s, status: 'completed' as const } : s
       )
     );
-  };
+  }, [currentSession?.id]);
 
-  const handleTestError = (error: any) => {
+  const handleTestError = useCallback((error: any) => {
     setIsRunning(false);
     showSnackbar(`Test execution failed: ${error.message}`, 'error');
     
@@ -330,7 +327,7 @@ const TestExecution: React.FC = () => {
         s.id === currentSession?.id ? { ...s, status: 'failed' as const } : s
       )
     );
-  };
+  }, [currentSession?.id]);
 
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
     setSnackbarMessage(message);
@@ -419,13 +416,6 @@ const TestExecution: React.FC = () => {
           >
             New Session
           </Button>
-          
-          <IconButton
-            onClick={() => setSettingsDialogOpen(true)}
-            title="Test Settings"
-          >
-            <SettingsIcon />
-          </IconButton>
         </Box>
       </Box>
 

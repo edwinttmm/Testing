@@ -298,6 +298,38 @@ class ApiService {
     return response.data;
   }
 
+  // Central video upload (no project required)
+  async uploadVideoCentral(file: File, onProgress?: (progress: number) => void): Promise<VideoFile> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await this.api.post<VideoFile>('/api/videos', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          onProgress(progress);
+        }
+      },
+    });
+
+    // Invalidate video-related caches
+    apiCache.invalidatePattern('/api/videos');
+    apiCache.invalidatePattern('/api/projects');
+    
+    return response.data;
+  }
+
+  // Get all videos from central store
+  async getAllVideos(unassigned: boolean = false, skip: number = 0, limit: number = 100): Promise<{videos: VideoFile[], total: number}> {
+    const response = await this.cachedRequest<{videos: VideoFile[], total: number}>('GET', '/api/videos', undefined, {
+      params: { unassigned, skip, limit }
+    });
+    return response;
+  }
+
   async getVideo(videoId: string): Promise<VideoFile> {
     const response = await this.api.get<VideoFile>(`/api/videos/${videoId}`);
     return response.data;
@@ -594,6 +626,8 @@ export const updateProject = apiServiceInstance.updateProject.bind(apiServiceIns
 export const deleteProject = apiServiceInstance.deleteProject.bind(apiServiceInstance);
 export const getVideos = apiServiceInstance.getVideos.bind(apiServiceInstance);
 export const uploadVideo = apiServiceInstance.uploadVideo.bind(apiServiceInstance);
+export const uploadVideoCentral = apiServiceInstance.uploadVideoCentral.bind(apiServiceInstance);
+export const getAllVideos = apiServiceInstance.getAllVideos.bind(apiServiceInstance);
 export const getVideo = apiServiceInstance.getVideo.bind(apiServiceInstance);
 export const deleteVideo = apiServiceInstance.deleteVideo.bind(apiServiceInstance);
 export const getGroundTruth = apiServiceInstance.getGroundTruth.bind(apiServiceInstance);

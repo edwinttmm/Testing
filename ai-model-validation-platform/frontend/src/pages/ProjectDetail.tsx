@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,11 +19,6 @@ import {
   TableRow,
   Paper,
   Skeleton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  LinearProgress,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -36,6 +31,7 @@ import {
 import { apiService, getLinkedVideos, linkVideosToProject, unlinkVideoFromProject } from '../services/api';
 import { Project, VideoFile, TestSession } from '../services/types';
 import VideoSelectionDialog from '../components/VideoSelectionDialog';
+import { getErrorMessage } from '../utils/errorUtils';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -97,7 +93,7 @@ const ProjectDetail: React.FC = () => {
       await loadProjectData();
     } catch (err: any) {
       console.error('Video unlink error:', err);
-      setError(err.message || 'Failed to unlink video');
+      setError(getErrorMessage(err, 'Failed to unlink video'));
     }
   };
 
@@ -156,7 +152,7 @@ const ProjectDetail: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Failed to load project data:', err);
-      setError('Failed to load project data');
+      setError(getErrorMessage(err, 'Failed to load project data'));
     } finally {
       setLoading(false);
     }
@@ -202,7 +198,7 @@ const ProjectDetail: React.FC = () => {
       
     } catch (err: any) {
       console.error('Failed to link videos:', err);
-      setError(err.message || 'Failed to link videos to project');
+      setError(getErrorMessage(err, 'Failed to link videos to project'));
     } finally {
       setLinkingVideos(false);
     }

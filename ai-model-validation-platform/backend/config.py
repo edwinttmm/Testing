@@ -20,15 +20,26 @@ class Settings(BaseSettings):
     api_debug: bool = False
     api_reload: bool = False
     
-    # CORS settings
+    # CORS settings - Comprehensive production configuration
     cors_origins: List[str] = [
+        # Development origins
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
+        
+        # Production HTTP origins
         "http://155.138.239.131:3000",
         "http://155.138.239.131:8000",
         "http://155.138.239.131:8080",
+        
+        # Production HTTPS origins (recommended for production)
+        "https://155.138.239.131:3000",
+        "https://155.138.239.131:8000",
+        "https://155.138.239.131:8080",
+        "https://155.138.239.131:8443",
+        
+        # Cloud Workstations
         "https://3000-firebase-testinggit-1755382041749.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev"
     ]
     cors_credentials: bool = True

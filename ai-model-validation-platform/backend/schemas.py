@@ -56,12 +56,13 @@ class ProjectUpdate(ProjectBase):
 class ProjectResponse(ProjectBase):
     id: str
     status: str
-    owner_id: str
-    created_at: datetime
-    updated_at: Optional[datetime]
+    owner_id: str = Field(alias="ownerId")
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: Optional[datetime] = Field(None, alias="updatedAt")
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 # Video schemas
 class VideoBase(BaseModel):
@@ -73,19 +74,36 @@ class VideoBase(BaseModel):
 
 class VideoResponse(VideoBase):
     id: str
+    project_id: str = Field(alias="projectId")
     status: str
-    ground_truth_generated: bool
-    project_id: str
-    created_at: datetime
+    ground_truth_generated: bool = Field(alias="groundTruthGenerated")
+    created_at: datetime = Field(alias="createdAt")
+    uploaded_at: Optional[datetime] = Field(None, alias="uploadedAt")
+    detection_count: Optional[int] = Field(0, alias="detectionCount")
+    original_name: Optional[str] = Field(None, alias="originalName")
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 class VideoUploadResponse(BaseModel):
-    video_id: str
+    id: str
+    project_id: str = Field(alias="projectId")
     filename: str
+    original_name: str = Field(alias="originalName")
+    size: int
+    file_size: int = Field(alias="fileSize")
+    duration: Optional[float] = None
+    uploaded_at: str = Field(alias="uploadedAt")
+    created_at: str = Field(alias="createdAt")
     status: str
+    ground_truth_generated: bool = Field(alias="groundTruthGenerated")
+    ground_truth_status: str = Field(alias="groundTruthStatus")
+    detection_count: int = Field(alias="detectionCount")
     message: str
+    
+    class Config:
+        populate_by_name = True
 
 # Ground Truth schemas
 class GroundTruthObject(BaseModel):
@@ -192,12 +210,17 @@ class AuditLogResponse(AuditLogCreate):
         from_attributes = True
 
 
-# Dashboard schemas
+# Dashboard schemas - Frontend compatible
 class DashboardStats(BaseModel):
-    project_count: int
-    video_count: int
-    test_session_count: int
-    detection_event_count: int
+    project_count: int = Field(alias="projectCount")
+    video_count: int = Field(alias="videoCount")
+    test_session_count: int = Field(alias="testCount")
+    detection_event_count: int = Field(alias="totalDetections")
+    average_accuracy: float = Field(alias="averageAccuracy")
+    active_tests: int = Field(alias="activeTests")
+    
+    class Config:
+        populate_by_name = True
 
 # Enhanced schemas for new architectural services
 class PassFailCriteriaSchema(BaseModel):

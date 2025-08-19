@@ -11,10 +11,29 @@ from schemas import TestSessionCreate
 
 logger = logging.getLogger(__name__)
 
-# Create Socket.IO server
+# Create Socket.IO server with secure CORS configuration
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=['http://localhost:3000', 'http://127.0.0.1:3000'],
+    cors_allowed_origins=[
+        # Development origins
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        
+        # Production HTTP origins
+        'http://155.138.239.131:3000',
+        'http://155.138.239.131:8000',
+        'http://155.138.239.131:8080',
+        
+        # Production HTTPS origins (secure)
+        'https://155.138.239.131:3000',
+        'https://155.138.239.131:8000',
+        'https://155.138.239.131:8080',
+        'https://155.138.239.131:8443',
+        
+        # Cloud Workstations
+        'https://3000-firebase-testinggit-1755382041749.cluster-lu4mup47g5gm4rtyvhzpwbfadi.cloudworkstations.dev'
+        # Removed '*' wildcard for security
+    ],
     logger=True,
     engineio_logger=True
 )

@@ -26,7 +26,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Tabs,
   Tab,
   Switch,
@@ -34,13 +33,10 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Divider,
   CircularProgress,
-  Slider,
   SelectChangeEvent,
 } from '@mui/material';
 import {
-  GetApp,
   Visibility,
   TrendingUp,
   TrendingDown,
@@ -54,26 +50,16 @@ import {
   Timeline,
   FilterList,
   ExpandMore,
-  PlayArrow,
-  Pause,
   Speed,
-  ZoomIn,
-  ZoomOut,
   Refresh,
-  Share,
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import { 
   Project, 
   DetailedTestResults, 
-  DetectionComparison, 
-  ComparisonViewMode,
+ 
   ResultsFilter,
   PassFailResult,
-  StatisticalAnalysis,
-  DetectionTypeBreakdown,
-  LatencyStats,
-  VRUType
 } from '../services/types';
 
 // Enhanced test result interface for the Results component
@@ -115,24 +101,11 @@ const Results: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<number>(0);
   
   // Detailed view state
-  const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [detailedResults, setDetailedResults] = useState<DetailedTestResults | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   
   // Comparison view state
-  const [comparisonMode, setComparisonMode] = useState<ComparisonViewMode>({
-    type: 'side_by_side',
-    showGroundTruth: true,
-    showTestResults: true,
-    highlightDifferences: true,
-  });
-  const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
-  const [comparisonFilters, setComparisonFilters] = useState({
-    detectionType: [] as VRUType[],
-    matchType: [] as string[],
-    confidenceRange: [0, 100] as [number, number],
-  });
 
   // Analytics and export state
   const [showStatistics, setShowStatistics] = useState(false);

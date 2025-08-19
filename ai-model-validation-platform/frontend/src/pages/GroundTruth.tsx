@@ -28,7 +28,6 @@ import {
   Select,
   MenuItem,
   Paper,
-  Divider,
   Tooltip,
 } from '@mui/material';
 import {
@@ -43,10 +42,6 @@ import {
   Save,
   GetApp,
   Publish,
-  PlayArrow,
-  Pause,
-  Stop,
-  Timeline,
   CropFree,
 } from '@mui/icons-material';
 import { 
@@ -59,6 +54,7 @@ import {
  
 } from '../services/types';
 import { apiService } from '../services/api';
+import { getErrorMessage } from '../utils/errorUtils';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
 import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
@@ -187,17 +183,17 @@ const GroundTruth: React.FC = () => {
   // Load videos on component mount
   useEffect(() => {
     if (projectId) {
-      loadVideos();
+      loadVideos(); // eslint-disable-line @typescript-eslint/no-use-before-define
     }
-  }, [projectId]);
+  }, [projectId, loadVideos]);
 
   // Load annotations when video is selected
   useEffect(() => {
     if (selectedVideo) {
-      loadAnnotations(selectedVideo.id);
+      loadAnnotations(selectedVideo.id); // eslint-disable-line @typescript-eslint/no-use-before-define
       setTotalFrames(Math.floor((selectedVideo.duration || 0) * frameRate));
     }
-  }, [selectedVideo, frameRate]);
+  }, [selectedVideo, frameRate, loadAnnotations]);
 
   const loadVideos = useCallback(async () => {
     if (!projectId) {
@@ -210,8 +206,7 @@ const GroundTruth: React.FC = () => {
       const videoList = await apiService.getVideos(projectId);
       setVideos(videoList);
     } catch (err) {
-      const apiError = err as ApiError;
-      const errorMsg = apiError.message || 'Backend connection failed';
+      const errorMsg = getErrorMessage(err, 'Backend connection failed');
       setError(`Failed to load videos: ${errorMsg}`);
       console.error('Error loading videos:', errorMsg, err);
     }
@@ -248,8 +243,7 @@ const GroundTruth: React.FC = () => {
       setAnnotationSession(session);
       setSuccessMessage('Annotation session started');
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to create annotation session: ${apiError.message}`);
+      setError(`Failed to create annotation session: ${getErrorMessage(err)}`);
     }
   }, [projectId]);
 
@@ -305,8 +299,7 @@ const GroundTruth: React.FC = () => {
       
       setSuccessMessage(`Created ${vruType} annotation`);
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to create annotation: ${apiError.message}`);
+      setError(`Failed to create annotation: ${getErrorMessage(err)}`);
     }
   }, [selectedVideo, currentFrame, currentTime]);
 
@@ -321,8 +314,7 @@ const GroundTruth: React.FC = () => {
       setSelectedAnnotation(updatedAnnotation);
       setSuccessMessage('Annotation updated');
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to update annotation: ${apiError.message}`);
+      setError(`Failed to update annotation: ${getErrorMessage(err)}`);
     }
   }, [selectedAnnotation]);
 
@@ -349,8 +341,7 @@ const GroundTruth: React.FC = () => {
       }
       setSuccessMessage('Annotation deleted');
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to delete annotation: ${apiError.message}`);
+      setError(`Failed to delete annotation: ${getErrorMessage(err)}`);
     }
   }, [selectedAnnotation]);
 
@@ -365,8 +356,7 @@ const GroundTruth: React.FC = () => {
       }
       setSuccessMessage(`Annotation ${validated ? 'validated' : 'marked as pending'}`);
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to validate annotation: ${apiError.message}`);
+      setError(`Failed to validate annotation: ${getErrorMessage(err)}`);
     }
   }, [selectedAnnotation]);
 
@@ -409,9 +399,9 @@ const GroundTruth: React.FC = () => {
     setUploadErrors(newUploadErrors);
     
     if (validFiles.length > 0) {
-      uploadFiles(validFiles);
+      uploadFiles(validFiles); // eslint-disable-line @typescript-eslint/no-use-before-define
     }
-  }, []);
+  }, [uploadFiles]);
 
   const uploadFiles = useCallback(async (files: File[]) => {
     const newUploadingVideos: UploadingVideo[] = files.map(file => ({
@@ -426,16 +416,12 @@ const GroundTruth: React.FC = () => {
     setUploadingVideos(prev => [...prev, ...newUploadingVideos]);
     setUploadDialog(false);
     
-    // Upload files concurrently
+    // Upload files concurrently to central store (no project required)
     const uploadPromises = newUploadingVideos.map(async (uploadingVideo) => {
-      if (!projectId) {
-        setError('No project ID available for upload');
-        return;
-      }
       
       try {
-        const uploadedVideo = await apiService.uploadVideo(
-          projectId,
+        // Upload to central store instead of project-specific upload
+        const uploadedVideo = await apiService.uploadVideoCentral(
           uploadingVideo.file,
           (progress) => {
             setUploadingVideos(prev => 
@@ -465,8 +451,7 @@ const GroundTruth: React.FC = () => {
         }, 1000);
         
       } catch (err) {
-        const apiError = err as ApiError;
-        const errorMsg = apiError.message || 'Backend connection failed - upload failed';
+        const errorMsg = getErrorMessage(err, 'Backend connection failed - upload failed');
         setUploadingVideos(prev => 
           prev.map(v => 
             v.id === uploadingVideo.id 
@@ -485,7 +470,7 @@ const GroundTruth: React.FC = () => {
     });
     
     await Promise.allSettled(uploadPromises);
-  }, [projectId]);
+  }, []); // No longer depends on projectId
 
   // Drag and drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -527,8 +512,7 @@ const GroundTruth: React.FC = () => {
       setVideos(prev => prev.filter(v => v.id !== videoId));
       setSuccessMessage('Video deleted successfully');
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(apiError.message || 'Failed to delete video');
+      setError(getErrorMessage(err, 'Failed to delete video'));
     }
   };
 
@@ -577,8 +561,7 @@ const GroundTruth: React.FC = () => {
       window.URL.revokeObjectURL(url);
       setSuccessMessage(`Annotations exported as ${format.toUpperCase()}`);
     } catch (err) {
-      const apiError = err as ApiError;
-      setError(`Failed to export annotations: ${apiError.message}`);
+      setError(`Failed to export annotations: ${getErrorMessage(err)}`);
     }
   }, [selectedVideo]);
 

@@ -41,6 +41,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectCountRef = useRef(0);
   const listenersRef = useRef<Map<string, Set<(...args: any[]) => void>>>(new Map());
+  const scheduleReconnectRef = useRef<(() => void) | null>(null);
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -86,7 +87,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         
         // Auto-reconnect for certain disconnect reasons
         if (reason === 'io server disconnect' || reason === 'transport close') {
-          scheduleReconnect();
+          scheduleReconnectRef.current?.();
         }
       });
 
@@ -94,7 +95,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         const error = new Error(`WebSocket connection error: ${err.message}`);
         setError(error);
         onError?.(error);
-        scheduleReconnect();
+        scheduleReconnectRef.current?.();
       });
 
       // Re-register existing listeners
@@ -125,6 +126,9 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       connect();
     }, reconnectDelay * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
   }, [reconnectAttempts, reconnectDelay, clearReconnectTimeout, connect]);
+
+  // Assign scheduleReconnect to ref so it can be called from connect
+  scheduleReconnectRef.current = scheduleReconnect;
 
   const disconnect = useCallback(() => {
     clearReconnectTimeout();
@@ -192,7 +196,9 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       
       // Only disconnect if we're the last component using this socket
       // In a real app, you'd want more sophisticated reference counting
-      const currentListenerCount = Array.from(listenersRef.current.values())
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const currentListeners = listenersRef.current;
+      const currentListenerCount = Array.from(currentListeners.values())
         .reduce((total, set) => total + set.size, 0);
       
       if (currentListenerCount === 0) {
