@@ -90,6 +90,7 @@ export interface VideoFile {
   created_at?: string; // API response field
   url?: string;
   status: 'uploading' | 'processing' | 'completed' | 'failed';
+  processing_status?: 'pending' | 'processing' | 'completed' | 'failed'; // API response field
   groundTruthStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   groundTruthGenerated?: boolean;
   ground_truth_generated?: boolean; // API response field

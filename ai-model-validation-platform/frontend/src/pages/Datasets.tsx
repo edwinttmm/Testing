@@ -154,7 +154,7 @@ const Datasets: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = useState<VideoWithAnnotations | null>(null);
   const [viewDialog, setViewDialog] = useState(false);
   const [exportDialog, setExportDialog] = useState(false);
-  const [showFilterDialog, setShowFilterDialog] = useState(false);
+  // const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
 
@@ -270,7 +270,7 @@ const Datasets: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [calculateStats]);
 
   // Load data on component mount
   useEffect(() => {
