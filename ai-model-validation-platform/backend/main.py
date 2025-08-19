@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy import func, select, delete
@@ -118,6 +119,9 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=3600,
 )
+
+# Static file serving for video uploads
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 ground_truth_service = GroundTruthService()
 # validation_service = ValidationService()  # Temporarily disabled
@@ -573,6 +577,7 @@ async def upload_video_central(
             "projectId": CENTRAL_STORE_PROJECT_ID,  # Central store project assignment
             "filename": file.filename,
             "originalName": file.filename,
+            "url": f"/uploads/{secure_filename}",  # Add video URL for playback
             "size": bytes_written,
             "fileSize": bytes_written,
             "duration": video_metadata.get('duration') if video_metadata else None,
@@ -733,6 +738,7 @@ async def upload_video(
             "projectId": project_id,
             "filename": file.filename,
             "originalName": file.filename,
+            "url": f"/uploads/{secure_filename}",  # Add video URL for playback
             "size": bytes_written,
             "fileSize": bytes_written,
             "duration": video_metadata.get('duration') if video_metadata else None,
@@ -902,6 +908,7 @@ async def get_all_videos(
                 "projectId": row.project_id,
                 "filename": row.filename,
                 "originalName": row.filename,
+                "url": f"/uploads/{Path(row.file_path).name}" if row.file_path else None,  # Add video URL
                 "status": row.status,
                 "createdAt": row.created_at.isoformat() if row.created_at else None,
                 "uploadedAt": row.created_at.isoformat() if row.created_at else None,
@@ -1123,6 +1130,23 @@ async def get_ground_truth(
         "status": "pending", 
         "message": "Ground truth processing temporarily disabled - requires ML dependencies"
     }
+
+@app.get("/api/videos/{video_id}/annotations")
+async def get_video_annotations(video_id: str, db: Session = Depends(get_db)):
+    """Get annotations (ground truth data) for a specific video in annotation format"""
+    try:
+        # For now, since ground truth service is disabled, return empty annotations
+        # In future, this would convert ground truth objects to annotation format
+        logger.info(f"Fetching annotations for video {video_id}")
+        
+        # Return empty annotations for now - will be populated when ground truth is working
+        annotations = []
+        
+        return annotations
+        
+    except Exception as e:
+        logger.error(f"Error fetching annotations for video {video_id}: {str(e)}")
+        return []
 
 # Test Execution endpoints
 @app.post("/api/test-sessions", response_model=TestSessionResponse)
