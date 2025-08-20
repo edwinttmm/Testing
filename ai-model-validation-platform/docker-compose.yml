@@ -59,7 +59,11 @@ services:
       - REACT_APP_ENVIRONMENT=production
       - REACT_APP_DEBUG=false
       - REACT_APP_LOG_LEVEL=error
-      - NODE_ENV=production
+      - NODE_ENV=development
+      - GENERATE_SOURCEMAP=false
+      - CI=true
+      - DOCKER=true
+      - NODE_OPTIONS=--max_old_space_size=4096
     depends_on:
       - backend
     restart: unless-stopped
