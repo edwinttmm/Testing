@@ -67,7 +67,7 @@ import {
   exportAnnotations,
   deleteVideo,
 } from '../services/api';
-import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
+import EnhancedVideoPlayer from '../components/EnhancedVideoPlayer';
 import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
 
 // Enhanced interfaces for dataset management
@@ -1135,7 +1135,7 @@ const Datasets: React.FC = () => {
           {selectedVideo && (
             <Grid container spacing={3}>
               <Grid size={{ xs: 12, lg: 8 }}>
-                <VideoAnnotationPlayer
+                <EnhancedVideoPlayer
                   video={selectedVideo}
                   annotations={selectedVideo.groundTruthAnnotations}
                   onAnnotationSelect={() => {}}
@@ -1144,6 +1144,8 @@ const Datasets: React.FC = () => {
                   annotationMode={false}
                   selectedAnnotation={null}
                   frameRate={30}
+                  autoRetry={true}
+                  maxRetries={3}
                 />
               </Grid>
               <Grid size={{ xs: 12, lg: 4 }}>
@@ -1278,6 +1280,9 @@ const Datasets: React.FC = () => {
         video={selectedVideo}
         onConfirm={confirmDeleteVideo}
         loading={deletingVideo}
+        projectsUsingVideo={selectedVideo?.projectName ? [selectedVideo.projectName] : []}
+        annotationCount={selectedVideo?.annotationCount || 0}
+        testSessionCount={0} // Would need to be fetched from API
       />
 
       {/* Success/Error Snackbars */}

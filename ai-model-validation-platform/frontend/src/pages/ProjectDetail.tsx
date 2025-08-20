@@ -32,6 +32,7 @@ import { apiService, getLinkedVideos, linkVideosToProject, unlinkVideoFromProjec
 import { Project, VideoFile, TestSession } from '../services/types';
 import VideoSelectionDialog from '../components/VideoSelectionDialog';
 import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
+import UnlinkVideoConfirmationDialog from '../components/UnlinkVideoConfirmationDialog';
 import { getErrorMessage } from '../utils/errorUtils';
 
 interface TabPanelProps {
@@ -85,21 +86,32 @@ const ProjectDetail: React.FC = () => {
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [selectedVideoForDelete, setSelectedVideoForDelete] = useState<VideoFile | null>(null);
   const [deletingVideo, setDeletingVideo] = useState(false);
+  
+  // Video unlinking state
+  const [unlinkDialog, setUnlinkDialog] = useState(false);
+  const [selectedVideoForUnlink, setSelectedVideoForUnlink] = useState<VideoFile | null>(null);
+  const [unlinkingVideo, setUnlinkingVideo] = useState(false);
 
   // Unlink video functionality
-  const handleUnlinkVideo = async (videoId: string) => {
-    if (!window.confirm('Are you sure you want to unlink this video from the project?')) {
-      return;
-    }
+  const handleUnlinkVideo = (video: VideoFile) => {
+    setSelectedVideoForUnlink(video);
+    setUnlinkDialog(true);
+  };
+
+  const confirmUnlinkVideo = async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (!video || !id) return;
 
     try {
-      if (!id) return;
+      setUnlinkingVideo(true);
       await unlinkVideoFromProject(id, videoId);
       // Refresh project data to update video list
       await loadProjectData();
     } catch (err: any) {
       console.error('Video unlink error:', err);
       setError(getErrorMessage(err, 'Failed to unlink video'));
+    } finally {
+      setUnlinkingVideo(false);
     }
   };
 
@@ -523,14 +535,27 @@ const ProjectDetail: React.FC = () => {
                         {formatTimeAgo(video.created_at || video.createdAt || video.uploadedAt)}
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          size="small" 
-                          color="warning" 
-                          startIcon={<Delete />}
-                          onClick={() => handleUnlinkVideo(video.id)}
-                        >
-                          Unlink
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button 
+                            size="small" 
+                            color="warning" 
+                            startIcon={<Delete />}
+                            onClick={() => handleUnlinkVideo(video)}
+                            disabled={unlinkingVideo || deletingVideo}
+                          >
+                            Unlink
+                          </Button>
+                          <Button 
+                            size="small" 
+                            color="error" 
+                            variant="outlined"
+                            startIcon={<Delete />}
+                            onClick={() => handleDeleteVideo(video)}
+                            disabled={unlinkingVideo || deletingVideo}
+                          >
+                            Delete
+                          </Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -718,6 +743,16 @@ const ProjectDetail: React.FC = () => {
         selectedVideoIds={videos.map(v => v.id)}
       />
 
+      {/* Video Unlink Confirmation Dialog */}
+      <UnlinkVideoConfirmationDialog
+        open={unlinkDialog}
+        onClose={() => setUnlinkDialog(false)}
+        video={selectedVideoForUnlink}
+        projectName={project?.name}
+        onConfirm={confirmUnlinkVideo}
+        loading={unlinkingVideo}
+      />
+
       {/* Video Delete Confirmation Dialog */}
       <VideoDeleteConfirmationDialog
         open={deleteDialog}
@@ -725,6 +760,9 @@ const ProjectDetail: React.FC = () => {
         video={selectedVideoForDelete}
         onConfirm={confirmDeleteVideo}
         loading={deletingVideo}
+        projectsUsingVideo={selectedVideoForDelete ? [project?.name || 'Current Project'] : []}
+        annotationCount={selectedVideoForDelete?.detectionCount || 0}
+        testSessionCount={testSessions.filter(s => s.videoId === selectedVideoForDelete?.id).length}
       />
     </Box>
   );

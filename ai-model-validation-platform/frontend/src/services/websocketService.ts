@@ -40,7 +40,30 @@ class WebSocketService {
   private lastError: Error | null = null;
 
   constructor(options: WebSocketServiceOptions = {}) {
-    this.url = options.url || process.env.REACT_APP_WS_URL || 'ws://155.138.239.131:8000';
+    // Dynamic WebSocket URL detection with fallback
+    const getWebSocketUrl = () => {
+      if (options.url || process.env.REACT_APP_WS_URL) {
+        return options.url || process.env.REACT_APP_WS_URL;
+      }
+      
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      // Development environment (localhost)
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'ws://localhost:8000';
+      }
+      
+      // Handle specific production server (155.138.239.131)
+      if (hostname === '155.138.239.131') {
+        return 'ws://155.138.239.131:8000';
+      }
+      
+      // Generic fallback for other environments
+      return `${protocol}//${hostname}:8000`;
+    };
+
+    this.url = getWebSocketUrl()!;
     this.options = {
       autoConnect: true,
       reconnection: true,

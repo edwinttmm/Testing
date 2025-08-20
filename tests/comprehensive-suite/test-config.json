@@ -1,0 +1,36 @@
+{
+  "testConfiguration": {
+    "videoUpload": {
+      "smallFileSize": "5MB",
+      "largeFileSize": "100MB",
+      "timeoutMs": 30000,
+      "supportedFormats": ["mp4", "avi", "mov"],
+      "maxConcurrentUploads": 3
+    },
+    "database": {
+      "testDbUrl": "sqlite:///./test_comprehensive.db",
+      "migrations": true,
+      "cleanup": true
+    },
+    "api": {
+      "baseUrl": "http://localhost:8000",
+      "timeout": 30000,
+      "retryAttempts": 3
+    },
+    "websocket": {
+      "url": "ws://localhost:8000",
+      "reconnectDelay": 1000,
+      "maxReconnectAttempts": 5
+    },
+    "videoPlayer": {
+      "supportedFormats": ["video/mp4", "video/webm", "video/ogg"],
+      "errorRecoveryTimeout": 5000,
+      "seekTolerance": 100
+    },
+    "performance": {
+      "uploadChunkSize": "1MB",
+      "maxMemoryUsage": "500MB",
+      "responseTimeThreshold": 2000
+    }
+  }
+}

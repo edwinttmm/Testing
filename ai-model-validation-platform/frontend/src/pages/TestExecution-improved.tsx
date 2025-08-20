@@ -47,6 +47,7 @@ import {
   setVideoSource,
   cleanupVideoElement,
 } from '../utils/videoUtils';
+import EnhancedVideoPlayer from '../components/EnhancedVideoPlayer';
 
 interface DetectionEvent {
   id: string;
@@ -128,7 +129,19 @@ const TestExecution: React.FC = () => {
   }, []);
 
   const initializeWebSocket = useCallback(() => {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
+    // Dynamic WebSocket URL configuration
+    const getWsUrl = () => {
+      if (process.env.REACT_APP_WS_URL) {
+        return process.env.REACT_APP_WS_URL;
+      }
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname === 'localhost' 
+        ? 'localhost:8000' 
+        : `${window.location.hostname}:8000`;
+      return `${protocol}//${host}`;
+    };
+
+    const wsUrl = getWsUrl();
     const token = localStorage.getItem('authToken');
     
     const newSocket = io(wsUrl, {
@@ -237,8 +250,8 @@ const TestExecution: React.FC = () => {
             throw new Error(`Video playback failed: ${playResult.error?.message}`);
           }
         } catch (videoError) {
-          console.error('Video setup error:', videoError);
-          throw new Error(`Video setup failed: ${videoError.message}`);
+ console.error('Video setup error:', videoError);
+ throw new Error(`Video setup failed: ${videoError.message}`);
         }
       }
 
@@ -460,15 +473,51 @@ const TestExecution: React.FC = () => {
               </Typography>
               
               <Box sx={{ position: 'relative', mb: 2 }}>
-                <video
-                  ref={videoRef}
-                  width="100%"
-                  height="400"
-                  controls
-                  style={{ backgroundColor: '#000' }}
-                >
-                  Your browser does not support the video tag.
-                </video>
+                {selectedVideoData ? (
+                  <EnhancedVideoPlayer
+                    video={selectedVideoData}
+                    annotations={[]} // No annotations in test execution
+                    onAnnotationSelect={() => {}}
+                    onTimeUpdate={(currentTime, frameNumber) => {
+                      // Could emit time updates to websocket for sync
+                      if (socket && isConnected && currentSession?.status === 'running') {
+                        socket.emit('video_time_update', {
+                          sessionId: currentSession.id,
+                          currentTime,
+                          frameNumber
+                        });
+                      }
+                    }}
+                    onCanvasClick={() => {}}
+                    annotationMode={false}
+                    selectedAnnotation={null}
+                    frameRate={30}
+                    autoRetry={true}
+                    maxRetries={3}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      width: '100%',
+                      height: 400,
+                      bgcolor: 'grey.900',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'grey.400',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <VideoLibrary sx={{ fontSize: 64, mb: 2 }} />
+                    <Typography variant="h6" gutterBottom>
+                      No Video Selected
+                    </Typography>
+                    <Typography variant="body2" textAlign="center">
+                      Select a project and video to start testing
+                    </Typography>
+                  </Box>
+                )}
                 
                 {currentSession?.status === 'running' && (
                   <Box

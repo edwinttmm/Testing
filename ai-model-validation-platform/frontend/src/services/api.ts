@@ -29,8 +29,31 @@ class ApiService {
   private api: AxiosInstance;
 
   constructor() {
+    // Dynamic API base URL detection with fallback
+    const getApiBaseUrl = () => {
+      if (process.env.REACT_APP_API_URL) {
+        return process.env.REACT_APP_API_URL;
+      }
+      
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol;
+      
+      // Development environment (localhost)
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+      
+      // Handle specific production server (155.138.239.131)
+      if (hostname === '155.138.239.131') {
+        return 'http://155.138.239.131:8000';
+      }
+      
+      // Generic fallback for other environments
+      return `${protocol}//${hostname}:8000`;
+    };
+
     this.api = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000',
+      baseURL: getApiBaseUrl(),
       timeout: 30000, // Increased timeout to 30 seconds
       headers: {
         'Content-Type': 'application/json',
@@ -52,9 +75,13 @@ class ApiService {
       }
     );
 
-    // Response interceptor - handle responses and errors
+    // Response interceptor - handle responses and errors with data transformation
     this.api.interceptors.response.use(
       (response: AxiosResponse) => {
+        // Transform snake_case to camelCase for frontend compatibility
+        if (response.data) {
+          response.data = this.transformResponseData(response.data);
+        }
         return response;
       },
       (error: AxiosError) => {
@@ -184,6 +211,72 @@ class ApiService {
     }
   }
 
+  // Transform backend snake_case responses to frontend camelCase
+  private transformResponseData(data: any): any {
+    if (!data || typeof data !== 'object') {
+      return data;
+    }
+
+    // Handle arrays
+    if (Array.isArray(data)) {
+      return data.map(item => this.transformResponseData(item));
+    }
+
+    // Handle objects
+    const transformed: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      let newKey = key;
+      
+      // Transform common snake_case fields to camelCase
+      const fieldMappings: { [key: string]: string } = {
+        'project_id': 'projectId',
+        'video_id': 'videoId', 
+        'file_size': 'fileSize',
+        'file_path': 'filePath',
+        'created_at': 'createdAt',
+        'updated_at': 'updatedAt',
+        'uploaded_at': 'uploadedAt',
+        'ground_truth_generated': 'groundTruthGenerated',
+        'ground_truth_status': 'groundTruthStatus',
+        'processing_status': 'processingStatus',
+        'detection_count': 'detectionCount',
+        'test_session_id': 'testSessionId',
+        'original_name': 'originalName',
+        'camera_model': 'cameraModel',
+        'camera_view': 'cameraView',
+        'lens_type': 'lensType',
+        'frame_rate': 'frameRate',
+        'signal_type': 'signalType',
+        'owner_id': 'ownerId',
+        'class_label': 'classLabel',
+        'validation_result': 'validationResult',
+        'bounding_box': 'boundingBox'
+      };
+
+      if (fieldMappings[key]) {
+        newKey = fieldMappings[key];
+      }
+
+      // Recursively transform nested objects
+      transformed[newKey] = this.transformResponseData(value);
+    }
+
+    return transformed;
+  }
+
+  // Add URL field to video responses if missing
+  private enhanceVideoData(video: any): any {
+    if (video && !video.url && video.id) {
+      video.url = `/uploads/${video.filename || video.id}`;
+    }
+    
+    // Ensure status is properly mapped
+    if (video && video.processing_status && !video.status) {
+      video.status = video.processing_status === 'completed' ? 'completed' : 'processing';
+    }
+    
+    return video;
+  }
 
   // Enhanced request method with caching and deduplication
   private async cachedRequest<T>(
@@ -276,7 +369,8 @@ class ApiService {
   // Video management
   async getVideos(projectId: string): Promise<VideoFile[]> {
     const response = await this.api.get<VideoFile[]>(`/api/projects/${projectId}/videos`);
-    return response.data;
+    // Enhance video data with proper URLs and status mapping
+    return response.data.map(video => this.enhanceVideoData(video));
   }
 
   async uploadVideo(projectId: string, file: File, onProgress?: (progress: number) => void): Promise<VideoFile> {
@@ -327,6 +421,12 @@ class ApiService {
     const response = await this.cachedRequest<{videos: VideoFile[], total: number}>('GET', '/api/videos', undefined, {
       params: { unassigned, skip, limit }
     });
+    
+    // Enhance video data with proper URLs and status mapping
+    if (response.videos) {
+      response.videos = response.videos.map(video => this.enhanceVideoData(video));
+    }
+    
     return response;
   }
 
@@ -339,10 +439,70 @@ class ApiService {
     await this.api.delete(`/api/videos/${videoId}`);
   }
 
-  // Ground truth
+  // Ground truth - Enhanced with fallback data and proper error handling
   async getGroundTruth(videoId: string): Promise<any> {
-    const response = await this.api.get(`/api/videos/${videoId}/ground-truth`);
-    return response.data;
+    try {
+      const response = await this.api.get(`/api/videos/${videoId}/ground-truth`);
+      
+      // Transform ground truth data to ensure proper structure
+      if (response.data && response.data.objects) {
+        response.data.objects = response.data.objects.map((obj: any) => ({
+          ...obj,
+          // Ensure bounding box has required properties
+          boundingBox: obj.bounding_box || obj.boundingBox || {
+            x: obj.x || 0,
+            y: obj.y || 0,
+            width: obj.width || 100,
+            height: obj.height || 100,
+            confidence: obj.confidence || 1.0,
+            label: obj.class_label || obj.classLabel || 'unknown'
+          },
+          // Map VRU type
+          vruType: obj.vru_type || obj.vruType || this.mapClassToVruType(obj.class_label || obj.classLabel),
+          detectionId: obj.detection_id || obj.detectionId || obj.id,
+          frameNumber: obj.frame_number || obj.frameNumber || 0,
+          timestamp: obj.timestamp || 0,
+          validated: obj.validated ?? false,
+          occluded: obj.occluded ?? false,
+          truncated: obj.truncated ?? false,
+          difficult: obj.difficult ?? false
+        }));
+      }
+      
+      return response.data || {
+        video_id: videoId,
+        objects: [],
+        total_detections: 0,
+        status: 'pending',
+        message: 'No ground truth data available'
+      };
+    } catch (error: any) {
+      console.warn(`Ground truth fetch failed for video ${videoId}:`, error);
+      // Return empty ground truth structure as fallback
+      return {
+        video_id: videoId,
+        objects: [],
+        total_detections: 0,
+        status: 'error',
+        message: 'Failed to load ground truth data'
+      };
+    }
+  }
+
+  // Helper method to map class labels to VRU types
+  private mapClassToVruType(classLabel: string): string {
+    const mapping: { [key: string]: string } = {
+      'person': 'pedestrian',
+      'pedestrian': 'pedestrian',
+      'bicycle': 'cyclist',
+      'cyclist': 'cyclist',
+      'motorcycle': 'motorcyclist',
+      'motorcyclist': 'motorcyclist',
+      'wheelchair': 'wheelchair_user',
+      'scooter': 'scooter_rider'
+    };
+    
+    return mapping[classLabel?.toLowerCase()] || 'pedestrian';
   }
 
   // Annotation endpoints
