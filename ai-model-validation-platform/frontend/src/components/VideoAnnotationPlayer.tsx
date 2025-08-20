@@ -70,105 +70,28 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
-  // Initialize video with enhanced cleanup and fallback URL handling
+  // Initialize video with simplified URL handling
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement || (!video.url && !video.filename && !video.id)) return;
+    if (!videoElement || !video.url) return;
 
-    // Track if this effect is still valid
     let effectValid = true;
 
     const initializeVideo = async () => {
       try {
-        // First, ensure any previous video is properly cleaned up
         cleanupVideoElement(videoElement);
-        
-        // Small delay to ensure DOM is ready
         await new Promise(resolve => setTimeout(resolve, 50));
-        
-        if (!effectValid) return; // Effect was cleaned up while waiting
+        if (!effectValid) return;
 
-        // Generate or get video URL using environment-aware utilities
-        let videoUrl = video.url;
-        
-        if (!videoUrl) {
-          // Convert video to metadata format for URL generation
-          const videoMetadata: VideoMetadata = {
-            id: video.id,
-            filename: video.filename,
-            originalName: video.originalName,
-            url: video.url || '',
-            size: video.fileSize || 0,
-            status: video.status as any
-          };
-          
-          if (isDebugEnabled()) {
-            console.log('🎥 Generating video URL for:', videoMetadata);
-          }
-          
-          // Try to get a working video URL with fallbacks
-          const fallbackUrl = await getFallbackVideoUrl(videoMetadata);
-          videoUrl = fallbackUrl || undefined;
-          
-          if (!videoUrl) {
-            // Enhanced error handling for missing videos
-            console.error(`❌ Video ${video.id} not found. This may be a deleted or missing video.`);
-            console.error('Video object:', video);
-            
-            // Clear any stale cache for this video using utility function
-            try {
-              videoUtils.clearStaleVideoCache([video.id]); // Clear from videoUtils cache
-              
-              // Also clear localStorage cache for this specific video
-              if (typeof window !== 'undefined') {
-                try {
-                  const videoCache = localStorage.getItem('video-cache');
-                  if (videoCache) {
-                    const cache = JSON.parse(videoCache);
-                    if (cache[video.id]) {
-                      delete cache[video.id];
-                      localStorage.setItem('video-cache', JSON.stringify(cache));
-                      console.log(`🧹 Cleared localStorage cache for video ${video.id}`);
-                    }
-                  }
-                } catch (storageError) {
-                  console.warn('Failed to clear localStorage video cache:', storageError);
-                }
-              }
-            } catch (cacheError) {
-              console.warn('Failed to clear video cache:', cacheError);
-            }
-            
-            throw new Error(`Video ${video.id} not found. This video may have been deleted or moved.`);
-          }
-        }
-        
-        if (isDebugEnabled()) {
-          console.log('🎥 Using video URL:', videoUrl);
-        }
-        
-        await setVideoSource(videoElement, videoUrl);
-        
-        if (!effectValid) return; // Effect was cleaned up while loading
-        
-        // Setup event handlers
+        await setVideoSource(videoElement, video.url);
+        if (!effectValid) return;
+
         const handleLoadedMetadata = () => {
           if (!effectValid) return;
           setDuration(videoElement.duration);
           setVideoSize({ width: videoElement.videoWidth, height: videoElement.videoHeight });
-          // Delay drawing annotations to ensure canvas is ready
           requestAnimationFrame(() => {
-            if (effectValid) {
-              // Draw annotations after video is loaded
-              const canvas = canvasRef.current;
-              if (canvas && videoElement && videoElement.videoWidth && videoElement.videoHeight) {
-                // Initial canvas setup - drawAnnotations will be called by useEffect
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
-                }
-              }
-            }
+            if (effectValid) drawAnnotations();
           });
         };
 
@@ -183,13 +106,11 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         const handlePlay = () => effectValid && setIsPlaying(true);
         const handlePause = () => effectValid && setIsPlaying(false);
         const handleEnded = () => effectValid && setIsPlaying(false);
-        
         const handleError = (event: Event) => {
           console.error('Video playback error:', event);
           if (effectValid) setIsPlaying(false);
         };
 
-        // Use utility function for batch event listener management
         const cleanupListeners = addVideoEventListeners(videoElement, [
           { event: 'loadedmetadata', handler: handleLoadedMetadata },
           { event: 'timeupdate', handler: handleTimeUpdate },
@@ -197,11 +118,8 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           { event: 'pause', handler: handlePause },
           { event: 'ended', handler: handleEnded },
           { event: 'error', handler: handleError },
-          { event: 'loadstart', handler: () => console.log('Video loading started') },
-          { event: 'canplay', handler: () => console.log('Video can start playing') }
         ]);
 
-        // Store cleanup function for effect cleanup
         return cleanupListeners;
       } catch (error) {
         console.error('Video initialization error:', error);
@@ -210,28 +128,22 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
       }
     };
 
-    // Initialize video and store cleanup function
     let cleanupListeners: (() => void) | undefined;
     initializeVideo().then(cleanup => {
       cleanupListeners = cleanup;
     });
 
-    // Cleanup function
     return () => {
       effectValid = false;
-      
-      // Clean up event listeners
       if (cleanupListeners) {
         cleanupListeners();
       }
-      
-      // Cleanup video element using utility - use local variable to avoid stale closure
       const currentVideoElement = videoRef.current;
       if (currentVideoElement) {
         cleanupVideoElement(currentVideoElement);
       }
     };
-  }, [video.url, frameRate, onTimeUpdate]); // Include video.url in deps to reinitialize on video change
+  }, [video.url, frameRate, onTimeUpdate, drawAnnotations]);
 
   // Draw annotations on canvas
   const drawAnnotations = useCallback(() => {
