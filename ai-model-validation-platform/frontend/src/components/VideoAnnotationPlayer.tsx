@@ -111,29 +111,35 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           videoUrl = fallbackUrl || undefined;
           
           if (!videoUrl) {
-            // Log the error but don't crash the component
-          console.error(`❌ Video ${video.id} not found. This may be a deleted or missing video.`);
-          console.error('Video object:', video);
-          
-          // Clear any stale cache for this video
-          if (typeof window !== 'undefined') {
-            // Clear localStorage cache for this video if it exists
+            // Enhanced error handling for missing videos
+            console.error(`❌ Video ${video.id} not found. This may be a deleted or missing video.`);
+            console.error('Video object:', video);
+            
+            // Clear any stale cache for this video using utility function
             try {
-              const videoCache = localStorage.getItem('video-cache');
-              if (videoCache) {
-                const cache = JSON.parse(videoCache);
-                if (cache[video.id]) {
-                  delete cache[video.id];
-                  localStorage.setItem('video-cache', JSON.stringify(cache));
-                  console.log(`🧹 Cleared localStorage cache for video ${video.id}`);
+              videoUtils.clearStaleVideoCache([video.id]); // Clear from videoUtils cache
+              
+              // Also clear localStorage cache for this specific video
+              if (typeof window !== 'undefined') {
+                try {
+                  const videoCache = localStorage.getItem('video-cache');
+                  if (videoCache) {
+                    const cache = JSON.parse(videoCache);
+                    if (cache[video.id]) {
+                      delete cache[video.id];
+                      localStorage.setItem('video-cache', JSON.stringify(cache));
+                      console.log(`🧹 Cleared localStorage cache for video ${video.id}`);
+                    }
+                  }
+                } catch (storageError) {
+                  console.warn('Failed to clear localStorage video cache:', storageError);
                 }
               }
-            } catch (e) {
-              console.warn('Failed to clear video cache:', e);
+            } catch (cacheError) {
+              console.warn('Failed to clear video cache:', cacheError);
             }
-          }
-          
-          throw new Error(`Video ${video.id} not found. This video may have been deleted or moved.`);
+            
+            throw new Error(`Video ${video.id} not found. This video may have been deleted or moved.`);
           }
         }
         

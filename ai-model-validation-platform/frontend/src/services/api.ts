@@ -526,6 +526,34 @@ class ApiService {
         // Clear video URL cache for non-existent videos
         const { videoUtils } = await import('../utils/videoUtils');
         videoUtils.clearStaleVideoCache(validVideoIds);
+        
+        // Also clear localStorage cache for missing videos
+        if (typeof window !== 'undefined') {
+          try {
+            const videoCache = localStorage.getItem('video-cache');
+            if (videoCache) {
+              const cache = JSON.parse(videoCache);
+              let cacheModified = false;
+              
+              // Remove cache entries for videos that no longer exist
+              for (const cachedVideoId in cache) {
+                if (!validVideoIds.includes(cachedVideoId)) {
+                  delete cache[cachedVideoId];
+                  cacheModified = true;
+                  if (isDebugEnabled()) {
+                    console.log(`🧹 Cleared localStorage cache for missing video: ${cachedVideoId}`);
+                  }
+                }
+              }
+              
+              if (cacheModified) {
+                localStorage.setItem('video-cache', JSON.stringify(cache));
+              }
+            }
+          } catch (storageError) {
+            console.warn('Failed to clear localStorage video cache:', storageError);
+          }
+        }
       } catch (e) {
         console.warn('Could not clear stale video cache:', e);
       }

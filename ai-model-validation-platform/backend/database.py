@@ -16,7 +16,6 @@ DATABASE_URL = os.getenv(
     "sqlite:///./test_database.db"
 )
 
-print(f"Using database: {DATABASE_URL}")
 
 # Validate database URL
 if not DATABASE_URL:
