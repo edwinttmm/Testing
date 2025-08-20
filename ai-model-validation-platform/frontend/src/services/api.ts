@@ -291,15 +291,16 @@ class ApiService {
       }
       
       // Convert relative URLs to absolute URLs
-      if (!video.url || video.url === '' || video.url.startsWith('/')) {
-        const filename = video.filename || video.id;
-        // Use the backend URL if it exists and isn't empty, otherwise generate from filename
-        const urlPath = (video.url && video.url !== '') ? video.url : `/uploads/${filename}`;
-        video.url = `${videoConfig.baseUrl}${urlPath}`;
-        
+      if (video.url && video.url.startsWith('/')) {
+        const videoConfig = getServiceConfig('video');
+        video.url = `${videoConfig.baseUrl}${video.url}`;
         if (isDebugEnabled()) {
-          console.log('🔧 Enhanced video URL:', video.url, 'from path:', urlPath);
+          console.log('🔧 Enhanced video URL:', video.url, 'from path:', video.url);
         }
+      } else if (!video.url) {
+        // If URL is missing, log a warning and set it to an empty string
+        console.warn(`Video object is missing a URL. ID: ${video.id}, Filename: ${video.filename}`);
+        video.url = '';
       }
     }
     

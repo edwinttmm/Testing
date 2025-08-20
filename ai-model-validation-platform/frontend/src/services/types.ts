@@ -88,7 +88,7 @@ export interface VideoFile {
   uploadedAt: string;
   createdAt?: string;
   created_at?: string; // API response field
-  url?: string;
+  url: string;
   status: 'uploading' | 'processing' | 'completed' | 'failed';
   processing_status?: 'pending' | 'processing' | 'completed' | 'failed'; // API response field
   groundTruthStatus?: 'pending' | 'processing' | 'completed' | 'failed';
