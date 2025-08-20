@@ -79,6 +79,8 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   
   // Loading and error state
   const [loading, setLoading] = useState(true);
@@ -86,10 +88,6 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<PlaybackError | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  
-  // Playback quality
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // Calculate current frame number
   const currentFrame = Math.floor(currentTime * frameRate);
@@ -99,74 +97,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
-  const handleVideoError = useCallback((err: Error, type: PlaybackError['type'] = 'unknown') => {
-    let errorInfo: PlaybackError;
-    
-    const videoElement = videoRef.current;
-    if (videoElement && videoElement.error) {
-      const message = getVideoErrorMessage(videoElement);
-      errorInfo = {
-        message,
-        type: 'format',
-        recoverable: videoElement.error.code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-      };
-    } else {
-      errorInfo = {
-        message: err.message || 'Unknown video error',
-        type,
-        recoverable: type !== 'format'
-      };
-    }
-
-    setError(errorInfo);
-    setLoading(false);
-    setBuffering(false);
-    setIsPlaying(false);
-
-    // Auto-retry for recoverable errors
-    if (autoRetry && errorInfo.recoverable && retryCount < maxRetries) {
-      const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff
-      setTimeout(() => {
-        setRetryCount(prev => prev + 1);
-        // initializeVideo();
-      }, retryDelay);
-    }
-  }, [autoRetry, maxRetries, retryCount]);
-
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-
-  // Calculate current frame number
-  const currentFrame = Math.floor(currentTime * frameRate);
-
-  // Get annotations for current frame
-  const currentAnnotations = annotations.filter(
-    annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
-  );
-
-  const initializeVideo = useCallback(async () => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      setBuffering(true);
-
-      // Set video source with retry logic
-      if (!video.url) {
-        throw new Error('Video URL is not available');
-      }
-      await setVideoSource(videoElement, video.url);
-      
-      setLoading(false);
-      setBuffering(false);
-    } catch (err) {
-      console.error('Video initialization error:', err);
-      handleVideoError(err as Error);
-    }
-  }, [video.url]);
-
+  // Define all callback functions first, before using them in dependency arrays
   const handleVideoError = useCallback((err: Error, type: PlaybackError['type'] = 'unknown') => {
     let errorInfo: PlaybackError;
     
@@ -199,214 +130,35 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         initializeVideo();
       }, retryDelay);
     }
-  }, [autoRetry, maxRetries, retryCount, initializeVideo]);
+  }, [autoRetry, maxRetries, retryCount]);
+
+  const initializeVideo = useCallback(async () => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setBuffering(true);
+
+      // Use only the video.url prop - no fallback to filename
+      if (!video.url) {
+        throw new Error('Video URL is not available');
+      }
+      await setVideoSource(videoElement, video.url);
+      
+      setLoading(false);
+      setBuffering(false);
+    } catch (err) {
+      console.error('Video initialization error:', err);
+      handleVideoError(err as Error);
+    }
+  }, [video.url, handleVideoError]);
 
   const handleRetry = useCallback(() => {
     setRetryCount(0);
     setError(null);
     initializeVideo();
-  }, [initializeVideo]);
-
-  // Setup video event listeners
-  useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    const handleLoadStart = () => {
-      setLoading(true);
-      setBuffering(true);
-    };
-
-    const handleLoadedMetadata = () => {
-      setDuration(videoElement.duration);
-      setVideoSize({ 
-        width: videoElement.videoWidth, 
-        height: videoElement.videoHeight 
-      });
-      setLoading(false);
-    };
-
-    const handleCanPlay = () => {
-      setBuffering(false);
-    };
-
-    const handleWaiting = () => {
-      setBuffering(true);
-    };
-
-    const handleCanPlayThrough = () => {
-      setBuffering(false);
-    };
-
-    const handleTimeUpdate = () => {
-      if (videoElement.currentTime !== undefined) {
-        const time = videoElement.currentTime;
-        setCurrentTime(time);
-        const frame = Math.floor(time * frameRate);
-        onTimeUpdate?.(time, frame);
-      }
-    };
-
-    const handleProgress = () => {
-      if (videoElement.buffered.length > 0) {
-        const buffered = videoElement.buffered.end(videoElement.buffered.length - 1);
-        const progress = (buffered / videoElement.duration) * 100;
-        setLoadProgress(progress);
-      }
-    };
-
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleEnded = () => setIsPlaying(false);
-    
-    const handleError = (event: Event) => {
-      console.error('Video error event:', event);
-      handleVideoError(new Error('Video playback error'), 'play');
-    };
-
-    const handleStalled = () => {
-      setBuffering(true);
-      console.warn('Video playback stalled');
-    };
-
-    const handleSuspend = () => {
-      console.warn('Video loading suspended');
-    };
-
-    // Use utility function for batch event listener management
-    const cleanupListeners = addVideoEventListeners(videoElement, [
-      { event: 'loadstart', handler: handleLoadStart },
-      { event: 'loadedmetadata', handler: handleLoadedMetadata },
-      { event: 'canplay', handler: handleCanPlay },
-      { event: 'canplaythrough', handler: handleCanPlayThrough },
-      { event: 'waiting', handler: handleWaiting },
-      { event: 'timeupdate', handler: handleTimeUpdate },
-      { event: 'progress', handler: handleProgress },
-      { event: 'play', handler: handlePlay },
-      { event: 'pause', handler: handlePause },
-      { event: 'ended', handler: handleEnded },
-      { event: 'error', handler: handleError },
-      { event: 'stalled', handler: handleStalled },
-      { event: 'suspend', handler: handleSuspend },
-    ]);
-
-    return cleanupListeners;
-  }, [frameRate, onTimeUpdate, handleVideoError]);
-
-  // Initialize video when component mounts or video changes
-  useEffect(() => {
-    initializeVideo();
-    return () => {
-      // Store videoRef.current in a local variable to avoid stale closure
-      const videoElement = videoRef.current;
-      if (videoElement) {
-        cleanupVideoElement(videoElement);
-      }
-    };
-  }, [initializeVideo]);
-
-  const handleRetry = useCallback(() => {
-    setRetryCount(0);
-    setError(null);
-    initializeVideo();
-  }, [initializeVideo]);
-
-  // Setup video event listeners
-  useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    const handleLoadStart = () => {
-      setLoading(true);
-      setBuffering(true);
-    };
-
-    const handleLoadedMetadata = () => {
-      setDuration(videoElement.duration);
-      setVideoSize({ 
-        width: videoElement.videoWidth, 
-        height: videoElement.videoHeight 
-      });
-      setLoading(false);
-    };
-
-    const handleCanPlay = () => {
-      setBuffering(false);
-    };
-
-    const handleWaiting = () => {
-      setBuffering(true);
-    };
-
-    const handleCanPlayThrough = () => {
-      setBuffering(false);
-    };
-
-    const handleTimeUpdate = () => {
-      if (videoElement.currentTime !== undefined) {
-        const time = videoElement.currentTime;
-        setCurrentTime(time);
-        const frame = Math.floor(time * frameRate);
-        onTimeUpdate?.(time, frame);
-      }
-    };
-
-    const handleProgress = () => {
-      if (videoElement.buffered.length > 0) {
-        const buffered = videoElement.buffered.end(videoElement.buffered.length - 1);
-        const progress = (buffered / videoElement.duration) * 100;
-        setLoadProgress(progress);
-      }
-    };
-
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleEnded = () => setIsPlaying(false);
-    
-    const handleError = (event: Event) => {
-      console.error('Video error event:', event);
-      handleVideoError(new Error('Video playback error'), 'play');
-    };
-
-    const handleStalled = () => {
-      setBuffering(true);
-      console.warn('Video playback stalled');
-    };
-
-    const handleSuspend = () => {
-      console.warn('Video loading suspended');
-    };
-
-    // Use utility function for batch event listener management
-    const cleanupListeners = addVideoEventListeners(videoElement, [
-      { event: 'loadstart', handler: handleLoadStart },
-      { event: 'loadedmetadata', handler: handleLoadedMetadata },
-      { event: 'canplay', handler: handleCanPlay },
-      { event: 'canplaythrough', handler: handleCanPlayThrough },
-      { event: 'waiting', handler: handleWaiting },
-      { event: 'timeupdate', handler: handleTimeUpdate },
-      { event: 'progress', handler: handleProgress },
-      { event: 'play', handler: handlePlay },
-      { event: 'pause', handler: handlePause },
-      { event: 'ended', handler: handleEnded },
-      { event: 'error', handler: handleError },
-      { event: 'stalled', handler: handleStalled },
-      { event: 'suspend', handler: handleSuspend },
-    ]);
-
-    return cleanupListeners;
-  }, [frameRate, onTimeUpdate, handleVideoError]);
-
-  // Initialize video when component mounts or video changes
-  useEffect(() => {
-    initializeVideo();
-    return () => {
-      // Store videoRef.current in a local variable to avoid stale closure
-      const videoElement = videoRef.current;
-      if (videoElement) {
-        cleanupVideoElement(videoElement);
-      }
-    };
   }, [initializeVideo]);
 
   // Draw annotations on canvas
@@ -479,13 +231,6 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       }
     });
   }, [currentAnnotations, selectedAnnotation, videoSize]);
-
-  // Redraw annotations when annotations change
-  useEffect(() => {
-    if (!loading && !error) {
-      drawAnnotations();
-    }
-  }, [drawAnnotations, loading, error]);
 
   // Handle canvas click
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -655,6 +400,111 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, []);
+
+  // Setup video event listeners
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    const handleLoadStart = () => {
+      setLoading(true);
+      setBuffering(true);
+    };
+
+    const handleLoadedMetadata = () => {
+      setDuration(videoElement.duration);
+      setVideoSize({ 
+        width: videoElement.videoWidth, 
+        height: videoElement.videoHeight 
+      });
+      setLoading(false);
+    };
+
+    const handleCanPlay = () => {
+      setBuffering(false);
+    };
+
+    const handleWaiting = () => {
+      setBuffering(true);
+    };
+
+    const handleCanPlayThrough = () => {
+      setBuffering(false);
+    };
+
+    const handleTimeUpdate = () => {
+      if (videoElement.currentTime !== undefined) {
+        const time = videoElement.currentTime;
+        setCurrentTime(time);
+        const frame = Math.floor(time * frameRate);
+        onTimeUpdate?.(time, frame);
+      }
+    };
+
+    const handleProgress = () => {
+      if (videoElement.buffered.length > 0) {
+        const buffered = videoElement.buffered.end(videoElement.buffered.length - 1);
+        const progress = (buffered / videoElement.duration) * 100;
+        setLoadProgress(progress);
+      }
+    };
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => setIsPlaying(false);
+    
+    const handleError = (event: Event) => {
+      console.error('Video error event:', event);
+      handleVideoError(new Error('Video playback error'), 'play');
+    };
+
+    const handleStalled = () => {
+      setBuffering(true);
+      console.warn('Video playback stalled');
+    };
+
+    const handleSuspend = () => {
+      console.warn('Video loading suspended');
+    };
+
+    // Use utility function for batch event listener management
+    const cleanupListeners = addVideoEventListeners(videoElement, [
+      { event: 'loadstart', handler: handleLoadStart },
+      { event: 'loadedmetadata', handler: handleLoadedMetadata },
+      { event: 'canplay', handler: handleCanPlay },
+      { event: 'canplaythrough', handler: handleCanPlayThrough },
+      { event: 'waiting', handler: handleWaiting },
+      { event: 'timeupdate', handler: handleTimeUpdate },
+      { event: 'progress', handler: handleProgress },
+      { event: 'play', handler: handlePlay },
+      { event: 'pause', handler: handlePause },
+      { event: 'ended', handler: handleEnded },
+      { event: 'error', handler: handleError },
+      { event: 'stalled', handler: handleStalled },
+      { event: 'suspend', handler: handleSuspend },
+    ]);
+
+    return cleanupListeners;
+  }, [frameRate, onTimeUpdate, handleVideoError]);
+
+  // Initialize video when component mounts or video changes
+  useEffect(() => {
+    initializeVideo();
+    return () => {
+      // Store videoRef.current in a local variable to avoid stale closure
+      const videoElement = videoRef.current;
+      if (videoElement) {
+        cleanupVideoElement(videoElement);
+      }
+    };
+  }, [initializeVideo]);
+
+  // Redraw annotations when annotations change
+  useEffect(() => {
+    if (!loading && !error) {
+      drawAnnotations();
+    }
+  }, [drawAnnotations, loading, error]);
 
   // Error state rendering
   if (error) {
