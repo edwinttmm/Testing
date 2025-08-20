@@ -99,37 +99,6 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
-  // Initialize video with simplified URL handling
-  useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement || !video.url) return;
-
-    const initializeVideo = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setBuffering(true);
-
-        await setVideoSource(videoElement, video.url);
-
-        setLoading(false);
-        setBuffering(false);
-      } catch (err) {
-        console.error('Video initialization error:', err);
-        handleVideoError(err as Error);
-      }
-    };
-
-    initializeVideo();
-
-    return () => {
-      const currentVideoElement = videoRef.current;
-      if (currentVideoElement) {
-        cleanupVideoElement(currentVideoElement);
-      }
-    };
-  }, [video.url, handleVideoError]);
-
   const handleVideoError = useCallback((err: Error, type: PlaybackError['type'] = 'unknown') => {
     let errorInfo: PlaybackError;
     
@@ -159,10 +128,34 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff
       setTimeout(() => {
         setRetryCount(prev => prev + 1);
-        initializeVideo();
+        // initializeVideo();
       }, retryDelay);
     }
-  }, [autoRetry, maxRetries, retryCount, initializeVideo]);
+  }, [autoRetry, maxRetries, retryCount]);
+
+  // Initialize video with enhanced error handling
+  const initializeVideo = useCallback(async () => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setBuffering(true);
+
+      // Set video source with retry logic
+      if (!video.url) {
+        throw new Error('Video URL is not available');
+      }
+      await setVideoSource(videoElement, video.url);
+      
+      setLoading(false);
+      setBuffering(false);
+    } catch (err) {
+      console.error('Video initialization error:', err);
+      handleVideoError(err as Error);
+    }
+  }, [video.url, handleVideoError]);
 
   const handleRetry = useCallback(() => {
     setRetryCount(0);
