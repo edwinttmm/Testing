@@ -121,7 +121,7 @@ app.add_middleware(
 )
 
 # Static file serving for video uploads
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/uploads", StaticFiles(directory="/app/uploads"), name="uploads")
 
 ground_truth_service = GroundTruthService()
 # validation_service = ValidationService()  # Temporarily disabled
