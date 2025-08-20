@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Alert,
   Snackbar,
@@ -26,7 +26,7 @@ const ApiConnectionStatus: React.FC<ApiConnectionStatusProps> = ({ onRetry }) =>
   const [lastError, setLastError] = useState<string | null>(null);
 
   // Check API connectivity
-  const checkApiConnection = async () => {
+  const checkApiConnection = useCallback(async () => {
     try {
       await apiService.healthCheck();
       setApiConnected(true);
@@ -39,7 +39,7 @@ const ApiConnectionStatus: React.FC<ApiConnectionStatusProps> = ({ onRetry }) =>
       setLastError(error.message || 'API connection failed');
       setShowAlert(true);
     }
-  };
+  }, [showAlert]);
 
   // Monitor online/offline status
   useEffect(() => {
@@ -68,7 +68,7 @@ const ApiConnectionStatus: React.FC<ApiConnectionStatusProps> = ({ onRetry }) =>
       window.removeEventListener('offline', handleOffline);
       clearInterval(healthCheckInterval);
     };
-  }, []);
+  }, [checkApiConnection]);
 
   const handleRetry = async () => {
     setShowAlert(false);

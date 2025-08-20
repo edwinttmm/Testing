@@ -96,6 +96,15 @@ export interface VideoFile {
   ground_truth_generated?: boolean; // API response field
   detectionCount?: number;
   annotations?: Annotation[];
+  // Additional properties for enhanced video handling
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrate?: number;
+  format?: string;
+  codec?: string;
+  thumbnailUrl?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface VideoUpload {
@@ -489,4 +498,22 @@ export interface ApiError {
   code?: string;
   status: number;
   details?: any;
+}
+
+// ApiError class for proper error handling
+export class ApiError extends Error {
+  public status: number;
+  public code?: string;
+  public details?: any;
+
+  constructor(message: string, status: number = 500, code?: string, details?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    
+    // Maintain proper prototype chain for instanceof checks
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
 }

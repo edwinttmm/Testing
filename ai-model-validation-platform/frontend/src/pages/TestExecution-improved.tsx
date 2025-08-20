@@ -47,7 +47,8 @@ import {
   setVideoSource,
   cleanupVideoElement,
 } from '../utils/videoUtils';
-import EnhancedVideoPlayer from '../components/EnhancedVideoPlayer';
+import environmentService from '../config/environment';
+import AccessibleVideoPlayer from '../components/AccessibleVideoPlayer';
 
 interface DetectionEvent {
   id: string;
@@ -114,34 +115,24 @@ const TestExecution: React.FC = () => {
     }
   };
 
-  // WebSocket connection with reconnection
-  useEffect(() => {
-    initializeWebSocket();
-
-    return () => {
-      if (socket) {
-        socket.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, []);
+  // Define handleReconnect to avoid circular dependency
+  const handleReconnect = useCallback(() => {
+    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      const delay = Math.pow(2, reconnectAttempts) * 1000; // Exponential backoff
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        // Attempting to reconnect
+        setReconnectAttempts(prev => prev + 1);
+        // Note: initializeWebSocket will be called from useEffect
+      }, delay);
+    } else {
+      setConnectionError('Unable to connect to real-time server. Please refresh the page.');
+    }
+  }, [reconnectAttempts]);
 
   const initializeWebSocket = useCallback(() => {
-    // Dynamic WebSocket URL configuration
-    const getWsUrl = () => {
-      if (process.env.REACT_APP_WS_URL) {
-        return process.env.REACT_APP_WS_URL;
-      }
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname === 'localhost' 
-        ? 'localhost:8000' 
-        : `${window.location.hostname}:8000`;
-      return `${protocol}//${host}`;
-    };
-
-    const wsUrl = getWsUrl();
+    // Use environment service for WebSocket URL
+    const wsUrl = environmentService.getWsUrl();
     const token = localStorage.getItem('authToken');
     
     const newSocket = io(wsUrl, {
@@ -189,17 +180,27 @@ const TestExecution: React.FC = () => {
     setSocket(newSocket);
   }, []);
 
-  const handleReconnect = useCallback(() => {
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      const delay = Math.pow(2, reconnectAttempts) * 1000; // Exponential backoff
-      
+  // WebSocket connection with reconnection
+  useEffect(() => {
+    initializeWebSocket();
+
+    return () => {
+      if (socket) {
+        socket.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Effect to trigger reconnection when needed
+  useEffect(() => {
+    if (reconnectAttempts > 0 && reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+      const delay = Math.pow(2, reconnectAttempts - 1) * 1000;
       reconnectTimeoutRef.current = setTimeout(() => {
-        // Attempting to reconnect
-        setReconnectAttempts(prev => prev + 1);
         initializeWebSocket();
       }, delay);
-    } else {
-      setConnectionError('Unable to connect to real-time server. Please refresh the page.');
     }
   }, [reconnectAttempts, initializeWebSocket]);
 
@@ -247,12 +248,13 @@ const TestExecution: React.FC = () => {
           // Use utility function to safely play video
           const playResult = await safeVideoPlay(videoRef.current);
           if (!playResult.success) {
-            throw new Error(`Video playback failed: ${playResult.error?.message || 'Unknown error'}`);
+            const errorMessage = playResult.error?.message || 'Unknown error';
+            throw new ApiError(`Video playback failed: ${errorMessage}`, 500);
           }
         } catch (videoError) {
           console.error('Video setup error:', videoError);
-          const errorMessage = videoError instanceof Error ? videoError.message : 'Unknown error';
-          throw new Error(`Video setup failed: ${errorMessage}`);
+          const errorMessage = videoError instanceof Error ? videoError.message : String(videoError);
+          throw new ApiError(`Video setup failed: ${errorMessage}`, 500);
         }
       }
 
@@ -349,11 +351,11 @@ const TestExecution: React.FC = () => {
     }
   };
 
-  const handleRetryConnection = () => {
+  const handleRetryConnection = useCallback(() => {
     setReconnectAttempts(0);
     setConnectionError(null);
     initializeWebSocket();
-  };
+  }, [initializeWebSocket]);
 
   const getValidationIcon = (result: string) => {
     switch (result) {
@@ -461,7 +463,7 @@ const TestExecution: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Video Player */}
-        <Grid size={{ xs: 12, md: 8 }}>
+        <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -475,7 +477,7 @@ const TestExecution: React.FC = () => {
               
               <Box sx={{ position: 'relative', mb: 2 }}>
                 {selectedVideoData ? (
-                  <EnhancedVideoPlayer
+                  <AccessibleVideoPlayer
                     video={selectedVideoData}
                     annotations={[]} // No annotations in test execution
                     onAnnotationSelect={() => {}}
@@ -588,10 +590,10 @@ const TestExecution: React.FC = () => {
         </Grid>
 
         {/* Real-time Results */}
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid item xs={12} md={4}>
           <Grid container spacing={2}>
             {/* Metrics */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -619,21 +621,21 @@ const TestExecution: React.FC = () => {
                   </Box>
 
                   <Grid container spacing={1}>
-                    <Grid size={{ xs: 4 }}>
+                    <Grid item xs={4}>
                       <Chip 
                         label={`TP: ${metrics.tp}`} 
                         color="success" 
                         size="small" 
                       />
                     </Grid>
-                    <Grid size={{ xs: 4 }}>
+                    <Grid item xs={4}>
                       <Chip 
                         label={`FP: ${metrics.fp}`} 
                         color="error" 
                         size="small" 
                       />
                     </Grid>
-                    <Grid size={{ xs: 4 }}>
+                    <Grid item xs={4}>
                       <Chip 
                         label={`FN: ${metrics.fn}`} 
                         color="warning" 
@@ -646,7 +648,7 @@ const TestExecution: React.FC = () => {
             </Grid>
 
             {/* Detection Log */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card sx={{ height: 400 }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
