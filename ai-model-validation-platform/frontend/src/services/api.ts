@@ -286,15 +286,19 @@ class ApiService {
       if (isDebugEnabled()) {
         console.log('🔧 Video config baseUrl:', videoConfig.baseUrl);
         console.log('🔧 Original video URL:', video.url);
+        console.log('🔧 Video filename:', video.filename);
+        console.log('🔧 Video ID:', video.id);
       }
       
       // Convert relative URLs to absolute URLs
-      if (!video.url || video.url.startsWith('/')) {
+      if (!video.url || video.url === '' || video.url.startsWith('/')) {
         const filename = video.filename || video.id;
-        video.url = `${videoConfig.baseUrl}${video.url || `/uploads/${filename}`}`;
+        // Use the backend URL if it exists and isn't empty, otherwise generate from filename
+        const urlPath = (video.url && video.url !== '') ? video.url : `/uploads/${filename}`;
+        video.url = `${videoConfig.baseUrl}${urlPath}`;
         
         if (isDebugEnabled()) {
-          console.log('🔧 Enhanced video URL:', video.url);
+          console.log('🔧 Enhanced video URL:', video.url, 'from path:', urlPath);
         }
       }
     }
