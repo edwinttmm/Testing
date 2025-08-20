@@ -282,10 +282,20 @@ class ApiService {
     if (video && (video.filename || video.id)) {
       const videoConfig = getServiceConfig('video');
       
+      // Debug logging
+      if (isDebugEnabled()) {
+        console.log('🔧 Video config baseUrl:', videoConfig.baseUrl);
+        console.log('🔧 Original video URL:', video.url);
+      }
+      
       // Convert relative URLs to absolute URLs
       if (!video.url || video.url.startsWith('/')) {
         const filename = video.filename || video.id;
         video.url = `${videoConfig.baseUrl}${video.url || `/uploads/${filename}`}`;
+        
+        if (isDebugEnabled()) {
+          console.log('🔧 Enhanced video URL:', video.url);
+        }
       }
     }
     
@@ -370,6 +380,15 @@ class ApiService {
       validationErrors: envConfig.getValidationErrors()
     };
   }
+
+  /**
+   * Force clear video-related cache entries
+   */
+  clearVideoCache() {
+    apiCache.invalidatePattern('/api/videos');
+    apiCache.invalidatePattern('/api/projects');
+    apiCache.invalidatePattern('/api/ground-truth/videos');
+  }
   
   /**
    * Test connectivity to the API
@@ -421,7 +440,8 @@ class ApiService {
 
   // Video management
   async getVideos(projectId: string): Promise<VideoFile[]> {
-    const response = await this.api.get<VideoFile[]>(`/api/projects/${projectId}/videos`);
+    // Temporarily bypass cache to ensure enhancement runs
+    const response = await this.api.get<VideoFile[]>(`/api/projects/${projectId}/videos?t=${Date.now()}`);
     // Enhance video data with proper URLs and status mapping
     return response.data.map(video => this.enhanceVideoData(video));
   }
@@ -788,7 +808,9 @@ class ApiService {
 
   // Video Library and Ground Truth Integration
   async getAvailableGroundTruthVideos(): Promise<VideoFile[]> {
-    return this.cachedRequest<VideoFile[]>('GET', '/api/ground-truth/videos/available');
+    const response = await this.cachedRequest<VideoFile[]>('GET', '/api/ground-truth/videos/available');
+    // Enhance video data with proper URLs and status mapping
+    return response.map(video => this.enhanceVideoData(video));
   }
 
   async linkVideosToProject(projectId: string, videoIds: string[]): Promise<VideoAssignment[]> {
@@ -803,7 +825,9 @@ class ApiService {
   }
 
   async getLinkedVideos(projectId: string): Promise<VideoFile[]> {
-    return this.cachedRequest<VideoFile[]>('GET', `/api/projects/${projectId}/videos/linked`);
+    const response = await this.cachedRequest<VideoFile[]>('GET', `/api/projects/${projectId}/videos/linked`);
+    // Enhance video data with proper URLs and status mapping
+    return response.map(video => this.enhanceVideoData(video));
   }
 
   async unlinkVideoFromProject(projectId: string, videoId: string): Promise<void> {

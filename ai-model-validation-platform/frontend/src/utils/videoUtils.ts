@@ -209,6 +209,9 @@ class VideoUtilsManager {
     } else {
       // Generate URL based on video metadata
       const videoConfig = getServiceConfig('video');
+      if (isDebugEnabled()) {
+        console.log('🔧 VideoUtils generateVideoUrl config baseUrl:', videoConfig.baseUrl);
+      }
       const filename = video.filename || video.id;
       
       if (thumbnail) {
@@ -309,6 +312,9 @@ class VideoUtilsManager {
       // Direct filename access
       () => {
         const videoConfig = getServiceConfig('video');
+        if (isDebugEnabled()) {
+          console.log('🔧 VideoUtils config baseUrl:', videoConfig.baseUrl);
+        }
         return `${videoConfig.baseUrl}/uploads/${video.filename}`;
       },
       // Direct ID access

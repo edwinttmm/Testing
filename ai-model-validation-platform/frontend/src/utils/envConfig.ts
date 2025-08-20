@@ -132,17 +132,14 @@ class EnvironmentConfigManager {
       const hostname = window.location.hostname;
       const protocol = window.location.protocol;
       
-      // Handle specific known environments
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        // Check if we're on the production server
-        if (window.location.hostname === '155.138.239.131') {
-          return 'http://155.138.239.131:8000';
-        }
-        return 'http://localhost:8000';
-      }
-      
+      // Handle specific production server
       if (hostname === '155.138.239.131') {
         return 'http://155.138.239.131:8000';
+      }
+      
+      // Handle local development
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
       }
       
       // Generic fallback
