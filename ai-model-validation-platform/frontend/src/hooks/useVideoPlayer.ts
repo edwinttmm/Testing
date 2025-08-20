@@ -32,7 +32,7 @@ export interface VideoPlayerState {
 }
 
 export interface VideoPlayerControls {
-  play: () => Promise<VideoPlayPromiseResult>;
+  play: () => Promise<VideoPlayResult>;
   pause: () => void;
   stop: () => void;
   seek: (time: number) => void;
