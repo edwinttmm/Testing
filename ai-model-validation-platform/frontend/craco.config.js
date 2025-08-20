@@ -2,15 +2,26 @@ const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 const path = require('path');
 const { detectGPU } = require('./src/utils/gpu-detection.js');
 
-// Detect environment and GPU capabilities
-const gpuInfo = detectGPU();
+// Detect environment (skip GPU detection in Docker to prevent hanging)
 const isWindows = process.platform === 'win32';
 const isMingw = process.env.MSYSTEM && process.env.MSYSTEM.includes('MINGW');
+const isDocker = process.env.DOCKER || process.env.HOSTNAME || false;
+
+// Skip GPU detection in Docker containers as it can cause startup hangs
+let gpuInfo = { name: 'unknown', mode: 'software' };
+if (!isDocker) {
+  try {
+    gpuInfo = detectGPU();
+  } catch (error) {
+    console.warn('GPU detection failed, using software fallback:', error.message);
+  }
+}
 
 console.log('🔧 CRACO Config - Environment Detection:');
 console.log('  Platform:', process.platform);
 console.log('  Windows:', isWindows);
 console.log('  MINGW64:', isMingw);
+console.log('  Docker:', !!isDocker);
 console.log('  GPU:', gpuInfo.name, '(' + gpuInfo.mode + ')');
 
 module.exports = {
