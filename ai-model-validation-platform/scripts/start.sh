@@ -41,8 +41,12 @@ else
     echo "❌ PostgreSQL is not ready"
 fi
 
-# Skip Redis check - not in current docker-compose
-echo "⏭️  Redis not configured (skipping check)"
+# Check Redis
+if docker-compose exec redis redis-cli ping > /dev/null 2>&1; then
+    echo "✅ Redis is ready"
+else
+    echo "❌ Redis is not ready"
+fi
 
 # Check Backend
 if curl -f http://155.138.239.131:8000/health > /dev/null 2>&1; then
