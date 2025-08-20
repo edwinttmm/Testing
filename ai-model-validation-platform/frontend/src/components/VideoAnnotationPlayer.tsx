@@ -270,17 +270,7 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     }
   }, [annotationMode, currentAnnotations, videoSize, currentFrame, currentTime, onAnnotationSelect, onCanvasClick]);
 
-  // Get color for VRU type
-  const getVRUColor = (vruType: string): string => {
-    const colors = {
-      pedestrian: '#2196f3',
-      cyclist: '#4caf50',
-      motorcyclist: '#ff9800',
-      wheelchair_user: '#9c27b0',
-      scooter_rider: '#ff5722',
-    };
-    return colors[vruType as keyof typeof colors] || '#607d8b';
-  };
+  
 
   // Control functions with proper error handling using utilities
   const togglePlayPause = useCallback(async () => {
