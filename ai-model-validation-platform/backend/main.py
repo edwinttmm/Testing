@@ -879,6 +879,7 @@ async def get_all_videos(
                 v.duration,
                 v.file_size,
                 v.ground_truth_generated,
+                v.file_path,  -- Add file_path here
                 v.project_id,
                 COALESCE(gtc.detection_count, 0) as detection_count
             FROM videos v
