@@ -203,10 +203,18 @@ class VideoUtilsManager {
     
     let videoUrl: string;
     
+    // Debug: Log the video object to see what we're working with
+    if (isDebugEnabled()) {
+      console.log('🔧 VideoUtils generateVideoUrl - video object:', video);
+    }
+    
     // If video already has a valid URL, use it (relative URLs need baseUrl prefix)
     if (video.url) {
       if (this.isValidUrl(video.url)) {
         videoUrl = video.url;
+        if (isDebugEnabled()) {
+          console.log('🔧 VideoUtils using complete URL:', videoUrl);
+        }
       } else if (video.url.startsWith('/')) {
         // Handle relative URLs from backend
         const videoConfig = getServiceConfig('video');
@@ -216,6 +224,9 @@ class VideoUtilsManager {
         }
       } else {
         videoUrl = video.url;
+        if (isDebugEnabled()) {
+          console.log('🔧 VideoUtils using video.url as-is:', videoUrl);
+        }
       }
     } else {
       // Generate URL based on video metadata
