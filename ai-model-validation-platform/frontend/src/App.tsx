@@ -6,6 +6,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import EnhancedErrorBoundary from './utils/enhancedErrorBoundary';
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
+import ApiConnectionStatus from './components/ApiConnectionStatus';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -90,6 +91,9 @@ const App: React.FC = () => {
                 >
                   <Header />
                 </EnhancedErrorBoundary>
+                
+                {/* API Connection Status Monitor */}
+                <ApiConnectionStatus />
                 
                 <EnhancedErrorBoundary
                   level="page"

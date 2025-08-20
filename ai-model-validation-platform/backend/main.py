@@ -137,6 +137,25 @@ id_generation_service = IDGenerationService()
 # Security utilities
 ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv'}
 
+def safe_isoformat(date_value) -> Optional[str]:
+    """
+    Safely convert a date value to ISO format string.
+    Handles both datetime objects and string representations.
+    """
+    if date_value is None:
+        return None
+    
+    # If it's already a string, return as-is (assuming it's already in good format)
+    if isinstance(date_value, str):
+        return date_value
+    
+    # If it's a datetime object, convert to ISO format
+    if hasattr(date_value, 'isoformat'):
+        return date_value.isoformat()
+    
+    # Fallback: convert to string
+    return str(date_value)
+
 def extract_video_metadata(file_path: str) -> Optional[dict]:
     """
     Extract video metadata using OpenCV.
@@ -826,8 +845,8 @@ async def get_project_videos(
                 "filename": row.filename,
                 "originalName": row.filename,
                 "status": row.status,
-                "createdAt": row.created_at.isoformat() if row.created_at else None,
-                "uploadedAt": row.created_at.isoformat() if row.created_at else None,
+                "createdAt": safe_isoformat(row.created_at),
+                "uploadedAt": safe_isoformat(row.created_at),
                 "duration": row.duration,
                 "size": row.file_size or 0,
                 "fileSize": row.file_size or 0,
@@ -911,8 +930,8 @@ async def get_all_videos(
                 "originalName": row.filename,
                 "url": f"/uploads/{Path(row.file_path).name}" if row.file_path else None,  # Add video URL
                 "status": row.status,
-                "createdAt": row.created_at.isoformat() if row.created_at else None,
-                "uploadedAt": row.created_at.isoformat() if row.created_at else None,
+                "createdAt": safe_isoformat(row.created_at),
+                "uploadedAt": safe_isoformat(row.created_at),
                 "duration": row.duration,
                 "size": row.file_size or 0,
                 "fileSize": row.file_size or 0,

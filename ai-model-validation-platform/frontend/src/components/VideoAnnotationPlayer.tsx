@@ -25,7 +25,6 @@ import {
   safeVideoPause,
   cleanupVideoElement,
   setVideoSource,
-  isVideoReady,
   addVideoEventListeners,
 } from '../utils/videoUtils';
 
@@ -54,7 +53,6 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -73,54 +71,97 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   // Initialize video with enhanced cleanup using utilities
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement) return;
+    if (!videoElement || !video.url) return;
 
-    const handleLoadedMetadata = () => {
-      if (isVideoReady(videoElement)) {
-        setDuration(videoElement.duration);
-        setVideoSize({
-          width: videoElement.videoWidth,
-          height: videoElement.videoHeight,
-        });
+    // Track if this effect is still valid
+    let effectValid = true;
+
+    const initializeVideo = async () => {
+      try {
+        // First, ensure any previous video is properly cleaned up
+        cleanupVideoElement(videoElement);
+        
+        // Small delay to ensure DOM is ready
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        if (!effectValid) return; // Effect was cleaned up while waiting
+
+        // Set video source using utility
+        if (!video.url) {
+          throw new Error('Video URL is not available');
+        }
+        await setVideoSource(videoElement, video.url);
+        
+        if (!effectValid) return; // Effect was cleaned up while loading
+        
+        // Setup event handlers
+        const handleLoadedMetadata = () => {
+          if (!effectValid) return;
+          setDuration(videoElement.duration);
+          setVideoSize({ width: videoElement.videoWidth, height: videoElement.videoHeight });
+          // Delay drawing annotations to ensure canvas is ready
+          requestAnimationFrame(() => {
+            if (effectValid) drawAnnotations();
+          });
+        };
+
+        const handleTimeUpdate = () => {
+          if (!effectValid || videoElement.currentTime === undefined) return;
+          const time = videoElement.currentTime;
+          setCurrentTime(time);
+          const frame = Math.floor(time * frameRate);
+          onTimeUpdate?.(time, frame);
+        };
+
+        const handlePlay = () => effectValid && setIsPlaying(true);
+        const handlePause = () => effectValid && setIsPlaying(false);
+        const handleEnded = () => effectValid && setIsPlaying(false);
+        
+        const handleError = (event: Event) => {
+          console.error('Video playback error:', event);
+          if (effectValid) setIsPlaying(false);
+        };
+
+        // Use utility function for batch event listener management
+        const cleanupListeners = addVideoEventListeners(videoElement, [
+          { event: 'loadedmetadata', handler: handleLoadedMetadata },
+          { event: 'timeupdate', handler: handleTimeUpdate },
+          { event: 'play', handler: handlePlay },
+          { event: 'pause', handler: handlePause },
+          { event: 'ended', handler: handleEnded },
+          { event: 'error', handler: handleError },
+          { event: 'loadstart', handler: () => console.log('Video loading started') },
+          { event: 'canplay', handler: () => console.log('Video can start playing') }
+        ]);
+
+        // Store cleanup function for effect cleanup
+        return cleanupListeners;
+      } catch (error) {
+        console.error('Video initialization error:', error);
+        if (effectValid) setIsPlaying(false);
+        return () => {};
       }
     };
 
-    const handleTimeUpdate = () => {
-      if (videoElement.currentTime !== undefined) {
-        const time = videoElement.currentTime;
-        setCurrentTime(time);
-        const frame = Math.floor(time * frameRate);
-        onTimeUpdate?.(time, frame);
-      }
-    };
+    // Initialize video and store cleanup function
+    let cleanupListeners: (() => void) | undefined;
+    initializeVideo().then(cleanup => {
+      cleanupListeners = cleanup;
+    });
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleEnded = () => setIsPlaying(false);
-    
-    const handleError = (event: Event) => {
-      console.error('Video playback error:', event);
-      setIsPlaying(false);
-    };
-
-    // Use utility function for batch event listener management
-    const cleanupListeners = addVideoEventListeners(videoElement, [
-      { event: 'loadedmetadata', handler: handleLoadedMetadata },
-      { event: 'timeupdate', handler: handleTimeUpdate },
-      { event: 'play', handler: handlePlay },
-      { event: 'pause', handler: handlePause },
-      { event: 'ended', handler: handleEnded },
-      { event: 'error', handler: handleError },
-    ]);
-
+    // Cleanup function
     return () => {
-      // Clean up event listeners
-      cleanupListeners();
+      effectValid = false;
       
-      // Clean up video element using utility
+      // Clean up event listeners
+      if (cleanupListeners) {
+        cleanupListeners();
+      }
+      
+      // Cleanup video element using utility
       cleanupVideoElement(videoElement);
     };
-  }, [frameRate, onTimeUpdate]);
+  }, [video.url, frameRate, onTimeUpdate]); // Include video.url in deps to reinitialize on video change
 
   // Draw annotations on canvas
   const drawAnnotations = useCallback(() => {
@@ -249,20 +290,34 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   };
 
   // Control functions with proper error handling using utilities
-  const togglePlayPause = async () => {
+  const togglePlayPause = useCallback(async () => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    if (isPlaying) {
-      safeVideoPause(videoElement);
-    } else {
-      const result = await safeVideoPlay(videoElement);
-      if (!result.success) {
-        console.warn('Video play failed:', result.error?.message);
+    try {
+      if (isPlaying) {
+        safeVideoPause(videoElement);
         setIsPlaying(false);
+      } else {
+        // Check if video is ready before attempting to play
+        if (videoElement.readyState < HTMLMediaElement.HAVE_METADATA) {
+          console.warn('Video not ready for playback');
+          return;
+        }
+        
+        const result = await safeVideoPlay(videoElement);
+        if (result.success) {
+          setIsPlaying(true);
+        } else {
+          console.warn('Video play failed:', result.error?.message);
+          setIsPlaying(false);
+        }
       }
+    } catch (error) {
+      console.error('Toggle play/pause error:', error);
+      setIsPlaying(false);
     }
-  };
+  }, [isPlaying]);
 
   const handleSeek = (value: number) => {
     const videoElement = videoRef.current;
