@@ -203,9 +203,20 @@ class VideoUtilsManager {
     
     let videoUrl: string;
     
-    // If video already has a valid URL, use it
-    if (video.url && this.isValidUrl(video.url)) {
-      videoUrl = video.url;
+    // If video already has a valid URL, use it (relative URLs need baseUrl prefix)
+    if (video.url) {
+      if (this.isValidUrl(video.url)) {
+        videoUrl = video.url;
+      } else if (video.url.startsWith('/')) {
+        // Handle relative URLs from backend
+        const videoConfig = getServiceConfig('video');
+        videoUrl = `${videoConfig.baseUrl}${video.url}`;
+        if (isDebugEnabled()) {
+          console.log('🔧 VideoUtils using backend URL:', video.url, '-> Full URL:', videoUrl);
+        }
+      } else {
+        videoUrl = video.url;
+      }
     } else {
       // Generate URL based on video metadata
       const videoConfig = getServiceConfig('video');
