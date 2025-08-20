@@ -391,7 +391,8 @@ class ScreenshotCapture:
     
     def __init__(self, screenshot_dir: str = "/app/screenshots"):
         self.screenshot_dir = Path(screenshot_dir)
-        self.screenshot_dir.mkdir(exist_ok=True)
+        # Create parent directories if they don't exist
+        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
     
     async def capture_detection(self, frame: np.ndarray, bounding_box: BoundingBox, 
                               detection_id: str) -> str:
@@ -685,6 +686,131 @@ class DetectionPipeline:
         union = area1 + area2 - intersection
         
         return intersection / union if union > 0 else 0.0
+    
+    async def process_video(self, video_path: str, config: dict = None) -> List[Dict]:
+        """Process video file and return detections for API endpoint"""
+        if not self.initialized:
+            await self.initialize()
+        
+        try:
+            logger.info(f"🎬 Starting video processing: {video_path}")
+            
+            # Verify video file exists
+            video_file = Path(video_path)
+            if not video_file.exists():
+                raise FileNotFoundError(f"Video file not found: {video_path}")
+            
+            # Open video with OpenCV
+            cap = cv2.VideoCapture(str(video_file))
+            if not cap.isOpened():
+                raise ValueError(f"Cannot open video file: {video_path}")
+            
+            # Get video properties
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / fps if fps > 0 else 0
+            
+            logger.info(f"📊 Video properties: {total_frames} frames, {fps:.2f} fps, {duration:.2f}s")
+            
+            # Initialize timeline
+            video_id = str(uuid.uuid4())
+            self.timestamp_sync.initialize_video_timeline(video_id, fps)
+            
+            # Get active model
+            model = await self.model_registry.get_active_model()
+            
+            all_detections = []
+            frame_number = 0
+            
+            # Process video frame by frame
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    logger.info(f"✅ Completed processing {frame_number} frames")
+                    break
+                
+                frame_number += 1
+                
+                # Skip frames for faster processing (process every 5th frame)
+                if frame_number % 5 != 0:
+                    continue
+                
+                try:
+                    # Preprocess frame
+                    processed_frame = await self.frame_processor.preprocess(frame)
+                    
+                    # Run detection
+                    detections = await model.predict(processed_frame)
+                    
+                    # Process each detection
+                    for detection in detections:
+                        detection.frame_number = frame_number
+                        detection.timestamp = frame_number / fps
+                        
+                        # Convert to API response format
+                        detection_dict = {
+                            "id": detection.detection_id or str(uuid.uuid4()),
+                            "frame_number": detection.frame_number,
+                            "timestamp": detection.timestamp,
+                            "class_label": detection.class_label,
+                            "confidence": detection.confidence,
+                            "bounding_box": detection.bounding_box.to_dict(),
+                            "vru_type": detection.class_label,  # Map class_label to vru_type
+                        }
+                        
+                        all_detections.append(detection_dict)
+                        
+                        if len(all_detections) % 50 == 0:
+                            logger.info(f"🔍 Processed {len(all_detections)} detections so far...")
+                
+                except Exception as e:
+                    logger.warning(f"⚠️ Error processing frame {frame_number}: {str(e)}")
+                    continue
+            
+            cap.release()
+            
+            # Apply validation and filtering
+            validated_detections = self._validate_api_detections(all_detections)
+            
+            logger.info(f"🎯 Completed processing: {len(validated_detections)} valid detections from {frame_number} frames")
+            
+            return validated_detections
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing video {video_path}: {str(e)}")
+            raise RuntimeError(f"Video processing failed: {str(e)}")
+    
+    def _validate_api_detections(self, detections: List[Dict]) -> List[Dict]:
+        """Validate detections for API response"""
+        validated = []
+        
+        for detection in detections:
+            try:
+                # Check confidence threshold
+                class_label = detection.get("class_label", "")
+                confidence = detection.get("confidence", 0.0)
+                
+                config = VRU_DETECTION_CONFIG.get(class_label, {})
+                min_confidence = config.get("min_confidence", 0.5)
+                
+                if confidence >= min_confidence:
+                    # Ensure all required fields are present
+                    validated_detection = {
+                        "id": detection.get("id", str(uuid.uuid4())),
+                        "frame_number": detection.get("frame_number", 0),
+                        "timestamp": detection.get("timestamp", 0.0),
+                        "class_label": detection.get("class_label", "pedestrian"),
+                        "confidence": float(confidence),
+                        "bounding_box": detection.get("bounding_box", {}),
+                        "vru_type": detection.get("vru_type", detection.get("class_label", "pedestrian")),
+                    }
+                    validated.append(validated_detection)
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Skipping invalid detection: {str(e)}")
+                continue
+        
+        return validated
 
 # Performance optimization classes
 class BatchProcessor:
