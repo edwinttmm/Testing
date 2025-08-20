@@ -193,12 +193,13 @@ class RealYOLOv8Wrapper:
     def __init__(self, yolo_model):
         self.model = yolo_model
         self.class_names = list(VRU_DETECTION_CONFIG.keys())
-        # Map YOLO class IDs to VRU classes
+        # Map YOLO class IDs to VRU classes (COCO dataset class IDs)
         self.yolo_to_vru_mapping = {
-            0: 'pedestrian',  # person
-            1: 'cyclist',     # bicycle
-            2: 'motorcyclist', # motorcycle
-            # Add more mappings as needed
+            0: 'pedestrian',    # person
+            1: 'cyclist',       # bicycle  
+            3: 'motorcyclist',  # motorcycle (COCO class 3, not 2!)
+            # Note: COCO class 2 is 'car' which we skip for VRU detection
+            # Could add vehicle classes if needed for context
         }
     
     async def predict(self, frame: np.ndarray) -> List[Detection]:
