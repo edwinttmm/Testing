@@ -499,9 +499,36 @@ class ApiService {
       params: { unassigned, skip, limit }
     });
     
-    // Enhance video data with proper URLs and status mapping
+    // Filter out invalid videos and enhance valid ones
     if (response.videos) {
-      response.videos = response.videos.map(video => this.enhanceVideoData(video));
+      // Filter out videos with invalid IDs or missing data
+      const validVideos = response.videos.filter(video => 
+        video && 
+        video.id && 
+        typeof video.id === 'string' &&
+        video.id.trim().length > 0 &&
+        (video.filename || video.originalName)
+      );
+
+      if (validVideos.length !== response.videos.length) {
+        console.warn(`⚠️ Filtered out ${response.videos.length - validVideos.length} invalid video records`);
+      }
+
+      // Enhance video data with proper URLs and status mapping
+      response.videos = validVideos.map(video => this.enhanceVideoData(video));
+      
+      // Update total count
+      response.total = validVideos.length;
+
+      // Clear stale video cache for videos that no longer exist
+      const validVideoIds = response.videos.map(v => v.id);
+      try {
+        // Clear video URL cache for non-existent videos
+        const { videoUtils } = await import('../utils/videoUtils');
+        videoUtils.clearStaleVideoCache(validVideoIds);
+      } catch (e) {
+        console.warn('Could not clear stale video cache:', e);
+      }
     }
     
     return response;

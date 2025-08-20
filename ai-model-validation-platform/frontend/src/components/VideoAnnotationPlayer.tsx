@@ -111,7 +111,29 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           videoUrl = fallbackUrl || undefined;
           
           if (!videoUrl) {
-            throw new Error('No accessible video URL found after trying all fallbacks');
+            // Log the error but don't crash the component
+          console.error(`❌ Video ${video.id} not found. This may be a deleted or missing video.`);
+          console.error('Video object:', video);
+          
+          // Clear any stale cache for this video
+          if (typeof window !== 'undefined') {
+            // Clear localStorage cache for this video if it exists
+            try {
+              const videoCache = localStorage.getItem('video-cache');
+              if (videoCache) {
+                const cache = JSON.parse(videoCache);
+                if (cache[video.id]) {
+                  delete cache[video.id];
+                  localStorage.setItem('video-cache', JSON.stringify(cache));
+                  console.log(`🧹 Cleared localStorage cache for video ${video.id}`);
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to clear video cache:', e);
+            }
+          }
+          
+          throw new Error(`Video ${video.id} not found. This video may have been deleted or moved.`);
           }
         }
         

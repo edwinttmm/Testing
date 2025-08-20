@@ -321,6 +321,25 @@ class VideoUtilsManager {
   }
   
   /**
+   * Clear cache for videos that no longer exist
+   */
+  clearStaleVideoCache(validVideoIds: string[]): void {
+    const cacheKeys = Array.from(this.urlCache.keys());
+    const staleCacheKeys = cacheKeys.filter(key => {
+      // Extract video ID from cache key (format: "videoId_quality" or just "videoId")
+      const videoId = key.split('_')[0];
+      return !validVideoIds.includes(videoId);
+    });
+    
+    staleCacheKeys.forEach(key => {
+      this.urlCache.delete(key);
+      if (isDebugEnabled()) {
+        console.log(`🧹 Cleared stale video cache for: ${key}`);
+      }
+    });
+  }
+
+  /**
    * Get fallback video URL with multiple attempts
    */
   async getFallbackVideoUrl(video: VideoMetadata, options: VideoUrlOptions = {}): Promise<string | null> {
