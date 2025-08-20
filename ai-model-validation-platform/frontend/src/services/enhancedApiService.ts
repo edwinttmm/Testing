@@ -241,6 +241,7 @@ class EnhancedApiService {
 
   private handleError(error: AxiosError | any): ApiError {
     const apiError: ApiError = {
+      name: 'ApiError',
       message: 'An unexpected error occurred',
       status: 500,
     };
@@ -366,6 +367,7 @@ class EnhancedApiService {
       console.error('💥 Error in error handling:', handlingError);
       
       return {
+        name: 'CriticalError',
         message: 'A critical error occurred',
         status: 500,
         code: 'ERROR_HANDLER_FAILED'

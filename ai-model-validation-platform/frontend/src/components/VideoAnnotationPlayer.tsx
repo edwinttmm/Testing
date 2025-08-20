@@ -97,8 +97,8 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
             id: video.id,
             filename: video.filename,
             originalName: video.originalName,
-            url: video.url,
-            size: video.fileSize,
+            url: video.url || '',
+            size: video.fileSize || 0,
             status: video.status as any
           };
           
@@ -107,7 +107,8 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           }
           
           // Try to get a working video URL with fallbacks
-          videoUrl = await getFallbackVideoUrl(videoMetadata);
+          const fallbackUrl = await getFallbackVideoUrl(videoMetadata);
+          videoUrl = fallbackUrl || undefined;
           
           if (!videoUrl) {
             throw new Error('No accessible video URL found after trying all fallbacks');

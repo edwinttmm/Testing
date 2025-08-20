@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Button,
-  Grid,
+  Grid2 as Grid,
   LinearProgress,
   Chip,
   List,
@@ -253,7 +253,7 @@ const TestExecution: React.FC = () => {
           }
         } catch (videoError) {
           console.error('Video setup error:', videoError);
-          const errorMessage = videoError instanceof Error ? videoError.message : String(videoError);
+          const errorMessage = videoError instanceof Error ? videoError.message : 'Unknown error';
           throw new ApiError(`Video setup failed: ${errorMessage}`, 500);
         }
       }

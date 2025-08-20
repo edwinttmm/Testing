@@ -89,6 +89,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   
   // Playback quality
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // Calculate current frame number
   const currentFrame = Math.floor(currentTime * frameRate);

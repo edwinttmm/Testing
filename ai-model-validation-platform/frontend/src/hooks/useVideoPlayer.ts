@@ -13,7 +13,7 @@ import {
   cleanupVideoElement,
   isVideoReady,
   addVideoEventListeners,
-  VideoPlayPromiseResult,
+  VideoPlayResult,
 } from '../utils/videoUtils';
 
 export interface VideoPlayerState {
