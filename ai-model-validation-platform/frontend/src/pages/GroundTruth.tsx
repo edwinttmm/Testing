@@ -714,45 +714,47 @@ const GroundTruth: React.FC = () => {
           <List>
             {/* Show uploading videos first */}
             {uploadingVideos.map((video) => (
-              <ListItem key={video.id} divider>
-                <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-                  {getStatusIcon(video.status)}
-                </Box>
+              <Box key={video.id}>
+                <ListItem divider>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
+                    {getStatusIcon(video.status)}
+                  </Box>
+                  
+                  <ListItemText
+                    primary={video.name}
+                    secondary={`Size: ${video.size} • Status: ${video.status}`}
+                  />
+                  
+                  <ListItemSecondaryAction>
+                    {video.status === 'uploading' && (
+                      <IconButton size="small" onClick={() => cancelUpload(video.id)}>
+                        <Cancel />
+                      </IconButton>
+                    )}
+                  </ListItemSecondaryAction>
+                </ListItem>
                 
-                <ListItemText
-                  primary={video.name}
-                  secondary={
-                    <>
-                      Size: {video.size} • Status: {video.status}
-                      {video.status === 'uploading' && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption">Uploading... {video.progress}%</Typography>
-                          <LinearProgress variant="determinate" value={video.progress} sx={{ mt: 0.5 }} />
-                        </Box>
-                      )}
-                      {video.status === 'processing' && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption">Processing ground truth...</Typography>
-                          <LinearProgress sx={{ mt: 0.5 }} />
-                        </Box>
-                      )}
-                      {video.status === 'failed' && (
-                        <Alert severity="error" sx={{ mt: 1 }}>
-                          {video.error}
-                        </Alert>
-                      )}
-                    </>
-                  }
-                />
-                
-                <ListItemSecondaryAction>
-                  {video.status === 'uploading' && (
-                    <IconButton size="small" onClick={() => cancelUpload(video.id)}>
-                      <Cancel />
-                    </IconButton>
-                  )}
-                </ListItemSecondaryAction>
-              </ListItem>
+                {/* Progress indicators outside ListItem to avoid HTML nesting issues */}
+                {video.status === 'uploading' && (
+                  <Box sx={{ pl: 7, pb: 2 }}>
+                    <Typography variant="caption">Uploading... {video.progress}%</Typography>
+                    <LinearProgress variant="determinate" value={video.progress} sx={{ mt: 0.5 }} />
+                  </Box>
+                )}
+                {video.status === 'processing' && (
+                  <Box sx={{ pl: 7, pb: 2 }}>
+                    <Typography variant="caption">Processing ground truth...</Typography>
+                    <LinearProgress sx={{ mt: 0.5 }} />
+                  </Box>
+                )}
+                {video.status === 'failed' && (
+                  <Box sx={{ pl: 7, pb: 2 }}>
+                    <Alert severity="error">
+                      {video.error}
+                    </Alert>
+                  </Box>
+                )}
+              </Box>
             ))}
             
             {/* Show completed videos */}
