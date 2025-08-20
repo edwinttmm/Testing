@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Button,
-  Grid2 as Grid,
+  Grid as Grid,
   LinearProgress,
   Chip,
   List,
@@ -251,9 +251,9 @@ const TestExecution: React.FC = () => {
             const errorMessage = playResult.error?.message || 'Unknown error';
             throw new ApiError(`Video playback failed: ${errorMessage}`, 500);
           }
-        } catch (videoError) {
+        } catch (videoError: unknown) {
           console.error('Video setup error:', videoError);
-          const errorMessage = videoError instanceof Error ? videoError.message : 'Unknown error';
+          const errorMessage = videoError instanceof Error ? (videoError as Error).message : 'Unknown error';
           throw new ApiError(`Video setup failed: ${errorMessage}`, 500);
         }
       }

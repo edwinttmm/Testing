@@ -91,13 +91,10 @@ class ApiService {
       }
     );
 
-    // Response interceptor - handle responses and errors with data transformation
+    // Response interceptor - handle responses and errors
     this.api.interceptors.response.use(
       (response: AxiosResponse) => {
-        // Transform snake_case to camelCase for frontend compatibility
-        if (response.data) {
-          response.data = this.transformResponseData(response.data);
-        }
+        // Backend already provides camelCase data - no transformation needed
         return response;
       },
       (error: AxiosError) => {

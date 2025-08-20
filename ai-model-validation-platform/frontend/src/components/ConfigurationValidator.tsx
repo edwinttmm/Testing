@@ -191,6 +191,9 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
       const interval = setInterval(runValidation, refreshInterval);
       return () => clearInterval(interval);
     }
+    
+    // Return empty cleanup function when not auto-refreshing
+    return () => {};
   }, [autoRefresh, refreshInterval]);
   
   const getStatusColor = (status: ValidationResult['status']) => {
