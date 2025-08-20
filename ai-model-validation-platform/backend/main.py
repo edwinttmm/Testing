@@ -1592,18 +1592,18 @@ async def run_detection_pipeline(
             "target_classes": request.target_classes
         }
         
-        # Run detection
-        detections = detection_pipeline_service.process_video(
+        # Run detection (await the async method)
+        detections = await detection_pipeline_service.process_video(
             video.file_path, pipeline_config
         )
         
         return DetectionPipelineResponse(
             video_id=request.video_id,
-            detections=detections.get("detections", []),
-            processing_time=detections.get("processing_time", 0),
+            detections=detections,  # process_video now returns list directly
+            processing_time=0,  # TODO: Add timing calculation
             model_used=request.model_name,
-            total_detections=len(detections.get("detections", [])),
-            confidence_distribution=detections.get("confidence_distribution", {})
+            total_detections=len(detections),
+            confidence_distribution={}  # TODO: Calculate confidence distribution
         )
     except Exception as e:
         logger.error(f"Detection pipeline error: {str(e)}")
