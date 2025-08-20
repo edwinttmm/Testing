@@ -43,15 +43,16 @@
     }
   },
   "include": [
-    "src/**/*",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/*.spec.ts",
-    "src/**/*.spec.tsx"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
     "build",
-    "coverage"
+    "coverage",
+    "src/tests/**/*",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 }

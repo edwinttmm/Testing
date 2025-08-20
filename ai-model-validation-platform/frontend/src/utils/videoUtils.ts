@@ -270,7 +270,7 @@ class VideoUtilsManager {
       
       clearTimeout(timeoutId);
       
-      const accessible = response.ok && response.headers.get('content-type')?.includes('video');
+      const accessible = Boolean(response.ok && response.headers.get('content-type')?.includes('video'));
       
       // Cache the result for 5 minutes
       this.accessibilityCache.set(url, accessible);
@@ -349,7 +349,7 @@ class VideoUtilsManager {
     
     if (!extension) return false;
     
-    return videoConfig.supportedFormats.includes(extension);
+    return videoConfig.supportedFormats?.includes(extension) || false;
   }
   
   /**
@@ -357,7 +357,7 @@ class VideoUtilsManager {
    */
   isVideoSizeValid(sizeInBytes: number): boolean {
     const videoConfig = getServiceConfig('video');
-    const maxSizeBytes = videoConfig.maxSizeMB * 1024 * 1024;
+    const maxSizeBytes = (videoConfig.maxSizeMB || 100) * 1024 * 1024;
     
     return sizeInBytes <= maxSizeBytes;
   }
@@ -394,7 +394,7 @@ class VideoUtilsManager {
     
     return {
       extension,
-      supported: extension ? videoConfig.supportedFormats.includes(extension) : false,
+      supported: extension ? (videoConfig.supportedFormats?.includes(extension) || false) : false,
       ...formatInfo[extension || ''] || {
         name: extension?.toUpperCase() || 'Unknown',
         mimeType: 'video/*',

@@ -277,12 +277,16 @@ class ApiService {
     return transformed;
   }
 
-  // Add URL field to video responses if missing
+  // Add URL field to video responses if missing or relative
   private enhanceVideoData(video: any): any {
-    if (video && !video.url && (video.filename || video.id)) {
-      // Use video service configuration for URL generation
+    if (video && (video.filename || video.id)) {
       const videoConfig = getServiceConfig('video');
-      video.url = `${videoConfig.baseUrl}/uploads/${video.filename || video.id}`;
+      
+      // Convert relative URLs to absolute URLs
+      if (!video.url || video.url.startsWith('/')) {
+        const filename = video.filename || video.id;
+        video.url = `${videoConfig.baseUrl}${video.url || `/uploads/${filename}`}`;
+      }
     }
     
     // Ensure status is properly mapped
