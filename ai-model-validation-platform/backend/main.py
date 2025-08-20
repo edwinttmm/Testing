@@ -565,7 +565,7 @@ async def upload_video_central(
         
         video_record = Video(
             id=str(uuid.uuid4()),
-            filename=file.filename,
+            filename=secure_filename,  # Store secure filename in database
             file_path=final_file_path,
             file_size=bytes_written,
             status="uploaded",
@@ -594,8 +594,8 @@ async def upload_video_central(
         return {
             "id": video_record.id,
             "projectId": CENTRAL_STORE_PROJECT_ID,  # Central store project assignment
-            "filename": file.filename,
-            "originalName": file.filename,
+            "filename": secure_filename,  # Return secure filename consistently
+            "originalName": file.filename,  # Keep original for display purposes
             "url": f"/uploads/{secure_filename}",  # Add video URL for playback
             "size": bytes_written,
             "fileSize": bytes_written,
@@ -728,7 +728,7 @@ async def upload_video(
         # Create database record with actual file size and metadata
         video_record = Video(
             id=str(uuid.uuid4()),
-            filename=file.filename,
+            filename=secure_filename,  # Store secure filename in database
             file_path=final_file_path,
             file_size=bytes_written,
             status="uploaded",
@@ -765,8 +765,8 @@ async def upload_video(
         return {
             "id": video_record.id,
             "projectId": project_id,
-            "filename": file.filename,
-            "originalName": file.filename,
+            "filename": secure_filename,  # Return secure filename consistently
+            "originalName": file.filename,  # Keep original for display purposes
             "url": f"/uploads/{secure_filename}",  # Add video URL for playback
             "size": bytes_written,
             "fileSize": bytes_written,
@@ -854,7 +854,7 @@ async def get_project_videos(
                 "projectId": project_id,
                 "filename": row.filename,
                 "originalName": row.filename,
-                "url": f"/uploads/{row.filename}",  # Add video URL for playback
+                "url": f"/uploads/{row.filename}",  # Use stored filename (now secure)
                 "status": row.status,
                 "createdAt": safe_isoformat(row.created_at),
                 "uploadedAt": safe_isoformat(row.created_at),
@@ -939,7 +939,7 @@ async def get_all_videos(
                 "projectId": row.project_id,
                 "filename": row.filename,
                 "originalName": row.filename,
-                "url": f"/uploads/{Path(row.file_path).name}" if row.file_path else None,  # Add video URL
+                "url": f"/uploads/{row.filename}" if row.filename else None,  # Use stored filename (now secure)
                 "status": row.status,
                 "createdAt": safe_isoformat(row.created_at),
                 "uploadedAt": safe_isoformat(row.created_at),
