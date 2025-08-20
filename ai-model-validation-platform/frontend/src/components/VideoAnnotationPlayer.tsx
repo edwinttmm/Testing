@@ -70,6 +70,88 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
+  const getVRUColor = (vruType: string): string => {
+    const colors = {
+      pedestrian: '#2196f3',
+      cyclist: '#4caf50',
+      motorcyclist: '#ff9800',
+      wheelchair_user: '#9c27b0',
+      scooter_rider: '#ff5722',
+    };
+    return colors[vruType as keyof typeof colors] || '#607d8b';
+  };
+
+  // Draw annotations on canvas
+  const drawAnnotations = useCallback(() => {
+    const canvas = canvasRef.current;
+    const videoElement = videoRef.current;
+    
+    if (!canvas || !videoElement) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Set canvas size to match video display size
+    const rect = videoElement.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    // Calculate scaling factors
+    const scaleX = rect.width / videoSize.width;
+    const scaleY = rect.height / videoSize.height;
+
+    if (videoSize.width === 0 || videoSize.height === 0) return;
+
+    // Draw current annotations
+    currentAnnotations.forEach(annotation => {
+      const bbox = annotation.boundingBox;
+      
+      // Scale bounding box to canvas size
+      const x = bbox.x * scaleX;
+      const y = bbox.y * scaleY;
+      const width = bbox.width * scaleX;
+      const height = bbox.height * scaleY;
+
+      // Set style based on annotation type and selection
+      const isSelected = selectedAnnotation?.id === annotation.id;
+      const color = getVRUColor(annotation.vruType);
+      
+      ctx.strokeStyle = isSelected ? '#ff0000' : color;
+      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.fillStyle = isSelected ? 'rgba(255, 0, 0, 0.1)' : `${color}20`;
+
+      // Draw bounding box
+      ctx.strokeRect(x, y, width, height);
+      ctx.fillRect(x, y, width, height);
+
+      // Draw label
+      ctx.fillStyle = isSelected ? '#ff0000' : color;
+      ctx.font = '14px Arial';
+      const labelText = `${annotation.vruType} (${annotation.detectionId})`;
+      const labelWidth = ctx.measureText(labelText).width;
+      
+      // Label background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x, y - 20, labelWidth + 8, 18);
+      
+      // Label text
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(labelText, x + 4, y - 6);
+
+      // Draw validation indicator
+      if (annotation.validated) {
+        ctx.fillStyle = '#4caf50';
+        ctx.fillRect(x + width - 20, y, 20, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px Arial';
+        ctx.fillText('✓', x + width - 15, y + 14);
+      }
+    });
+  }, [currentAnnotations, selectedAnnotation, videoSize]);
+
   // Initialize video with simplified URL handling
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -144,77 +226,6 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
       }
     };
   }, [video.url, frameRate, onTimeUpdate, drawAnnotations]);
-
-  // Draw annotations on canvas
-  const drawAnnotations = useCallback(() => {
-    const canvas = canvasRef.current;
-    const videoElement = videoRef.current;
-    
-    if (!canvas || !videoElement) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Set canvas size to match video display size
-    const rect = videoElement.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-
-    // Calculate scaling factors
-    const scaleX = rect.width / videoSize.width;
-    const scaleY = rect.height / videoSize.height;
-
-    if (videoSize.width === 0 || videoSize.height === 0) return;
-
-    // Draw current annotations
-    currentAnnotations.forEach(annotation => {
-      const bbox = annotation.boundingBox;
-      
-      // Scale bounding box to canvas size
-      const x = bbox.x * scaleX;
-      const y = bbox.y * scaleY;
-      const width = bbox.width * scaleX;
-      const height = bbox.height * scaleY;
-
-      // Set style based on annotation type and selection
-      const isSelected = selectedAnnotation?.id === annotation.id;
-      const color = getVRUColor(annotation.vruType);
-      
-      ctx.strokeStyle = isSelected ? '#ff0000' : color;
-      ctx.lineWidth = isSelected ? 3 : 2;
-      ctx.fillStyle = isSelected ? 'rgba(255, 0, 0, 0.1)' : `${color}20`;
-
-      // Draw bounding box
-      ctx.strokeRect(x, y, width, height);
-      ctx.fillRect(x, y, width, height);
-
-      // Draw label
-      ctx.fillStyle = isSelected ? '#ff0000' : color;
-      ctx.font = '14px Arial';
-      const labelText = `${annotation.vruType} (${annotation.detectionId})`;
-      const labelWidth = ctx.measureText(labelText).width;
-      
-      // Label background
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(x, y - 20, labelWidth + 8, 18);
-      
-      // Label text
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(labelText, x + 4, y - 6);
-
-      // Draw validation indicator
-      if (annotation.validated) {
-        ctx.fillStyle = '#4caf50';
-        ctx.fillRect(x + width - 20, y, 20, 20);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Arial';
-        ctx.fillText('✓', x + width - 15, y + 14);
-      }
-    });
-  }, [currentAnnotations, selectedAnnotation, videoSize]);
 
   // Redraw annotations when annotations change
   useEffect(() => {
