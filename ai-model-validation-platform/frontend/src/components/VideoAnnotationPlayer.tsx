@@ -20,6 +20,14 @@ import {
   SkipPrevious,
 } from '@mui/icons-material';
 import { VideoFile, GroundTruthAnnotation } from '../services/types';
+import {
+  safeVideoPlay,
+  safeVideoPause,
+  cleanupVideoElement,
+  setVideoSource,
+  isVideoReady,
+  addVideoEventListeners,
+} from '../utils/videoUtils';
 
 interface VideoAnnotationPlayerProps {
   video: VideoFile;
@@ -62,42 +70,55 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
-  // Initialize video
+  // Initialize video with enhanced cleanup using utilities
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
     const handleLoadedMetadata = () => {
-      setDuration(videoElement.duration);
-      setVideoSize({
-        width: videoElement.videoWidth,
-        height: videoElement.videoHeight,
-      });
+      if (isVideoReady(videoElement)) {
+        setDuration(videoElement.duration);
+        setVideoSize({
+          width: videoElement.videoWidth,
+          height: videoElement.videoHeight,
+        });
+      }
     };
 
     const handleTimeUpdate = () => {
-      const time = videoElement.currentTime;
-      setCurrentTime(time);
-      const frame = Math.floor(time * frameRate);
-      onTimeUpdate?.(time, frame);
+      if (videoElement.currentTime !== undefined) {
+        const time = videoElement.currentTime;
+        setCurrentTime(time);
+        const frame = Math.floor(time * frameRate);
+        onTimeUpdate?.(time, frame);
+      }
     };
 
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => setIsPlaying(false);
+    
+    const handleError = (event: Event) => {
+      console.error('Video playback error:', event);
+      setIsPlaying(false);
+    };
 
-    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-    videoElement.addEventListener('timeupdate', handleTimeUpdate);
-    videoElement.addEventListener('play', handlePlay);
-    videoElement.addEventListener('pause', handlePause);
-    videoElement.addEventListener('ended', handleEnded);
+    // Use utility function for batch event listener management
+    const cleanupListeners = addVideoEventListeners(videoElement, [
+      { event: 'loadedmetadata', handler: handleLoadedMetadata },
+      { event: 'timeupdate', handler: handleTimeUpdate },
+      { event: 'play', handler: handlePlay },
+      { event: 'pause', handler: handlePause },
+      { event: 'ended', handler: handleEnded },
+      { event: 'error', handler: handleError },
+    ]);
 
     return () => {
-      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
-      videoElement.removeEventListener('play', handlePlay);
-      videoElement.removeEventListener('pause', handlePause);
-      videoElement.removeEventListener('ended', handleEnded);
+      // Clean up event listeners
+      cleanupListeners();
+      
+      // Clean up video element using utility
+      cleanupVideoElement(videoElement);
     };
   }, [frameRate, onTimeUpdate]);
 
@@ -227,15 +248,19 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     return colors[vruType as keyof typeof colors] || '#607d8b';
   };
 
-  // Control functions
-  const togglePlayPause = () => {
+  // Control functions with proper error handling using utilities
+  const togglePlayPause = async () => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
     if (isPlaying) {
-      videoElement.pause();
+      safeVideoPause(videoElement);
     } else {
-      videoElement.play();
+      const result = await safeVideoPlay(videoElement);
+      if (!result.success) {
+        console.warn('Video play failed:', result.error?.message);
+        setIsPlaying(false);
+      }
     }
   };
 
@@ -243,8 +268,12 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    videoElement.currentTime = value;
-    setCurrentTime(value);
+    try {
+      videoElement.currentTime = value;
+      setCurrentTime(value);
+    } catch (error) {
+      console.warn('Video seek failed:', error);
+    }
   };
 
   const handleVolumeChange = (value: number) => {
@@ -273,13 +302,17 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    const frameTime = 1 / frameRate;
-    const newTime = direction === 'forward' 
-      ? Math.min(currentTime + frameTime, duration)
-      : Math.max(currentTime - frameTime, 0);
-    
-    videoElement.currentTime = newTime;
-    setCurrentTime(newTime);
+    try {
+      const frameTime = 1 / frameRate;
+      const newTime = direction === 'forward' 
+        ? Math.min(currentTime + frameTime, duration)
+        : Math.max(currentTime - frameTime, 0);
+      
+      videoElement.currentTime = newTime;
+      setCurrentTime(newTime);
+    } catch (error) {
+      console.warn('Frame step failed:', error);
+    }
   };
 
   const formatTime = (time: number): string => {
@@ -303,14 +336,21 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
             }}
             src={video.url}
             preload="metadata"
+            playsInline
             onResize={() => {
               const videoElement = videoRef.current;
-              if (videoElement) {
+              if (videoElement && videoElement.videoWidth && videoElement.videoHeight) {
                 setVideoSize({
                   width: videoElement.videoWidth,
                   height: videoElement.videoHeight,
                 });
               }
+            }}
+            onError={(e) => {
+              console.error('Video element error:', e);
+            }}
+            onAbort={(e) => {
+              console.warn('Video loading aborted:', e);
             }}
           />
 

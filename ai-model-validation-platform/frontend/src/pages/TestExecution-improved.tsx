@@ -40,6 +40,13 @@ import {
 import { io, Socket } from 'socket.io-client';
 import { apiService } from '../services/api';
 import { TestSession as TestSessionType, VideoFile, Project, ApiError } from '../services/types';
+import {
+  safeVideoPlay,
+  safeVideoPause,
+  safeVideoStop,
+  setVideoSource,
+  cleanupVideoElement,
+} from '../utils/videoUtils';
 
 interface DetectionEvent {
   id: string;
@@ -78,6 +85,13 @@ const TestExecution: React.FC = () => {
       loadVideos(selectedProject);
     }
   }, [selectedProject]);
+
+  // Cleanup video when component unmounts
+  useEffect(() => {
+    return () => {
+      cleanupVideoElement(videoRef.current);
+    };
+  }, []);
 
   const loadProjects = async () => {
     try {
@@ -208,17 +222,24 @@ const TestExecution: React.FC = () => {
         });
       }
 
-      // Load selected video URL
+      // Load selected video URL with proper error handling using utilities
       const selectedVideoData = videos.find(v => v.id === selectedVideo);
       if (videoRef.current && selectedVideoData) {
-        videoRef.current.src = selectedVideoData.url || `/api/videos/${selectedVideo}/stream`;
-        videoRef.current.load();
-        await new Promise(resolve => {
-          if (videoRef.current) {
-            videoRef.current.onloadeddata = resolve;
+        try {
+          const videoSrc = selectedVideoData.url || `/api/videos/${selectedVideo}/stream`;
+          
+          // Use utility function to set video source
+          await setVideoSource(videoRef.current, videoSrc);
+          
+          // Use utility function to safely play video
+          const playResult = await safeVideoPlay(videoRef.current);
+          if (!playResult.success) {
+            throw new Error(`Video playback failed: ${playResult.error?.message}`);
           }
-        });
-        videoRef.current.play();
+        } catch (videoError) {
+          console.error('Video setup error:', videoError);
+          throw new Error(`Video setup failed: ${videoError.message}`);
+        }
       }
 
       setSuccessMessage(`Test session started: ${newSession.name}`);
@@ -249,11 +270,8 @@ const TestExecution: React.FC = () => {
         status: 'completed',
       });
 
-      // Stop video
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.currentTime = 0;
-      }
+      // Stop video using utility function
+      safeVideoStop(videoRef.current);
 
       setSuccessMessage('Test session stopped');
     } catch (err) {
@@ -281,10 +299,8 @@ const TestExecution: React.FC = () => {
         status: 'cancelled',
       });
 
-      // Pause video
-      if (videoRef.current) {
-        videoRef.current.pause();
-      }
+      // Pause video using utility function
+      safeVideoPause(videoRef.current);
     } catch (err) {
       console.error('Error pausing test session:', err);
       setError('Failed to pause test session');
@@ -308,9 +324,10 @@ const TestExecution: React.FC = () => {
         status: 'running',
       });
 
-      // Resume video
-      if (videoRef.current) {
-        videoRef.current.play();
+      // Resume video using utility function
+      const playResult = await safeVideoPlay(videoRef.current);
+      if (!playResult.success) {
+        console.warn('Error resuming video:', playResult.error?.message);
       }
     } catch (err) {
       console.error('Error resuming test session:', err);

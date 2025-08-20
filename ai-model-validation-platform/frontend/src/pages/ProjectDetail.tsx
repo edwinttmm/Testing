@@ -28,9 +28,10 @@ import {
   Delete,
   Link,
 } from '@mui/icons-material';
-import { apiService, getLinkedVideos, linkVideosToProject, unlinkVideoFromProject } from '../services/api';
+import { apiService, getLinkedVideos, linkVideosToProject, unlinkVideoFromProject, deleteVideo } from '../services/api';
 import { Project, VideoFile, TestSession } from '../services/types';
 import VideoSelectionDialog from '../components/VideoSelectionDialog';
+import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
 import { getErrorMessage } from '../utils/errorUtils';
 
 interface TabPanelProps {
@@ -79,6 +80,11 @@ const ProjectDetail: React.FC = () => {
   // Video linking state
   const [videoSelectionOpen, setVideoSelectionOpen] = useState(false);
   const [linkingVideos, setLinkingVideos] = useState(false);
+  
+  // Video deletion state
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [selectedVideoForDelete, setSelectedVideoForDelete] = useState<VideoFile | null>(null);
+  const [deletingVideo, setDeletingVideo] = useState(false);
 
   // Unlink video functionality
   const handleUnlinkVideo = async (videoId: string) => {
@@ -94,6 +100,26 @@ const ProjectDetail: React.FC = () => {
     } catch (err: any) {
       console.error('Video unlink error:', err);
       setError(getErrorMessage(err, 'Failed to unlink video'));
+    }
+  };
+
+  // Delete video functionality
+  const handleDeleteVideo = (video: VideoFile) => {
+    setSelectedVideoForDelete(video);
+    setDeleteDialog(true);
+  };
+
+  const confirmDeleteVideo = async (videoId: string) => {
+    try {
+      setDeletingVideo(true);
+      await deleteVideo(videoId);
+      // Refresh project data to update video list
+      await loadProjectData();
+    } catch (err: any) {
+      console.error('Video delete error:', err);
+      setError(getErrorMessage(err, 'Failed to delete video'));
+    } finally {
+      setDeletingVideo(false);
     }
   };
 
@@ -690,6 +716,15 @@ const ProjectDetail: React.FC = () => {
         projectId={id || ''}
         onSelectionComplete={handleVideoSelectionComplete}
         selectedVideoIds={videos.map(v => v.id)}
+      />
+
+      {/* Video Delete Confirmation Dialog */}
+      <VideoDeleteConfirmationDialog
+        open={deleteDialog}
+        onClose={() => setDeleteDialog(false)}
+        video={selectedVideoForDelete}
+        onConfirm={confirmDeleteVideo}
+        loading={deletingVideo}
       />
     </Box>
   );

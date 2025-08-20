@@ -51,6 +51,7 @@ import {
   GetApp,
   Clear,
   TrendingUp,
+  Delete,
 } from '@mui/icons-material';
 import {
   VideoFile,
@@ -64,8 +65,10 @@ import {
   getAvailableGroundTruthVideos,
   getAnnotations,
   exportAnnotations,
+  deleteVideo,
 } from '../services/api';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
+import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
 
 // Enhanced interfaces for dataset management
 interface DatasetFilter {
@@ -154,6 +157,8 @@ const Datasets: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = useState<VideoWithAnnotations | null>(null);
   const [viewDialog, setViewDialog] = useState(false);
   const [exportDialog, setExportDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [deletingVideo, setDeletingVideo] = useState(false);
   // const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
@@ -398,6 +403,39 @@ const Datasets: React.FC = () => {
     setMenuAnchorEl(null);
     setSelectedVideoId(null);
   };
+
+  const handleDeleteVideo = useCallback(async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (!video) return;
+
+    setSelectedVideo(video);
+    setDeleteDialog(true);
+    handleMenuClose();
+  }, [videos]);
+
+  const confirmDeleteVideo = useCallback(async (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (!video) return;
+
+    try {
+      setDeletingVideo(true);
+      await deleteVideo(videoId);
+      
+      // Remove video from local state
+      setVideos(prev => prev.filter(v => v.id !== videoId));
+      
+      // Recalculate stats
+      const updatedVideos = videos.filter(v => v.id !== videoId);
+      calculateStats(updatedVideos);
+      
+      setSuccessMessage(`Successfully deleted ${video.filename || video.name}`);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(`Failed to delete video: ${apiError.message}`);
+    } finally {
+      setDeletingVideo(false);
+    }
+  }, [videos, calculateStats]);
 
   const handleExportDataset = useCallback(async (format: 'json' | 'coco' | 'yolo', videoIds?: string[]) => {
     try {
@@ -1052,6 +1090,17 @@ const Datasets: React.FC = () => {
           <Download sx={{ mr: 1 }} fontSize="small" />
           Export Annotations
         </MenuItem>
+        <MenuItem 
+          onClick={() => {
+            if (selectedVideoId) {
+              handleDeleteVideo(selectedVideoId);
+            }
+          }}
+          sx={{ color: 'error.main' }}
+        >
+          <Delete sx={{ mr: 1 }} fontSize="small" />
+          Delete Video
+        </MenuItem>
       </Menu>
 
       {/* Video Detail Dialog */}
@@ -1221,6 +1270,15 @@ const Datasets: React.FC = () => {
           <Button onClick={() => setExportDialog(false)}>Cancel</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Video Delete Confirmation Dialog */}
+      <VideoDeleteConfirmationDialog
+        open={deleteDialog}
+        onClose={() => setDeleteDialog(false)}
+        video={selectedVideo}
+        onConfirm={confirmDeleteVideo}
+        loading={deletingVideo}
+      />
 
       {/* Success/Error Snackbars */}
       <Snackbar
