@@ -71,12 +71,12 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
     try {
       // Check socket pool first to reuse existing connections
-      let socket = socketPool.get(url);
+      let socket = socketPool.get(url || '');
       
       if (!socket || socket.disconnected) {
-        socket = io(url, {
+        socket = io(url || '', {
           transports: ['websocket'],
-          timeout: socketConfig.timeout,
+          timeout: socketConfig.timeout || 20000,
           forceNew: false,
           reconnection: false, // We handle reconnection manually
           withCredentials: false, // Adjust based on environment
@@ -85,7 +85,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         if (isDebugEnabled()) {
           console.log(`🔌 Creating new Socket.IO connection to ${url}`);
         }
-        socketPool.set(url, socket);
+        socketPool.set(url || '', socket);
       }
 
       socketRef.current = socket;
@@ -151,7 +151,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
   // Now define scheduleReconnect with connect in scope
   const scheduleReconnect = useCallback(() => {
-    if (reconnectCountRef.current >= reconnectAttempts) {
+    if (reconnectCountRef.current >= (reconnectAttempts || 5)) {
       setError(new Error(`Failed to reconnect after ${reconnectAttempts} attempts`));
       return;
     }
@@ -160,7 +160,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     reconnectTimeoutRef.current = setTimeout(() => {
       reconnectCountRef.current++;
       connect();
-    }, reconnectDelay * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
+    }, (reconnectDelay || 1000) * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
   }, [reconnectAttempts, reconnectDelay, clearReconnectTimeout, connect]);
 
   // Assign scheduleReconnect to ref so it can be called from connect
@@ -246,7 +246,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       
       if (currentListenerCount === 0) {
         disconnect();
-        socketPool.delete(url);
+        socketPool.delete(url || '');
       }
     };
   }, [autoConnect, connect, disconnect, clearReconnectTimeout, url]);

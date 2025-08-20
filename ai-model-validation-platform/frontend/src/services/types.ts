@@ -510,7 +510,7 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.status = status;
-    this.code = code;
+    this.code = code || 'UNKNOWN_ERROR';
     this.details = details;
     
     // Maintain proper prototype chain for instanceof checks

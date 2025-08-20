@@ -43,8 +43,8 @@ class ApiService {
     }
 
     this.api = axios.create({
-      baseURL: apiConfig.url,
-      timeout: apiConfig.timeout,
+      baseURL: apiConfig.url || 'http://localhost:8000',
+      timeout: apiConfig.timeout || 30000,
       headers: {
         'Content-Type': 'application/json',
       },

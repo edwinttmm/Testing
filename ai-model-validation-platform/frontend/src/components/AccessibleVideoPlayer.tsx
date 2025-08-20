@@ -428,7 +428,16 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
               pointerEvents: annotationMode ? 'auto' : 'none',
               cursor: annotationMode ? 'crosshair' : 'default',
             }}
-            onClick={handleCanvasClick}
+            onClick={(e) => {
+              if (onCanvasClick && annotationMode && videoRef.current) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const currentTime = videoRef.current.currentTime;
+                const frameNumber = Math.floor(currentTime * frameRate);
+                onCanvasClick(x, y, frameNumber, currentTime);
+              }
+            }}
             role={annotationMode ? 'button' : 'presentation'}
             aria-label={annotationMode ? 'Click to create annotation' : 'Video annotations overlay'}
             tabIndex={annotationMode ? 0 : -1}
