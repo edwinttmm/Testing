@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Button,
-  Grid as Grid,
+  Grid,
   LinearProgress,
   Chip,
   List,
@@ -461,9 +461,9 @@ const TestExecution: React.FC = () => {
         </Alert>
       )}
 
-      <Grid container spacing={3}>
+      <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
         {/* Video Player */}
-        <Grid item xs={12} md={8}>
+        <Box sx={{ flex: '1 1 66%', minWidth: '300px' }}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -587,13 +587,13 @@ const TestExecution: React.FC = () => {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
         {/* Real-time Results */}
-        <Grid item xs={12} md={4}>
-          <Grid container spacing={2}>
+        <Box sx={{ flex: '1 1 33%', minWidth: '250px' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {/* Metrics */}
-            <Grid item xs={12}>
+            <Box>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -620,35 +620,29 @@ const TestExecution: React.FC = () => {
                     <Typography variant="caption">{metrics.recall.toFixed(1)}%</Typography>
                   </Box>
 
-                  <Grid container spacing={1}>
-                    <Grid item xs={4}>
-                      <Chip 
-                        label={`TP: ${metrics.tp}`} 
-                        color="success" 
-                        size="small" 
-                      />
-                    </Grid>
-                    <Grid item xs={4}>
-                      <Chip 
-                        label={`FP: ${metrics.fp}`} 
-                        color="error" 
-                        size="small" 
-                      />
-                    </Grid>
-                    <Grid item xs={4}>
-                      <Chip 
-                        label={`FN: ${metrics.fn}`} 
-                        color="warning" 
-                        size="small" 
-                      />
-                    </Grid>
-                  </Grid>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip 
+                      label={`TP: ${metrics.tp}`} 
+                      color="success" 
+                      size="small" 
+                    />
+                    <Chip 
+                      label={`FP: ${metrics.fp}`} 
+                      color="error" 
+                      size="small" 
+                    />
+                    <Chip 
+                      label={`FN: ${metrics.fn}`} 
+                      color="warning" 
+                      size="small" 
+                    />
+                  </Box>
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
 
             {/* Detection Log */}
-            <Grid item xs={12}>
+            <Box>
               <Card sx={{ height: 400 }}>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -683,10 +677,10 @@ const TestExecution: React.FC = () => {
                   </List>
                 </CardContent>
               </Card>
-            </Grid>
-          </Grid>
-        </Grid>
-      </Grid>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
 
       {/* New Test Session Dialog */}
       <Dialog open={sessionDialog} onClose={() => setSessionDialog(false)} maxWidth="sm" fullWidth>
