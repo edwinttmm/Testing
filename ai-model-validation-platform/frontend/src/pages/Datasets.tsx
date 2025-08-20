@@ -976,10 +976,8 @@ const Datasets: React.FC = () => {
                       </Box>
                     }
                     secondary={
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          {video.projectName} • {formatDuration(video.duration || 0)} • {formatFileSize(video.size || video.fileSize || video.file_size || 0)}
-                        </Typography>
+                      <>
+                        {video.projectName} • {formatDuration(video.duration || 0)} • {formatFileSize(video.size || video.fileSize || video.file_size || 0)}
                         {video.detectionTypes.length > 0 && (
                           <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                             {video.detectionTypes.map((type) => (
@@ -993,7 +991,7 @@ const Datasets: React.FC = () => {
                             ))}
                           </Box>
                         )}
-                      </Box>
+                      </>
                     }
                   />
                   <ListItemSecondaryAction>

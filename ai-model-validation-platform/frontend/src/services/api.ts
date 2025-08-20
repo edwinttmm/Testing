@@ -266,8 +266,10 @@ class ApiService {
 
   // Add URL field to video responses if missing
   private enhanceVideoData(video: any): any {
-    if (video && !video.url && video.id) {
-      video.url = `/uploads/${video.filename || video.id}`;
+    if (video && !video.url && (video.filename || video.id)) {
+      // Use the same base URL logic as the API calls
+      const baseURL = this.api.defaults.baseURL;
+      video.url = `${baseURL}/uploads/${video.filename || video.id}`;
     }
     
     // Ensure status is properly mapped

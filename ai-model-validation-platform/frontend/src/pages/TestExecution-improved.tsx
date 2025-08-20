@@ -247,11 +247,12 @@ const TestExecution: React.FC = () => {
           // Use utility function to safely play video
           const playResult = await safeVideoPlay(videoRef.current);
           if (!playResult.success) {
-            throw new Error(`Video playback failed: ${playResult.error?.message}`);
+            throw new Error(`Video playback failed: ${playResult.error?.message || 'Unknown error'}`);
           }
         } catch (videoError) {
- console.error('Video setup error:', videoError);
- throw new Error(`Video setup failed: ${videoError.message}`);
+          console.error('Video setup error:', videoError);
+          const errorMessage = videoError instanceof Error ? videoError.message : 'Unknown error';
+          throw new Error(`Video setup failed: ${errorMessage}`);
         }
       }
 
@@ -509,7 +510,7 @@ const TestExecution: React.FC = () => {
                       borderRadius: 1,
                     }}
                   >
-                    <VideoLibrary sx={{ fontSize: 64, mb: 2 }} />
+                    <Typography variant="h1" sx={{ fontSize: 64, mb: 2 }}>📹</Typography>
                     <Typography variant="h6" gutterBottom>
                       No Video Selected
                     </Typography>

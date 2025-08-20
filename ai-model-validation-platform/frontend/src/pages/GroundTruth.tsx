@@ -722,10 +722,8 @@ const GroundTruth: React.FC = () => {
                 <ListItemText
                   primary={video.name}
                   secondary={
-                    <Box>
-                      <Typography variant="caption" component="div">
-                        Size: {video.size} • Status: {video.status}
-                      </Typography>
+                    <>
+                      Size: {video.size} • Status: {video.status}
                       {video.status === 'uploading' && (
                         <Box sx={{ mt: 1 }}>
                           <Typography variant="caption">Uploading... {video.progress}%</Typography>
@@ -743,7 +741,7 @@ const GroundTruth: React.FC = () => {
                           {video.error}
                         </Alert>
                       )}
-                    </Box>
+                    </>
                   }
                 />
                 
@@ -767,10 +765,8 @@ const GroundTruth: React.FC = () => {
                 <ListItemText
                   primary={video.filename || video.name}
                   secondary={
-                    <Box>
-                      <Typography variant="caption" component="div">
-                        Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
-                      </Typography>
+                    <>
+                      Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
                       {video.status === 'processing' && (
                         <Box sx={{ mt: 1 }}>
                           <Typography variant="caption">Processing ground truth...</Typography>
@@ -786,7 +782,7 @@ const GroundTruth: React.FC = () => {
                           />
                         </Box>
                       )}
-                    </Box>
+                    </>
                   }
                 />
                 

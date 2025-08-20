@@ -57,7 +57,6 @@ import { apiService } from '../services/api';
 import { 
   Project, 
   DetailedTestResults, 
-  DetectionComparison,
   ResultsFilter,
   PassFailResult,
 } from '../services/types';

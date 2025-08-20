@@ -110,6 +110,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       setBuffering(true);
 
       // Set video source with retry logic
+      if (!video.url) {
+        throw new Error('Video URL is not available');
+      }
       await setVideoSource(videoElement, video.url);
       
       setLoading(false);
