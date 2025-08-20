@@ -12,11 +12,14 @@ const theme = createTheme();
 // Mock video file for tests
 const mockVideoFile: VideoFile = {
   id: '1',
+  projectId: 'test-project-1',
   filename: 'test-video.mp4',
+  originalName: 'original-test-video.mp4',
   url: 'http://example.com/test-video.mp4',
   status: 'completed',
   size: 1024 * 1024 * 10, // 10MB
   duration: 120, // 2 minutes
+  uploadedAt: new Date().toISOString(),
   createdAt: new Date().toISOString(),
   detectionCount: 5,
 };

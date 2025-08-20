@@ -24,43 +24,59 @@ import {
 import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
+import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 
 class ApiService {
   private api: AxiosInstance;
 
   constructor() {
-    // Dynamic API base URL detection with fallback
-    const getApiBaseUrl = () => {
-      if (process.env.REACT_APP_API_URL) {
-        return process.env.REACT_APP_API_URL;
-      }
-      
-      const hostname = window.location.hostname;
-      const protocol = window.location.protocol;
-      
-      // Development environment (localhost)
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:8000';
-      }
-      
-      // Handle specific production server (155.138.239.131)
-      if (hostname === '155.138.239.131') {
-        return 'http://155.138.239.131:8000';
-      }
-      
-      // Generic fallback for other environments
-      return `${protocol}//${hostname}:8000`;
-    };
+    // Get API configuration from environment config manager
+    const apiConfig = getServiceConfig('api');
+    
+    if (isDebugEnabled()) {
+      console.log('🔧 API Service initializing with config:', {
+        url: apiConfig.url,
+        timeout: apiConfig.timeout,
+        retryAttempts: apiConfig.retryAttempts,
+        retryDelay: apiConfig.retryDelay
+      });
+    }
 
     this.api = axios.create({
-      baseURL: getApiBaseUrl(),
-      timeout: 30000, // Increased timeout to 30 seconds
+      baseURL: apiConfig.url,
+      timeout: apiConfig.timeout,
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
     this.setupInterceptors();
+    
+    // Validate configuration and test connectivity
+    this.validateAndTestConfiguration();
+  }
+  
+  private async validateAndTestConfiguration() {
+    const config = envConfig.getConfig();
+    const validationErrors = envConfig.getValidationErrors();
+    
+    if (validationErrors.length > 0) {
+      console.error('❌ API Service Configuration Errors:', validationErrors);
+    }
+    
+    // Test API connectivity in development mode
+    if (config.isDevelopment || config.debug) {
+      try {
+        const connectivityTest = await envConfig.testApiConnectivity();
+        if (connectivityTest.connected) {
+          console.log(`✅ API connectivity verified (${connectivityTest.latency}ms latency)`);
+        } else {
+          console.warn('⚠️ API connectivity issue:', connectivityTest.error);
+        }
+      } catch (error) {
+        console.warn('⚠️ API connectivity test failed:', error);
+      }
+    }
   }
 
   private setupInterceptors() {
@@ -267,9 +283,9 @@ class ApiService {
   // Add URL field to video responses if missing
   private enhanceVideoData(video: any): any {
     if (video && !video.url && (video.filename || video.id)) {
-      // Use the same base URL logic as the API calls
-      const baseURL = this.api.defaults.baseURL;
-      video.url = `${baseURL}/uploads/${video.filename || video.id}`;
+      // Use video service configuration for URL generation
+      const videoConfig = getServiceConfig('video');
+      video.url = `${videoConfig.baseUrl}/uploads/${video.filename || video.id}`;
     }
     
     // Ensure status is properly mapped
@@ -295,12 +311,18 @@ class ApiService {
       // Check cache first
       const cached = apiCache.get<T>(method, url, params);
       if (cached !== null) {
+        if (isDebugEnabled()) {
+          console.log(`📋 Cache hit for ${method} ${url}`);
+        }
         return cached;
       }
 
       // Check for pending request to avoid duplication
       const pending = apiCache.getPendingRequest(method, url, params);
       if (pending) {
+        if (isDebugEnabled()) {
+          console.log(`⏳ Request deduplication for ${method} ${url}`);
+        }
         return pending;
       }
     }
@@ -315,8 +337,16 @@ class ApiService {
       // Cache successful GET responses
       if (method === 'GET') {
         apiCache.set(method, url, response.data, params);
+        if (isDebugEnabled()) {
+          console.log(`💾 Cached response for ${method} ${url}`);
+        }
       }
       return response.data;
+    }).catch(error => {
+      if (isDebugEnabled()) {
+        console.error(`❌ Request failed for ${method} ${url}:`, error.message);
+      }
+      throw error;
     });
 
     // Track pending request for deduplication
@@ -325,6 +355,26 @@ class ApiService {
     }
 
     return requestPromise;
+  }
+  
+  /**
+   * Get current configuration information
+   */
+  getConfiguration() {
+    return {
+      baseURL: this.api.defaults.baseURL,
+      timeout: this.api.defaults.timeout,
+      environment: envConfig.getConfig().environment,
+      isValid: envConfig.isValid(),
+      validationErrors: envConfig.getValidationErrors()
+    };
+  }
+  
+  /**
+   * Test connectivity to the API
+   */
+  async testConnectivity() {
+    return envConfig.testApiConnectivity();
   }
 
   // Project CRUD
@@ -649,9 +699,18 @@ class ApiService {
     return this.cachedRequest<ChartData>('GET', '/api/dashboard/charts');
   }
 
-  // Health check
-  async healthCheck(): Promise<{ status: string }> {
-    return this.cachedRequest<{ status: string }>('GET', '/health');
+  // Health check with enhanced error handling
+  async healthCheck(): Promise<{ status: string, environment?: string, timestamp?: string }> {
+    try {
+      const result = await this.cachedRequest<{ status: string, environment?: string, timestamp?: string }>('GET', '/health');
+      if (isDebugEnabled()) {
+        console.log('✅ Health check passed:', result);
+      }
+      return result;
+    } catch (error: any) {
+      console.error('❌ Health check failed:', error.message);
+      throw error;
+    }
   }
 
   // Video Library Management

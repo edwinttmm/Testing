@@ -89,7 +89,6 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   
   // Playback quality
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Calculate current frame number
   const currentFrame = Math.floor(currentTime * frameRate);
@@ -253,7 +252,11 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   useEffect(() => {
     initializeVideo();
     return () => {
-      cleanupVideoElement(videoRef.current);
+      // Store videoRef.current in a local variable to avoid stale closure
+      const videoElement = videoRef.current;
+      if (videoElement) {
+        cleanupVideoElement(videoElement);
+      }
     };
   }, [initializeVideo]);
 
@@ -386,7 +389,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   };
 
   // Control functions with enhanced error handling
-  const togglePlayPause = async () => {
+  const togglePlayPause = useCallback(async () => {
     const videoElement = videoRef.current;
     if (!videoElement || !isVideoReady(videoElement)) return;
 
@@ -405,9 +408,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } catch (error) {
       handleVideoError(error as Error, 'play');
     }
-  };
+  }, [isPlaying, handleVideoError]);
 
-  const handleSeek = (value: number) => {
+  const handleSeek = useCallback((value: number) => {
     const videoElement = videoRef.current;
     if (!videoElement || !isVideoReady(videoElement)) return;
 
@@ -421,9 +424,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } finally {
       setTimeout(() => setBuffering(false), 500);
     }
-  };
+  }, [handleVideoError]);
 
-  const handleVolumeChange = (value: number) => {
+  const handleVolumeChange = useCallback((value: number) => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
@@ -434,9 +437,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } catch (error) {
       console.warn('Volume change failed:', error);
     }
-  };
+  }, []);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
@@ -451,9 +454,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } catch (error) {
       console.warn('Mute toggle failed:', error);
     }
-  };
+  }, [isMuted, volume]);
 
-  const stepFrame = (direction: 'forward' | 'backward') => {
+  const stepFrame = useCallback((direction: 'forward' | 'backward') => {
     const videoElement = videoRef.current;
     if (!videoElement || !isVideoReady(videoElement)) return;
 
@@ -467,9 +470,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } catch (error) {
       console.warn('Frame step failed:', error);
     }
-  };
+  }, [currentTime, duration, frameRate, handleSeek]);
 
-  const handlePlaybackRateChange = (rate: number) => {
+  const handlePlaybackRateChange = useCallback((rate: number) => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
@@ -479,9 +482,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } catch (error) {
       console.warn('Playback rate change failed:', error);
     }
-  };
+  }, []);
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -496,13 +499,13 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     } catch (error) {
       console.warn('Fullscreen toggle failed:', error);
     }
-  };
+  }, []);
 
-  const formatTime = (time: number): string => {
+  const formatTime = useCallback((time: number): string => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
   // Error state rendering
   if (error) {

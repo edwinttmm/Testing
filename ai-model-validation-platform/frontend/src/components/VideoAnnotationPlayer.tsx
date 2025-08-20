@@ -27,6 +27,8 @@ import {
   setVideoSource,
   addVideoEventListeners,
 } from '../utils/videoUtils';
+import { videoUtils, generateVideoUrl, getFallbackVideoUrl, VideoMetadata } from '../utils/videoUtils';
+import { isDebugEnabled } from '../utils/envConfig';
 
 interface VideoAnnotationPlayerProps {
   video: VideoFile;
@@ -68,10 +70,10 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
-  // Initialize video with enhanced cleanup using utilities
+  // Initialize video with enhanced cleanup and fallback URL handling
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement || !video.url) return;
+    if (!videoElement || (!video.url && !video.filename && !video.id)) return;
 
     // Track if this effect is still valid
     let effectValid = true;
@@ -86,11 +88,37 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         
         if (!effectValid) return; // Effect was cleaned up while waiting
 
-        // Set video source using utility
-        if (!video.url) {
-          throw new Error('Video URL is not available');
+        // Generate or get video URL using environment-aware utilities
+        let videoUrl = video.url;
+        
+        if (!videoUrl) {
+          // Convert video to metadata format for URL generation
+          const videoMetadata: VideoMetadata = {
+            id: video.id,
+            filename: video.filename,
+            originalName: video.originalName,
+            url: video.url,
+            size: video.fileSize,
+            status: video.status as any
+          };
+          
+          if (isDebugEnabled()) {
+            console.log('🎥 Generating video URL for:', videoMetadata);
+          }
+          
+          // Try to get a working video URL with fallbacks
+          videoUrl = await getFallbackVideoUrl(videoMetadata);
+          
+          if (!videoUrl) {
+            throw new Error('No accessible video URL found after trying all fallbacks');
+          }
         }
-        await setVideoSource(videoElement, video.url);
+        
+        if (isDebugEnabled()) {
+          console.log('🎥 Using video URL:', videoUrl);
+        }
+        
+        await setVideoSource(videoElement, videoUrl);
         
         if (!effectValid) return; // Effect was cleaned up while loading
         
@@ -101,7 +129,17 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           setVideoSize({ width: videoElement.videoWidth, height: videoElement.videoHeight });
           // Delay drawing annotations to ensure canvas is ready
           requestAnimationFrame(() => {
-            if (effectValid) drawAnnotations();
+            if (effectValid) {
+              // Draw annotations after video is loaded
+              const canvas = canvasRef.current;
+              if (canvas && videoElement && videoElement.videoWidth && videoElement.videoHeight) {
+                // Initial canvas setup - drawAnnotations will be called by useEffect
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+              }
+            }
           });
         };
 
@@ -158,8 +196,11 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         cleanupListeners();
       }
       
-      // Cleanup video element using utility
-      cleanupVideoElement(videoElement);
+      // Cleanup video element using utility - use local variable to avoid stale closure
+      const currentVideoElement = videoRef.current;
+      if (currentVideoElement) {
+        cleanupVideoElement(currentVideoElement);
+      }
     };
   }, [video.url, frameRate, onTimeUpdate]); // Include video.url in deps to reinitialize on video change
 

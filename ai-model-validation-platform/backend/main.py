@@ -726,13 +726,23 @@ async def upload_video(
         video_metadata = extract_video_metadata(final_file_path)
         
         # Create database record with actual file size and metadata
-        video_record = create_video(
-            db=db, 
-            project_id=project_id, 
-            filename=file.filename, 
-            file_size=bytes_written,  # Use actual bytes written
-            file_path=final_file_path
+        video_record = Video(
+            id=str(uuid.uuid4()),
+            filename=file.filename,
+            file_path=final_file_path,
+            file_size=bytes_written,
+            status="uploaded",
+            processing_status="pending",
+            ground_truth_generated=False,
+            project_id=project_id,
+            duration=video_metadata.get('duration') if video_metadata else None,
+            fps=video_metadata.get('fps') if video_metadata else None,
+            resolution=video_metadata.get('resolution') if video_metadata else None
         )
+        
+        db.add(video_record)
+        db.commit()
+        db.refresh(video_record)
         
         # Update video record with metadata
         if video_metadata:
@@ -844,6 +854,7 @@ async def get_project_videos(
                 "projectId": project_id,
                 "filename": row.filename,
                 "originalName": row.filename,
+                "url": f"/uploads/{row.filename}",  # Add video URL for playback
                 "status": row.status,
                 "createdAt": safe_isoformat(row.created_at),
                 "uploadedAt": safe_isoformat(row.created_at),

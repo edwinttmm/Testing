@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 
 interface UseWebSocketOptions {
   url?: string;
@@ -25,15 +26,27 @@ interface UseWebSocketReturn {
 const socketPool = new Map<string, Socket>();
 
 export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketReturn => {
+  // Get WebSocket configuration from environment config
+  const socketConfig = getServiceConfig('socketio');
+  
   const {
-    url = process.env.REACT_APP_WS_URL || 'http://localhost:8001',
+    url = socketConfig.url,
     onConnect,
     onDisconnect,
     onError,
-    reconnectAttempts = 5,
-    reconnectDelay = 1000,
+    reconnectAttempts = socketConfig.retryAttempts,
+    reconnectDelay = socketConfig.retryDelay,
     autoConnect = true,
   } = options;
+  
+  if (isDebugEnabled()) {
+    console.log('🔌 WebSocket initializing with config:', {
+      url,
+      reconnectAttempts,
+      reconnectDelay,
+      autoConnect
+    });
+  }
 
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -63,10 +76,15 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       if (!socket || socket.disconnected) {
         socket = io(url, {
           transports: ['websocket'],
-          timeout: 20000,
+          timeout: socketConfig.timeout,
           forceNew: false,
           reconnection: false, // We handle reconnection manually
+          withCredentials: false, // Adjust based on environment
         });
+        
+        if (isDebugEnabled()) {
+          console.log(`🔌 Creating new Socket.IO connection to ${url}`);
+        }
         socketPool.set(url, socket);
       }
 
@@ -78,15 +96,28 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setError(null);
         reconnectCountRef.current = 0;
         clearReconnectTimeout();
+        
+        if (isDebugEnabled()) {
+          console.log('✅ WebSocket connected successfully');
+        }
+        
         onConnect?.();
       });
 
       socket.on('disconnect', (reason) => {
         setIsConnected(false);
+        
+        if (isDebugEnabled()) {
+          console.warn(`🔌 WebSocket disconnected: ${reason}`);
+        }
+        
         onDisconnect?.();
         
         // Auto-reconnect for certain disconnect reasons
         if (reason === 'io server disconnect' || reason === 'transport close') {
+          if (isDebugEnabled()) {
+            console.log('🔄 Scheduling WebSocket reconnection...');
+          }
           scheduleReconnectRef.current?.();
         }
       });
@@ -94,6 +125,11 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       socket.on('connect_error', (err) => {
         const error = new Error(`WebSocket connection error: ${err.message}`);
         setError(error);
+        
+        if (isDebugEnabled()) {
+          console.error('❌ WebSocket connection error:', err.message);
+        }
+        
         onError?.(error);
         scheduleReconnectRef.current?.();
       });
@@ -151,9 +187,16 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
   const emit = useCallback((event: string, data?: any) => {
     if (socketRef.current?.connected) {
+      if (isDebugEnabled()) {
+        console.log(`📡 Emitting WebSocket event: ${event}`, data);
+      }
       socketRef.current.emit(event, data);
     } else {
-      console.warn(`Cannot emit event '${event}': WebSocket not connected`);
+      const message = `Cannot emit event '${event}': WebSocket not connected`;
+      console.warn(message);
+      if (isDebugEnabled()) {
+        console.warn('📡 WebSocket emit failed - not connected');
+      }
     }
   }, []);
 

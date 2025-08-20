@@ -1,0 +1,37 @@
+[
+  {
+    "test_name": "Database Integrity",
+    "status": "FAIL",
+    "details": "Database validation failed",
+    "error": "(sqlite3.OperationalError) no such table: videos\n[SQL: SELECT videos.id AS videos_id, videos.filename AS videos_filename, videos.file_path AS videos_file_path, videos.file_size AS videos_file_size, videos.duration AS videos_duration, videos.fps AS videos_fps, videos.resolution AS videos_resolution, videos.status AS videos_status, videos.processing_status AS videos_processing_status, videos.ground_truth_generated AS videos_ground_truth_generated, videos.project_id AS videos_project_id, videos.created_at AS videos_created_at, videos.updated_at AS videos_updated_at \nFROM videos]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)",
+    "timestamp": 1755687504.9947965
+  },
+  {
+    "test_name": "Video Files Validation",
+    "status": "FAIL",
+    "details": "File validation failed",
+    "error": "(sqlite3.OperationalError) no such table: videos\n[SQL: SELECT videos.id AS videos_id, videos.filename AS videos_filename, videos.file_path AS videos_file_path, videos.file_size AS videos_file_size, videos.duration AS videos_duration, videos.fps AS videos_fps, videos.resolution AS videos_resolution, videos.status AS videos_status, videos.processing_status AS videos_processing_status, videos.ground_truth_generated AS videos_ground_truth_generated, videos.project_id AS videos_project_id, videos.created_at AS videos_created_at, videos.updated_at AS videos_updated_at \nFROM videos]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)",
+    "timestamp": 1755687505.0091505
+  },
+  {
+    "test_name": "API Endpoints",
+    "status": "SKIP",
+    "details": "Backend server not running",
+    "error": null,
+    "timestamp": 1755687505.08558
+  },
+  {
+    "test_name": "Frame Calculations",
+    "status": "FAIL",
+    "details": "Frame calculation validation failed",
+    "error": "(sqlite3.OperationalError) no such table: videos\n[SQL: SELECT videos.id AS videos_id, videos.filename AS videos_filename, videos.file_path AS videos_file_path, videos.file_size AS videos_file_size, videos.duration AS videos_duration, videos.fps AS videos_fps, videos.resolution AS videos_resolution, videos.status AS videos_status, videos.processing_status AS videos_processing_status, videos.ground_truth_generated AS videos_ground_truth_generated, videos.project_id AS videos_project_id, videos.created_at AS videos_created_at, videos.updated_at AS videos_updated_at \nFROM videos \nWHERE videos.id = ?\n LIMIT ? OFFSET ?]\n[parameters: ('test-video-5-04s', 1, 0)]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)",
+    "timestamp": 1755687505.1414905
+  },
+  {
+    "test_name": "URL Generation",
+    "status": "FAIL",
+    "details": "URL validation failed",
+    "error": "(sqlite3.OperationalError) no such table: videos\n[SQL: SELECT videos.id AS videos_id, videos.filename AS videos_filename, videos.file_path AS videos_file_path, videos.file_size AS videos_file_size, videos.duration AS videos_duration, videos.fps AS videos_fps, videos.resolution AS videos_resolution, videos.status AS videos_status, videos.processing_status AS videos_processing_status, videos.ground_truth_generated AS videos_ground_truth_generated, videos.project_id AS videos_project_id, videos.created_at AS videos_created_at, videos.updated_at AS videos_updated_at \nFROM videos \nWHERE videos.id = ?\n LIMIT ? OFFSET ?]\n[parameters: ('test-video-5-04s', 1, 0)]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)",
+    "timestamp": 1755687505.162257
+  }
+]
