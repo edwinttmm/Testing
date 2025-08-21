@@ -195,6 +195,14 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           });
         };
 
+        const handleCanPlay = () => {
+          if (!effectValid) return;
+          if (isDebugEnabled()) {
+            console.log('VideoAnnotationPlayer: Video can play, clearing loading state');
+          }
+          setLoading(false);
+        };
+
         const handleTimeUpdate = () => {
           if (!effectValid || videoElement.currentTime === undefined) return;
           const time = videoElement.currentTime;
@@ -219,6 +227,7 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
 
         const cleanupListeners = addVideoEventListeners(videoElement, [
           { event: 'loadedmetadata', handler: handleLoadedMetadata },
+          { event: 'canplay', handler: handleCanPlay },
           { event: 'timeupdate', handler: handleTimeUpdate },
           { event: 'play', handler: handlePlay },
           { event: 'pause', handler: handlePause },
