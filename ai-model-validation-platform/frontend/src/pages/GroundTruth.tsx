@@ -178,32 +178,41 @@ const GroundTruth: React.FC = () => {
   // Detection pipeline state
   const [isRunningDetection, setIsRunningDetection] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
-  const [detectionSource, setDetectionSource] = useState<'backend' | 'fallback' | 'mock' | null>(null);
+  const [detectionSource, setDetectionSource] = useState<'backend' | 'fallback' | null>(null);
   const [detectionRetries, setDetectionRetries] = useState(0);
   
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // WebSocket for real-time detection updates
-  const { isConnected: wsConnected } = useDetectionWebSocket({
+  const { isConnected: wsConnected, connect: wsConnect, disconnect: wsDisconnect } = useDetectionWebSocket({
     onUpdate: (update: DetectionUpdate) => {
       if (update.type === 'progress' && selectedVideo?.id === update.videoId) {
         console.log(`Detection progress: ${update.progress}%`);
+        // You could update a progress bar here if needed
       } else if (update.type === 'detection' && update.annotation) {
-        setAnnotations(prev => [...prev, update.annotation!]);
+        setAnnotations(prev => {
+          // Avoid duplicate annotations
+          const exists = prev.some(ann => ann.detectionId === update.annotation!.detectionId);
+          return exists ? prev : [...prev, update.annotation!];
+        });
       } else if (update.type === 'complete') {
         setIsRunningDetection(false);
-        setSuccessMessage('Real-time detection completed');
+        setSuccessMessage('Real-time detection completed successfully');
       } else if (update.type === 'error') {
         setDetectionError(update.error || 'Detection error occurred');
         setIsRunningDetection(false);
       }
     },
     onConnect: () => {
-      console.log('Real-time detection connected');
+      console.log('✅ Real-time detection WebSocket connected');
     },
     onDisconnect: () => {
-      console.log('Real-time detection disconnected');
+      console.log('❌ Real-time detection WebSocket disconnected');
+    },
+    onError: (error) => {
+      console.error('🔌 WebSocket error:', error);
+      // Don't show WebSocket errors to user as they're not critical
     }
   });
 
@@ -366,6 +375,18 @@ const GroundTruth: React.FC = () => {
     }
     loadVideos();
   }, [loadVideos]);
+
+  // Cleanup WebSocket connections on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        wsDisconnect();
+        detectionService.disconnectWebSocket();
+      } catch (error) {
+        console.warn('Error during cleanup:', error);
+      }
+    };
+  }, [wsDisconnect]);
 
   // Load annotations when video is selected
   useEffect(() => {
@@ -597,6 +618,12 @@ const GroundTruth: React.FC = () => {
     setViewDialog(true);
     setActiveTab(0); // Default to video player tab
     
+    // Clear previous detection state
+    setDetectionError(null);
+    setDetectionSource(null);
+    setDetectionRetries(0);
+    setAnnotations([]); // Clear previous annotations
+    
     // Load ground truth data if available
     if (video.ground_truth_generated || video.groundTruthGenerated) {
       try {
@@ -610,9 +637,6 @@ const GroundTruth: React.FC = () => {
     // Auto-run detection pipeline with enhanced fallback mechanisms
     try {
       setIsRunningDetection(true);
-      setDetectionError(null);
-      setDetectionSource(null);
-      setDetectionRetries(0);
       
       // Check if video already has annotations to avoid duplicate detection
       let existingAnnotations: GroundTruthAnnotation[] = [];
@@ -625,20 +649,20 @@ const GroundTruth: React.FC = () => {
       if (existingAnnotations.length === 0) {
         console.log('No existing annotations found, running enhanced detection pipeline...');
         
-        // Run detection with fallback support
+        // Configure detection pipeline with optimized settings
         const detectionConfig: DetectionConfig = {
-          confidenceThreshold: 0.5,
-          nmsThreshold: 0.4,
-          modelName: 'yolov8n',
-          targetClasses: ['person', 'bicycle', 'motorcycle'],
-          maxRetries: 3,
-          retryDelay: 1000,
-          useFallback: true
+          confidenceThreshold: 0.4, // Lower threshold to catch more objects
+          nmsThreshold: 0.5, // Good balance for NMS
+          modelName: 'yolov8s', // Use recommended model from backend
+          targetClasses: ['person', 'bicycle', 'motorcycle', 'car', 'bus', 'truck'],
+          maxRetries: 2, // Allow some retries
+          retryDelay: 1000, // Reasonable delay
+          useFallback: true // Enable fallback with mock data
         };
         
         const detectionResult = await detectionService.runDetection(video.id, detectionConfig);
         
-        if (detectionResult.success) {
+        if (detectionResult.success && detectionResult.detections.length > 0) {
           setDetectionSource(detectionResult.source);
           
           // Save detections as annotations
@@ -646,6 +670,7 @@ const GroundTruth: React.FC = () => {
           setAnnotations(newAnnotations);
           
           // Update detection ID manager
+          detectionIdManager.clear(); // Clear previous data
           newAnnotations.forEach(annotation => {
             createDetectionTracker(
               annotation.detectionId,
@@ -653,19 +678,31 @@ const GroundTruth: React.FC = () => {
               annotation.frameNumber,
               annotation.timestamp,
               annotation.boundingBox,
-              annotation.boundingBox.confidence
+              annotation.boundingBox.confidence || 1.0
             );
           });
           
           const sourceMessage = detectionResult.source === 'backend' 
-            ? 'Backend detection' 
-            : detectionResult.source === 'fallback'
-            ? 'Local detection (fallback)'
-            : 'Mock detection (demo)';
+            ? '🎯 AI Detection' 
+            : '🚧 Demo Detection';
           
           setSuccessMessage(`${sourceMessage} completed: Found ${newAnnotations.length} objects in ${(detectionResult.processingTime / 1000).toFixed(1)}s`);
+          
+          // Connect WebSocket for real-time updates if backend detection was successful
+          if (detectionResult.source === 'backend') {
+            try {
+              wsConnect();
+            } catch (wsError) {
+              console.warn('Failed to connect WebSocket for real-time updates:', wsError);
+            }
+          }
+        } else if (detectionResult.success && detectionResult.detections.length === 0) {
+          setDetectionSource(detectionResult.source);
+          setSuccessMessage('Detection completed - no objects found in this video');
         } else {
-          throw new Error(String(detectionResult.error || 'Detection failed'));
+          // Detection failed
+          console.error('Detection failed:', detectionResult.error);
+          setDetectionError(detectionResult.error || 'Detection service unavailable');
         }
       } else {
         console.log(`Found ${existingAnnotations.length} existing annotations`);
@@ -674,26 +711,19 @@ const GroundTruth: React.FC = () => {
       
     } catch (error: any) {
       console.error('Detection pipeline error:', error);
-      setDetectionError(`Detection failed: ${error?.message || String(error)}. Using fallback mode.`);
+      let errorMessage = 'An unexpected error occurred during detection.';
       
-      // Even on error, provide mock data for demo purposes
-      try {
-        const mockResult = await detectionService.runDetection(video.id, {
-          confidenceThreshold: 0.5,
-          nmsThreshold: 0.4,
-          modelName: 'mock',
-          targetClasses: ['person'],
-          useFallback: true
-        });
-        
-        if (mockResult.success) {
-          setAnnotations(mockResult.detections);
-          setDetectionSource('mock');
-          setSuccessMessage(`Demo mode: Generated ${mockResult.detections.length} sample annotations`);
+      if (error?.message) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network connection issue. Please check your internet connection and try again.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Detection timed out. Please try with a shorter video or check server status.';
+        } else {
+          errorMessage = error.message;
         }
-      } catch (mockError) {
-        console.error('Mock detection also failed:', mockError);
       }
+      
+      setDetectionError(errorMessage);
     } finally {
       setIsRunningDetection(false);
     }
@@ -743,7 +773,7 @@ const GroundTruth: React.FC = () => {
   };
 
   // Memoize detection statistics to prevent recalculation on every render
-  const detectionStats = useMemo(() => getDetectionStatistics(), [annotations]);
+  const detectionStats = useMemo(() => getDetectionStatistics(), []);
 
   // Memoize combined video list
   const allVideos = useMemo(() => [...uploadingVideos, ...videos], [uploadingVideos, videos]);
@@ -1126,36 +1156,70 @@ const GroundTruth: React.FC = () => {
                                   setDetectionError(null);
                                   setDetectionRetries(prev => prev + 1);
                                   
-                                  // Retry detection with enhanced service
+                                  // Retry detection with enhanced service and better configuration
                                   try {
                                     setIsRunningDetection(true);
                                     
-                                    const detectionResult = await detectionService.runDetection(selectedVideo.id, {
-                                      confidenceThreshold: 0.5,
-                                      nmsThreshold: 0.4,
-                                      modelName: 'yolov8n',
-                                      targetClasses: ['person', 'bicycle', 'motorcycle'],
-                                      maxRetries: 3,
-                                      retryDelay: 1000,
-                                      useFallback: true
-                                    });
+                                    // Use progressive retry strategy - try different models
+                                    const retryConfig = detectionRetries === 0 
+                                      ? {
+                                          confidenceThreshold: 0.4,
+                                          nmsThreshold: 0.5,
+                                          modelName: 'yolov8s', // Try recommended model first
+                                          targetClasses: ['person', 'bicycle', 'motorcycle', 'car'],
+                                          maxRetries: 2,
+                                          retryDelay: 1500,
+                                          useFallback: true
+                                        }
+                                      : {
+                                          confidenceThreshold: 0.3, // Lower threshold on retry
+                                          nmsThreshold: 0.6,
+                                          modelName: 'yolov8n', // Use faster model on retry
+                                          targetClasses: ['person'],
+                                          maxRetries: 1,
+                                          retryDelay: 500,
+                                          useFallback: true
+                                        };
+                                    
+                                    const detectionResult = await detectionService.runDetection(selectedVideo.id, retryConfig);
                                     
                                     if (detectionResult.success) {
                                       setAnnotations(detectionResult.detections);
                                       setDetectionSource(detectionResult.source);
-                                      setSuccessMessage(`Retry successful (${detectionResult.source}): Found ${detectionResult.detections.length} objects`);
+                                      
+                                      const sourceMessage = detectionResult.source === 'backend' 
+                                        ? '🎯 AI Detection' 
+                                        : '🚧 Demo Detection';
+                                      
+                                      setSuccessMessage(`${sourceMessage} retry successful: Found ${detectionResult.detections.length} objects`);
+                                      
+                                      // Update detection trackers
+                                      detectionResult.detections.forEach(annotation => {
+                                        createDetectionTracker(
+                                          annotation.detectionId,
+                                          annotation.vruType,
+                                          annotation.frameNumber,
+                                          annotation.timestamp,
+                                          annotation.boundingBox,
+                                          annotation.boundingBox.confidence || 1.0
+                                        );
+                                      });
                                     } else {
-                                      throw new Error(String(detectionResult.error || 'Detection failed'));
+                                      throw new Error(String(detectionResult.error || 'Detection service unavailable'));
                                     }
                                   } catch (error: any) {
-                                    setDetectionError(`Retry failed: ${error?.message || String(error)}`);
+                                    const retryMessage = detectionRetries >= 2 
+                                      ? 'All retries failed. Please check your network connection or try a different video.'
+                                      : `Retry ${detectionRetries + 1} failed: ${error?.message || String(error)}`;
+                                    setDetectionError(retryMessage);
                                   } finally {
                                     setIsRunningDetection(false);
                                   }
                                 }
                               }}
+                              disabled={detectionRetries >= 3} // Limit retries
                             >
-                              Retry
+                              {detectionRetries >= 3 ? 'Max Retries Reached' : `Retry (${detectionRetries + 1}/3)`}
                             </Button>
                           }
                         >
@@ -1198,28 +1262,31 @@ const GroundTruth: React.FC = () => {
                         <strong>Current Frame:</strong> {annotations.filter(a => a.frameNumber === currentFrame).length}
                         {isRunningDetection && (
                           <>
-                            <br/><strong>Status:</strong> <span style={{ color: '#1976d2' }}>Running detection{detectionRetries > 0 ? ` (retry ${detectionRetries})` : ''}...</span>
+                            <br/><strong>Status:</strong> <span style={{ color: '#1976d2' }}>🔄 Running detection{detectionRetries > 0 ? ` (retry ${detectionRetries})` : ''}...</span>
                           </>
                         )}
                         {detectionSource && (
                           <>
                             <br/><strong>Source:</strong> <span style={{ 
-                              color: detectionSource === 'backend' ? '#4caf50' : 
-                                     detectionSource === 'fallback' ? '#ff9800' : '#9c27b0' 
+                              color: detectionSource === 'backend' ? '#4caf50' : '#ff9800'
                             }}>
-                              {detectionSource === 'backend' ? 'Backend AI' : 
-                               detectionSource === 'fallback' ? 'Local Detection' : 'Demo Mode'}
+                              {detectionSource === 'backend' ? '🎯 Backend AI' : '🚧 Demo Mode'}
                             </span>
+                          </>
+                        )}
+                        {!detectionSource && annotations.length > 0 && (
+                          <>
+                            <br/><strong>Source:</strong> <span style={{ color: '#666' }}>📁 Existing Data</span>
                           </>
                         )}
                         {wsConnected && (
                           <>
-                            <br/><strong>WebSocket:</strong> <span style={{ color: '#4caf50' }}>Connected</span>
+                            <br/><strong>Real-time:</strong> <span style={{ color: '#4caf50' }}>🔗 Connected</span>
                           </>
                         )}
-                        {annotations.length === 0 && !isRunningDetection && (
+                        {annotations.length === 0 && !isRunningDetection && !detectionError && (
                           <>
-                            <br/><em style={{ color: '#666' }}>No annotations yet. Detection will run automatically.</em>
+                            <br/><em style={{ color: '#666' }}>💡 Detection will run automatically when you view the video.</em>
                           </>
                         )}
                       </Typography>

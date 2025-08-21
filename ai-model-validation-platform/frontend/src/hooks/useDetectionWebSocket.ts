@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { GroundTruthAnnotation } from '../services/types';
+import { getServiceConfig } from '../utils/envConfig';
 
 export interface DetectionUpdate {
   type: 'progress' | 'detection' | 'complete' | 'error';
@@ -21,10 +22,11 @@ interface UseDetectionWebSocketOptions {
 }
 
 export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}) => {
+  const wsConfig = getServiceConfig('websocket');
   const {
-    url = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws/detection',
-    autoReconnect = true,
-    reconnectDelay = 5000,
+    url = `${wsConfig.url}/ws/detection`,
+    autoReconnect = true, // Enable auto-reconnect for better UX
+    reconnectDelay = 5000, // Reasonable delay
     onUpdate,
     onConnect,
     onDisconnect,
@@ -63,13 +65,14 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         onError?.(error);
       };
 
-      wsRef.current.onclose = () => {
-        console.log('Detection WebSocket disconnected');
+      wsRef.current.onclose = (event) => {
+        console.log('Detection WebSocket disconnected:', event.code, event.reason);
         isConnectedRef.current = false;
         onDisconnect?.();
 
-        // Auto-reconnect if enabled
-        if (autoReconnect && !reconnectTimeoutRef.current) {
+        // Auto-reconnect if enabled and not a normal closure
+        if (autoReconnect && event.code !== 1000 && !reconnectTimeoutRef.current) {
+          console.log(`WebSocket reconnecting in ${reconnectDelay}ms...`);
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectTimeoutRef.current = null;
             connect();
