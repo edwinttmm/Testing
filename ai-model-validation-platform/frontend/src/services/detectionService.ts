@@ -1,6 +1,6 @@
 import { GroundTruthAnnotation } from './types';
 import { apiService } from './api';
-import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
+import { isDebugEnabled } from '../utils/envConfig';
 
 export interface DetectionConfig {
   confidenceThreshold: number;
@@ -23,7 +23,7 @@ export interface DetectionResult {
 class DetectionService {
   private retryCount: Map<string, number> = new Map();
   private isProcessing: Map<string, boolean> = new Map();
-  private websocket: WebSocket | null = null;
+  // WebSocket functionality completely removed - HTTP-only service
   
   async runDetection(
     videoId: string, 
@@ -285,56 +285,15 @@ class DetectionService {
     }));
   }
   
-  // WebSocket support for real-time detection updates
+  // WebSocket functionality completely removed - HTTP-only detection service
   connectWebSocket(videoId: string, onUpdate: (data: any) => void): void {
-    try {
-      const wsConfig = getServiceConfig('websocket');
-      const url = `${wsConfig.url}/ws/detection/${videoId}`;
-      
-      if (isDebugEnabled()) {
-        console.log('🔌 Connecting WebSocket for detection updates:', url);
-      }
-      
-      this.websocket = new WebSocket(url);
-      
-      this.websocket.onopen = () => {
-        console.log('✅ WebSocket connected for real-time detection updates');
-      };
-      
-      this.websocket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (isDebugEnabled()) {
-            console.log('📨 WebSocket detection update:', data);
-          }
-          onUpdate(data);
-        } catch (error) {
-          console.error('WebSocket message parse error:', error);
-        }
-      };
-      
-      this.websocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-      
-      this.websocket.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
-        // Only attempt reconnection if not a normal close
-        if (event.code !== 1000) {
-          setTimeout(() => this.connectWebSocket(videoId, onUpdate), 5000);
-        }
-      };
-      
-    } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-    }
+    console.log('ℹ️ WebSocket functionality disabled - using HTTP-only detection workflow');
+    // No WebSocket connections will be established
   }
   
   disconnectWebSocket(): void {
-    if (this.websocket) {
-      this.websocket.close();
-      this.websocket = null;
-    }
+    console.log('ℹ️ HTTP-only mode - no WebSocket connections to disconnect');
+    // No WebSocket cleanup needed
   }
 }
 

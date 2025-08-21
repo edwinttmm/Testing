@@ -56,7 +56,7 @@ import {
 import { apiService } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import { detectionService, DetectionConfig } from '../services/detectionService';
-import { useDetectionWebSocket, DetectionUpdate } from '../hooks/useDetectionWebSocket';
+import { useDetectionWebSocket } from '../hooks/useDetectionWebSocket';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
 import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
@@ -184,89 +184,125 @@ const GroundTruth: React.FC = () => {
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // WebSocket connection state
-  const [wsConnectionStatus, setWsConnectionStatus] = useState<string>('Initializing...');
-  const [wsLastError, setWsLastError] = useState<string | null>(null);
-
-  // WebSocket for real-time detection updates
+  // HTTP-only detection workflow - WebSocket functionality completely removed
+  // Simplified HTTP-only detection hook (no WebSocket functionality)
   const { 
-    isConnected: wsConnected, 
-    connect: wsConnect, 
-    disconnect: wsDisconnect,
-    connectionStatus,
-    fallbackActive,
-    lastError: wsError
+    disconnect: wsDisconnect
   } = useDetectionWebSocket({
-    enabled: true, // Enable WebSocket by default
-    autoReconnect: true,
-    maxReconnectAttempts: 3,
-    onUpdate: (update: DetectionUpdate) => {
-      if (update.type === 'progress' && (selectedVideo?.id === update.videoId || update.videoId === 'fallback')) {
-        console.log(`Detection progress: ${update.progress}%`);
-        // Update UI for fallback polling status
-        if (update.data?.fallback) {
-          setWsConnectionStatus('HTTP Polling Active');
-        }
-      } else if (update.type === 'detection' && update.annotation) {
-        setAnnotations(prev => {
-          // Avoid duplicate annotations
-          const exists = prev.some(ann => ann.detectionId === update.annotation!.detectionId);
-          return exists ? prev : [...prev, update.annotation!];
-        });
-      } else if (update.type === 'complete') {
-        setIsRunningDetection(false);
-        setSuccessMessage('Real-time detection completed successfully');
-      } else if (update.type === 'error') {
-        setDetectionError(update.error || 'Detection error occurred');
-        setIsRunningDetection(false);
-      }
+    enabled: false, // WebSocket completely disabled
+    onUpdate: () => {
+      // No WebSocket updates in HTTP-only mode
     },
     onConnect: () => {
-      console.log('✅ Real-time detection WebSocket connected');
-      setWsConnectionStatus('Connected');
-      setWsLastError(null);
+      // No WebSocket connections
     },
     onDisconnect: () => {
-      console.log('❌ Real-time detection WebSocket disconnected');
-      setWsConnectionStatus('Disconnected');
+      // No WebSocket disconnections
     },
-    onError: (error) => {
-      console.error('🔌 WebSocket error:', error);
-      setWsLastError('Connection error occurred');
-      // Don't show WebSocket errors to user as they have fallback
+    onError: () => {
+      // No WebSocket errors
     },
-    onFallback: (reason) => {
-      console.log('🔄 WebSocket fallback activated:', reason);
-      setWsConnectionStatus('Fallback Mode (HTTP Polling)');
-      setWsLastError(null);
+    onFallback: () => {
+      // No WebSocket fallback needed
     }
   });
 
-  // Get project ID from URL params or use central store as default
+  // Get project ID from URL params
   const { id: urlProjectId } = useParams<{ id: string }>();
-  // Use central store project ID as fallback for ground truth management
-  const CENTRAL_STORE_PROJECT_ID = "00000000-0000-0000-0000-000000000000";
-  const [projectId] = useState<string>(urlProjectId || CENTRAL_STORE_PROJECT_ID);
   
-  // Conditional debug logging (only in development)
+  // Dynamic project ID state that can be derived from video context
+  const [projectId, setProjectId] = useState<string | null>(urlProjectId || null);
+  const [projectContext, setProjectContext] = useState<'url' | 'video' | 'central' | null>(urlProjectId ? 'url' : null);
+  
+  // Enhanced debug logging (only in development)
   if (process.env.NODE_ENV === 'development') {
     console.log('GroundTruth DEBUG - URL Project ID:', urlProjectId);
-    console.log('GroundTruth DEBUG - Final Project ID:', projectId);
-    console.log('GroundTruth DEBUG - Using Central Store Fallback:', !urlProjectId);
+    console.log('GroundTruth DEBUG - Current Project ID:', projectId);
+    console.log('GroundTruth DEBUG - Project Context:', projectContext);
+    console.log('GroundTruth DEBUG - Selected Video Project ID:', selectedVideo?.projectId);
   }
 
-  // Function definitions moved before useEffect hooks to respect hoisting rules
+  // Utility function to get the best available project context for operations
+  const getProjectContextForOperation = useCallback((operationVideo?: VideoFile) => {
+    const videoProjectId = operationVideo?.projectId || selectedVideo?.projectId;
+    
+    // Priority: URL project ID > Video's project ID > Current derived project ID
+    const contextualProjectId = urlProjectId || videoProjectId || projectId;
+    const source = urlProjectId ? 'url' : videoProjectId ? 'video' : projectId ? 'derived' : 'none';
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('getProjectContextForOperation - Result:', { 
+        projectId: contextualProjectId, 
+        source,
+        urlProjectId,
+        videoProjectId: operationVideo?.projectId || selectedVideo?.projectId,
+        currentProjectId: projectId 
+      });
+    }
+    
+    return { projectId: contextualProjectId, source };
+  }, [urlProjectId, selectedVideo, projectId]);
+
+  // Helper function to determine project context from videos
+  const deriveProjectContext = useCallback((videos: VideoFile[]) => {
+    if (videos.length === 0) return null;
+    
+    // Get unique project IDs from videos
+    const projectIds = [...new Set(videos.map(v => v.projectId).filter(Boolean))];
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('GroundTruth DEBUG - Video project IDs:', projectIds);
+    }
+    
+    // If all videos belong to the same project, use that project ID
+    if (projectIds.length === 1 && projectIds[0]) {
+      return projectIds[0];
+    }
+    
+    // If videos belong to multiple projects or no project, use central store approach
+    return null;
+  }, []);
+
+  // Smart video loading that works with or without project context
   const loadVideos = useCallback(async () => {
     if (process.env.NODE_ENV === 'development') {
-      console.log('loadVideos called - projectId:', projectId);
+      console.log('loadVideos called - projectId:', projectId, 'context:', projectContext);
     }
     
     try {
       setError(null);
-      const videoList = await apiService.getVideos(projectId);
+      let videoList: VideoFile[];
       
-      if (process.env.NODE_ENV === 'development') {
-        console.log('loadVideos - Received video list:', videoList);
+      if (projectId && projectContext === 'url') {
+        // Load videos for specific project from URL
+        videoList = await apiService.getVideos(projectId);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('loadVideos - Loaded videos for project:', projectId, videoList);
+        }
+      } else {
+        // Load all videos from central store and derive project context
+        const { videos: allVideos } = await apiService.getAllVideos(false, 0, 1000);
+        videoList = allVideos;
+        
+        // Try to derive project context from videos
+        const derivedProjectId = deriveProjectContext(allVideos);
+        if (derivedProjectId && !projectId) {
+          setProjectId(derivedProjectId);
+          setProjectContext('video');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('GroundTruth - Derived project context from videos:', derivedProjectId);
+          }
+        } else if (!derivedProjectId && !projectId) {
+          // Use central store approach for mixed/unassigned videos
+          setProjectContext('central');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('GroundTruth - Using central store approach for mixed videos');
+          }
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('loadVideos - Loaded all videos:', videoList.length, 'videos');
+        }
       }
       
       setVideos(videoList);
@@ -278,10 +314,17 @@ const GroundTruth: React.FC = () => {
         console.error('Error loading videos:', errorMsg, err);
       }
     }
-  }, [projectId]);
+  }, [projectId, projectContext, deriveProjectContext]);
 
-  const loadAnnotations = useCallback(async (videoId: string) => {
+  const loadAnnotations = useCallback(async (videoId: string, videoProjectId?: string) => {
     try {
+      // Use video's project context if available, otherwise use current project context
+      const contextualProjectId = videoProjectId || projectId;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('loadAnnotations - videoId:', videoId, 'contextualProjectId:', contextualProjectId);
+      }
+      
       const annotationList = await apiService.getAnnotations(videoId);
       setAnnotations(annotationList);
       
@@ -297,11 +340,15 @@ const GroundTruth: React.FC = () => {
           1.0
         );
       });
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('loadAnnotations - Loaded', annotationList.length, 'annotations for video:', videoId);
+      }
     } catch (err) {
-      console.error('Error loading annotations:', err);
+      console.error('Error loading annotations for video:', videoId, err);
       setAnnotations([]);
     }
-  }, []);
+  }, [projectId]);
 
   const uploadFiles = useCallback(async (files: File[]) => {
     const newUploadingVideos: UploadingVideo[] = files.map(file => ({
@@ -316,23 +363,37 @@ const GroundTruth: React.FC = () => {
     setUploadingVideos(prev => [...prev, ...newUploadingVideos]);
     setUploadDialog(false);
     
-    // Upload files concurrently to central store (no project required)
+    // Upload files with project context awareness
     const uploadPromises = newUploadingVideos.map(async (uploadingVideo) => {
       
       try {
-        // Upload to central store instead of project-specific upload
-        const uploadedVideo = await apiService.uploadVideoCentral(
-          uploadingVideo.file,
-          (progress) => {
-            setUploadingVideos(prev => 
-              prev.map(v => 
-                v.id === uploadingVideo.id 
-                  ? { ...v, progress }
-                  : v
-              )
+        // Upload to project if we have project context, otherwise use central store
+        const uploadedVideo = projectId && projectContext === 'url'
+          ? await apiService.uploadVideo(
+              projectId,
+              uploadingVideo.file,
+              (progress) => {
+                setUploadingVideos(prev => 
+                  prev.map(v => 
+                    v.id === uploadingVideo.id 
+                      ? { ...v, progress }
+                      : v
+                  )
+                );
+              }
+            )
+          : await apiService.uploadVideoCentral(
+              uploadingVideo.file,
+              (progress) => {
+                setUploadingVideos(prev => 
+                  prev.map(v => 
+                    v.id === uploadingVideo.id 
+                      ? { ...v, progress }
+                      : v
+                  )
+                );
+              }
             );
-          }
-        );
         
         // Update status to processing
         setUploadingVideos(prev => 
@@ -392,7 +453,7 @@ const GroundTruth: React.FC = () => {
     });
     
     await Promise.allSettled(uploadPromises);
-  }, []); // No longer depends on projectId
+  }, [projectId, projectContext]); // Depends on project context
 
   // Load videos on component mount (optimized dependencies)
   useEffect(() => {
@@ -402,38 +463,53 @@ const GroundTruth: React.FC = () => {
     loadVideos();
   }, [loadVideos]);
 
-  // Cleanup WebSocket connections on unmount
+  // HTTP-only cleanup - no WebSocket connections to manage
   useEffect(() => {
     return () => {
-      try {
-        wsDisconnect();
-        detectionService.disconnectWebSocket();
-      } catch (error) {
-        console.warn('Error during cleanup:', error);
-      }
+      console.log('ℹ️ Component cleanup - HTTP-only mode');
+      // No WebSocket connections to clean up
     };
-  }, [wsDisconnect]);
+  }, []);
 
-  // Load annotations when video is selected
+  // Load annotations when video is selected - use video's project context
   useEffect(() => {
     if (selectedVideo) {
-      loadAnnotations(selectedVideo.id);
+      // Pass the video's project ID for proper context
+      loadAnnotations(selectedVideo.id, selectedVideo.projectId);
       setTotalFrames(Math.floor((selectedVideo.duration || 0) * frameRate));
+      
+      // Update project context if we didn't have one before
+      if (!projectId && selectedVideo.projectId) {
+        setProjectId(selectedVideo.projectId);
+        setProjectContext('video');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('GroundTruth - Updated project context from selected video:', selectedVideo.projectId);
+        }
+      }
     }
-  }, [selectedVideo, frameRate, loadAnnotations]);
+  }, [selectedVideo, frameRate, loadAnnotations, projectId]);
 
   const createAnnotationSession = useCallback(async (videoId: string) => {
     try {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('createAnnotationSession - videoId:', videoId, 'projectId:', projectId);
+      // Get the appropriate project context for this operation
+      const video = videos.find(v => v.id === videoId) || selectedVideo;
+      const { projectId: contextualProjectId, source } = getProjectContextForOperation(video || undefined);
+      
+      if (!contextualProjectId) {
+        throw new Error('No project context available for annotation session. Please ensure the video is properly associated with a project.');
       }
-      const session = await apiService.createAnnotationSession(videoId, projectId);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('createAnnotationSession - videoId:', videoId, 'contextualProjectId:', contextualProjectId, 'source:', source);
+      }
+      
+      const session = await apiService.createAnnotationSession(videoId, contextualProjectId);
       setAnnotationSession(session);
-      setSuccessMessage('Annotation session started');
+      setSuccessMessage(`Annotation session started (using ${source} project context)`);
     } catch (err) {
       setError(`Failed to create annotation session: ${getErrorMessage(err)}`);
     }
-  }, [projectId]);
+  }, [videos, selectedVideo, getProjectContextForOperation]);
 
   // Annotation handlers
   const handleAnnotationCreate = useCallback(async (
@@ -714,14 +790,8 @@ const GroundTruth: React.FC = () => {
           
           setSuccessMessage(`${sourceMessage} completed: Found ${newAnnotations.length} objects in ${(detectionResult.processingTime / 1000).toFixed(1)}s`);
           
-          // Connect WebSocket for real-time updates if backend detection was successful
-          if (detectionResult.source === 'backend') {
-            try {
-              wsConnect();
-            } catch (wsError) {
-              console.warn('Failed to connect WebSocket for real-time updates:', wsError);
-            }
-          }
+          // HTTP-only workflow - no WebSocket connections needed
+          console.log('✅ Detection completed using HTTP-only workflow');
         } else if (detectionResult.success && detectionResult.detections.length === 0) {
           setDetectionSource(detectionResult.source);
           setSuccessMessage('Detection completed - no objects found in this video');
@@ -755,14 +825,36 @@ const GroundTruth: React.FC = () => {
     }
   };
 
-  // Start annotation session
+  // Start annotation session with improved project context handling
   const handleStartAnnotation = useCallback(async (video: VideoFile) => {
-    setSelectedVideo(video);
-    await createAnnotationSession(video.id);
-    setAnnotationMode(true);
-    setViewDialog(true);
-    setActiveTab(1); // Switch to annotation tab
-  }, [createAnnotationSession]);
+    try {
+      // Check for project context before starting annotation
+      const { projectId: contextualProjectId, source } = getProjectContextForOperation(video);
+      
+      if (!contextualProjectId) {
+        setError('Cannot start annotation session: Video is not associated with a project. Please assign the video to a project first.');
+        return;
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('handleStartAnnotation - Using project context:', contextualProjectId, 'source:', source);
+      }
+      
+      setSelectedVideo(video);
+      await createAnnotationSession(video.id);
+      setAnnotationMode(true);
+      setViewDialog(true);
+      setActiveTab(1); // Switch to annotation tab
+      
+      if (source === 'video' && !projectId) {
+        // Update global project context if we derived it from video
+        setProjectId(contextualProjectId);
+        setProjectContext('video');
+      }
+    } catch (err) {
+      setError(`Failed to start annotation session: ${getErrorMessage(err)}`);
+    }
+  }, [createAnnotationSession, getProjectContextForOperation, projectId]);
 
   // Export annotations
   const handleExportAnnotations = useCallback(async (format: 'coco' | 'yolo' | 'pascal' | 'json') => {
@@ -807,7 +899,16 @@ const GroundTruth: React.FC = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Ground Truth Management</Typography>
+        <Box>
+          <Typography variant="h4">Ground Truth Management</Typography>
+          {projectContext && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {projectContext === 'url' && `Project: ${projectId} (from URL)`}
+              {projectContext === 'video' && `Project: ${projectId} (derived from videos)`}
+              {projectContext === 'central' && 'Central video store (mixed/unassigned videos)'}
+            </Typography>
+          )}
+        </Box>
         <Button
           variant="contained"
           startIcon={<CloudUpload />}
@@ -970,6 +1071,22 @@ const GroundTruth: React.FC = () => {
                   secondary={
                     <>
                       Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
+                      {video.projectId && (
+                        <>
+                          <br />
+                          <Typography variant="caption" color="primary">
+                            Project: {video.projectId.slice(0, 8)}...
+                          </Typography>
+                        </>
+                      )}
+                      {!video.projectId && projectContext === 'central' && (
+                        <>
+                          <br />
+                          <Typography variant="caption" color="text.secondary">
+                            Unassigned to project
+                          </Typography>
+                        </>
+                      )}
                       {video.status === 'processing' && (
                         <Box sx={{ mt: 1 }}>
                           <Typography variant="caption">Processing ground truth...</Typography>
@@ -983,6 +1100,14 @@ const GroundTruth: React.FC = () => {
                             size="small"
                             color="success"
                           />
+                          {!video.projectId && (
+                            <Chip
+                              label="No project context"
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                            />
+                          )}
                         </Box>
                       )}
                     </>
@@ -992,13 +1117,20 @@ const GroundTruth: React.FC = () => {
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     {video.status === 'completed' && (
-                      <Tooltip title="Start Annotation">
-                        <IconButton 
-                          size="small"
-                          onClick={() => handleStartAnnotation(video)}
-                        >
-                          <Edit />
-                        </IconButton>
+                      <Tooltip title={
+                        video.projectId || projectId 
+                          ? "Start Annotation" 
+                          : "Cannot annotate: Video not associated with a project"
+                      }>
+                        <span> {/* Span wrapper needed for disabled button tooltips */}
+                          <IconButton 
+                            size="small"
+                            disabled={!video.projectId && !projectId}
+                            onClick={() => handleStartAnnotation(video)}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                     )}
                     <Tooltip title="View Details">
@@ -1305,29 +1437,9 @@ const GroundTruth: React.FC = () => {
                             <br/><strong>Source:</strong> <span style={{ color: '#666' }}>📁 Existing Data</span>
                           </>
                         )}
-                        <br/><strong>Real-time:</strong> <span style={{ 
-                          color: wsConnected ? '#4caf50' : fallbackActive ? '#ff9800' : '#666'
-                        }}>
-                          {wsConnected ? '🔗 WebSocket Connected' : 
-                           fallbackActive ? '🔄 HTTP Polling Active' : 
-                           connectionStatus.status === 'failed' ? '❌ Connection Failed' :
-                           connectionStatus.status === 'connecting' ? '🔄 Connecting...' :
-                           '⚪ Disconnected'}
+                        <br/><strong>Mode:</strong> <span style={{ color: '#4caf50' }}>
+                          🌐 HTTP-Only Detection
                         </span>
-                        {connectionStatus.reconnectAttempts > 0 && (
-                          <>
-                            <br/><strong>Retries:</strong> <span style={{ color: '#ff9800' }}>
-                              {connectionStatus.reconnectAttempts}/3 attempts
-                            </span>
-                          </>
-                        )}
-                        {wsLastError && !fallbackActive && (
-                          <>
-                            <br/><strong>Status:</strong> <span style={{ color: '#f44336' }}>
-                              {wsLastError}
-                            </span>
-                          </>
-                        )}
                         {annotations.length === 0 && !isRunningDetection && !detectionError && (
                           <>
                             <br/><em style={{ color: '#666' }}>💡 Detection will run automatically when you view the video.</em>
