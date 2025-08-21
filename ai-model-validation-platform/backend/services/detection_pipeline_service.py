@@ -63,7 +63,7 @@ class DetectionResult:
 # VRU Detection Configuration
 VRU_DETECTION_CONFIG = {
     "pedestrian": {
-        "min_confidence": 0.25,  # Lowered to 0.25 for better child detection - YOLOv8 shows 0.85+ confidence for children
+        "min_confidence": 0.4,  # Upgraded to 0.4 for YOLOv11l - better accuracy and confidence scores
         "nms_threshold": 0.45,
         "class_id": 0
     },
@@ -131,8 +131,8 @@ class ModelRegistry:
                     
                     if not model_path.exists():
                         logger.info(f"Model file not found at {model_path}, downloading default model...")
-                        # Download default YOLOv8 model
-                        model = YOLO('yolov8n.pt')  # This will auto-download if needed
+                        # Download YOLOv11l for enhanced detection accuracy
+                        model = YOLO('yolo11l.pt')  # Auto-download YOLOv11l for better performance
                         # Save to expected location
                         model_path.parent.mkdir(parents=True, exist_ok=True)
                         # Note: YOLO handles model downloading automatically
@@ -207,7 +207,7 @@ class RealYOLOv8Wrapper:
         """Real prediction using YOLOv8"""
         try:
             # Run inference with enhanced settings for better pedestrian detection
-            results = self.model(frame, verbose=False, conf=0.05)  # Very low inference confidence to catch all detections
+            results = self.model(frame, verbose=False, conf=0.1)  # Optimized inference confidence for YOLOv11l
             
             detections = []
             
@@ -480,13 +480,13 @@ class DetectionPipeline:
             return
         
         try:
-            # Register default YOLOv8 model
+            # Register YOLOv11l model for enhanced detection
             self.model_registry.register_model(
-                "yolov8n",
-                "/app/models/yolov8n.pt",
-                "yolov8"
+                "yolo11l",
+                "/app/models/yolo11l.pt",
+                "yolo11"
             )
-            self.model_registry.set_active_model("yolov8n")
+            self.model_registry.set_active_model("yolo11l")
             
             self.initialized = True
             logger.info("Detection pipeline initialized successfully")
