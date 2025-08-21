@@ -1,0 +1,56 @@
+{
+  "timestamp": 1755768339.8270266,
+  "success": false,
+  "results": {
+    "Backend Connectivity": {
+      "status": "PASS",
+      "result": true,
+      "details": "Status: 200"
+    },
+    "Project Creation": {
+      "status": "FAIL",
+      "result": false,
+      "details": "Create failed: 422"
+    },
+    "Video Upload": {
+      "status": "PASS",
+      "result": true,
+      "details": "Video ID: bf660021-05b3-4c52-aa4a-3ee84636cb8e"
+    },
+    "Available Models": {
+      "status": "PASS",
+      "result": true,
+      "details": "Models: 9, Default: yolov8n"
+    },
+    "Dashboard Endpoints": {
+      "status": "FAIL",
+      "result": false,
+      "details": "Stats: True, Charts: False"
+    },
+    "Detection Pipeline": {
+      "status": "FAIL",
+      "result": false,
+      "details": "Pipeline failed: 500"
+    },
+    "Annotations CRUD - Create": {
+      "status": "FAIL",
+      "result": false,
+      "details": "Create failed: 422"
+    },
+    "Ground Truth Endpoints": {
+      "status": "FAIL",
+      "result": false,
+      "details": "Status: 500"
+    },
+    "WebSocket Connection": {
+      "status": "FAIL",
+      "result": false,
+      "details": "Error: server rejected WebSocket connection: HTTP 403"
+    },
+    "Error Handling": {
+      "status": "PASS",
+      "result": true,
+      "details": "Handled 4/4 error cases correctly"
+    }
+  }
+}

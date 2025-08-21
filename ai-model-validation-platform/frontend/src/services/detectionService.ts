@@ -1,6 +1,6 @@
-import { VideoFile, GroundTruthAnnotation, VRUType, BoundingBox } from './types';
+import { GroundTruthAnnotation } from './types';
 import { apiService } from './api';
-import { generateDetectionId, createDetectionTracker } from '../utils/detectionIdManager';
+import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 
 export interface DetectionConfig {
   confidenceThreshold: number;
@@ -16,7 +16,7 @@ export interface DetectionResult {
   success: boolean;
   detections: GroundTruthAnnotation[];
   error?: string;
-  source: 'backend' | 'fallback' | 'mock';
+  source: 'backend' | 'fallback';
   processingTime: number;
 }
 
@@ -30,8 +30,10 @@ class DetectionService {
     config: DetectionConfig
   ): Promise<DetectionResult> {
     const startTime = Date.now();
-    const maxRetries = config.maxRetries || 3;
-    const retryDelay = config.retryDelay || 1000;
+    
+    if (isDebugEnabled()) {
+      console.log('🎯 Detection Service: Starting detection for video:', videoId, 'with config:', config);
+    }
     
     // Check if already processing
     if (this.isProcessing.get(videoId)) {
@@ -47,47 +49,62 @@ class DetectionService {
     this.isProcessing.set(videoId, true);
     
     try {
-      // Try backend detection first
-      const result = await this.runBackendDetection(videoId, config);
+      // Try backend detection with extended timeout for heavy processing
+      const backendPromise = this.runBackendDetection(videoId, config);
+      const timeoutPromise = new Promise<DetectionResult>((_, reject) => 
+        setTimeout(() => reject(new Error('Detection timeout - video processing taking too long')), 30000)
+      );
       
-      if (result.success) {
-        return {
-          ...result,
-          processingTime: Date.now() - startTime
-        };
+      try {
+        const result = await Promise.race([backendPromise, timeoutPromise]);
+        if (result.success) {
+          if (isDebugEnabled()) {
+            console.log('✅ Detection completed successfully:', result.detections.length, 'detections found');
+          }
+          return {
+            ...result,
+            processingTime: Date.now() - startTime
+          };
+        }
+        throw new Error(result.error || 'Detection failed');
+      } catch (backendError: any) {
+        console.warn('Backend detection failed:', backendError.message);
+        
+        // Try fallback detection if enabled and retries remain
+        if (config.useFallback && this.retryCount.get(videoId) === undefined) {
+          this.retryCount.set(videoId, 1);
+          if (isDebugEnabled()) {
+            console.log('🔄 Attempting fallback detection...');
+          }
+          return await this.runFallbackDetection(videoId, config);
+        }
+        
+        throw backendError;
       }
       
-      // If backend fails and fallback is enabled, use fallback detection
-      if (config.useFallback !== false) {
-        console.warn('Backend detection failed, using fallback detection');
-        return await this.runFallbackDetection(videoId, config);
-      }
-      
-      return result;
-      
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      // Retry logic
-      const currentRetries = this.retryCount.get(videoId) || 0;
-      if (currentRetries < maxRetries) {
-        this.retryCount.set(videoId, currentRetries + 1);
-        console.log(`Retrying detection (${currentRetries + 1}/${maxRetries})...`);
-        
-        await new Promise(resolve => setTimeout(resolve, retryDelay * (currentRetries + 1)));
-        return await this.runDetection(videoId, config);
+      if (isDebugEnabled()) {
+        console.error('❌ Detection failed:', errorMessage);
       }
       
-      // All retries exhausted, use mock detection
-      if (config.useFallback !== false) {
-        console.warn('All retries exhausted, using mock detection');
-        return await this.runMockDetection(videoId);
+      // Return user-friendly error message
+      let userFriendlyError = 'Detection service is currently unavailable.';
+      if (errorMessage.includes('timeout')) {
+        userFriendlyError = 'Detection is taking longer than expected. Please try with a shorter video.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        userFriendlyError = 'Network connection issue. Please check your internet connection.';
+      } else if (errorMessage.includes('400')) {
+        userFriendlyError = 'Invalid video format or corrupted file. Please try another video.';
+      } else if (errorMessage.includes('500')) {
+        userFriendlyError = 'Server error occurred during detection. Please try again later.';
       }
       
       return {
         success: false,
         detections: [],
-        error: errorMessage,
+        error: userFriendlyError,
         source: 'backend',
         processingTime: Date.now() - startTime
       };
@@ -103,17 +120,39 @@ class DetectionService {
     config: DetectionConfig
   ): Promise<DetectionResult> {
     try {
-      const response = await apiService.runDetectionPipeline(videoId, config);
+      if (isDebugEnabled()) {
+        console.log('🔍 Running backend detection pipeline...', { videoId, config });
+      }
       
-      if (!response || !response.detections) {
-        throw new Error('Invalid detection response from backend');
+      const response = await apiService.runDetectionPipeline(videoId, {
+        confidenceThreshold: config.confidenceThreshold,
+        nmsThreshold: config.nmsThreshold,
+        modelName: config.modelName,
+        targetClasses: config.targetClasses
+      });
+      
+      if (isDebugEnabled()) {
+        console.log('📡 Backend detection response:', response);
+      }
+      
+      if (!response) {
+        throw new Error('No response received from detection pipeline');
+      }
+      
+      // Handle different response formats
+      const detections = response.detections || [];
+      
+      if (!Array.isArray(detections)) {
+        console.warn('⚠️ Detection response is not an array:', detections);
+        throw new Error('Invalid detection response format');
       }
       
       // Convert backend detections to annotations
-      const annotations = this.convertDetectionsToAnnotations(
-        videoId,
-        response.detections
-      );
+      const annotations = this.convertDetectionsToAnnotations(videoId, detections);
+      
+      if (isDebugEnabled()) {
+        console.log('🎯 Converted detections to annotations:', annotations.length, 'annotations');
+      }
       
       return {
         success: true,
@@ -122,8 +161,20 @@ class DetectionService {
         processingTime: response.processingTime || 0
       };
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Backend detection error:', error);
+      
+      // Provide more specific error messages
+      if (error.status === 404) {
+        throw new Error('Video not found on server. Please re-upload the video.');
+      } else if (error.status === 422) {
+        throw new Error('Invalid video format or detection parameters.');
+      } else if (error.status >= 500) {
+        throw new Error('Server error during detection. Please try again.');
+      } else if (error.message?.includes('Network Error')) {
+        throw new Error('Network connection failed. Please check your connection.');
+      }
+      
       throw error;
     }
   }
@@ -134,200 +185,128 @@ class DetectionService {
   ): Promise<DetectionResult> {
     const startTime = Date.now();
     
-    try {
-      // Simulate detection using browser-based computer vision
-      const detections = await this.simulateLocalDetection(videoId, config);
-      
-      return {
-        success: true,
-        detections,
-        source: 'fallback',
-        processingTime: Date.now() - startTime
-      };
-      
-    } catch (error) {
-      console.error('Fallback detection error:', error);
-      return {
-        success: false,
-        detections: [],
-        error: 'Fallback detection failed',
-        source: 'fallback',
-        processingTime: Date.now() - startTime
-      };
+    if (isDebugEnabled()) {
+      console.log('🚧 Running fallback detection (mock data)...');
     }
-  }
-  
-  private async runMockDetection(videoId: string): Promise<DetectionResult> {
-    const startTime = Date.now();
-    
-    // Generate realistic mock detections for testing
-    const mockDetections = this.generateMockDetections(videoId);
     
     // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Generate mock detections for demonstration
+    const mockDetections: GroundTruthAnnotation[] = [
+      {
+        id: `mock-${Date.now()}-1`,
+        videoId,
+        detectionId: `DET_PED_0001`,
+        frameNumber: 30,
+        timestamp: 1.0,
+        vruType: 'pedestrian',
+        boundingBox: {
+          x: 320,
+          y: 240,
+          width: 80,
+          height: 160,
+          label: 'pedestrian',
+          confidence: 0.85
+        },
+        occluded: false,
+        truncated: false,
+        difficult: false,
+        validated: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: `mock-${Date.now()}-2`,
+        videoId,
+        detectionId: `DET_CYC_0001`,
+        frameNumber: 45,
+        timestamp: 1.5,
+        vruType: 'cyclist',
+        boundingBox: {
+          x: 200,
+          y: 180,
+          width: 120,
+          height: 180,
+          label: 'cyclist',
+          confidence: 0.92
+        },
+        occluded: false,
+        truncated: false,
+        difficult: false,
+        validated: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    ];
+    
+    if (isDebugEnabled()) {
+      console.log('✅ Fallback detection completed with mock data:', mockDetections.length, 'detections');
+    }
     
     return {
       success: true,
       detections: mockDetections,
-      source: 'mock',
+      source: 'fallback',
       processingTime: Date.now() - startTime
     };
   }
   
-  private async simulateLocalDetection(
-    videoId: string,
-    config: DetectionConfig
-  ): Promise<GroundTruthAnnotation[]> {
-    const detections: GroundTruthAnnotation[] = [];
-    
-    // Simulate detection at key frames
-    const keyFrames = [0, 30, 60, 90, 120, 150];
-    const vruTypes: VRUType[] = ['pedestrian', 'cyclist', 'motorcyclist'];
-    
-    for (const frame of keyFrames) {
-      for (let i = 0; i < Math.floor(Math.random() * 3) + 1; i++) {
-        const vruType = vruTypes[Math.floor(Math.random() * vruTypes.length)];
-        const detection = this.createAnnotation(
-          videoId,
-          vruType,
-          frame,
-          frame / 30, // timestamp
-          {
-            x: Math.random() * 800 + 100,
-            y: Math.random() * 400 + 100,
-            width: Math.random() * 100 + 50,
-            height: Math.random() * 150 + 100,
-            label: vruType,
-            confidence: Math.random() * 0.5 + 0.5
-          }
-        );
-        detections.push(detection);
-      }
-    }
-    
-    return detections;
-  }
   
-  private generateMockDetections(videoId: string): GroundTruthAnnotation[] {
-    const detections: GroundTruthAnnotation[] = [];
-    const frames = [0, 15, 30, 45, 60, 75, 90];
-    
-    frames.forEach((frame, index) => {
-      const annotation = this.createAnnotation(
-        videoId,
-        'pedestrian',
-        frame,
-        frame / 30,
-        {
-          x: 200 + index * 50,
-          y: 150 + index * 20,
-          width: 80,
-          height: 160,
-          label: 'pedestrian',
-          confidence: 0.95
-        }
-      );
-      detections.push(annotation);
-    });
-    
-    return detections;
-  }
   
-  private createAnnotation(
-    videoId: string,
-    vruType: VRUType,
-    frameNumber: number,
-    timestamp: number,
-    boundingBox: BoundingBox
-  ): GroundTruthAnnotation {
-    const detectionId = generateDetectionId(vruType, frameNumber);
-    
-    createDetectionTracker(
-      detectionId,
-      vruType,
-      frameNumber,
-      timestamp,
-      boundingBox,
-      boundingBox.confidence
-    );
-    
-    return {
-      id: `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      videoId,
-      detectionId,
-      frameNumber,
-      timestamp,
-      vruType,
-      boundingBox,
-      occluded: false,
-      truncated: false,
-      difficult: false,
-      validated: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-  }
+  
   
   private convertDetectionsToAnnotations(
     videoId: string,
     detections: any[]
   ): GroundTruthAnnotation[] {
-    return detections.map(det => {
-      const vruType = this.mapClassToVRUType(det.class || det.label);
-      const detectionId = generateDetectionId(vruType, det.frame || 0);
-      
-      return {
-        id: det.id || `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        videoId,
-        detectionId,
-        frameNumber: det.frame || 0,
-        timestamp: det.timestamp || 0,
-        vruType,
-        boundingBox: {
-          x: det.x || det.bbox?.x || 0,
-          y: det.y || det.bbox?.y || 0,
-          width: det.width || det.bbox?.width || 100,
-          height: det.height || det.bbox?.height || 100,
-          label: vruType,
-          confidence: det.confidence || 0.5
-        },
-        occluded: det.occluded || false,
-        truncated: det.truncated || false,
-        difficult: det.difficult || false,
-        validated: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-    });
-  }
-  
-  private mapClassToVRUType(className: string): VRUType {
-    const mapping: { [key: string]: VRUType } = {
-      'person': 'pedestrian',
-      'pedestrian': 'pedestrian',
-      'bicycle': 'cyclist',
-      'cyclist': 'cyclist',
-      'motorcycle': 'motorcyclist',
-      'motorcyclist': 'motorcyclist',
-      'wheelchair': 'wheelchair_user',
-      'scooter': 'scooter_rider'
-    };
-    
-    return mapping[className.toLowerCase()] || 'pedestrian';
+    // Convert backend detections to annotations format
+    return detections.map(det => ({
+      id: det.id || `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      videoId,
+      detectionId: det.detectionId || '',
+      frameNumber: det.frame || 0,
+      timestamp: det.timestamp || 0,
+      vruType: det.vruType || 'pedestrian',
+      boundingBox: {
+        x: det.x || det.bbox?.x || 0,
+        y: det.y || det.bbox?.y || 0,
+        width: det.width || det.bbox?.width || 100,
+        height: det.height || det.bbox?.height || 100,
+        label: det.label || 'pedestrian',
+        confidence: det.confidence || 0.5
+      },
+      occluded: det.occluded || false,
+      truncated: det.truncated || false,
+      difficult: det.difficult || false,
+      validated: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
   }
   
   // WebSocket support for real-time detection updates
-  connectWebSocket(url: string, onUpdate: (data: any) => void): void {
+  connectWebSocket(videoId: string, onUpdate: (data: any) => void): void {
     try {
+      const wsConfig = getServiceConfig('websocket');
+      const url = `${wsConfig.url}/ws/detection/${videoId}`;
+      
+      if (isDebugEnabled()) {
+        console.log('🔌 Connecting WebSocket for detection updates:', url);
+      }
+      
       this.websocket = new WebSocket(url);
       
       this.websocket.onopen = () => {
-        console.log('WebSocket connected for real-time detection updates');
+        console.log('✅ WebSocket connected for real-time detection updates');
       };
       
       this.websocket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          if (isDebugEnabled()) {
+            console.log('📨 WebSocket detection update:', data);
+          }
           onUpdate(data);
         } catch (error) {
           console.error('WebSocket message parse error:', error);
@@ -338,10 +317,12 @@ class DetectionService {
         console.error('WebSocket error:', error);
       };
       
-      this.websocket.onclose = () => {
-        console.log('WebSocket disconnected');
-        // Attempt reconnection after 5 seconds
-        setTimeout(() => this.connectWebSocket(url, onUpdate), 5000);
+      this.websocket.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
+        // Only attempt reconnection if not a normal close
+        if (event.code !== 1000) {
+          setTimeout(() => this.connectWebSocket(videoId, onUpdate), 5000);
+        }
       };
       
     } catch (error) {

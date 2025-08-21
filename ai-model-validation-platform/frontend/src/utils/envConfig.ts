@@ -152,6 +152,7 @@ class EnvironmentConfigManager {
   
   private getDefaultWsUrl(): string {
     const apiUrl = this.getDefaultApiUrl();
+    // Convert HTTP/HTTPS to WebSocket protocol, preserving the port and path
     return apiUrl.replace('http://', 'ws://').replace('https://', 'wss://');
   }
   
