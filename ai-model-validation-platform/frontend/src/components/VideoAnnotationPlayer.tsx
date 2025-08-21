@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -53,9 +53,10 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   selectedAnnotation,
   frameRate = 30,
 }) => {
-  // DEBUG: Log video prop received
-  console.log('🚨 VideoAnnotationPlayer - Video prop received:', { id: video?.id, filename: video?.filename, url: video?.url });
-  console.log('🚨 VideoAnnotationPlayer - Full video object:', video);
+  // Conditional debug logging (only in development)
+  if (isDebugEnabled()) {
+    console.log('VideoAnnotationPlayer - Video prop received:', { id: video?.id, filename: video?.filename, url: video?.url });
+  }
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,15 +69,17 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Calculate current frame number
-  const currentFrame = Math.floor(currentTime * frameRate);
+  // Memoize current frame number to prevent recalculation
+  const currentFrame = useMemo(() => Math.floor(currentTime * frameRate), [currentTime, frameRate]);
 
-  // Get annotations for current frame
-  const currentAnnotations = annotations.filter(
-    annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
+  // Memoize current annotations to prevent expensive filtering on every render
+  const currentAnnotations = useMemo(() => 
+    annotations.filter(annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1),
+    [annotations, currentFrame]
   );
 
-  const getVRUColor = (vruType: string): string => {
+  // Memoize VRU color function to prevent recreation on every render
+  const getVRUColor = useCallback((vruType: string): string => {
     const colors = {
       pedestrian: '#2196f3',
       cyclist: '#4caf50',
@@ -85,9 +88,9 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
       scooter_rider: '#ff5722',
     };
     return colors[vruType as keyof typeof colors] || '#607d8b';
-  };
+  }, []);
 
-  // Draw annotations on canvas
+  // Optimized draw annotations with stable dependencies
   const drawAnnotations = useCallback(() => {
     const canvas = canvasRef.current;
     const videoElement = videoRef.current;
@@ -156,7 +159,7 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         ctx.fillText('✓', x + width - 15, y + 14);
       }
     });
-  }, [currentAnnotations, selectedAnnotation, videoSize]);
+  }, [currentAnnotations, selectedAnnotation?.id, videoSize.width, videoSize.height, getVRUColor]);
 
   // Initialize video with simplified URL handling
   useEffect(() => {
@@ -173,13 +176,17 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         await new Promise(resolve => setTimeout(resolve, 50));
         if (!effectValid) return;
 
-        console.log('🎬 VideoAnnotationPlayer: Setting video source:', video.url);
+        if (isDebugEnabled()) {
+          console.log('VideoAnnotationPlayer: Setting video source:', video.url);
+        }
         await setVideoSource(videoElement, video.url);
         if (!effectValid) return;
 
         const handleLoadedMetadata = () => {
           if (!effectValid) return;
-          console.log('🎬 VideoAnnotationPlayer: Video metadata loaded - Duration:', videoElement.duration, 'Size:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+          if (isDebugEnabled()) {
+            console.log('VideoAnnotationPlayer: Video metadata loaded - Duration:', videoElement.duration, 'Size:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+          }
           setDuration(videoElement.duration);
           setVideoSize({ width: videoElement.videoWidth, height: videoElement.videoHeight });
           setLoading(false);
@@ -200,7 +207,9 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         const handlePause = () => effectValid && setIsPlaying(false);
         const handleEnded = () => effectValid && setIsPlaying(false);
         const handleError = (event: Event) => {
-          console.error('🎬 VideoAnnotationPlayer: Video playback error:', event);
+          if (isDebugEnabled()) {
+            console.error('VideoAnnotationPlayer: Video playback error:', event);
+          }
           if (effectValid) {
             setIsPlaying(false);
             setLoading(false);
@@ -219,7 +228,9 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
 
         return cleanupListeners;
       } catch (error) {
-        console.error('🎬 VideoAnnotationPlayer: Video initialization error:', error);
+        if (isDebugEnabled()) {
+          console.error('VideoAnnotationPlayer: Video initialization error:', error);
+        }
         if (effectValid) {
           setIsPlaying(false);
           setLoading(false);
@@ -244,12 +255,16 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         cleanupVideoElement(currentVideoElement);
       }
     };
-  }, [video.url, frameRate, onTimeUpdate, drawAnnotations]);
+  }, [video.url, frameRate, onTimeUpdate]);
 
-  // Redraw annotations when annotations change
+  // Redraw annotations when dependencies change (optimized to prevent render loops)
   useEffect(() => {
-    drawAnnotations();
-  }, [drawAnnotations]);
+    if (currentAnnotations.length >= 0) { // Only redraw when annotations actually change
+      requestAnimationFrame(() => {
+        drawAnnotations();
+      });
+    }
+  }, [currentAnnotations, selectedAnnotation?.id, videoSize.width, videoSize.height]);
 
   // Handle canvas click
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
