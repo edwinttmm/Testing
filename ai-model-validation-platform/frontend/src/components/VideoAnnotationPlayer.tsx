@@ -53,6 +53,9 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   selectedAnnotation,
   frameRate = 30,
 }) => {
+  // DEBUG: Log video prop received
+  console.log('🚨 VideoAnnotationPlayer - Video prop received:', { id: video?.id, filename: video?.filename, url: video?.url });
+  console.log('🚨 VideoAnnotationPlayer - Full video object:', video);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
