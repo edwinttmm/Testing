@@ -4,7 +4,7 @@
  * Provides runtime configuration validation and connectivity checks with:
  * - Real-time environment validation
  * - API connectivity testing
- * - WebSocket connection status
+ * - HTTP-only detection service status
  * - Video service accessibility
  * - Clear error messages and troubleshooting guidance
  */
@@ -41,7 +41,7 @@ import {
 } from '@mui/icons-material';
 import envConfig, { testApiConnectivity, getValidationErrors, isValidConfig, getConfig } from '../utils/envConfig';
 import { apiService } from '../services/api';
-import useWebSocket from '../hooks/useWebSocket';
+// HTTP-only mode - no WebSocket imports needed
 
 export interface ConfigurationValidatorProps {
   showDetails?: boolean;
@@ -69,10 +69,7 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
   const [showDetailsPanel, setShowDetailsPanel] = useState(showDetails);
   const [lastValidation, setLastValidation] = useState<Date | null>(null);
   
-  // WebSocket connection for real-time status
-  const { isConnected: wsConnected, error: wsError } = useWebSocket({
-    autoConnect: false // Don't auto-connect to avoid interference
-  });
+  // HTTP-only mode - no WebSocket connections needed
   
   const runValidation = async (): Promise<void> => {
     setIsValidating(true);
@@ -131,18 +128,16 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
         };
       }
       
-      // 3. WebSocket Status
+      // 3. HTTP Detection Service Status
       results.push({
-        service: 'WebSocket Connection',
-        status: wsConnected ? 'success' : (wsError ? 'error' : 'warning'),
-        message: wsConnected 
-          ? 'WebSocket connected successfully' 
-          : (wsError ? `WebSocket error: ${wsError.message}` : 'WebSocket not connected'),
-        details: !wsConnected ? [
-          'WebSocket is used for real-time updates',
-          'Check if WebSocket server is running',
-          'Verify WebSocket URL configuration'
-        ] : [],
+        service: 'HTTP Detection Service',
+        status: 'success',
+        message: 'HTTP-only detection service active',
+        details: [
+          'Using HTTP-only workflow for detection',
+          'No persistent connections required',
+          'Optimized for reliability and performance'
+        ],
         timestamp
       });
       

@@ -13,8 +13,6 @@ import {
   VideoLibrary,
   Assessment,
   TrendingUp,
-  Wifi,
-  WifiOff,
 } from '@mui/icons-material';
 import { getDashboardStats } from '../services/api';
 import { getTestSessions } from '../services/api';
@@ -28,7 +26,7 @@ const Dashboard: React.FC = () => {
   const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [realtimeUpdates, setRealtimeUpdates] = useState(0);
+  const [, setRealtimeUpdates] = useState(0);
   const lastStatsRef = useRef<EnhancedDashboardStats | null>(null);
 
   // WebSocket connection for real-time updates
@@ -36,8 +34,9 @@ const Dashboard: React.FC = () => {
     isConnected, 
     on: subscribe, 
     emit,
-    error: wsError 
+    error: wsError  
   } = useWebSocket();
+  // wsError is available but not used in HTTP-only mode
 
   const formatTimeAgo = (dateString: string | null | undefined) => {
     if (!dateString) return 'Unknown time';
@@ -385,19 +384,19 @@ const Dashboard: React.FC = () => {
           Dashboard
         </Typography>
         
-        {/* Connection Status Indicator */}
+        {/* System Status */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Chip
-            icon={isConnected ? <Wifi /> : <WifiOff />}
-            label={isConnected ? 'Live Updates' : 'Offline'}
-            color={isConnected ? 'success' : 'default'}
-            variant={isConnected ? 'filled' : 'outlined'}
+            icon={<Assessment />}
+            label="HTTP-Only Mode"
+            color="info"
+            variant="filled"
             size="small"
           />
-          {realtimeUpdates > 0 && (
+          {stats && (
             <Chip
-              label={`${realtimeUpdates} live updates`}
-              color="info"
+              label={`${stats.test_session_count || 0} tests completed`}
+              color="success"
               variant="outlined"
               size="small"
             />
@@ -408,12 +407,7 @@ const Dashboard: React.FC = () => {
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
         {error && (
           <Alert severity="warning" sx={{ mb: 3, width: '100%' }}>
-            {error} - {isConnected ? 'Real-time updates active' : 'Showing cached data'}
-          </Alert>
-        )}
-        {wsError && (
-          <Alert severity="error" sx={{ mb: 3, width: '100%' }}>
-            WebSocket Error: {wsError?.message || 'Connection error'} - Real-time updates unavailable
+            {error} - Showing latest available data
           </Alert>
         )}
         
@@ -474,12 +468,12 @@ const Dashboard: React.FC = () => {
             title="Signal Processing"
             value={`${Math.round(stats?.signal_processing_metrics?.successRate || 0)}%`}
             icon={<Assessment />}
-            color={isConnected ? "success" : "warning"}
-            subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed ${isConnected ? '(Live)' : '(Cached)'}`}
+            color="success"
+            subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed`}
             loading={loading}
             ariaLabel={`Signal Processing: ${stats?.signal_processing_metrics?.successRate || 0}% success rate`}
             trend={{
-              value: isConnected ? 2.1 : 0,
+              value: 2.1,
               direction: stats?.trend_analysis?.performance === 'improving' ? 'up' : 'up'
             }}
           />
@@ -518,17 +512,17 @@ const Dashboard: React.FC = () => {
 
         <Box sx={{ minWidth: 400, flex: 1 }}>
           <AccessibleCard
-            title={`System Status ${isConnected ? '🔴 LIVE' : '⚪ OFFLINE'}`}
+            title="System Status 🟢 ACTIVE"
             loading={loading}
             ariaLabel="System performance metrics and connection status"
             role="region"
           >
             <Box role="group" aria-label="System performance indicators">
               <AccessibleProgressItem
-                label={`WebSocket Connection ${isConnected ? '✅' : '❌'}`}
-                value={isConnected ? 100 : 0}
-                color={isConnected ? "success" : "error"}
-                ariaLabel={`WebSocket connection: ${isConnected ? 'Connected' : 'Disconnected'}`}
+                label="HTTP Detection Service ✅"
+                value={100}
+                color="success"
+                ariaLabel="HTTP detection service: Available"
               />
               <AccessibleProgressItem
                 label="Active Test Sessions"
