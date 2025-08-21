@@ -76,6 +76,7 @@ class VideoResponse(VideoBase):
     id: str
     project_id: str = Field(alias="projectId")
     status: str
+    url: Optional[str] = None  # Full URL to access the video file
     ground_truth_generated: bool = Field(alias="groundTruthGenerated")
     created_at: datetime = Field(alias="createdAt")
     uploaded_at: Optional[datetime] = Field(None, alias="uploadedAt")

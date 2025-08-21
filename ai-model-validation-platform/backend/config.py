@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_debug: bool = False
     api_reload: bool = False
+    api_base_url: str = "http://155.138.239.131:8000"  # Base URL for absolute paths
     
     # CORS settings - Comprehensive production configuration
     cors_origins: List[str] = [
