@@ -295,12 +295,20 @@ class ApiService {
         const videoConfig = getServiceConfig('video');
         video.url = `${videoConfig.baseUrl}${video.url}`;
         if (isDebugEnabled()) {
-          console.log('🔧 Enhanced video URL:', video.url, 'from path:', video.url);
+          console.log('🔧 Enhanced video URL:', video.url, 'from relative path');
         }
-      } else if (!video.url) {
-        // If URL is missing, log a warning and set it to an empty string
-        console.warn(`Video object is missing a URL. ID: ${video.id}, Filename: ${video.filename}`);
-        video.url = '';
+      } else if (!video.url || video.url === '') {
+        // If URL is missing or empty, try to construct from backend base URL and filename
+        if (video.filename) {
+          const videoConfig = getServiceConfig('video');
+          video.url = `${videoConfig.baseUrl}/uploads/${video.filename}`;
+          console.log('🔧 Constructed video URL from filename:', video.url);
+        } else {
+          console.warn(`Video object is missing both URL and filename. ID: ${video.id}`);
+          video.url = '';
+        }
+      } else if (isDebugEnabled()) {
+        console.log('🔧 Video URL already absolute:', video.url);
       }
     }
     
