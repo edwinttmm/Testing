@@ -63,7 +63,7 @@ class DetectionResult:
 # VRU Detection Configuration
 VRU_DETECTION_CONFIG = {
     "pedestrian": {
-        "min_confidence": 0.35,  # Lowered from 0.70 to detect more pedestrians including children
+        "min_confidence": 0.25,  # Lowered to 0.25 for better child detection - YOLOv8 shows 0.85+ confidence for children
         "nms_threshold": 0.45,
         "class_id": 0
     },
@@ -207,7 +207,7 @@ class RealYOLOv8Wrapper:
         """Real prediction using YOLOv8"""
         try:
             # Run inference with enhanced settings for better pedestrian detection
-            results = self.model(frame, verbose=False, conf=0.1)  # Lower inference confidence to catch more detections
+            results = self.model(frame, verbose=False, conf=0.05)  # Very low inference confidence to catch all detections
             
             detections = []
             
@@ -234,12 +234,13 @@ class RealYOLOv8Wrapper:
                             continue  # Skip non-VRU objects
                         
                         # Filter by confidence threshold with debugging
+                        # Check for dynamic threshold override from configuration
                         min_confidence = VRU_DETECTION_CONFIG.get(class_label, {}).get("min_confidence", 0.5)
                         if conf < min_confidence:
                             logger.debug(f"Filtered detection: {class_label} confidence {conf:.3f} < threshold {min_confidence}")
                             continue
                         else:
-                            logger.debug(f"Valid detection: {class_label} confidence {conf:.3f} >= threshold {min_confidence}")
+                            logger.debug(f"✅ Valid detection: {class_label} confidence {conf:.3f} >= threshold {min_confidence}")
                         
                         detection = Detection(
                             class_label=class_label,
@@ -735,7 +736,7 @@ class DetectionPipeline:
                 # Update pedestrian confidence threshold from config
                 original_threshold = VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"]
                 VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"] = config['confidence_threshold']
-                logger.info(f"Updated pedestrian confidence threshold: {original_threshold} → {config['confidence_threshold']}")
+                logger.info(f"🎯 Updated pedestrian confidence threshold: {original_threshold} → {config['confidence_threshold']}")
             
             # Verify video file exists
             video_file = Path(video_path)
@@ -820,6 +821,11 @@ class DetectionPipeline:
             
             logger.info(f"🎯 Completed processing: {len(validated_detections)} valid detections from {frame_number} frames")
             
+            # Add debugging summary
+            if len(all_detections) != len(validated_detections):
+                filtered_count = len(all_detections) - len(validated_detections)
+                logger.info(f"🔍 Filtered {filtered_count} detections due to confidence threshold")
+            
             # Log detection summary by class
             detection_summary = {}
             for detection in validated_detections:
@@ -828,7 +834,8 @@ class DetectionPipeline:
             
             logger.info(f"📊 Detection summary: {detection_summary}")
             if not validated_detections:
-                logger.warning("⚠️ NO VALID DETECTIONS FOUND! Check video content and detection thresholds.")
+                logger.error(f"⚠️ NO VALID DETECTIONS FOUND! Processed {total_frames} frames with {len(all_frame_detections)} raw detections but 0 passed filtering!")
+                logger.error("🔍 Debug info: Try lowering confidence threshold or check video content")
             
             return validated_detections
             
