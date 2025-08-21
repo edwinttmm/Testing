@@ -1154,13 +1154,13 @@ async def get_ground_truth(
     """Get ground truth data for a video"""
     try:
         # Check if video exists
-        video = db.query(models.Video).filter(models.Video.id == video_id).first()
+        video = db.query(Video).filter(Video.id == video_id).first()
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         
         # Get ground truth objects from database
-        ground_truth_objects = db.query(models.GroundTruthObject).filter(
-            models.GroundTruthObject.video_id == video_id
+        ground_truth_objects = db.query(GroundTruthObject).filter(
+            GroundTruthObject.video_id == video_id
         ).all()
         
         # Convert to response format
@@ -1217,7 +1217,7 @@ async def trigger_ground_truth_processing(
     """Trigger ground truth processing for a video"""
     try:
         # Check if video exists
-        video = db.query(models.Video).filter(models.Video.id == video_id).first()
+        video = db.query(Video).filter(Video.id == video_id).first()
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         
@@ -1371,7 +1371,7 @@ async def get_test_results(
         results = test_execution_service.get_session_results(session_id)
         if not results:
             # Check if session exists but isn't completed
-            test_session = db.query(models.TestSession).filter(models.TestSession.id == session_id).first()
+            test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
             if not test_session:
                 raise HTTPException(status_code=404, detail="Test session not found")
             
@@ -1398,15 +1398,15 @@ async def execute_test_session(
     """Execute a new test session for a project"""
     try:
         # Verify project exists
-        project = db.query(models.Project).filter(models.Project.id == project_id).first()
+        project = db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Check if project has videos with ground truth
-        video_count = db.query(models.Video).filter(
-            models.Video.project_id == project_id,
-            models.Video.ground_truth_generated == True,
-            models.Video.status == 'completed'
+        video_count = db.query(Video).filter(
+            Video.project_id == project_id,
+            Video.ground_truth_generated == True,
+            Video.status == 'completed'
         ).count()
         
         if video_count == 0:
