@@ -184,12 +184,29 @@ const GroundTruth: React.FC = () => {
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // WebSocket connection state
+  const [wsConnectionStatus, setWsConnectionStatus] = useState<string>('Initializing...');
+  const [wsLastError, setWsLastError] = useState<string | null>(null);
+
   // WebSocket for real-time detection updates
-  const { isConnected: wsConnected, connect: wsConnect, disconnect: wsDisconnect } = useDetectionWebSocket({
+  const { 
+    isConnected: wsConnected, 
+    connect: wsConnect, 
+    disconnect: wsDisconnect,
+    connectionStatus,
+    fallbackActive,
+    lastError: wsError
+  } = useDetectionWebSocket({
+    enabled: true, // Enable WebSocket by default
+    autoReconnect: true,
+    maxReconnectAttempts: 3,
     onUpdate: (update: DetectionUpdate) => {
-      if (update.type === 'progress' && selectedVideo?.id === update.videoId) {
+      if (update.type === 'progress' && (selectedVideo?.id === update.videoId || update.videoId === 'fallback')) {
         console.log(`Detection progress: ${update.progress}%`);
-        // You could update a progress bar here if needed
+        // Update UI for fallback polling status
+        if (update.data?.fallback) {
+          setWsConnectionStatus('HTTP Polling Active');
+        }
       } else if (update.type === 'detection' && update.annotation) {
         setAnnotations(prev => {
           // Avoid duplicate annotations
@@ -206,13 +223,22 @@ const GroundTruth: React.FC = () => {
     },
     onConnect: () => {
       console.log('✅ Real-time detection WebSocket connected');
+      setWsConnectionStatus('Connected');
+      setWsLastError(null);
     },
     onDisconnect: () => {
       console.log('❌ Real-time detection WebSocket disconnected');
+      setWsConnectionStatus('Disconnected');
     },
     onError: (error) => {
       console.error('🔌 WebSocket error:', error);
-      // Don't show WebSocket errors to user as they're not critical
+      setWsLastError('Connection error occurred');
+      // Don't show WebSocket errors to user as they have fallback
+    },
+    onFallback: (reason) => {
+      console.log('🔄 WebSocket fallback activated:', reason);
+      setWsConnectionStatus('Fallback Mode (HTTP Polling)');
+      setWsLastError(null);
     }
   });
 
@@ -1279,9 +1305,27 @@ const GroundTruth: React.FC = () => {
                             <br/><strong>Source:</strong> <span style={{ color: '#666' }}>📁 Existing Data</span>
                           </>
                         )}
-                        {wsConnected && (
+                        <br/><strong>Real-time:</strong> <span style={{ 
+                          color: wsConnected ? '#4caf50' : fallbackActive ? '#ff9800' : '#666'
+                        }}>
+                          {wsConnected ? '🔗 WebSocket Connected' : 
+                           fallbackActive ? '🔄 HTTP Polling Active' : 
+                           connectionStatus.status === 'failed' ? '❌ Connection Failed' :
+                           connectionStatus.status === 'connecting' ? '🔄 Connecting...' :
+                           '⚪ Disconnected'}
+                        </span>
+                        {connectionStatus.reconnectAttempts > 0 && (
                           <>
-                            <br/><strong>Real-time:</strong> <span style={{ color: '#4caf50' }}>🔗 Connected</span>
+                            <br/><strong>Retries:</strong> <span style={{ color: '#ff9800' }}>
+                              {connectionStatus.reconnectAttempts}/3 attempts
+                            </span>
+                          </>
+                        )}
+                        {wsLastError && !fallbackActive && (
+                          <>
+                            <br/><strong>Status:</strong> <span style={{ color: '#f44336' }}>
+                              {wsLastError}
+                            </span>
                           </>
                         )}
                         {annotations.length === 0 && !isRunningDetection && !detectionError && (
