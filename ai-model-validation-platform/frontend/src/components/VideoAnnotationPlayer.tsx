@@ -496,41 +496,6 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
           )}
         </Box>
 
-        {/* Session Statistics */}
-        <Box sx={{ mt: 2, mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Video Information
-          </Typography>
-          <Stack direction="row" spacing={3}>
-            <Typography variant="caption">
-              Duration: {duration.toFixed(2)}s
-            </Typography>
-            <Typography variant="caption">
-              Current Time: {currentTime.toFixed(2)}s
-            </Typography>
-            <Typography variant="caption">
-              Current Frame: {currentFrame} / {Math.floor(duration * frameRate)}
-            </Typography>
-            <Typography variant="caption">
-              Frame Rate: {frameRate} fps
-            </Typography>
-          </Stack>
-          
-          <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>
-            Session Stats
-          </Typography>
-          <Stack direction="row" spacing={3}>
-            <Typography variant="caption">
-              Total Annotations: {annotations.length}
-            </Typography>
-            <Typography variant="caption">
-              Validated: {annotations.filter(a => a.validated).length}
-            </Typography>
-            <Typography variant="caption">
-              Current Frame: {currentAnnotations.length}
-            </Typography>
-          </Stack>
-        </Box>
 
         {/* Video Controls */}
         <Box sx={{ mt: 2 }}>
