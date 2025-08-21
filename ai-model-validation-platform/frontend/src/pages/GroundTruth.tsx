@@ -55,6 +55,8 @@ import {
 } from '../services/types';
 import { apiService, runDetectionPipeline } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
+import { detectionService, DetectionConfig } from '../services/detectionService';
+import { useDetectionWebSocket, DetectionUpdate } from '../hooks/useDetectionWebSocket';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
 import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
@@ -176,9 +178,34 @@ const GroundTruth: React.FC = () => {
   // Detection pipeline state
   const [isRunningDetection, setIsRunningDetection] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
+  const [detectionSource, setDetectionSource] = useState<'backend' | 'fallback' | 'mock' | null>(null);
+  const [detectionRetries, setDetectionRetries] = useState(0);
   
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // WebSocket for real-time detection updates
+  const { isConnected: wsConnected } = useDetectionWebSocket({
+    onUpdate: (update: DetectionUpdate) => {
+      if (update.type === 'progress' && selectedVideo?.id === update.videoId) {
+        console.log(`Detection progress: ${update.progress}%`);
+      } else if (update.type === 'detection' && update.annotation) {
+        setAnnotations(prev => [...prev, update.annotation!]);
+      } else if (update.type === 'complete') {
+        setIsRunningDetection(false);
+        setSuccessMessage('Real-time detection completed');
+      } else if (update.type === 'error') {
+        setDetectionError(update.error || 'Detection error occurred');
+        setIsRunningDetection(false);
+      }
+    },
+    onConnect: () => {
+      console.log('Real-time detection connected');
+    },
+    onDisconnect: () => {
+      console.log('Real-time detection disconnected');
+    }
+  });
 
   // Get project ID from URL params or use central store as default
   const { id: urlProjectId } = useParams<{ id: string }>();
@@ -580,38 +607,93 @@ const GroundTruth: React.FC = () => {
       }
     }
     
-    // Auto-run detection pipeline if not already done and no existing annotations
+    // Auto-run detection pipeline with enhanced fallback mechanisms
     try {
       setIsRunningDetection(true);
       setDetectionError(null);
+      setDetectionSource(null);
+      setDetectionRetries(0);
       
       // Check if video already has annotations to avoid duplicate detection
-      const existingAnnotations = await apiService.getAnnotations(video.id);
+      let existingAnnotations: GroundTruthAnnotation[] = [];
+      try {
+        existingAnnotations = await apiService.getAnnotations(video.id);
+      } catch (err) {
+        console.warn('Could not fetch existing annotations:', err);
+      }
       
       if (existingAnnotations.length === 0) {
-        console.log('No existing annotations found, running detection pipeline...');
+        console.log('No existing annotations found, running enhanced detection pipeline...');
         
-        // Run detection pipeline with reasonable defaults
-        const detectionResult = await runDetectionPipeline(video.id, {
+        // Run detection with fallback support
+        const detectionConfig: DetectionConfig = {
           confidenceThreshold: 0.5,
           nmsThreshold: 0.4,
           modelName: 'yolov8n',
-          targetClasses: ['person', 'bicycle', 'motorcycle']
-        });
+          targetClasses: ['person', 'bicycle', 'motorcycle'],
+          maxRetries: 3,
+          retryDelay: 1000,
+          useFallback: true
+        };
         
-        console.log('Detection pipeline completed for video:', video.id, detectionResult);
+        const detectionResult = await detectionService.runDetection(video.id, detectionConfig);
         
-        // Reload annotations to include new detections
-        await loadAnnotations(video.id);
-        
-        setSuccessMessage(`Detection completed: Found ${detectionResult.detections?.length || 0} objects`);
+        if (detectionResult.success) {
+          setDetectionSource(detectionResult.source);
+          
+          // Save detections as annotations
+          const newAnnotations = detectionResult.detections;
+          setAnnotations(newAnnotations);
+          
+          // Update detection ID manager
+          newAnnotations.forEach(annotation => {
+            createDetectionTracker(
+              annotation.detectionId,
+              annotation.vruType,
+              annotation.frameNumber,
+              annotation.timestamp,
+              annotation.boundingBox,
+              annotation.boundingBox.confidence
+            );
+          });
+          
+          const sourceMessage = detectionResult.source === 'backend' 
+            ? 'Backend detection' 
+            : detectionResult.source === 'fallback'
+            ? 'Local detection (fallback)'
+            : 'Mock detection (demo)';
+          
+          setSuccessMessage(`${sourceMessage} completed: Found ${newAnnotations.length} objects in ${(detectionResult.processingTime / 1000).toFixed(1)}s`);
+        } else {
+          throw new Error(String(detectionResult.error || 'Detection failed'));
+        }
       } else {
-        console.log('Existing annotations found, skipping automatic detection');
+        console.log(`Found ${existingAnnotations.length} existing annotations`);
+        setAnnotations(existingAnnotations);
       }
       
     } catch (error: any) {
-      console.error('Detection pipeline failed:', error);
-      setDetectionError(`Detection failed: ${error?.message || String(error)}`);
+      console.error('Detection pipeline error:', error);
+      setDetectionError(`Detection failed: ${error?.message || String(error)}. Using fallback mode.`);
+      
+      // Even on error, provide mock data for demo purposes
+      try {
+        const mockResult = await detectionService.runDetection(video.id, {
+          confidenceThreshold: 0.5,
+          nmsThreshold: 0.4,
+          modelName: 'mock',
+          targetClasses: ['person'],
+          useFallback: true
+        });
+        
+        if (mockResult.success) {
+          setAnnotations(mockResult.detections);
+          setDetectionSource('mock');
+          setSuccessMessage(`Demo mode: Generated ${mockResult.detections.length} sample annotations`);
+        }
+      } catch (mockError) {
+        console.error('Mock detection also failed:', mockError);
+      }
     } finally {
       setIsRunningDetection(false);
     }
@@ -1042,17 +1124,29 @@ const GroundTruth: React.FC = () => {
                               onClick={async () => {
                                 if (selectedVideo) {
                                   setDetectionError(null);
-                                  // Retry detection
+                                  setDetectionRetries(prev => prev + 1);
+                                  
+                                  // Retry detection with enhanced service
                                   try {
                                     setIsRunningDetection(true);
-                                    await runDetectionPipeline(selectedVideo.id, {
+                                    
+                                    const detectionResult = await detectionService.runDetection(selectedVideo.id, {
                                       confidenceThreshold: 0.5,
                                       nmsThreshold: 0.4,
                                       modelName: 'yolov8n',
-                                      targetClasses: ['person', 'bicycle', 'motorcycle']
+                                      targetClasses: ['person', 'bicycle', 'motorcycle'],
+                                      maxRetries: 3,
+                                      retryDelay: 1000,
+                                      useFallback: true
                                     });
-                                    await loadAnnotations(selectedVideo.id);
-                                    setSuccessMessage('Detection retry successful');
+                                    
+                                    if (detectionResult.success) {
+                                      setAnnotations(detectionResult.detections);
+                                      setDetectionSource(detectionResult.source);
+                                      setSuccessMessage(`Retry successful (${detectionResult.source}): Found ${detectionResult.detections.length} objects`);
+                                    } else {
+                                      throw new Error(String(detectionResult.error || 'Detection failed'));
+                                    }
                                   } catch (error: any) {
                                     setDetectionError(`Retry failed: ${error?.message || String(error)}`);
                                   } finally {
@@ -1104,7 +1198,23 @@ const GroundTruth: React.FC = () => {
                         <strong>Current Frame:</strong> {annotations.filter(a => a.frameNumber === currentFrame).length}
                         {isRunningDetection && (
                           <>
-                            <br/><strong>Status:</strong> <span style={{ color: '#1976d2' }}>Running detection...</span>
+                            <br/><strong>Status:</strong> <span style={{ color: '#1976d2' }}>Running detection{detectionRetries > 0 ? ` (retry ${detectionRetries})` : ''}...</span>
+                          </>
+                        )}
+                        {detectionSource && (
+                          <>
+                            <br/><strong>Source:</strong> <span style={{ 
+                              color: detectionSource === 'backend' ? '#4caf50' : 
+                                     detectionSource === 'fallback' ? '#ff9800' : '#9c27b0' 
+                            }}>
+                              {detectionSource === 'backend' ? 'Backend AI' : 
+                               detectionSource === 'fallback' ? 'Local Detection' : 'Demo Mode'}
+                            </span>
+                          </>
+                        )}
+                        {wsConnected && (
+                          <>
+                            <br/><strong>WebSocket:</strong> <span style={{ color: '#4caf50' }}>Connected</span>
                           </>
                         )}
                         {annotations.length === 0 && !isRunningDetection && (
