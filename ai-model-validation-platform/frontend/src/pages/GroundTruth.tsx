@@ -176,23 +176,32 @@ const GroundTruth: React.FC = () => {
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get project ID from URL params or use default
+  // Get project ID from URL params or use central store as default
   const { id: urlProjectId } = useParams<{ id: string }>();
-  const [projectId] = useState<string | null>(urlProjectId || null);
+  // Use central store project ID as fallback for ground truth management
+  const CENTRAL_STORE_PROJECT_ID = "00000000-0000-0000-0000-000000000000";
+  const [projectId] = useState<string>(urlProjectId || CENTRAL_STORE_PROJECT_ID);
+  
+  // DEBUG: Log project ID extraction
+  console.log('🚨 GroundTruth DEBUG - URL Project ID:', urlProjectId);
+  console.log('🚨 GroundTruth DEBUG - Final Project ID:', projectId);
+  console.log('🚨 GroundTruth DEBUG - Using Central Store Fallback:', !urlProjectId);
+  console.log('🚨 GroundTruth DEBUG - Current URL:', window.location.href);
 
   // Function definitions moved before useEffect hooks to respect hoisting rules
   const loadVideos = useCallback(async () => {
-    if (!projectId) {
-      setError('No project ID provided');
-      return;
-    }
+    console.log('🚨 loadVideos called - projectId:', projectId);
     
     try {
+      console.log('🚨 loadVideos - About to fetch videos for project:', projectId);
       setError(null);
       const videoList = await apiService.getVideos(projectId);
+      console.log('🚨 loadVideos - Received video list:', videoList);
+      console.log('🚨 loadVideos - Video URLs check:', videoList.map(v => ({ id: v.id, filename: v.filename, url: v.url })));
       setVideos(videoList);
     } catch (err) {
       const errorMsg = getErrorMessage(err, 'Backend connection failed');
+      console.log('🚨 loadVideos - ERROR:', errorMsg, err);
       setError(`Failed to load videos: ${errorMsg}`);
       console.error('Error loading videos:', errorMsg, err);
     }
@@ -310,9 +319,9 @@ const GroundTruth: React.FC = () => {
 
   // Load videos on component mount
   useEffect(() => {
-    if (projectId) {
-      loadVideos();
-    }
+    console.log('🚨 useEffect[projectId, loadVideos] triggered - projectId:', projectId);
+    console.log('🚨 useEffect - Calling loadVideos for project:', projectId);
+    loadVideos();
   }, [projectId, loadVideos]);
 
   // Load annotations when video is selected
@@ -324,9 +333,8 @@ const GroundTruth: React.FC = () => {
   }, [selectedVideo, frameRate, loadAnnotations]);
 
   const createAnnotationSession = useCallback(async (videoId: string) => {
-    if (!projectId) return;
-    
     try {
+      console.log('🚨 createAnnotationSession - videoId:', videoId, 'projectId:', projectId);
       const session = await apiService.createAnnotationSession(videoId, projectId);
       setAnnotationSession(session);
       setSuccessMessage('Annotation session started');

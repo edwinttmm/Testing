@@ -279,36 +279,35 @@ class ApiService {
 
   // Add URL field to video responses if missing or relative
   private enhanceVideoData(video: any): any {
+    console.log('🚨 enhanceVideoData called for video:', { id: video?.id, filename: video?.filename, originalUrl: video?.url });
+    
     if (video && (video.filename || video.id)) {
       const videoConfig = getServiceConfig('video');
       
-      // Debug logging
-      if (isDebugEnabled()) {
-        console.log('🔧 Video config baseUrl:', videoConfig.baseUrl);
-        console.log('🔧 Original video URL:', video.url);
-        console.log('🔧 Video filename:', video.filename);
-        console.log('🔧 Video ID:', video.id);
-      }
+      console.log('🚨 enhanceVideoData - Video config baseUrl:', videoConfig.baseUrl);
+      console.log('🚨 enhanceVideoData - Original video URL:', video.url);
+      console.log('🚨 enhanceVideoData - Video filename:', video.filename);
+      console.log('🚨 enhanceVideoData - Video ID:', video.id);
       
       // Convert relative URLs to absolute URLs
       if (video.url && video.url.startsWith('/')) {
+        console.log('🚨 enhanceVideoData - Converting relative URL to absolute');
         const videoConfig = getServiceConfig('video');
         video.url = `${videoConfig.baseUrl}${video.url}`;
-        if (isDebugEnabled()) {
-          console.log('🔧 Enhanced video URL:', video.url, 'from relative path');
-        }
+        console.log('🚨 enhanceVideoData - Enhanced video URL:', video.url, 'from relative path');
       } else if (!video.url || video.url === '') {
+        console.log('🚨 enhanceVideoData - URL missing or empty, constructing from filename');
         // If URL is missing or empty, try to construct from backend base URL and filename
         if (video.filename) {
           const videoConfig = getServiceConfig('video');
           video.url = `${videoConfig.baseUrl}/uploads/${video.filename}`;
-          console.log('🔧 Constructed video URL from filename:', video.url);
+          console.log('🚨 enhanceVideoData - Constructed video URL from filename:', video.url);
         } else {
-          console.warn(`Video object is missing both URL and filename. ID: ${video.id}`);
+          console.warn('🚨 enhanceVideoData - Video object is missing both URL and filename. ID:', video.id);
           video.url = '';
         }
-      } else if (isDebugEnabled()) {
-        console.log('🔧 Video URL already absolute:', video.url);
+      } else {
+        console.log('🚨 enhanceVideoData - Video URL already absolute:', video.url);
       }
     }
     
@@ -317,6 +316,7 @@ class ApiService {
       video.status = video.processing_status === 'completed' ? 'completed' : 'processing';
     }
     
+    console.log('🚨 enhanceVideoData - Final enhanced video:', { id: video?.id, filename: video?.filename, finalUrl: video?.url });
     return video;
   }
 
@@ -453,10 +453,14 @@ class ApiService {
 
   // Video management
   async getVideos(projectId: string): Promise<VideoFile[]> {
+    console.log('🚨 apiService.getVideos called for project:', projectId);
     // Temporarily bypass cache to ensure enhancement runs
     const response = await this.api.get<VideoFile[]>(`/api/projects/${projectId}/videos?t=${Date.now()}`);
+    console.log('🚨 apiService.getVideos - Raw response from backend:', response.data);
     // Enhance video data with proper URLs and status mapping
-    return response.data.map(video => this.enhanceVideoData(video));
+    const enhancedVideos = response.data.map(video => this.enhanceVideoData(video));
+    console.log('🚨 apiService.getVideos - Enhanced videos:', enhancedVideos);
+    return enhancedVideos;
   }
 
   async uploadVideo(projectId: string, file: File, onProgress?: (progress: number) => void): Promise<VideoFile> {
