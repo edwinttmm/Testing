@@ -23,11 +23,11 @@ async def test_child_detection():
     # Initialize detection service
     detection_service = DetectionPipelineService()
     
-    # Configuration optimized for child detection
+    # Configuration optimized for child detection with YOLOv11l
     config = {
-        "confidence_threshold": 0.25,  # AI engineer confirmed children detected at 0.85+
-        "model_name": "yolov8n",
-        "max_frames": 10  # Test first 10 frames
+        "confidence_threshold": 0.4,   # Upgraded threshold for YOLOv11l accuracy
+        "model_name": "yolo11l",       # YOLOv11l for superior detection performance
+        "max_frames": 15  # Test more frames with improved model
     }
     
     try:
