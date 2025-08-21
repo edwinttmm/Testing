@@ -279,14 +279,22 @@ class VideoFormatValidator {
       recommendation = this.generateRecommendation(formatInfo, supportedAlternatives);
     }
 
-    return {
+    const result: VideoFormatValidationResult = {
       isSupported,
       confidence,
       originalFormat: formatInfo,
-      supportedAlternatives,
-      errorMessage,
-      recommendation
+      supportedAlternatives
     };
+
+    if (errorMessage) {
+      result.errorMessage = errorMessage;
+    }
+
+    if (recommendation) {
+      result.recommendation = recommendation;
+    }
+
+    return result;
   }
 
   /**
