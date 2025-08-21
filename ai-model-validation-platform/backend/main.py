@@ -596,7 +596,7 @@ async def upload_video_central(
             "projectId": CENTRAL_STORE_PROJECT_ID,  # Central store project assignment
             "filename": secure_filename,  # Return secure filename consistently
             "originalName": file.filename,  # Keep original for display purposes
-            "url": f"/uploads/{secure_filename}",  # Add video URL for playback
+            "url": f"{settings.api_base_url}/uploads/{secure_filename}",  # Full absolute URL for playback
             "size": bytes_written,
             "fileSize": bytes_written,
             "duration": video_metadata.get('duration') if video_metadata else None,
@@ -767,7 +767,7 @@ async def upload_video(
             "projectId": project_id,
             "filename": secure_filename,  # Return secure filename consistently
             "originalName": file.filename,  # Keep original for display purposes
-            "url": f"/uploads/{secure_filename}",  # Add video URL for playback
+            "url": f"{settings.api_base_url}/uploads/{secure_filename}",  # Full absolute URL for playback
             "size": bytes_written,
             "fileSize": bytes_written,
             "duration": video_metadata.get('duration') if video_metadata else None,
@@ -854,7 +854,7 @@ async def get_project_videos(
                 "projectId": project_id,
                 "filename": row.filename,
                 "originalName": row.filename,
-                "url": f"/uploads/{row.filename}",  # Use stored filename (now secure)
+                "url": f"{settings.api_base_url}/uploads/{row.filename}",  # Full absolute URL
                 "status": row.status,
                 "createdAt": safe_isoformat(row.created_at),
                 "uploadedAt": safe_isoformat(row.created_at),
@@ -939,7 +939,7 @@ async def get_all_videos(
                 "projectId": row.project_id,
                 "filename": row.filename,
                 "originalName": row.filename,
-                "url": f"/uploads/{row.filename}" if row.filename else None,  # Use stored filename (now secure)
+                "url": f"{settings.api_base_url}/uploads/{row.filename}" if row.filename else None,  # Full absolute URL
                 "status": row.status,
                 "createdAt": safe_isoformat(row.created_at),
                 "uploadedAt": safe_isoformat(row.created_at),
