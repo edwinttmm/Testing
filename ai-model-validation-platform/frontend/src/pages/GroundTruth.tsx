@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
@@ -182,28 +182,35 @@ const GroundTruth: React.FC = () => {
   const CENTRAL_STORE_PROJECT_ID = "00000000-0000-0000-0000-000000000000";
   const [projectId] = useState<string>(urlProjectId || CENTRAL_STORE_PROJECT_ID);
   
-  // DEBUG: Log project ID extraction
-  console.log('🚨 GroundTruth DEBUG - URL Project ID:', urlProjectId);
-  console.log('🚨 GroundTruth DEBUG - Final Project ID:', projectId);
-  console.log('🚨 GroundTruth DEBUG - Using Central Store Fallback:', !urlProjectId);
-  console.log('🚨 GroundTruth DEBUG - Current URL:', window.location.href);
+  // Conditional debug logging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('GroundTruth DEBUG - URL Project ID:', urlProjectId);
+    console.log('GroundTruth DEBUG - Final Project ID:', projectId);
+    console.log('GroundTruth DEBUG - Using Central Store Fallback:', !urlProjectId);
+  }
 
   // Function definitions moved before useEffect hooks to respect hoisting rules
   const loadVideos = useCallback(async () => {
-    console.log('🚨 loadVideos called - projectId:', projectId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('loadVideos called - projectId:', projectId);
+    }
     
     try {
-      console.log('🚨 loadVideos - About to fetch videos for project:', projectId);
       setError(null);
       const videoList = await apiService.getVideos(projectId);
-      console.log('🚨 loadVideos - Received video list:', videoList);
-      console.log('🚨 loadVideos - Video URLs check:', videoList.map(v => ({ id: v.id, filename: v.filename, url: v.url })));
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('loadVideos - Received video list:', videoList);
+      }
+      
       setVideos(videoList);
     } catch (err) {
       const errorMsg = getErrorMessage(err, 'Backend connection failed');
-      console.log('🚨 loadVideos - ERROR:', errorMsg, err);
       setError(`Failed to load videos: ${errorMsg}`);
-      console.error('Error loading videos:', errorMsg, err);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error loading videos:', errorMsg, err);
+      }
     }
   }, [projectId]);
 
@@ -280,16 +287,18 @@ const GroundTruth: React.FC = () => {
       } catch (err) {
         const errorMsg = getErrorMessage(err, 'Backend connection failed - upload failed');
         
-        // Enhanced error logging for debugging
-        console.error('UPLOAD DEBUG INFO:', {
-          fileName: uploadingVideo.name,
-          fileSize: uploadingVideo.file.size,
-          fileType: uploadingVideo.file.type,
-          error: err,
-          errorMessage: errorMsg,
-          apiUrl: process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000',
-          endpoint: '/api/videos'
-        });
+        // Enhanced error logging for debugging (development only)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('UPLOAD DEBUG INFO:', {
+            fileName: uploadingVideo.name,
+            fileSize: uploadingVideo.file.size,
+            fileType: uploadingVideo.file.type,
+            error: err,
+            errorMessage: errorMsg,
+            apiUrl: process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000',
+            endpoint: '/api/videos'
+          });
+        }
         
         setUploadingVideos(prev => 
           prev.map(v => 
@@ -310,19 +319,22 @@ const GroundTruth: React.FC = () => {
           fileName: uploadingVideo.name
         }]);
         
-        console.error('Upload failed:', errorMsg, err);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Upload failed:', errorMsg, err);
+        }
       }
     });
     
     await Promise.allSettled(uploadPromises);
   }, []); // No longer depends on projectId
 
-  // Load videos on component mount
+  // Load videos on component mount (optimized dependencies)
   useEffect(() => {
-    console.log('🚨 useEffect[projectId, loadVideos] triggered - projectId:', projectId);
-    console.log('🚨 useEffect - Calling loadVideos for project:', projectId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('useEffect[projectId] triggered - projectId:', projectId);
+    }
     loadVideos();
-  }, [projectId, loadVideos]);
+  }, [loadVideos]);
 
   // Load annotations when video is selected
   useEffect(() => {
@@ -334,7 +346,9 @@ const GroundTruth: React.FC = () => {
 
   const createAnnotationSession = useCallback(async (videoId: string) => {
     try {
-      console.log('🚨 createAnnotationSession - videoId:', videoId, 'projectId:', projectId);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('createAnnotationSession - videoId:', videoId, 'projectId:', projectId);
+      }
       const session = await apiService.createAnnotationSession(videoId, projectId);
       setAnnotationSession(session);
       setSuccessMessage('Annotation session started');
@@ -606,10 +620,11 @@ const GroundTruth: React.FC = () => {
     }
   };
 
-  // Get detection statistics
-  const detectionStats = getDetectionStatistics();
+  // Memoize detection statistics to prevent recalculation on every render
+  const detectionStats = useMemo(() => getDetectionStatistics(), [annotations]);
 
-  const allVideos = [...uploadingVideos, ...videos];
+  // Memoize combined video list
+  const allVideos = useMemo(() => [...uploadingVideos, ...videos], [uploadingVideos, videos]);
 
   return (
     <Box>
