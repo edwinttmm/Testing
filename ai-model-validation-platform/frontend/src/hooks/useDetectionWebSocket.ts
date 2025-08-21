@@ -43,6 +43,9 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
     }
 
     try {
+      // Temporarily disable WebSocket due to 403 authentication issues
+      console.log('🚧 WebSocket disabled - backend requires authentication');
+      return;
       wsRef.current = new WebSocket(url);
 
       wsRef.current.onopen = () => {
