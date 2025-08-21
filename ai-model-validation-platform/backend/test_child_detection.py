@@ -7,7 +7,7 @@ import asyncio
 import sys
 import os
 from pathlib import Path
-from services.detection_pipeline_service import DetectionPipelineService
+from services.detection_pipeline_service import DetectionPipeline
 
 async def test_child_detection():
     """Test the child detection with the child-1-1-1.mp4 video"""
@@ -21,7 +21,7 @@ async def test_child_detection():
     print(f"🎬 Testing child detection with: {video_path}")
     
     # Initialize detection service
-    detection_service = DetectionPipelineService()
+    detection_service = DetectionPipeline()
     
     # Configuration optimized for child detection with YOLOv11l
     config = {

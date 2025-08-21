@@ -118,7 +118,7 @@ class ModelRegistry:
         model_info = self.models[model_id]
         
         # Load based on model type
-        if model_info["type"] == "yolov8":
+        if model_info["type"] in ["yolov8", "yolo11"]:
             try:
                 # Try to load real YOLOv8 first
                 try:
@@ -484,7 +484,7 @@ class DetectionPipeline:
             self.model_registry.register_model(
                 "yolo11l",
                 "/app/models/yolo11l.pt",
-                "yolo11"
+                "yolov8"
             )
             self.model_registry.set_active_model("yolo11l")
             
