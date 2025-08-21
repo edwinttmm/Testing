@@ -60,32 +60,32 @@ class DetectionResult:
     timestamp: float
     processing_time_ms: float
 
-# VRU Detection Configuration
+# VRU Detection Configuration - Ultra-low thresholds for YOLOv11l debugging
 VRU_DETECTION_CONFIG = {
     "pedestrian": {
-        "min_confidence": 0.4,  # Upgraded to 0.4 for YOLOv11l - better accuracy and confidence scores
+        "min_confidence": 0.01,  # Ultra-low threshold to catch ANY person detection
         "nms_threshold": 0.45,
         "class_id": 0
     },
     "cyclist": {
-        "min_confidence": 0.75,
+        "min_confidence": 0.01,  # Ultra-low threshold for debugging
         "nms_threshold": 0.40,
         "class_id": 1
     },
     "motorcyclist": {
-        "min_confidence": 0.80,
+        "min_confidence": 0.01,  # Ultra-low threshold for debugging
         "nms_threshold": 0.35,
-        "class_id": 2
+        "class_id": 3  # COCO class 3 is motorcycle, not 2!
     },
     "wheelchair_user": {
-        "min_confidence": 0.65,
+        "min_confidence": 0.01,   # Ultra-low threshold for debugging
         "nms_threshold": 0.50,
-        "class_id": 3
+        "class_id": 67  # COCO doesn't have wheelchair, use person+context
     },
     "scooter_rider": {
-        "min_confidence": 0.70,
+        "min_confidence": 0.01,   # Ultra-low threshold for debugging
         "nms_threshold": 0.45,
-        "class_id": 4
+        "class_id": 1  # Use bicycle as proxy
     }
 }
 
@@ -206,43 +206,58 @@ class RealYOLOv8Wrapper:
         logger.info(f"YOLOv8 initialized with VRU mapping: {self.yolo_to_vru_mapping}")
     
     async def predict(self, frame: np.ndarray) -> List[Detection]:
-        """Real prediction using YOLOv8"""
+        """Real prediction using YOLOv8 - Enhanced for better VRU detection"""
         try:
-            # Run inference with enhanced settings for better pedestrian detection
-            results = self.model(frame, verbose=False, conf=0.1)  # Optimized inference confidence for YOLOv11l
+            # Ultra-low inference threshold for debugging
+            results = self.model(frame, verbose=False, conf=0.001)  # Extremely low to catch ALL objects for debugging
             
             detections = []
             
             for r in results:
                 boxes = r.boxes
                 if boxes is not None:
+                    logger.debug(f"Raw YOLO found {len(boxes)} objects")
+                    
                     for box in boxes:
                         # Extract box data
                         xyxy = box.xyxy[0].cpu().numpy()
                         conf = box.conf[0].cpu().numpy()
                         cls = int(box.cls[0].cpu().numpy())
                         
+                        # Log all detections for debugging
+                        logger.debug(f"Raw detection: class={cls}, conf={conf:.3f}")
+                        
                         # Convert to our bounding box format
                         x1, y1, x2, y2 = xyxy
                         width = x2 - x1
                         height = y2 - y1
                         
-                        # Map YOLO class to VRU class
+                        # Enhanced YOLO class mapping for VRU detection
                         if cls in self.yolo_to_vru_mapping:
                             class_label = self.yolo_to_vru_mapping[cls]
-                            logger.debug(f"Found {class_label} (COCO class {cls}) with confidence {conf:.3f}")
+                            logger.debug(f"✅ Mapped to VRU: {class_label} (COCO class {cls}) conf={conf:.3f}")
                         else:
-                            logger.debug(f"Skipping non-VRU object: COCO class {cls} with confidence {conf:.3f}")
+                            logger.debug(f"❌ Non-VRU object: COCO class {cls} conf={conf:.3f}")
                             continue  # Skip non-VRU objects
                         
-                        # Filter by confidence threshold with debugging
-                        # Check for dynamic threshold override from configuration
-                        min_confidence = VRU_DETECTION_CONFIG.get(class_label, {}).get("min_confidence", 0.5)
+                        # Apply ultra-low confidence filtering for debugging
+                        min_confidence = VRU_DETECTION_CONFIG.get(class_label, {}).get("min_confidence", 0.01)
                         if conf < min_confidence:
-                            logger.debug(f"Filtered detection: {class_label} confidence {conf:.3f} < threshold {min_confidence}")
+                            logger.debug(f"🔍 Filtered: {class_label} conf={conf:.3f} < threshold={min_confidence}")
                             continue
                         else:
-                            logger.debug(f"✅ Valid detection: {class_label} confidence {conf:.3f} >= threshold {min_confidence}")
+                            logger.info(f"🎯 Valid VRU detection: {class_label} conf={conf:.3f} >= threshold={min_confidence}")
+                        
+                        # Additional size-based filtering for realistic detections
+                        if width < 10 or height < 20:  # Too small to be a person
+                            logger.debug(f"🔍 Filtered small detection: {width}x{height}")
+                            continue
+                        
+                        # Aspect ratio check for pedestrians
+                        aspect_ratio = height / width if width > 0 else 0
+                        if class_label == 'pedestrian' and (aspect_ratio < 1.0 or aspect_ratio > 5.0):
+                            logger.debug(f"🔍 Filtered pedestrian with unusual aspect ratio: {aspect_ratio:.2f}")
+                            continue
                         
                         detection = Detection(
                             class_label=class_label,
@@ -254,7 +269,10 @@ class RealYOLOv8Wrapper:
                         )
                         
                         detections.append(detection)
+                else:
+                    logger.debug("No bounding boxes found in frame")
             
+            logger.debug(f"Final detections after filtering: {len(detections)}")
             return detections
             
         except Exception as e:
