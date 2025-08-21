@@ -63,7 +63,7 @@ class DetectionResult:
 # VRU Detection Configuration
 VRU_DETECTION_CONFIG = {
     "pedestrian": {
-        "min_confidence": 0.70,
+        "min_confidence": 0.35,  # Lowered from 0.70 to detect more pedestrians including children
         "nms_threshold": 0.45,
         "class_id": 0
     },
@@ -195,18 +195,19 @@ class RealYOLOv8Wrapper:
         self.class_names = list(VRU_DETECTION_CONFIG.keys())
         # Map YOLO class IDs to VRU classes (COCO dataset class IDs)
         self.yolo_to_vru_mapping = {
-            0: 'pedestrian',    # person
+            0: 'pedestrian',    # person - COCO class 0 is critical for pedestrian detection
             1: 'cyclist',       # bicycle  
             3: 'motorcyclist',  # motorcycle (COCO class 3, not 2!)
             # Note: COCO class 2 is 'car' which we skip for VRU detection
             # Could add vehicle classes if needed for context
         }
+        logger.info(f"YOLOv8 initialized with VRU mapping: {self.yolo_to_vru_mapping}")
     
     async def predict(self, frame: np.ndarray) -> List[Detection]:
         """Real prediction using YOLOv8"""
         try:
-            # Run inference
-            results = self.model(frame, verbose=False)
+            # Run inference with enhanced settings for better pedestrian detection
+            results = self.model(frame, verbose=False, conf=0.1)  # Lower inference confidence to catch more detections
             
             detections = []
             
@@ -227,13 +228,18 @@ class RealYOLOv8Wrapper:
                         # Map YOLO class to VRU class
                         if cls in self.yolo_to_vru_mapping:
                             class_label = self.yolo_to_vru_mapping[cls]
+                            logger.debug(f"Found {class_label} (COCO class {cls}) with confidence {conf:.3f}")
                         else:
+                            logger.debug(f"Skipping non-VRU object: COCO class {cls} with confidence {conf:.3f}")
                             continue  # Skip non-VRU objects
                         
-                        # Filter by confidence threshold
+                        # Filter by confidence threshold with debugging
                         min_confidence = VRU_DETECTION_CONFIG.get(class_label, {}).get("min_confidence", 0.5)
                         if conf < min_confidence:
+                            logger.debug(f"Filtered detection: {class_label} confidence {conf:.3f} < threshold {min_confidence}")
                             continue
+                        else:
+                            logger.debug(f"Valid detection: {class_label} confidence {conf:.3f} >= threshold {min_confidence}")
                         
                         detection = Detection(
                             class_label=class_label,
@@ -688,6 +694,34 @@ class DetectionPipeline:
         
         return intersection / union if union > 0 else 0.0
     
+    def _enhance_pedestrian_detection(self, detections: List[Detection]) -> List[Detection]:
+        """Apply pedestrian-specific detection enhancements"""
+        enhanced_detections = []
+        
+        for detection in detections:
+            if detection.class_label == 'pedestrian':
+                # Apply pedestrian-specific confidence boosting for certain size ranges
+                bbox = detection.bounding_box
+                aspect_ratio = bbox.height / bbox.width if bbox.width > 0 else 0
+                
+                # Children tend to have different aspect ratios and sizes
+                # Boost confidence for smaller pedestrians (children)
+                area = bbox.width * bbox.height
+                if area < 50000:  # Smaller bounding boxes (likely children)
+                    confidence_boost = 0.05
+                    detection.confidence = min(0.99, detection.confidence + confidence_boost)
+                    logger.debug(f"Applied child pedestrian confidence boost: {detection.confidence:.3f}")
+                
+                # Boost confidence for typical pedestrian aspect ratios
+                if 1.5 <= aspect_ratio <= 4.0:  # Typical human aspect ratio
+                    confidence_boost = 0.03
+                    detection.confidence = min(0.99, detection.confidence + confidence_boost)
+                    logger.debug(f"Applied aspect ratio confidence boost: {detection.confidence:.3f}")
+            
+            enhanced_detections.append(detection)
+        
+        return enhanced_detections
+
     async def process_video(self, video_path: str, config: dict = None) -> List[Dict]:
         """Process video file and return detections for API endpoint"""
         if not self.initialized:
@@ -695,6 +729,13 @@ class DetectionPipeline:
         
         try:
             logger.info(f"🎬 Starting video processing: {video_path}")
+            
+            # Apply configuration if provided
+            if config and 'confidence_threshold' in config:
+                # Update pedestrian confidence threshold from config
+                original_threshold = VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"]
+                VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"] = config['confidence_threshold']
+                logger.info(f"Updated pedestrian confidence threshold: {original_threshold} → {config['confidence_threshold']}")
             
             # Verify video file exists
             video_file = Path(video_path)
@@ -732,9 +773,10 @@ class DetectionPipeline:
                 
                 frame_number += 1
                 
-                # Skip frames for faster processing (process every 5th frame)
-                if frame_number % 5 != 0:
-                    continue
+                # Process every frame for better detection accuracy (especially for pedestrians)
+                # Comment out frame skipping to catch all pedestrians
+                # if frame_number % 5 != 0:
+                #     continue
                 
                 try:
                     # Preprocess frame
@@ -742,6 +784,9 @@ class DetectionPipeline:
                     
                     # Run detection
                     detections = await model.predict(processed_frame)
+                    
+                    # Apply pedestrian-specific enhancements
+                    detections = self._enhance_pedestrian_detection(detections)
                     
                     # Process each detection
                     for detection in detections:
@@ -775,6 +820,16 @@ class DetectionPipeline:
             
             logger.info(f"🎯 Completed processing: {len(validated_detections)} valid detections from {frame_number} frames")
             
+            # Log detection summary by class
+            detection_summary = {}
+            for detection in validated_detections:
+                class_label = detection.get("class_label", "unknown")
+                detection_summary[class_label] = detection_summary.get(class_label, 0) + 1
+            
+            logger.info(f"📊 Detection summary: {detection_summary}")
+            if not validated_detections:
+                logger.warning("⚠️ NO VALID DETECTIONS FOUND! Check video content and detection thresholds.")
+            
             return validated_detections
             
         except Exception as e:
@@ -784,6 +839,7 @@ class DetectionPipeline:
     def _validate_api_detections(self, detections: List[Dict]) -> List[Dict]:
         """Validate detections for API response"""
         validated = []
+        filtered_count = {"low_confidence": 0, "invalid_format": 0}
         
         for detection in detections:
             try:
@@ -806,10 +862,20 @@ class DetectionPipeline:
                         "vru_type": detection.get("vru_type", detection.get("class_label", "pedestrian")),
                     }
                     validated.append(validated_detection)
+                else:
+                    filtered_count["low_confidence"] += 1
+                    logger.debug(f"Filtered {class_label}: confidence {confidence:.3f} < {min_confidence}")
                     
             except Exception as e:
+                filtered_count["invalid_format"] += 1
                 logger.warning(f"⚠️ Skipping invalid detection: {str(e)}")
                 continue
+        
+        # Log filtering summary
+        if filtered_count["low_confidence"] > 0:
+            logger.info(f"🔍 Filtered {filtered_count['low_confidence']} detections due to low confidence")
+        if filtered_count["invalid_format"] > 0:
+            logger.warning(f"⚠️ Filtered {filtered_count['invalid_format']} detections due to invalid format")
         
         return validated
 

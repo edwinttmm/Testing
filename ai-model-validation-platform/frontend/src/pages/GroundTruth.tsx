@@ -214,7 +214,7 @@ const GroundTruth: React.FC = () => {
   const [projectId, setProjectId] = useState<string | null>(urlProjectId || null);
   const [projectContext, setProjectContext] = useState<'url' | 'video' | 'central' | null>(urlProjectId ? 'url' : null);
   
-  // Project ID logging removed for production readiness
+  // Project ID context management - debug logs removed for production
 
   // Utility function to get the best available project context for operations
   const getProjectContextForOperation = useCallback((operationVideo?: VideoFile) => {
@@ -223,8 +223,6 @@ const GroundTruth: React.FC = () => {
     // Priority: URL project ID > Video's project ID > Current derived project ID
     const contextualProjectId = urlProjectId || videoProjectId || projectId;
     const source = urlProjectId ? 'url' : videoProjectId ? 'video' : projectId ? 'derived' : 'none';
-    
-    // Project context resolution completed
     
     return { projectId: contextualProjectId, source };
   }, [urlProjectId, selectedVideo, projectId]);
@@ -235,8 +233,6 @@ const GroundTruth: React.FC = () => {
     
     // Get unique project IDs from videos
     const projectIds = [...new Set(videos.map(v => v.projectId).filter(Boolean))];
-    
-    // Video project IDs processed
     
     // If all videos belong to the same project, use that project ID
     if (projectIds.length === 1 && projectIds[0]) {
@@ -257,7 +253,6 @@ const GroundTruth: React.FC = () => {
       if (projectId && projectContext === 'url') {
         // Load videos for specific project from URL
         videoList = await apiService.getVideos(projectId);
-        // Videos loaded for project successfully
       } else {
         // Load all videos from central store and derive project context
         const { videos: allVideos } = await apiService.getAllVideos(false, 0, 1000);
@@ -272,8 +267,6 @@ const GroundTruth: React.FC = () => {
           // Use central store approach for mixed/unassigned videos
           setProjectContext('central');
         }
-        
-        // All videos loaded successfully
       }
       
       setVideos(videoList);
@@ -290,8 +283,6 @@ const GroundTruth: React.FC = () => {
       // Use video's project context if available, otherwise use current project context
       const _contextualProjectId = videoProjectId || projectId;
       
-      // Loading annotations for video
-      
       const annotationList = await apiService.getAnnotations(videoId);
       setAnnotations(annotationList);
       
@@ -307,8 +298,6 @@ const GroundTruth: React.FC = () => {
           1.0
         );
       });
-      
-      // Annotations loaded successfully
     } catch (err) {
       console.error('Error loading annotations for video:', videoId, err);
       setAnnotations([]);
@@ -379,9 +368,6 @@ const GroundTruth: React.FC = () => {
       } catch (err) {
         const errorMsg = getErrorMessage(err, 'Backend connection failed - upload failed');
         
-        // Enhanced error logging for debugging (development only)
-        // Upload failed - error logged
-        
         setUploadingVideos(prev => 
           prev.map(v => 
             v.id === uploadingVideo.id 
@@ -445,8 +431,6 @@ const GroundTruth: React.FC = () => {
       if (!contextualProjectId) {
         throw new Error('No project context available for annotation session. Please ensure the video is properly associated with a project.');
       }
-      
-      // Creating annotation session
       
       const session = await apiService.createAnnotationSession(videoId, contextualProjectId);
       setAnnotationSession(session);
@@ -712,13 +696,40 @@ const GroundTruth: React.FC = () => {
         if (detectionResult.success && detectionResult.detections.length > 0) {
           setDetectionSource(detectionResult.source);
           
-          // Save detections as annotations
-          const newAnnotations = detectionResult.detections;
-          setAnnotations(newAnnotations);
+          // Save detections as annotations to the backend
+          const savedAnnotations: GroundTruthAnnotation[] = [];
+          
+          for (const detection of detectionResult.detections) {
+            try {
+              // Create annotation payload without id, createdAt, updatedAt (backend will generate these)
+              const annotationPayload: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
+                videoId: video.id,
+                detectionId: detection.detectionId,
+                frameNumber: detection.frameNumber,
+                timestamp: detection.timestamp,
+                vruType: detection.vruType,
+                boundingBox: detection.boundingBox,
+                occluded: detection.occluded || false,
+                truncated: detection.truncated || false,
+                difficult: detection.difficult || false,
+                validated: detection.validated || false,
+              };
+              
+              // Save annotation to backend
+              const savedAnnotation = await apiService.createAnnotation(video.id, annotationPayload);
+              savedAnnotations.push(savedAnnotation);
+            } catch (err) {
+              console.warn('Failed to save detection as annotation:', err);
+              // Continue with other detections even if one fails
+            }
+          }
+          
+          // Update state with saved annotations
+          setAnnotations(savedAnnotations);
           
           // Update detection ID manager
           detectionIdManager.clear(); // Clear previous data
-          newAnnotations.forEach(annotation => {
+          savedAnnotations.forEach(annotation => {
             createDetectionTracker(
               annotation.detectionId,
               annotation.vruType,
@@ -733,7 +744,7 @@ const GroundTruth: React.FC = () => {
             ? '🎯 AI Detection' 
             : '🚧 Demo Detection';
           
-          setSuccessMessage(`${sourceMessage} completed: Found ${newAnnotations.length} objects in ${(detectionResult.processingTime / 1000).toFixed(1)}s`);
+          setSuccessMessage(`${sourceMessage} completed: Found and saved ${savedAnnotations.length} objects in ${(detectionResult.processingTime / 1000).toFixed(1)}s`);
           
           // HTTP-only workflow - no WebSocket connections needed
           console.log('✅ Detection completed using HTTP-only workflow');
@@ -780,8 +791,6 @@ const GroundTruth: React.FC = () => {
         setError('Cannot start annotation session: Video is not associated with a project. Please assign the video to a project first.');
         return;
       }
-      
-      // Using project context for annotation session
       
       setSelectedVideo(video);
       await createAnnotationSession(video.id);
@@ -1285,17 +1294,43 @@ const GroundTruth: React.FC = () => {
                                     const detectionResult = await detectionService.runDetection(selectedVideo.id, retryConfig);
                                     
                                     if (detectionResult.success) {
-                                      setAnnotations(detectionResult.detections);
                                       setDetectionSource(detectionResult.source);
+                                      
+                                      // Save retry detections as annotations to the backend
+                                      const savedAnnotations: GroundTruthAnnotation[] = [];
+                                      
+                                      for (const detection of detectionResult.detections) {
+                                        try {
+                                          const annotationPayload: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
+                                            videoId: selectedVideo.id,
+                                            detectionId: detection.detectionId,
+                                            frameNumber: detection.frameNumber,
+                                            timestamp: detection.timestamp,
+                                            vruType: detection.vruType,
+                                            boundingBox: detection.boundingBox,
+                                            occluded: detection.occluded || false,
+                                            truncated: detection.truncated || false,
+                                            difficult: detection.difficult || false,
+                                            validated: detection.validated || false,
+                                          };
+                                          
+                                          const savedAnnotation = await apiService.createAnnotation(selectedVideo.id, annotationPayload);
+                                          savedAnnotations.push(savedAnnotation);
+                                        } catch (err) {
+                                          console.warn('Failed to save retry detection as annotation:', err);
+                                        }
+                                      }
+                                      
+                                      setAnnotations(savedAnnotations);
                                       
                                       const sourceMessage = detectionResult.source === 'backend' 
                                         ? '🎯 AI Detection' 
                                         : '🚧 Demo Detection';
                                       
-                                      setSuccessMessage(`${sourceMessage} retry successful: Found ${detectionResult.detections.length} objects`);
+                                      setSuccessMessage(`${sourceMessage} retry successful: Found and saved ${savedAnnotations.length} objects`);
                                       
                                       // Update detection trackers
-                                      detectionResult.detections.forEach(annotation => {
+                                      savedAnnotations.forEach(annotation => {
                                         createDetectionTracker(
                                           annotation.detectionId,
                                           annotation.vruType,
