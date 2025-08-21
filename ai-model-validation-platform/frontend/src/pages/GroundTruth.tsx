@@ -34,7 +34,7 @@ import {
   CloudUpload,
   CheckCircle,
   HourglassEmpty,
-  Error,
+  Error as ErrorIcon,
   Visibility,
   Delete,
   Cancel,
@@ -53,7 +53,7 @@ import {
   BoundingBox,
  
 } from '../services/types';
-import { apiService, runDetectionPipeline } from '../services/api';
+import { apiService } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import { detectionService, DetectionConfig } from '../services/detectionService';
 import { useDetectionWebSocket, DetectionUpdate } from '../hooks/useDetectionWebSocket';
@@ -736,7 +736,7 @@ const GroundTruth: React.FC = () => {
       case 'uploading':
         return <HourglassEmpty color="warning" />;
       case 'failed':
-        return <Error color="error" />;
+        return <ErrorIcon color="error" />;
       default:
         return <HourglassEmpty color="info" />;
     }
