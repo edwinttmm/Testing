@@ -9,6 +9,7 @@ import {
   CardContent,
   Tooltip,
   Stack,
+  CircularProgress,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -61,6 +62,8 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Calculate current frame number
   const currentFrame = Math.floor(currentTime * frameRate);
@@ -161,17 +164,22 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
 
     const initializeVideo = async () => {
       try {
+        setLoading(true);
+        setError(null);
         cleanupVideoElement(videoElement);
         await new Promise(resolve => setTimeout(resolve, 50));
         if (!effectValid) return;
 
+        console.log('🎬 VideoAnnotationPlayer: Setting video source:', video.url);
         await setVideoSource(videoElement, video.url);
         if (!effectValid) return;
 
         const handleLoadedMetadata = () => {
           if (!effectValid) return;
+          console.log('🎬 VideoAnnotationPlayer: Video metadata loaded - Duration:', videoElement.duration, 'Size:', videoElement.videoWidth, 'x', videoElement.videoHeight);
           setDuration(videoElement.duration);
           setVideoSize({ width: videoElement.videoWidth, height: videoElement.videoHeight });
+          setLoading(false);
           requestAnimationFrame(() => {
             if (effectValid) drawAnnotations();
           });
@@ -189,8 +197,12 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         const handlePause = () => effectValid && setIsPlaying(false);
         const handleEnded = () => effectValid && setIsPlaying(false);
         const handleError = (event: Event) => {
-          console.error('Video playback error:', event);
-          if (effectValid) setIsPlaying(false);
+          console.error('🎬 VideoAnnotationPlayer: Video playback error:', event);
+          if (effectValid) {
+            setIsPlaying(false);
+            setLoading(false);
+            setError('Video failed to load. Please check the video URL and try again.');
+          }
         };
 
         const cleanupListeners = addVideoEventListeners(videoElement, [
@@ -204,8 +216,12 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
 
         return cleanupListeners;
       } catch (error) {
-        console.error('Video initialization error:', error);
-        if (effectValid) setIsPlaying(false);
+        console.error('🎬 VideoAnnotationPlayer: Video initialization error:', error);
+        if (effectValid) {
+          setIsPlaying(false);
+          setLoading(false);
+          setError(`Failed to initialize video: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
         return () => {};
       }
     };
@@ -362,7 +378,60 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
-        <Box ref={containerRef} sx={{ position: 'relative', bgcolor: 'black', borderRadius: 1 }}>
+        <Box ref={containerRef} sx={{ position: 'relative', bgcolor: 'black', borderRadius: 1, minHeight: 300 }}>
+          {/* Loading State */}
+          {loading && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'rgba(0, 0, 0, 0.7)',
+                color: 'white',
+                zIndex: 10,
+              }}
+            >
+              <Typography variant="body1">Loading video...</Typography>
+              <Typography variant="caption" sx={{ mt: 1 }}>
+                URL: {video.url}
+              </Typography>
+            </Box>
+          )}
+
+          {/* Error State */}
+          {error && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'rgba(255, 0, 0, 0.1)',
+                color: 'error.main',
+                zIndex: 10,
+                p: 2,
+              }}
+            >
+              <Typography variant="body1" sx={{ textAlign: 'center', mb: 1 }}>
+                {error}
+              </Typography>
+              <Typography variant="caption">
+                URL: {video.url}
+              </Typography>
+            </Box>
+          )}
+
           {/* Video Element */}
           <video
             ref={videoRef}
@@ -372,7 +441,6 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
               display: 'block',
               maxHeight: '500px',
             }}
-            src={video.url}
             preload="metadata"
             playsInline
             onResize={() => {
@@ -426,6 +494,42 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
               ANNOTATION MODE
             </Box>
           )}
+        </Box>
+
+        {/* Session Statistics */}
+        <Box sx={{ mt: 2, mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Video Information
+          </Typography>
+          <Stack direction="row" spacing={3}>
+            <Typography variant="caption">
+              Duration: {duration.toFixed(2)}s
+            </Typography>
+            <Typography variant="caption">
+              Current Time: {currentTime.toFixed(2)}s
+            </Typography>
+            <Typography variant="caption">
+              Current Frame: {currentFrame} / {Math.floor(duration * frameRate)}
+            </Typography>
+            <Typography variant="caption">
+              Frame Rate: {frameRate} fps
+            </Typography>
+          </Stack>
+          
+          <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>
+            Session Stats
+          </Typography>
+          <Stack direction="row" spacing={3}>
+            <Typography variant="caption">
+              Total Annotations: {annotations.length}
+            </Typography>
+            <Typography variant="caption">
+              Validated: {annotations.filter(a => a.validated).length}
+            </Typography>
+            <Typography variant="caption">
+              Current Frame: {currentAnnotations.length}
+            </Typography>
+          </Stack>
         </Box>
 
         {/* Video Controls */}
