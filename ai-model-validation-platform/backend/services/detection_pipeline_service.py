@@ -173,7 +173,9 @@ class ModelRegistry:
         """Get the currently active model"""
         if not self.active_model_id:
             # Use default model if available
-            if "yolov8n" in self.models:
+            if "yolo11l" in self.models:
+                self.active_model_id = "yolo11l"
+            elif "yolov8n" in self.models:
                 self.active_model_id = "yolov8n"
             else:
                 raise ValueError("No active model set")
@@ -834,7 +836,7 @@ class DetectionPipeline:
             
             logger.info(f"📊 Detection summary: {detection_summary}")
             if not validated_detections:
-                logger.error(f"⚠️ NO VALID DETECTIONS FOUND! Processed {total_frames} frames with {len(all_frame_detections)} raw detections but 0 passed filtering!")
+                logger.error(f"⚠️ NO VALID DETECTIONS FOUND! Processed {total_frames} frames with {len(frame_detections)} raw detections but 0 passed filtering!")
                 logger.error("🔍 Debug info: Try lowering confidence threshold or check video content")
             
             return validated_detections
