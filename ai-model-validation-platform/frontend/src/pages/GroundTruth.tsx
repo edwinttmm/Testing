@@ -53,7 +53,7 @@ import {
   BoundingBox,
  
 } from '../services/types';
-import { apiService } from '../services/api';
+import { apiService, runDetectionPipeline } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
 import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
@@ -172,6 +172,10 @@ const GroundTruth: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [uploadErrors, setUploadErrors] = useState<UploadError[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Detection pipeline state
+  const [isRunningDetection, setIsRunningDetection] = useState(false);
+  const [detectionError, setDetectionError] = useState<string | null>(null);
   
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -575,6 +579,42 @@ const GroundTruth: React.FC = () => {
         console.warn('Could not load ground truth data:', err);
       }
     }
+    
+    // Auto-run detection pipeline if not already done and no existing annotations
+    try {
+      setIsRunningDetection(true);
+      setDetectionError(null);
+      
+      // Check if video already has annotations to avoid duplicate detection
+      const existingAnnotations = await apiService.getAnnotations(video.id);
+      
+      if (existingAnnotations.length === 0) {
+        console.log('No existing annotations found, running detection pipeline...');
+        
+        // Run detection pipeline with reasonable defaults
+        const detectionResult = await runDetectionPipeline(video.id, {
+          confidenceThreshold: 0.5,
+          nmsThreshold: 0.4,
+          modelName: 'yolov8n',
+          targetClasses: ['person', 'bicycle', 'motorcycle']
+        });
+        
+        console.log('Detection pipeline completed for video:', video.id, detectionResult);
+        
+        // Reload annotations to include new detections
+        await loadAnnotations(video.id);
+        
+        setSuccessMessage(`Detection completed: Found ${detectionResult.detections?.length || 0} objects`);
+      } else {
+        console.log('Existing annotations found, skipping automatic detection');
+      }
+      
+    } catch (error: any) {
+      console.error('Detection pipeline failed:', error);
+      setDetectionError(`Detection failed: ${error?.message || String(error)}`);
+    } finally {
+      setIsRunningDetection(false);
+    }
   };
 
   // Start annotation session
@@ -977,6 +1017,59 @@ const GroundTruth: React.FC = () => {
               {selectedVideo && (
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, lg: 8 }}>
+                    {/* Detection Status Overlay */}
+                    {isRunningDetection && (
+                      <Box sx={{ mb: 2, position: 'relative' }}>
+                        <Alert severity="info" sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <LinearProgress sx={{ width: 200, mr: 1 }} />
+                            Running automatic object detection...
+                          </Box>
+                        </Alert>
+                      </Box>
+                    )}
+                    
+                    {/* Detection Error Display */}
+                    {detectionError && (
+                      <Box sx={{ mb: 2 }}>
+                        <Alert 
+                          severity="warning" 
+                          onClose={() => setDetectionError(null)}
+                          action={
+                            <Button 
+                              color="inherit" 
+                              size="small"
+                              onClick={async () => {
+                                if (selectedVideo) {
+                                  setDetectionError(null);
+                                  // Retry detection
+                                  try {
+                                    setIsRunningDetection(true);
+                                    await runDetectionPipeline(selectedVideo.id, {
+                                      confidenceThreshold: 0.5,
+                                      nmsThreshold: 0.4,
+                                      modelName: 'yolov8n',
+                                      targetClasses: ['person', 'bicycle', 'motorcycle']
+                                    });
+                                    await loadAnnotations(selectedVideo.id);
+                                    setSuccessMessage('Detection retry successful');
+                                  } catch (error: any) {
+                                    setDetectionError(`Retry failed: ${error?.message || String(error)}`);
+                                  } finally {
+                                    setIsRunningDetection(false);
+                                  }
+                                }
+                              }}
+                            >
+                              Retry
+                            </Button>
+                          }
+                        >
+                          {detectionError}
+                        </Alert>
+                      </Box>
+                    )}
+                    
                     <VideoAnnotationPlayer
                       video={selectedVideo}
                       annotations={annotations}
@@ -1009,6 +1102,16 @@ const GroundTruth: React.FC = () => {
                         <strong>Total Annotations:</strong> {annotations.length}<br/>
                         <strong>Validated:</strong> {annotations.filter(a => a.validated).length}<br/>
                         <strong>Current Frame:</strong> {annotations.filter(a => a.frameNumber === currentFrame).length}
+                        {isRunningDetection && (
+                          <>
+                            <br/><strong>Status:</strong> <span style={{ color: '#1976d2' }}>Running detection...</span>
+                          </>
+                        )}
+                        {annotations.length === 0 && !isRunningDetection && (
+                          <>
+                            <br/><em style={{ color: '#666' }}>No annotations yet. Detection will run automatically.</em>
+                          </>
+                        )}
                       </Typography>
                     </Paper>
                   </Grid>
