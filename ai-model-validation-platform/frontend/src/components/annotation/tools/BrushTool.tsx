@@ -1,0 +1,341 @@
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Point, AnnotationShape, BrushStroke } from '../types';
+import { useAnnotation } from '../AnnotationManager';
+
+interface BrushToolProps {
+  onStrokeComplete?: (shape: AnnotationShape) => void;
+  enabled?: boolean;
+}
+
+const BrushTool: React.FC<BrushToolProps> = ({
+  onStrokeComplete,
+  enabled = false,
+}) => {
+  const { state, actions } = useAnnotation();
+  const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [brushPreview, setBrushPreview] = useState<Point | null>(null);
+
+  const lastPointRef = useRef<Point | null>(null);
+  const strokeStartTimeRef = useRef<number>(0);
+
+  const brushSettings = state.settings.brushSettings;
+
+  // Calculate brush size based on pressure (if available) and settings
+  const getBrushSize = useCallback((pressure: number = 1) => {
+    return brushSettings.size * pressure;
+  }, [brushSettings.size]);
+
+  // Start brush stroke
+  const startStroke = useCallback((point: Point, pressure: number = 1) => {
+    if (!enabled) return;
+
+    const strokePoint = {
+      ...point,
+      pressure,
+      size: getBrushSize(pressure),
+      timestamp: Date.now(),
+    };
+
+    setCurrentStroke([strokePoint]);
+    setIsDrawing(true);
+    lastPointRef.current = point;
+    strokeStartTimeRef.current = Date.now();
+    actions.setDrawing(true);
+  }, [enabled, getBrushSize, actions]);
+
+  // Add point to current stroke with interpolation for smooth lines
+  const addPoint = useCallback((point: Point, pressure: number = 1) => {
+    if (!isDrawing || !lastPointRef.current) return;
+
+    const strokePoint = {
+      ...point,
+      pressure,
+      size: getBrushSize(pressure),
+      timestamp: Date.now(),
+    };
+
+    // Interpolate points for smoother strokes
+    const interpolatedPoints = interpolatePoints(lastPointRef.current, point, 2);
+    const newPoints = interpolatedPoints.map((p, index) => ({
+      ...p,
+      pressure: pressure * (1 - index * 0.1), // Gradually decrease pressure
+      size: getBrushSize(pressure * (1 - index * 0.1)),
+      timestamp: Date.now(),
+    }));
+
+    setCurrentStroke(prev => [...prev, ...newPoints]);
+    lastPointRef.current = point;
+  }, [isDrawing, getBrushSize]);
+
+  // Interpolate points between two positions for smoother strokes
+  const interpolatePoints = useCallback((start: Point, end: Point, steps: number): Point[] => {
+    const points: Point[] = [];
+    for (let i = 1; i <= steps; i++) {
+      const ratio = i / (steps + 1);
+      points.push({
+        x: start.x + (end.x - start.x) * ratio,
+        y: start.y + (end.y - start.y) * ratio,
+      });
+    }
+    return points;
+  }, []);
+
+  // Complete brush stroke
+  const completeStroke = useCallback(() => {
+    if (currentStroke.length < 2) {
+      // Too short, cancel
+      cancelStroke();
+      return;
+    }
+
+    // Smooth the stroke path
+    const smoothedStroke = smoothStrokePath(currentStroke);
+
+    // Calculate bounding box
+    const xs = smoothedStroke.map(p => p.x);
+    const ys = smoothedStroke.map(p => p.y);
+    const minX = Math.min(...xs) - brushSettings.size / 2;
+    const minY = Math.min(...ys) - brushSettings.size / 2;
+    const maxX = Math.max(...xs) + brushSettings.size / 2;
+    const maxY = Math.max(...ys) + brushSettings.size / 2;
+
+    // Create shape from stroke
+    const shape: AnnotationShape = {
+      id: `brush_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: 'brush',
+      points: smoothedStroke,
+      boundingBox: {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+      },
+      style: {
+        strokeColor: brushSettings.isEraser ? 'rgba(255,255,255,0)' : state.settings.defaultStyle.strokeColor,
+        fillColor: state.settings.defaultStyle.fillColor,
+        strokeWidth: brushSettings.size,
+        fillOpacity: brushSettings.opacity,
+      },
+      visible: true,
+      selected: false,
+    };
+
+    actions.addShape(shape);
+    onStrokeComplete?.(shape);
+
+    // Reset state
+    setCurrentStroke([]);
+    setIsDrawing(false);
+    lastPointRef.current = null;
+    actions.setDrawing(false);
+  }, [currentStroke, brushSettings, state.settings.defaultStyle, actions, onStrokeComplete]);
+
+  // Cancel current stroke
+  const cancelStroke = useCallback(() => {
+    setCurrentStroke([]);
+    setIsDrawing(false);
+    lastPointRef.current = null;
+    actions.setDrawing(false);
+  }, [actions]);
+
+  // Smooth stroke path using simple averaging
+  const smoothStrokePath = useCallback((points: Point[]): Point[] => {
+    if (points.length < 3) return points;
+
+    const smoothed: Point[] = [points[0]]; // Keep first point
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const current = points[i];
+      const next = points[i + 1];
+
+      // Simple averaging for smoothing
+      const smoothedPoint = {
+        x: (prev.x + current.x + next.x) / 3,
+        y: (prev.y + current.y + next.y) / 3,
+      };
+
+      smoothed.push(smoothedPoint);
+    }
+
+    smoothed.push(points[points.length - 1]); // Keep last point
+    return smoothed;
+  }, []);
+
+  // Update brush preview
+  const updatePreview = useCallback((point: Point) => {
+    setBrushPreview(point);
+  }, []);
+
+  // Handle mouse events
+  const handleMouseDown = useCallback((point: Point, event: MouseEvent) => {
+    if (!enabled) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const pressure = (event as any).pressure || 1;
+    startStroke(point, pressure);
+  }, [enabled, startStroke]);
+
+  const handleMouseMove = useCallback((point: Point, event?: MouseEvent) => {
+    if (!enabled) return;
+
+    updatePreview(point);
+
+    if (isDrawing) {
+      const pressure = (event as any)?.pressure || 1;
+      addPoint(point, pressure);
+    }
+  }, [enabled, isDrawing, updatePreview, addPoint]);
+
+  const handleMouseUp = useCallback((point: Point, event: MouseEvent) => {
+    if (!enabled || !isDrawing) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Add final point
+    const pressure = (event as any).pressure || 1;
+    addPoint(point, pressure);
+    
+    // Complete stroke after a short delay to allow final point processing
+    setTimeout(completeStroke, 10);
+  }, [enabled, isDrawing, addPoint, completeStroke]);
+
+  const handleKeyPress = useCallback((event: KeyboardEvent) => {
+    if (!enabled) return;
+
+    if (event.key === 'Escape' && isDrawing) {
+      cancelStroke();
+    }
+  }, [enabled, isDrawing, cancelStroke]);
+
+  // Render current brush stroke
+  const renderCurrentStroke = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!isDrawing || currentStroke.length === 0) return;
+
+    ctx.save();
+
+    // Set style
+    ctx.strokeStyle = brushSettings.isEraser 
+      ? 'rgba(255, 0, 0, 0.5)' // Red overlay for eraser preview
+      : state.settings.defaultStyle.strokeColor;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = brushSettings.opacity;
+
+    // Draw variable-width stroke
+    if (currentStroke.length > 1) {
+      for (let i = 1; i < currentStroke.length; i++) {
+        const prevPoint = currentStroke[i - 1] as any;
+        const currentPoint = currentStroke[i] as any;
+        
+        const size = currentPoint.size || brushSettings.size;
+        
+        ctx.lineWidth = size;
+        ctx.beginPath();
+        ctx.moveTo(prevPoint.x, prevPoint.y);
+        ctx.lineTo(currentPoint.x, currentPoint.y);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }, [isDrawing, currentStroke, brushSettings, state.settings.defaultStyle]);
+
+  // Render brush preview cursor
+  const renderBrushPreview = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!enabled || !brushPreview) return;
+
+    ctx.save();
+    
+    // Draw brush preview circle
+    ctx.strokeStyle = brushSettings.isEraser ? '#ff0000' : state.settings.defaultStyle.strokeColor;
+    ctx.fillStyle = brushSettings.isEraser 
+      ? 'rgba(255, 0, 0, 0.1)' 
+      : `${state.settings.defaultStyle.strokeColor}20`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+
+    ctx.beginPath();
+    ctx.arc(brushPreview.x, brushPreview.y, brushSettings.size / 2, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.fill();
+
+    // Draw crosshair
+    const crossSize = 6;
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(brushPreview.x - crossSize, brushPreview.y);
+    ctx.lineTo(brushPreview.x + crossSize, brushPreview.y);
+    ctx.moveTo(brushPreview.x, brushPreview.y - crossSize);
+    ctx.lineTo(brushPreview.x, brushPreview.y + crossSize);
+    ctx.stroke();
+
+    ctx.restore();
+  }, [enabled, brushPreview, brushSettings, state.settings.defaultStyle]);
+
+  // Get tool cursor
+  const getCursor = useCallback(() => {
+    if (!enabled) return 'default';
+    return 'none'; // Hide cursor, we'll draw our own
+  }, [enabled]);
+
+  // Get tool status text
+  const getStatusText = useCallback(() => {
+    if (!enabled) return '';
+    if (brushSettings.isEraser) {
+      return isDrawing ? 'Erasing...' : 'Eraser mode - Click and drag to erase';
+    }
+    return isDrawing ? 'Drawing...' : 'Click and drag to paint';
+  }, [enabled, isDrawing, brushSettings.isEraser]);
+
+  // Handle brush setting changes
+  const updateBrushSettings = useCallback((updates: Partial<typeof brushSettings>) => {
+    actions.updateSettings({
+      brushSettings: { ...brushSettings, ...updates }
+    });
+  }, [actions, brushSettings]);
+
+  // Cleanup on unmount or disable
+  useEffect(() => {
+    if (!enabled && isDrawing) {
+      cancelStroke();
+    }
+  }, [enabled, isDrawing, cancelStroke]);
+
+  // Return tool interface
+  return {
+    enabled,
+    isActive: isDrawing,
+    cursor: getCursor(),
+    statusText: getStatusText(),
+    currentStroke,
+    brushPreview,
+    settings: brushSettings,
+    
+    // Event handlers
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    handleKeyPress,
+    
+    // Actions
+    complete: completeStroke,
+    cancel: cancelStroke,
+    updateSettings: updateBrushSettings,
+    
+    // Rendering
+    render: renderCurrentStroke,
+    renderPreview: renderBrushPreview,
+    
+    // State queries
+    strokeLength: currentStroke.length,
+    isErasing: brushSettings.isEraser,
+  } as const;
+};
+
+export default BrushTool;
