@@ -751,12 +751,15 @@ class DetectionPipeline:
         try:
             logger.info(f"🎬 Starting video processing: {video_path}")
             
-            # Apply configuration if provided
+            # Apply configuration if provided (but keep ultra-low threshold for debugging)
             if config and 'confidence_threshold' in config:
-                # Update pedestrian confidence threshold from config
+                # Log the attempted update but don't apply it during debugging
                 original_threshold = VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"]
-                VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"] = config['confidence_threshold']
-                logger.info(f"🎯 Updated pedestrian confidence threshold: {original_threshold} → {config['confidence_threshold']}")
+                requested_threshold = config['confidence_threshold']
+                # FIXED: Don't override ultra-low threshold during debugging
+                # VRU_DETECTION_CONFIG["pedestrian"]["min_confidence"] = config['confidence_threshold']
+                logger.info(f"🎯 Keeping ultra-low threshold: {original_threshold} (ignoring config request for {requested_threshold})")
+                logger.info(f"⚠️ DEBUG MODE: Using ultra-low confidence thresholds for all VRU types")
             
             # Verify video file exists
             video_file = Path(video_path)

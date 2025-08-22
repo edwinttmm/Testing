@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
+import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 
 interface UseWebSocketOptions {
   url?: string;
@@ -147,7 +147,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       setError(error);
       onError?.(error);
     }
-  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout]);
+  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout, socketConfig.timeout]);
 
   // Now define scheduleReconnect with connect in scope
   const scheduleReconnect = useCallback(() => {

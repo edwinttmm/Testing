@@ -80,7 +80,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  // Fullscreen state removed - isFullscreen variable was unused
   
   // Loading and error state
   const [loading, setLoading] = useState(true);
@@ -97,7 +97,40 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
   );
 
-  // Define all callback functions first, before using them in dependency arrays
+  // Define initializeVideo first without dependencies
+  const initializeVideo = useCallback(async () => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setBuffering(true);
+
+      // Use only the video.url prop - no fallback to filename
+      if (!video.url) {
+        throw new Error('Video URL is not available');
+      }
+      await setVideoSource(videoElement, video.url);
+      
+      setLoading(false);
+      setBuffering(false);
+    } catch (err) {
+      console.error('Video initialization error:', err);
+      // Handle error directly here to avoid circular dependency
+      const error: PlaybackError = {
+        message: err instanceof Error ? err.message : 'Unknown video error',
+        type: 'load',
+        recoverable: true
+      };
+      setError(error);
+      setLoading(false);
+      setBuffering(false);
+      setIsPlaying(false);
+    }
+  }, [video.url]);
+
+  // Define handleVideoError after initializeVideo to avoid circular dependency
   const handleVideoError = useCallback((err: Error, type: PlaybackError['type'] = 'unknown') => {
     let errorInfo: PlaybackError;
     
@@ -130,30 +163,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         initializeVideo();
       }, retryDelay);
     }
-  }, [autoRetry, maxRetries, retryCount]);
-
-  const initializeVideo = useCallback(async () => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      setBuffering(true);
-
-      // Use only the video.url prop - no fallback to filename
-      if (!video.url) {
-        throw new Error('Video URL is not available');
-      }
-      await setVideoSource(videoElement, video.url);
-      
-      setLoading(false);
-      setBuffering(false);
-    } catch (err) {
-      console.error('Video initialization error:', err);
-      handleVideoError(err as Error);
-    }
-  }, [video.url, handleVideoError]);
+  }, [autoRetry, maxRetries, retryCount, initializeVideo]);
 
   const handleRetry = useCallback(() => {
     setRetryCount(0);
@@ -385,10 +395,8 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     try {
       if (!document.fullscreenElement) {
         container.requestFullscreen();
-        setIsFullscreen(true);
       } else {
         document.exitFullscreen();
-        setIsFullscreen(false);
       }
     } catch (error) {
       console.warn('Fullscreen toggle failed:', error);
@@ -489,10 +497,10 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
 
   // Initialize video when component mounts or video changes
   useEffect(() => {
+    // Capture ref at effect creation time to avoid stale closure
+    const videoElement = videoRef.current;
     initializeVideo();
     return () => {
-      // Store videoRef.current in a local variable to avoid stale closure
-      const videoElement = videoRef.current;
       if (videoElement) {
         cleanupVideoElement(videoElement);
       }
