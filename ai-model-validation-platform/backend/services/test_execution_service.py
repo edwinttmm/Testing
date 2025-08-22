@@ -310,16 +310,20 @@ class TestExecutionService:
                             detection_event = DetectionEvent(
                                 id=detection.detection_id,
                                 test_session_id=session_id,
-                                video_id=video.id,
+                                # REMOVED: video_id=video.id,  # ❌ This field does not exist in DetectionEvent model
                                 frame_number=frame_count,
                                 timestamp=frame_count / fps,
                                 confidence=detection.confidence,
                                 class_label=detection.class_label,
-                                x=detection.bounding_box.x,
-                                y=detection.bounding_box.y,
-                                width=detection.bounding_box.width,
-                                height=detection.bounding_box.height,
-                                validation_result="VALIDATED"
+                                # FIXED: Use correct column names from the model
+                                bounding_box_x=detection.bounding_box.x,
+                                bounding_box_y=detection.bounding_box.y,
+                                bounding_box_width=detection.bounding_box.width,
+                                bounding_box_height=detection.bounding_box.height,
+                                validation_result="VALIDATED",
+                                # Additional fields for better tracking
+                                detection_id=detection.detection_id,
+                                vru_type=detection.class_label  # Map class_label to vru_type
                             )
                             db.add(detection_event)
                         
