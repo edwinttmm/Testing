@@ -77,13 +77,29 @@ const DetectionResultsPanel: React.FC<DetectionResultsPanelProps> = ({
   }
 
   if (!detections || detections.length === 0) {
+    if (isRunning) {
+      return (
+        <Paper sx={{ p: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="h6">
+              Running Detection Pipeline...
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Analyzing video for VRU objects. This may take a few minutes.
+          </Typography>
+        </Paper>
+      );
+    }
+    
     return (
       <Paper sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           No Detections Found
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Click "Start Detection" to analyze this video for VRU objects.
+          Use the detection controls above to analyze this video for VRU objects.
         </Typography>
       </Paper>
     );
@@ -108,9 +124,18 @@ const DetectionResultsPanel: React.FC<DetectionResultsPanelProps> = ({
 
   return (
     <Paper sx={{ p: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Detection Results ({detections.length})
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">
+          Detection Results ({detections.length})
+        </Typography>
+        {detections.length > 0 && (
+          <Chip 
+            label={`${detections.filter(d => d.confidence >= 0.8).length} high confidence`}
+            color="success"
+            size="small"
+          />
+        )}
+      </Box>
       
       <List sx={{ maxHeight: 400, overflow: 'auto' }}>
         {detections.map((detection, index) => (
