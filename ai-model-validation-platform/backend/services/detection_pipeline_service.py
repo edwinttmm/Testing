@@ -491,6 +491,10 @@ class DetectionPipeline:
         self.batch_size = 8
         self.max_queue_size = 30
         self.processing_queue = asyncio.Queue(maxsize=self.max_queue_size)
+        
+        # Thread pool for blocking operations to prevent FastAPI blocking
+        from concurrent.futures import ThreadPoolExecutor
+        self.thread_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="DetectionPipeline")
     
     async def initialize(self):
         """Initialize pipeline with default models"""
@@ -742,12 +746,18 @@ class DetectionPipeline:
         return enhanced_detections
 
     async def process_video(self, video_path: str, config: dict = None) -> List[Dict]:
-        """Process video file and return detections for API endpoint"""
-        if not self.initialized:
-            await self.initialize()
-        
+        """Process video file and return detections for API endpoint - Non-blocking background task version"""
+        return await asyncio.get_event_loop().run_in_executor(
+            self.thread_executor, 
+            self._process_video_sync, 
+            video_path, 
+            config
+        )
+    
+    def _process_video_sync(self, video_path: str, config: dict = None) -> List[Dict]:
+        """Synchronous video processing moved to thread pool"""
         try:
-            logger.info(f"🎬 Starting video processing: {video_path}")
+            logger.info(f"🎬 Starting video processing in background thread: {video_path}")
             
             # Apply configuration if provided (but keep ultra-low threshold for debugging)
             if config and 'confidence_threshold' in config:
@@ -780,13 +790,10 @@ class DetectionPipeline:
             video_id = str(uuid.uuid4())
             self.timestamp_sync.initialize_video_timeline(video_id, fps)
             
-            # Get active model
-            model = await self.model_registry.get_active_model()
-            
             all_detections = []
             frame_number = 0
             
-            # Process video frame by frame
+            # Process video frame by frame with synchronous operations
             while True:
                 ret, frame = cap.read()
                 if not ret:
@@ -800,11 +807,11 @@ class DetectionPipeline:
                     continue
                 
                 try:
-                    # Preprocess frame
-                    processed_frame = await self.frame_processor.preprocess(frame)
+                    # Preprocess frame (synchronous in thread)
+                    processed_frame = self._preprocess_frame_sync(frame)
                     
-                    # Run detection
-                    detections = await model.predict(processed_frame)
+                    # Run detection (synchronous in thread)
+                    detections = self._predict_sync(processed_frame)
                     
                     # Apply pedestrian-specific enhancements
                     detections = self._enhance_pedestrian_detection(detections)
@@ -906,6 +913,83 @@ class DetectionPipeline:
             logger.warning(f"⚠️ Filtered {filtered_count['invalid_format']} detections due to invalid format")
         
         return validated
+    
+    def _preprocess_frame_sync(self, frame: np.ndarray) -> np.ndarray:
+        """Synchronous frame preprocessing for thread pool execution"""
+        try:
+            # YOLO models expect original BGR uint8 frames (0-255)
+            if frame.dtype != np.uint8:
+                frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+            return frame
+        except Exception as e:
+            logger.error(f"Error preprocessing frame: {str(e)}")
+            raise
+    
+    def _predict_sync(self, frame: np.ndarray) -> List[Detection]:
+        """Synchronous model prediction for thread pool execution"""
+        try:
+            if not self.initialized:
+                # Initialize synchronously in thread
+                self.model_registry.register_model(
+                    "yolo11l",
+                    "/app/models/yolo11l.pt",
+                    "yolov8"
+                )
+                self.model_registry.set_active_model("yolo11l")
+                self.initialized = True
+            
+            # Get or load model synchronously
+            model = self.model_registry.model_cache.get("yolo11l")
+            if not model:
+                # Load model synchronously in thread
+                try:
+                    from ultralytics import YOLO
+                    yolo_model = YOLO('yolo11l.pt')
+                    model = RealYOLOv8Wrapper(yolo_model)
+                    self.model_registry.model_cache["yolo11l"] = model
+                except Exception as e:
+                    logger.error(f"Failed to load model in thread: {e}")
+                    return []
+            
+            # Run synchronous prediction
+            results = model.model(frame, verbose=False, conf=0.001)
+            detections = []
+            
+            for r in results:
+                boxes = r.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        xyxy = box.xyxy[0].cpu().numpy()
+                        conf = box.conf[0].cpu().numpy()
+                        cls = int(box.cls[0].cpu().numpy())
+                        
+                        # Convert to our format
+                        x1, y1, x2, y2 = xyxy
+                        width = x2 - x1
+                        height = y2 - y1
+                        
+                        # Map YOLO classes to VRU
+                        yolo_to_vru_mapping = {0: 'pedestrian', 1: 'cyclist', 3: 'motorcyclist'}
+                        if cls in yolo_to_vru_mapping:
+                            class_label = yolo_to_vru_mapping[cls]
+                            min_confidence = VRU_DETECTION_CONFIG.get(class_label, {}).get("min_confidence", 0.01)
+                            
+                            if conf >= min_confidence and width >= 10 and height >= 20:
+                                detection = Detection(
+                                    class_label=class_label,
+                                    confidence=float(conf),
+                                    bounding_box=BoundingBox(x=float(x1), y=float(y1), width=float(width), height=float(height)),
+                                    timestamp=time.time(),
+                                    frame_number=0,
+                                    detection_id=str(uuid.uuid4())
+                                )
+                                detections.append(detection)
+            
+            return detections
+            
+        except Exception as e:
+            logger.error(f"Sync prediction failed: {str(e)}")
+            return []
 
 # Performance optimization classes
 class BatchProcessor:
