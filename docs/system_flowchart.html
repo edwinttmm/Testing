@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Model Validation Platform - System Flow Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-node-canvas"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .flowchart-container {
+            padding: 40px;
+            background: #fff;
+        }
+        .flow-section {
+            margin: 30px 0;
+            padding: 20px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .flow-title {
+            font-size: 1.4em;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        .node {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 500;
+            text-align: center;
+            min-width: 120px;
+        }
+        .node-frontend { background: #61DAFB; }
+        .node-backend { background: #009688; }
+        .node-ml { background: #FF6B6B; }
+        .node-database { background: #4ECDC4; }
+        .node-websocket { background: #45B7D1; }
+        .node-file { background: #96CEB4; }
+        .arrow {
+            display: inline-block;
+            margin: 0 10px;
+            font-size: 1.2em;
+            color: #666;
+        }
+        .chart-wrapper {
+            height: 500px;
+            margin: 20px 0;
+            position: relative;
+        }
+        .flow-diagram {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f1f3f4;
+            border-radius: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 System Flow Diagram</h1>
+            <p>AI Model Validation Platform Component Interaction</p>
+        </div>
+
+        <div class="flowchart-container">
+            <!-- Main System Flow -->
+            <div class="flow-section">
+                <div class="flow-title">📊 Main System Data Flow</div>
+                <div style="text-align: center; line-height: 2.5;">
+                    <div class="node node-frontend">React Frontend</div>
+                    <span class="arrow">→</span>
+                    <div class="node node-backend">FastAPI Backend</div>
+                    <span class="arrow">→</span>
+                    <div class="node node-ml">YOLO ML Pipeline</div>
+                    <br>
+                    <span class="arrow">↓</span>
+                    <span style="margin: 0 140px;" class="arrow">↓</span>
+                    <span class="arrow">↓</span>
+                    <br>
+                    <div class="node node-websocket">WebSocket Events</div>
+                    <span class="arrow">←</span>
+                    <div class="node node-database">PostgreSQL DB</div>
+                    <span class="arrow">←</span>
+                    <div class="node node-file">File Storage</div>
+                </div>
+            </div>
+
+            <!-- Video Processing Flow -->
+            <div class="flow-section">
+                <div class="flow-title">🎬 Video Processing Pipeline</div>
+                <div class="chart-wrapper">
+                    <canvas id="videoFlowChart" class="flow-diagram"></canvas>
+                </div>
+            </div>
+
+            <!-- Detection Pipeline Flow -->
+            <div class="flow-section">
+                <div class="flow-title">🔍 Detection Processing Flow</div>
+                <div class="chart-wrapper">
+                    <canvas id="detectionFlowChart" class="flow-diagram"></canvas>
+                </div>
+            </div>
+
+            <!-- Component Interaction Network -->
+            <div class="flow-section">
+                <div class="flow-title">🌐 Component Interaction Network</div>
+                <div class="chart-wrapper">
+                    <canvas id="networkChart" class="flow-diagram"></canvas>
+                </div>
+            </div>
+
+            <!-- Data Flow Timeline -->
+            <div class="flow-section">
+                <div class="flow-title">⏱️ Processing Timeline Flow</div>
+                <div class="chart-wrapper">
+                    <canvas id="timelineChart" class="flow-diagram"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color node-frontend"></div>
+                <span>Frontend Components</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color node-backend"></div>
+                <span>Backend Services</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color node-ml"></div>
+                <span>ML Pipeline</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color node-database"></div>
+                <span>Data Storage</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color node-websocket"></div>
+                <span>Real-time Communication</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color node-file"></div>
+                <span>File System</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Video Processing Pipeline Flow
+        const videoFlowCtx = document.getElementById('videoFlowChart').getContext('2d');
+        new Chart(videoFlowCtx, {
+            type: 'line',
+            data: {
+                labels: [
+                    'Video Upload', 'Security Check', 'Chunked Storage', 'Metadata Extract',
+                    'Background Process', 'Frame Extract', 'YOLO Inference', 'Detection Filter',
+                    'Database Store', 'WebSocket Event', 'Frontend Update'
+                ],
+                datasets: [{
+                    label: 'Processing Steps',
+                    data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 8,
+                    pointBackgroundColor: '#007bff',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                return `Step ${context[0].parsed.y}: ${context[0].label}`;
+                            },
+                            label: function(context) {
+                                const descriptions = {
+                                    'Video Upload': 'User uploads video file via drag-drop or file selector',
+                                    'Security Check': 'Validate file type, size (100MB), prevent path traversal',
+                                    'Chunked Storage': 'Store in 64KB chunks to prevent memory exhaustion',
+                                    'Metadata Extract': 'Extract FPS, resolution, duration using OpenCV',
+                                    'Background Process': 'Trigger async ground truth generation',
+                                    'Frame Extract': 'Extract every 5th frame for processing efficiency',
+                                    'YOLO Inference': 'Run YOLOv11l model inference on frames',
+                                    'Detection Filter': 'Apply 0.01 confidence threshold and VRU filtering',
+                                    'Database Store': 'Save detections to PostgreSQL with metadata',
+                                    'WebSocket Event': 'Broadcast detection results to connected clients',
+                                    'Frontend Update': 'Update UI with new detection data'
+                                };
+                                return descriptions[context.label] || '';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Detection Processing Flow (Flowchart simulation)
+        const detectionFlowCtx = document.getElementById('detectionFlowChart').getContext('2d');
+        new Chart(detectionFlowCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Input Layer',
+                    data: [{x: 1, y: 5}],
+                    backgroundColor: '#FF6B6B',
+                    pointRadius: 20
+                }, {
+                    label: 'Preprocessing',
+                    data: [{x: 2, y: 6}, {x: 2, y: 4}],
+                    backgroundColor: '#4ECDC4',
+                    pointRadius: 15
+                }, {
+                    label: 'YOLO Inference',
+                    data: [{x: 3, y: 5}],
+                    backgroundColor: '#45B7D1',
+                    pointRadius: 25
+                }, {
+                    label: 'Post-processing',
+                    data: [{x: 4, y: 6}, {x: 4, y: 5}, {x: 4, y: 4}],
+                    backgroundColor: '#96CEB4',
+                    pointRadius: 12
+                }, {
+                    label: 'Output',
+                    data: [{x: 5, y: 5}],
+                    backgroundColor: '#FECA57',
+                    pointRadius: 18
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                const titles = {
+                                    'Input Layer': 'Raw Video Frame Input',
+                                    'Preprocessing': 'Frame Preparation',
+                                    'YOLO Inference': 'Object Detection Model',
+                                    'Post-processing': 'Detection Refinement',
+                                    'Output': 'Final Detection Results'
+                                };
+                                return titles[context[0].dataset.label];
+                            },
+                            label: function(context) {
+                                const details = {
+                                    'Input Layer': 'BGR frames from OpenCV VideoCapture (832x1088)',
+                                    'Preprocessing': 'Resize→640x640, BGR→RGB, Normalize 0-1',
+                                    'YOLO Inference': 'YOLOv11l model inference with 0.001 confidence',
+                                    'Post-processing': 'VRU filter, 0.01 threshold, NMS IoU=0.45',
+                                    'Output': 'Validated detections saved to database'
+                                };
+                                return details[context.dataset.label] || '';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        min: 0,
+                        max: 6,
+                        ticks: {
+                            callback: function(value) {
+                                const labels = ['', 'Input', 'Preprocess', 'Inference', 'Postprocess', 'Output'];
+                                return labels[value] || '';
+                            }
+                        }
+                    },
+                    y: {
+                        min: 3,
+                        max: 7,
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Component Interaction Network (showing relationships)
+        const networkCtx = document.getElementById('networkChart').getContext('2d');
+        new Chart(networkCtx, {
+            type: 'bubble',
+            data: {
+                datasets: [{
+                    label: 'Frontend Layer',
+                    data: [
+                        {x: 2, y: 8, r: 25, component: 'React App'},
+                        {x: 1, y: 7, r: 15, component: 'Video Player'},
+                        {x: 3, y: 7, r: 15, component: 'Dashboard'},
+                        {x: 2, y: 6, r: 12, component: 'WebSocket Client'}
+                    ],
+                    backgroundColor: 'rgba(97, 218, 251, 0.6)',
+                    borderColor: '#61DAFB'
+                }, {
+                    label: 'API Layer',
+                    data: [
+                        {x: 5, y: 8, r: 30, component: 'FastAPI Server'},
+                        {x: 4, y: 7, r: 18, component: 'Video Router'},
+                        {x: 6, y: 7, r: 18, component: 'Detection Router'},
+                        {x: 5, y: 6, r: 15, component: 'Socket.IO Server'}
+                    ],
+                    backgroundColor: 'rgba(0, 150, 136, 0.6)',
+                    borderColor: '#009688'
+                }, {
+                    label: 'Processing Layer',
+                    data: [
+                        {x: 8, y: 8, r: 35, component: 'Detection Pipeline'},
+                        {x: 7, y: 7, r: 20, component: 'Ground Truth Service'},
+                        {x: 9, y: 7, r: 20, component: 'Video Processor'},
+                        {x: 8, y: 6, r: 25, component: 'YOLO Models'}
+                    ],
+                    backgroundColor: 'rgba(255, 107, 107, 0.6)',
+                    borderColor: '#FF6B6B'
+                }, {
+                    label: 'Data Layer',
+                    data: [
+                        {x: 5, y: 4, r: 25, component: 'PostgreSQL'},
+                        {x: 3, y: 3, r: 15, component: 'Redis Cache'},
+                        {x: 7, y: 3, r: 15, component: 'File System'},
+                        {x: 5, y: 2, r: 12, component: 'Memory Store'}
+                    ],
+                    backgroundColor: 'rgba(78, 205, 196, 0.6)',
+                    borderColor: '#4ECDC4'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                return context[0].raw.component;
+                            },
+                            label: function(context) {
+                                const details = {
+                                    'React App': 'Main frontend application with routing and state management',
+                                    'Video Player': 'Custom video player with frame-level control',
+                                    'Dashboard': 'Analytics dashboard with real-time metrics',
+                                    'WebSocket Client': 'Real-time communication for live updates',
+                                    'FastAPI Server': 'Main API server handling all HTTP requests',
+                                    'Video Router': 'Video upload, processing, and management endpoints',
+                                    'Detection Router': 'ML detection pipeline API endpoints',
+                                    'Socket.IO Server': 'WebSocket server for real-time events',
+                                    'Detection Pipeline': 'Main detection orchestration service',
+                                    'Ground Truth Service': 'Automated ground truth generation',
+                                    'Video Processor': 'Video frame extraction and preprocessing',
+                                    'YOLO Models': 'YOLOv8/v11 object detection models',
+                                    'PostgreSQL': 'Primary database for all application data',
+                                    'Redis Cache': 'Caching layer for sessions and temporary data',
+                                    'File System': 'Video file storage and model cache',
+                                    'Memory Store': 'In-memory processing buffers'
+                                };
+                                return details[context.raw.component] || '';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        min: 0,
+                        max: 10,
+                        ticks: {
+                            callback: function(value) {
+                                const labels = ['', '', 'Frontend', '', '', 'API Layer', '', '', 'Processing', '', 'Storage'];
+                                return labels[value] || '';
+                            }
+                        }
+                    },
+                    y: {
+                        min: 1,
+                        max: 9,
+                        ticks: {
+                            callback: function(value) {
+                                const labels = ['', '', 'Data', 'Cache', '', 'Services', 'Communication', 'Components', 'Applications'];
+                                return labels[value] || '';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Processing Timeline Flow
+        const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+        new Chart(timelineCtx, {
+            type: 'bar',
+            data: {
+                labels: [
+                    'Upload\n(0-1s)', 'Validation\n(1-2s)', 'Storage\n(2-3s)', 
+                    'Frame Extract\n(3-5s)', 'YOLO Process\n(5-8s)', 'Filter\n(8-9s)',
+                    'Database Save\n(9-10s)', 'WebSocket\n(10s)', 'UI Update\n(10s)'
+                ],
+                datasets: [{
+                    label: 'Processing Time (seconds)',
+                    data: [1, 1, 1, 2, 3, 1, 1, 0.1, 0.1],
+                    backgroundColor: [
+                        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57',
+                        '#FF9FF3', '#54A0FF', '#5F27CD', '#00D2D3'
+                    ],
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const descriptions = {
+                                    'Upload\n(0-1s)': 'User uploads video file via frontend interface',
+                                    'Validation\n(1-2s)': 'Backend validates file type, size, security',
+                                    'Storage\n(2-3s)': 'Store video in file system with metadata',
+                                    'Frame Extract\n(3-5s)': 'Extract frames using OpenCV (every 5th frame)',
+                                    'YOLO Process\n(5-8s)': 'Run YOLOv11l inference on extracted frames',
+                                    'Filter\n(8-9s)': 'Apply confidence thresholds and VRU filtering',
+                                    'Database Save\n(9-10s)': 'Save detection results to PostgreSQL',
+                                    'WebSocket\n(10s)': 'Broadcast results to connected clients',
+                                    'UI Update\n(10s)': 'Update frontend with new detection data'
+                                };
+                                return `${context.parsed.x}s - ${descriptions[context.label]}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Time (seconds)'
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            font: {
+                                size: 10
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Add connection lines between components (using canvas overlay)
+        function drawConnections() {
+            const canvas = document.createElement('canvas');
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.pointerEvents = 'none';
+            canvas.style.zIndex = '10';
+            
+            // Add to each chart container
+            document.querySelectorAll('.chart-wrapper').forEach(container => {
+                const overlay = canvas.cloneNode();
+                overlay.width = container.offsetWidth;
+                overlay.height = container.offsetHeight;
+                container.style.position = 'relative';
+                container.appendChild(overlay);
+                
+                const ctx = overlay.getContext('2d');
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                
+                // Draw sample connection lines
+                ctx.beginPath();
+                ctx.moveTo(50, 50);
+                ctx.lineTo(150, 100);
+                ctx.stroke();
+            });
+        }
+
+        // Initialize connection drawing after charts are rendered
+        setTimeout(drawConnections, 1000);
+
+        // Add interactive click handlers
+        Chart.defaults.onClick = function(event, elements, chart) {
+            if (elements.length > 0) {
+                const element = elements[0];
+                const datasetLabel = chart.data.datasets[element.datasetIndex].label;
+                const dataPoint = chart.data.datasets[element.datasetIndex].data[element.index];
+                
+                let message = `🔍 Component: ${datasetLabel}\n`;
+                if (typeof dataPoint === 'object' && dataPoint.component) {
+                    message += `📦 ${dataPoint.component}\n`;
+                }
+                message += `📊 Click for detailed information`;
+                
+                console.log(message);
+                // Could trigger a modal or detailed view here
+            }
+        };
+
+        // Real-time flow simulation
+        let flowStep = 0;
+        const flowSteps = [
+            'Video uploaded by user',
+            'Security validation in progress',
+            'Storing video chunks...',
+            'Extracting metadata...',
+            'Background processing started',
+            'Extracting frames...',
+            'Running YOLO inference...',
+            'Applying detection filters...',
+            'Saving to database...',
+            'Broadcasting via WebSocket...',
+            'Frontend updated!'
+        ];
+
+        setInterval(() => {
+            flowStep = (flowStep + 1) % flowSteps.length;
+            console.log(`🔄 Flow Step ${flowStep + 1}: ${flowSteps[flowStep]}`);
+            
+            // Update any status indicators here
+            document.title = `System Flow - ${flowSteps[flowStep]}`;
+        }, 2000);
+    </script>
+</body>
+</html>

@@ -343,33 +343,31 @@ class FrameProcessor:
         self.target_size = target_size
     
     async def preprocess(self, frame: np.ndarray) -> np.ndarray:
-        """Preprocess frame for model inference"""
+        """Preprocess frame for model inference - YOLO handles preprocessing internally"""
         try:
-            # Resize frame to target size
-            resized = cv2.resize(frame, self.target_size)
+            # YOLO models expect original BGR uint8 frames (0-255)
+            # They handle resizing, normalization, and color conversion internally
+            # Only ensure frame is in correct format
+            if frame.dtype != np.uint8:
+                frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
             
-            # Normalize pixel values
-            normalized = resized.astype(np.float32) / 255.0
-            
-            # Convert BGR to RGB
-            rgb_frame = cv2.cvtColor(normalized, cv2.COLOR_BGR2RGB)
-            
-            return rgb_frame
+            # Return original frame - YOLO handles all preprocessing
+            return frame
             
         except Exception as e:
             logger.error(f"Error preprocessing frame: {str(e)}")
             raise
     
-    async def preprocess_batch(self, frames: List[np.ndarray]) -> np.ndarray:
-        """Batch preprocessing for multiple frames"""
+    async def preprocess_batch(self, frames: List[np.ndarray]) -> List[np.ndarray]:
+        """Batch preprocessing for multiple frames - return list for YOLO"""
         processed_frames = []
         
         for frame in frames:
             processed = await self.preprocess(frame)
             processed_frames.append(processed)
         
-        # Stack into batch tensor
-        return np.stack(processed_frames, axis=0)
+        # Return list of frames - YOLO handles batching internally
+        return processed_frames
 
 class TimestampSynchronizer:
     """Precise timestamp synchronization for detection events"""
