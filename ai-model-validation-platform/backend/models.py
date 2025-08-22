@@ -50,10 +50,15 @@ class Video(Base):
     annotation_sessions = relationship("AnnotationSession", back_populates="video", cascade="all, delete-orphan")
     project_links = relationship("VideoProjectLink", back_populates="video", cascade="all, delete-orphan")
 
-    # Composite index for common queries
+        # Enhanced composite indexes for performance-critical queries
     __table_args__ = (
         Index('idx_video_project_status', 'project_id', 'status'),
         Index('idx_video_project_created', 'project_id', 'created_at'),
+        Index('idx_video_ground_truth_status', 'ground_truth_generated', 'processing_status'),
+        Index('idx_video_file_path', 'file_path'),  # For file operations
+        Index('idx_video_duration_fps', 'duration', 'fps'),  # For metadata queries
+        Index('idx_video_project_ground_truth', 'project_id', 'ground_truth_generated'),
+        Index('idx_video_size_resolution', 'file_size', 'resolution'),  # For storage analysis
     )
 
 class GroundTruthObject(Base):
@@ -76,10 +81,16 @@ class GroundTruthObject(Base):
 
     video = relationship("Video", back_populates="ground_truth_objects")
 
-    # Composite index for common queries
+    # Enhanced composite indexes for performance-critical queries
     __table_args__ = (
         Index('idx_gt_video_timestamp', 'video_id', 'timestamp'),
         Index('idx_gt_video_class', 'video_id', 'class_label'),
+        Index('idx_gt_timestamp_class', 'timestamp', 'class_label'),  # For temporal class queries
+        Index('idx_gt_video_frame', 'video_id', 'frame_number'),  # For frame-based queries
+        Index('idx_gt_video_confidence', 'video_id', 'confidence'),  # For confidence filtering
+        Index('idx_gt_validated_class', 'validated', 'class_label'),  # For validation queries
+        Index('idx_gt_spatial_bounds', 'x', 'y', 'width', 'height'),  # For spatial queries
+        Index('idx_gt_video_validated_timestamp', 'video_id', 'validated', 'timestamp'),  # Complex filtering
     )
 
 class TestSession(Base):
@@ -140,13 +151,21 @@ class DetectionEvent(Base):
 
     test_session = relationship("TestSession", back_populates="detection_events")
 
-    # Updated composite indexes for performance-critical queries
+    # Comprehensive composite indexes for performance-critical queries
     __table_args__ = (
         Index('idx_detection_session_timestamp', 'test_session_id', 'timestamp'),
         Index('idx_detection_session_validation', 'test_session_id', 'validation_result'),
         Index('idx_detection_timestamp_confidence', 'timestamp', 'confidence'),
-        Index('idx_detection_frame_class', 'frame_number', 'class_label'),  # New index
-        Index('idx_detection_bbox_area', 'bounding_box_width', 'bounding_box_height'),  # New index
+        Index('idx_detection_frame_class', 'frame_number', 'class_label'),
+        Index('idx_detection_bbox_area', 'bounding_box_width', 'bounding_box_height'),
+        Index('idx_detection_session_frame', 'test_session_id', 'frame_number'),  # Frame-based queries
+        Index('idx_detection_class_confidence', 'class_label', 'confidence'),  # Class filtering with confidence
+        Index('idx_detection_vru_validation', 'vru_type', 'validation_result'),  # VRU analysis
+        Index('idx_detection_processing_time', 'processing_time_ms'),  # Performance analysis
+        Index('idx_detection_model_version', 'model_version'),  # Model tracking
+        Index('idx_detection_spatial_center', 'bounding_box_x', 'bounding_box_y'),  # Spatial center queries
+        Index('idx_detection_session_class_timestamp', 'test_session_id', 'class_label', 'timestamp'),  # Complex filtering
+        Index('idx_detection_confidence_validation_timestamp', 'confidence', 'validation_result', 'timestamp'),  # Analytics
     )
 
 class Annotation(Base):
@@ -173,13 +192,20 @@ class Annotation(Base):
     # Relationships
     video = relationship("Video", back_populates="annotations")
     
-    # Composite indexes for performance
+    # Comprehensive composite indexes for performance
     __table_args__ = (
         Index('idx_annotation_video_frame', 'video_id', 'frame_number'),
         Index('idx_annotation_video_timestamp', 'video_id', 'timestamp'),
         Index('idx_annotation_video_validated', 'video_id', 'validated'),
         Index('idx_annotation_detection_id', 'detection_id'),
         Index('idx_annotation_vru_validated', 'vru_type', 'validated'),
+        Index('idx_annotation_video_vru_frame', 'video_id', 'vru_type', 'frame_number'),  # VRU frame queries
+        Index('idx_annotation_annotator_validated', 'annotator', 'validated'),  # Annotator performance
+        Index('idx_annotation_temporal_range', 'timestamp', 'end_timestamp'),  # Temporal range queries
+        Index('idx_annotation_video_annotator_created', 'video_id', 'annotator', 'created_at'),  # Annotator tracking
+        Index('idx_annotation_vru_timestamp_validated', 'vru_type', 'timestamp', 'validated'),  # Complex VRU analysis
+        Index('idx_annotation_difficulty_analysis', 'difficult', 'occluded', 'truncated'),  # Quality analysis
+        Index('idx_annotation_video_temporal_coverage', 'video_id', 'timestamp', 'end_timestamp'),  # Coverage analysis
     )
 
 class AnnotationSession(Base):
@@ -218,9 +244,12 @@ class VideoProjectLink(Base):
     video = relationship("Video", back_populates="project_links")
     project = relationship("Project", back_populates="video_links")
     
-    # Composite indexes
+    # Enhanced composite indexes
     __table_args__ = (
         Index('idx_video_project_unique', 'video_id', 'project_id', unique=True),
+        Index('idx_video_project_intelligent', 'intelligent_match', 'confidence_score'),  # AI matching
+        Index('idx_video_project_created', 'project_id', 'created_at'),  # Temporal assignment tracking
+        Index('idx_video_assignment_confidence', 'confidence_score'),  # Confidence analysis
     )
 
 class TestResult(Base):
@@ -263,9 +292,14 @@ class DetectionComparison(Base):
     ground_truth = relationship("Annotation")
     detection_event = relationship("DetectionEvent")
     
-    # Composite indexes
+    # Enhanced composite indexes for analysis
     __table_args__ = (
         Index('idx_comparison_session_match', 'test_session_id', 'match_type'),
+        Index('idx_comparison_iou_temporal', 'iou_score', 'temporal_offset'),  # Accuracy analysis
+        Index('idx_comparison_session_ground_truth', 'test_session_id', 'ground_truth_id'),  # Ground truth tracking
+        Index('idx_comparison_session_detection', 'test_session_id', 'detection_event_id'),  # Detection tracking
+        Index('idx_comparison_match_iou', 'match_type', 'iou_score'),  # Quality metrics
+        Index('idx_comparison_temporal_distance', 'temporal_offset', 'distance_error'),  # Error analysis
     )
 
 class AuditLog(Base):
@@ -279,8 +313,11 @@ class AuditLog(Base):
     user_agent = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)  # Index for time-based queries
 
-    # Composite index for audit queries
+    # Enhanced composite indexes for comprehensive audit tracking
     __table_args__ = (
         Index('idx_audit_user_event', 'user_id', 'event_type'),
         Index('idx_audit_created_event', 'created_at', 'event_type'),
+        Index('idx_audit_ip_event_time', 'ip_address', 'event_type', 'created_at'),  # Security monitoring
+        Index('idx_audit_user_time_range', 'user_id', 'created_at'),  # User activity tracking
+        Index('idx_audit_event_data_analysis', 'event_type', 'created_at'),  # Event analysis
     )

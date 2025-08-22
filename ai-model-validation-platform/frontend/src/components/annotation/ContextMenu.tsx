@@ -369,12 +369,10 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       onClose={handleClose}
       anchorReference="anchorPosition"
       anchorPosition={anchorPosition}
-      slotProps={{
-        paper: {
-          style: {
-            maxHeight: 400,
-            minWidth: 200,
-          },
+      PaperProps={{
+        style: {
+          maxHeight: 400,
+          minWidth: 200,
         },
       }}
     >

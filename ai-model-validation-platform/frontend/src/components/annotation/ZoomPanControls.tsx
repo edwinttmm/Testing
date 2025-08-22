@@ -129,7 +129,7 @@ const ZoomPanControls: React.FC<ZoomPanControlsProps> = ({
   }, [containerSize, contentSize, scale, actions, onPanChange]);
 
   // Handle zoom slider change
-  const handleZoomSliderChange = useCallback((event: Event, value: number | number[]) => {
+  const handleZoomSliderChange = useCallback((_event: Event, value: number | number[]) => {
     const newScale = Array.isArray(value) ? value[0] : value;
     actions.setTransform({ scale: newScale });
     onZoomChange?.(newScale);

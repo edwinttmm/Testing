@@ -19,6 +19,7 @@ import {
   Dataset,
   Security,
   Settings,
+  PlayCircle,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -29,6 +30,7 @@ const menuItems = [
   { text: 'Projects', icon: <FolderOpen />, path: '/projects' },
   { text: 'Ground Truth', icon: <VideoLibrary />, path: '/ground-truth' },
   { text: 'Test Execution', icon: <PlayArrow />, path: '/test-execution' },
+  { text: 'Enhanced Test', icon: <PlayCircle />, path: '/enhanced-test-execution' },
   { text: 'Results', icon: <Assessment />, path: '/results' },
   { text: 'Datasets', icon: <Dataset />, path: '/datasets' },
   { text: 'Audit Logs', icon: <Security />, path: '/audit-logs' },

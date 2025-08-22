@@ -45,7 +45,7 @@ const AnnotationHistory: React.FC<AnnotationHistoryProps> = ({
 
   // Generate unique ID for actions
   const generateActionId = useCallback(() => {
-    return `action_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `action_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }, []);
 
   // Create action record

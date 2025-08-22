@@ -14,6 +14,7 @@ const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const GroundTruth = lazy(() => import('./pages/GroundTruth'));
 const TestExecution = lazy(() => import('./pages/TestExecution'));
+const EnhancedTestExecution = lazy(() => import('./pages/EnhancedTestExecution'));
 const Results = lazy(() => import('./pages/Results'));
 const Datasets = lazy(() => import('./pages/Datasets'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
@@ -136,6 +137,13 @@ const App: React.FC = () => {
                         <EnhancedErrorBoundary level="page" context="test-execution" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Test Execution..." />}>
                             <TestExecution />
+                          </Suspense>
+                        </EnhancedErrorBoundary>
+                      } />
+                      <Route path="/enhanced-test-execution" element={
+                        <EnhancedErrorBoundary level="page" context="enhanced-test-execution" enableRecovery={true}>
+                          <Suspense fallback={<LoadingFallback message="Loading Enhanced Test Execution..." />}>
+                            <EnhancedTestExecution />
                           </Suspense>
                         </EnhancedErrorBoundary>
                       } />

@@ -115,6 +115,9 @@ export interface VideoUpload {
 // VRU Detection Types
 export type VRUType = 'pedestrian' | 'cyclist' | 'motorcyclist' | 'wheelchair_user' | 'scooter_rider';
 
+// Export VRUType for annotation components
+export { VRUType as AnnotationVRUType };
+
 // Annotation Types
 export interface Detection {
   id: string;
