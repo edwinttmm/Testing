@@ -15,7 +15,6 @@ import {
   LinearProgress,
   Switch,
   FormControlLabel,
-  Badge,
   Divider,
   Grid,
 } from '@mui/material';
@@ -30,10 +29,7 @@ import {
   Refresh,
   ErrorOutline,
   Replay,
-  Stop,
   CameraAlt,
-  Visibility,
-  VisibilityOff,
   PlayCircle,
   StopCircle,
 } from '@mui/icons-material';
@@ -463,7 +459,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     // Convert to blob and create URL
     canvas.toBlob((blob) => {
       if (blob) {
-        const imageUrl = URL.createObjectURL(blob);
+        URL.createObjectURL(blob);
         setScreenshotCount(prev => prev + 1);
         onScreenshot?.(currentFrame, currentTime);
       }
@@ -482,6 +478,8 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
 
       return () => clearInterval(interval);
     }
+    // Return undefined when not running detection
+    return undefined;
   }, [isDetectionRunning, autoScreenshot, handleScreenshot]);
 
   useEffect(() => {
@@ -1121,10 +1119,10 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         </Box>
 
         {/* Current Annotations and Screenshots */}
-        <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mt: 1 }}>
+        <Box sx={{ mt: 1, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 1, sm: 2 } }}>
           {/* Annotations */}
           {showAnnotations && currentAnnotations.length > 0 && (
-            <Grid item xs={12} md={detectionScreenshots.length > 0 ? 6 : 12}>
+            <Box sx={{ flex: { xs: '1', md: detectionScreenshots.length > 0 ? '1' : '1' }, minWidth: 0 }}>
               <Paper sx={{ 
                 p: { xs: 1, sm: 2 }, 
                 bgcolor: 'grey.50',
@@ -1191,12 +1189,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                   ))}
                 </Stack>
               </Paper>
-            </Grid>
+            </Box>
           )}
           
           {/* Detection Screenshots */}
           {detectionScreenshots.length > 0 && (
-            <Grid item xs={12} md={showAnnotations && currentAnnotations.length > 0 ? 6 : 12}>
+            <Box sx={{ flex: { xs: '1', md: showAnnotations && currentAnnotations.length > 0 ? '1' : '1' }, minWidth: 0 }}>
               <Paper sx={{ 
                 p: { xs: 1, sm: 2 }, 
                 bgcolor: 'grey.50',
@@ -1256,9 +1254,9 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                   ))}
                 </Stack>
               </Paper>
-            </Grid>
+            </Box>
           )}
-        </Grid>
+        </Box>
       </CardContent>
     </Card>
   );
