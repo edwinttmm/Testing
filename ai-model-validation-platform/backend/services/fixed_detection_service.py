@@ -130,7 +130,10 @@ class FixedDetectionService:
                                     'occluded': False,
                                     'truncated': False,
                                     'difficult': False,
-                                    'validated': False
+                                    'validated': False,
+                                    # CRITICAL FIX: Pre-initialize videoId fields (will be set in process_video)
+                                    'videoId': None,  # Required by AnnotationCreate Pydantic schema
+                                    'video_id': None  # Add both formats for compatibility
                                 }
                                 
                                 detections.append(detection)
@@ -186,8 +189,9 @@ class FixedDetectionService:
                 
                 # Add video_id to each detection (FIX for database error)
                 for det in detections:
-                    det['videoId'] = video_id  # Critical fix!
-                    det['video_id'] = video_id  # Add both formats
+                    det['videoId'] = video_id  # Critical fix! Required by AnnotationCreate schema
+                    det['video_id'] = video_id  # Add both formats for compatibility
+                    logger.debug(f"✅ Added videoId={video_id} to detection {det['detection_id']}")
                     
                 all_detections.extend(detections)
                 processed_count += 1
@@ -226,6 +230,7 @@ class FixedDetectionService:
         """
         Validate detection data has all required fields
         """
+        # IMPORTANT: videoId is REQUIRED by AnnotationCreate Pydantic schema
         required_fields = ['videoId', 'detection_id', 'frame_number', 'timestamp', 
                           'vru_type', 'bounding_box']
         
