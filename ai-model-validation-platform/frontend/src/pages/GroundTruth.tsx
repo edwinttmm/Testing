@@ -53,13 +53,14 @@ import {
   BoundingBox,
  
 } from '../services/types';
-import { apiService } from '../services/api';
+import { apiService, getVideoDetections } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import { detectionService, DetectionConfig } from '../services/detectionService';
 import { useDetectionWebSocket } from '../hooks/useDetectionWebSocket';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
 import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
+import DetectionResultsPanel from '../components/DetectionResultsPanel';
 import { 
   detectionIdManager, 
   generateDetectionId, 
@@ -660,120 +661,23 @@ const GroundTruth: React.FC = () => {
       }
     }
     
-    // Auto-run detection pipeline with enhanced fallback mechanisms
+    // Load existing annotations (but don't auto-create new ones)
     try {
-      setIsRunningDetection(true);
-      
-      // Check if video already has annotations to avoid duplicate detection
-      let existingAnnotations: GroundTruthAnnotation[] = [];
-      try {
-        existingAnnotations = await apiService.getAnnotations(video.id);
-      } catch (err) {
-        console.warn('Could not fetch existing annotations:', err);
-      }
-      
-      if (existingAnnotations.length === 0) {
-        console.log('No existing annotations found, running enhanced detection pipeline...');
-        
-        // Configure detection pipeline with optimized settings
-        const detectionConfig: DetectionConfig = {
-          confidenceThreshold: 0.4, // Lower threshold to catch more objects
-          nmsThreshold: 0.5, // Good balance for NMS
-          modelName: 'yolov8s', // Use recommended model from backend
-          targetClasses: ['person', 'bicycle', 'motorcycle', 'car', 'bus', 'truck'],
-          maxRetries: 2, // Allow some retries
-          retryDelay: 1000, // Reasonable delay
-          useFallback: true // Enable fallback with mock data
-        };
-        
-        const detectionResult = await detectionService.runDetection(video.id, detectionConfig);
-        
-        if (detectionResult.success && detectionResult.detections.length > 0) {
-          setDetectionSource(detectionResult.source);
-          
-          // Save detections as annotations to the backend
-          const savedAnnotations: GroundTruthAnnotation[] = [];
-          
-          for (const detection of detectionResult.detections) {
-            try {
-              // Create annotation payload without id, createdAt, updatedAt (backend will generate these)
-              const annotationPayload: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
-                videoId: video.id,
-                detectionId: detection.detectionId,
-                frameNumber: detection.frameNumber,
-                timestamp: detection.timestamp,
-                vruType: detection.vruType,
-                boundingBox: detection.boundingBox,
-                occluded: detection.occluded || false,
-                truncated: detection.truncated || false,
-                difficult: detection.difficult || false,
-                validated: detection.validated || false,
-              };
-              
-              // Save annotation to backend
-              const savedAnnotation = await apiService.createAnnotation(video.id, annotationPayload);
-              savedAnnotations.push(savedAnnotation);
-            } catch (err) {
-              console.warn('Failed to save detection as annotation:', err);
-              // Continue with other detections even if one fails
-            }
-          }
-          
-          // Update state with saved annotations
-          setAnnotations(savedAnnotations);
-          
-          // Update detection ID manager
-          detectionIdManager.clear(); // Clear previous data
-          savedAnnotations.forEach(annotation => {
-            createDetectionTracker(
-              annotation.detectionId,
-              annotation.vruType,
-              annotation.frameNumber,
-              annotation.timestamp,
-              annotation.boundingBox,
-              annotation.boundingBox.confidence || 1.0
-            );
-          });
-          
-          const sourceMessage = detectionResult.source === 'backend' 
-            ? '🎯 AI Detection' 
-            : '🚧 Demo Detection';
-          
-          setSuccessMessage(`${sourceMessage} completed: Found and saved ${savedAnnotations.length} objects in ${(detectionResult.processingTime / 1000).toFixed(1)}s`);
-          
-          // HTTP-only workflow - no WebSocket connections needed
-          console.log('✅ Detection completed using HTTP-only workflow');
-        } else if (detectionResult.success && detectionResult.detections.length === 0) {
-          setDetectionSource(detectionResult.source);
-          setSuccessMessage('Detection completed - no objects found in this video');
-        } else {
-          // Detection failed
-          console.error('Detection failed:', detectionResult.error);
-          setDetectionError(detectionResult.error || 'Detection service unavailable');
-        }
-      } else {
-        console.log(`Found ${existingAnnotations.length} existing annotations`);
+      const existingAnnotations = await apiService.getAnnotations(video.id);
+      if (existingAnnotations && existingAnnotations.length > 0) {
         setAnnotations(existingAnnotations);
+        console.log(`Loaded ${existingAnnotations.length} existing annotations`);
+      } else {
+        console.log('No existing annotations found. Use detection controls to analyze this video.');
+        setAnnotations([]);
       }
-      
-    } catch (error: any) {
-      console.error('Detection pipeline error:', error);
-      let errorMessage = 'An unexpected error occurred during detection.';
-      
-      if (error?.message) {
-        if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorMessage = 'Network connection issue. Please check your internet connection and try again.';
-        } else if (error.message.includes('timeout')) {
-          errorMessage = 'Detection timed out. Please try with a shorter video or check server status.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      setDetectionError(errorMessage);
-    } finally {
-      setIsRunningDetection(false);
+    } catch (err) {
+      console.warn('Could not load existing annotations:', err);
+      setAnnotations([]);
     }
+    
+    // Ensure detection is not running by default
+    setIsRunningDetection(false);
   };
 
   // Start annotation session with improved project context handling

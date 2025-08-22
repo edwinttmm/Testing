@@ -830,6 +830,28 @@ class ApiService {
     return this.cachedRequest('GET', '/api/detection/models/available');
   }
 
+  // Get detection results for a video
+  async getVideoDetections(videoId: string): Promise<any[]> {
+    try {
+      const response = await this.api.get(`/api/videos/${videoId}/detections`);
+      return response.data.detections || [];
+    } catch (error: any) {
+      console.error('Failed to fetch video detections:', error);
+      throw ErrorFactory.createApiError(error.response, null, { originalError: error });
+    }
+  }
+
+  // Get detection results for a test session  
+  async getTestSessionDetections(sessionId: string): Promise<any[]> {
+    try {
+      const response = await this.api.get(`/api/test-sessions/${sessionId}/detections`);
+      return response.data.detections || [];
+    } catch (error: any) {
+      console.error('Failed to fetch session detections:', error);
+      throw ErrorFactory.createApiError(error.response, null, { originalError: error });
+    }
+  }
+
   // Signal Processing
   async processSignal(signalType: SignalType, signalData: any, config?: any): Promise<SignalProcessingResult> {
     return this.cachedRequest<SignalProcessingResult>('POST', '/api/signals/process', {
@@ -958,6 +980,8 @@ export const organizeVideoLibrary = apiServiceInstance.organizeVideoLibrary.bind
 export const assessVideoQuality = apiServiceInstance.assessVideoQuality.bind(apiServiceInstance);
 export const runDetectionPipeline = apiServiceInstance.runDetectionPipeline.bind(apiServiceInstance);
 export const getAvailableModels = apiServiceInstance.getAvailableModels.bind(apiServiceInstance);
+export const getVideoDetections = apiServiceInstance.getVideoDetections.bind(apiServiceInstance);
+export const getTestSessionDetections = apiServiceInstance.getTestSessionDetections.bind(apiServiceInstance);
 export const processSignal = apiServiceInstance.processSignal.bind(apiServiceInstance);
 export const getSupportedProtocols = apiServiceInstance.getSupportedProtocols.bind(apiServiceInstance);
 export const configurePassFailCriteria = apiServiceInstance.configurePassFailCriteria.bind(apiServiceInstance);

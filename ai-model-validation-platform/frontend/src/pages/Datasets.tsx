@@ -68,9 +68,12 @@ import {
   deleteVideo,
   getAllVideos,
   getProjects,
+  runDetectionPipeline,
+  getVideoDetections,
 } from '../services/api';
 import EnhancedVideoPlayer from '../components/EnhancedVideoPlayer';
 import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
+import DetectionResultsPanel from '../components/DetectionResultsPanel';
 
 // Enhanced interfaces for dataset management
 interface DatasetFilter {
@@ -175,6 +178,19 @@ const Datasets: React.FC = () => {
     projectDistribution: {},
     qualityMetrics: { highQuality: 0, mediumQuality: 0, lowQuality: 0 },
     recentActivity: [],
+  });
+
+  // Detection state
+  const [detectionState, setDetectionState] = useState<{
+    isRunning: boolean;
+    detections: any[];
+    progress: number;
+    error: string | null;
+  }>({
+    isRunning: false,
+    detections: [],
+    progress: 0,
+    error: null
   });
 
   const calculateStats = useCallback((videosData: VideoWithAnnotations[]) => {
@@ -448,6 +464,47 @@ const Datasets: React.FC = () => {
   const handleVideoSelect = useCallback(async (video: VideoWithAnnotations) => {
     setSelectedVideo(video);
     setViewDialog(true);
+  }, []);
+
+  // Detection handlers
+  const handleDetectionStart = useCallback(async () => {
+    if (!selectedVideo || detectionState.isRunning) {
+      alert('Detection already running or no video selected');
+      return;
+    }
+
+    try {
+      setDetectionState(prev => ({ ...prev, isRunning: true, error: null }));
+      
+      await runDetectionPipeline(selectedVideo.id, {
+        confidenceThreshold: 0.4,
+        nmsThreshold: 0.45,
+        modelName: 'yolo11l',
+        targetClasses: ['pedestrian', 'cyclist', 'motorcyclist']
+      });
+      
+      // Fetch and display results
+      const detections = await getVideoDetections(selectedVideo.id);
+      setDetectionState(prev => ({ 
+        ...prev, 
+        isRunning: false, 
+        detections,
+        progress: 100 
+      }));
+      
+    } catch (error: any) {
+      console.error('Detection failed:', error);
+      setDetectionState(prev => ({ 
+        ...prev, 
+        isRunning: false, 
+        error: error.message 
+      }));
+    }
+  }, [selectedVideo, detectionState.isRunning]);
+
+  const handleDetectionStop = useCallback(() => {
+    setDetectionState(prev => ({ ...prev, isRunning: false }));
+    // TODO: Implement actual pipeline cancellation
   }, []);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>, videoId: string) => {
@@ -1200,6 +1257,9 @@ const Datasets: React.FC = () => {
                   frameRate={30}
                   autoRetry={true}
                   maxRetries={3}
+                  showDetectionControls={true}
+                  onDetectionStart={handleDetectionStart}
+                  onDetectionStop={handleDetectionStop}
                 />
               </Grid>
               <Grid size={{ xs: 12, lg: 4 }}>
@@ -1257,6 +1317,20 @@ const Datasets: React.FC = () => {
                     </Typography>
                   )}
                 </Paper>
+                
+                {/* Detection Results */}
+                <Box sx={{ mt: 2 }}>
+                  <DetectionResultsPanel 
+                    detections={detectionState.detections}
+                    loading={false}
+                    error={detectionState.error}
+                    isRunning={detectionState.isRunning}
+                    onDetectionSelect={(detection) => {
+                      console.log('Selected detection:', detection);
+                      // TODO: Seek video to detection timestamp
+                    }}
+                  />
+                </Box>
               </Grid>
             </Grid>
           )}
