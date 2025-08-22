@@ -39,6 +39,8 @@ interface VideoAnnotationPlayerProps {
   annotationMode: boolean;
   selectedAnnotation?: GroundTruthAnnotation | null;
   frameRate?: number;
+  showDetectionControls?: boolean;
+  detectionControlsComponent?: React.ReactNode;
 }
 
 
@@ -51,6 +53,8 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   annotationMode,
   selectedAnnotation,
   frameRate = 30,
+  showDetectionControls = false,
+  detectionControlsComponent,
 }) => {
   // Conditional debug logging (only in development)
   if (isDebugEnabled()) {
@@ -404,6 +408,13 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   return (
     <Card sx={{ mb: 2 }}>
       <CardContent>
+        {/* Detection Controls (if enabled) */}
+        {showDetectionControls && detectionControlsComponent && (
+          <Box sx={{ mb: 2 }}>
+            {detectionControlsComponent}
+          </Box>
+        )}
+        
         <Box ref={containerRef} sx={{ position: 'relative', bgcolor: 'black', borderRadius: 1, minHeight: 300 }}>
           {/* Loading State */}
           {loading && (
