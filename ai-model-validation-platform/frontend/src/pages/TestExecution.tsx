@@ -377,15 +377,37 @@ const TestExecution: React.FC = () => {
 
 
   return (
-    <Box>
+    <Box sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'stretch', sm: 'center' }, 
+        mb: 3,
+        gap: { xs: 2, sm: 0 }
+      }}>
+        <Typography 
+          variant="h4" 
+          component="h1"
+          sx={{ 
+            fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' },
+            textAlign: { xs: 'center', sm: 'left' }
+          }}
+        >
           Test Execution
         </Typography>
         
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <FormControl sx={{ minWidth: 200 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 1, sm: 1 },
+          width: { xs: '100%', sm: 'auto' }
+        }}>
+          <FormControl sx={{ 
+            minWidth: { xs: '100%', sm: 200 },
+            mb: { xs: 1, sm: 0 }
+          }}>
             <InputLabel>Project</InputLabel>
             <Select
               value={selectedProject?.id || ''}
@@ -407,6 +429,15 @@ const TestExecution: React.FC = () => {
             startIcon={<VideoIcon />}
             onClick={() => setVideoSelectionOpen(true)}
             disabled={!selectedProject}
+            size={window.innerWidth < 600 ? "medium" : "small"}
+            sx={{
+              minHeight: { xs: '48px', sm: 'auto' },
+              fontSize: { xs: '0.9rem', sm: '0.875rem' },
+              touchAction: 'manipulation',
+              '&:active': {
+                transform: 'scale(0.95)'
+              }
+            }}
           >
             Select Videos ({selectedVideos.length})
           </Button>
@@ -416,6 +447,15 @@ const TestExecution: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => setSessionDialogOpen(true)}
             disabled={!selectedProject || selectedVideos.length === 0 || getModelConfigsCount(selectedProject || {} as Project) === 0}
+            size={window.innerWidth < 600 ? "medium" : "small"}
+            sx={{
+              minHeight: { xs: '48px', sm: 'auto' },
+              fontSize: { xs: '0.9rem', sm: '0.875rem' },
+              touchAction: 'manipulation',
+              '&:active': {
+                transform: 'scale(0.95)'
+              }
+            }}
           >
             New Session
           </Button>
@@ -435,10 +475,23 @@ const TestExecution: React.FC = () => {
 
       {/* Current Execution Status */}
       {isRunning && currentSession && (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="h6">
+        <Card sx={{ mb: 3, mx: { xs: 0, sm: 'auto' } }}>
+          <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+            <Box sx={{ 
+              display: 'flex', 
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: { xs: 'stretch', sm: 'center' }, 
+              justifyContent: 'space-between', 
+              mb: 2,
+              gap: { xs: 2, sm: 0 }
+            }}>
+              <Typography 
+                variant="h6"
+                sx={{ 
+                  fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                  textAlign: { xs: 'center', sm: 'left' }
+                }}
+              >
                 Running: {currentSession.name}
               </Typography>
               <Button
@@ -446,6 +499,16 @@ const TestExecution: React.FC = () => {
                 color="error"
                 startIcon={<StopIcon />}
                 onClick={stopTestExecution}
+                size={window.innerWidth < 600 ? "medium" : "small"}
+                sx={{
+                  minHeight: { xs: '48px', sm: 'auto' },
+                  fontSize: { xs: '0.9rem', sm: '0.875rem' },
+                  touchAction: 'manipulation',
+                  width: { xs: '100%', sm: 'auto' },
+                  '&:active': {
+                    transform: 'scale(0.95)'
+                  }
+                }}
               >
                 Stop Execution
               </Button>
@@ -453,7 +516,14 @@ const TestExecution: React.FC = () => {
             
             <LinearProgress sx={{ mb: 2 }} />
             
-            <Typography variant="body2" color="text.secondary">
+            <Typography 
+              variant="body2" 
+              color="text.secondary"
+              sx={{ 
+                fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                textAlign: { xs: 'center', sm: 'left' }
+              }}
+            >
               Progress: {testResults.length} / {selectedVideos.length * getModelConfigsCount(selectedProject || {} as Project)} tests completed
             </Typography>
           </CardContent>
@@ -461,23 +531,52 @@ const TestExecution: React.FC = () => {
       )}
 
       {/* Test Sessions */}
-      <Typography variant="h5" sx={{ mb: 2 }}>
+      <Typography 
+        variant="h5" 
+        sx={{ 
+          mb: 2,
+          fontSize: { xs: '1.25rem', sm: '1.5rem' },
+          textAlign: { xs: 'center', sm: 'left' }
+        }}
+      >
         Test Sessions
         {selectedProject && (
-          <Typography variant="body2" color="text.secondary" component="span" sx={{ ml: 2 }}>
+          <Typography 
+            variant="body2" 
+            color="text.secondary" 
+            component="span" 
+            sx={{ 
+              ml: { xs: 0, sm: 2 },
+              display: { xs: 'block', sm: 'inline' },
+              fontSize: { xs: '0.8rem', sm: '0.875rem' }
+            }}
+          >
             for {selectedProject.name}
           </Typography>
         )}
       </Typography>
       
       {sessions.length === 0 ? (
-        <Card>
-          <CardContent sx={{ textAlign: 'center', py: 4 }}>
+        <Card sx={{ mx: { xs: 0, sm: 'auto' } }}>
+          <CardContent sx={{ 
+            textAlign: 'center', 
+            py: { xs: 3, sm: 4 },
+            px: { xs: 2, sm: 3 }
+          }}>
             <ReportIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" gutterBottom>
+            <Typography 
+              variant="h6" 
+              color="text.secondary" 
+              gutterBottom
+              sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+            >
               No test sessions yet
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography 
+              variant="body2" 
+              color="text.secondary"
+              sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+            >
               Create your first test session to start evaluating models
             </Typography>
           </CardContent>

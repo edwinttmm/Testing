@@ -36,3 +36,51 @@
     transform: rotate(360deg);
   }
 }
+
+/* Import responsive video styles */
+@import './styles/responsive-video.css';
+
+/* Global responsive improvements */
+* {
+  box-sizing: border-box;
+}
+
+/* Touch-friendly base styles */
+@media (pointer: coarse) {
+  button, .MuiButton-root {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  .MuiIconButton-root {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+/* Responsive container */
+.responsive-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+@media (max-width: 599px) {
+  .responsive-container {
+    padding: 0 8px;
+  }
+}
+
+/* Screen reader only class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

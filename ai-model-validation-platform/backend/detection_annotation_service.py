@@ -44,27 +44,80 @@ class DetectionAnnotationService:
         return formatted_annotation
     
     async def create_annotation_from_detection(self, detection_data: Dict[str, Any], video_id: str) -> Optional[Dict[str, Any]]:
-        """Create annotation from detection data via API"""
+        """Create annotation from detection data via API with fallback to direct database"""
         
         try:
             # Format the detection data properly
             annotation_payload = self.format_detection_for_annotation(detection_data, video_id)
             
-            # Make API call to create annotation
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/api/videos/{video_id}/annotations",
-                    json=annotation_payload,
-                    timeout=30.0
-                )
+            # Try API call first (preferred method)
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/videos/{video_id}/annotations",
+                        json=annotation_payload,
+                        timeout=30.0
+                    )
+                    
+                    if response.status_code in [200, 201]:
+                        result = response.json()
+                        logger.info(f"✅ Created annotation {result.get('id')} for detection {annotation_payload['detectionId']}")
+                        return result
+                    else:
+                        logger.warning(f"⚠️ API call failed: {response.status_code} - {response.text}")
+                        raise Exception(f"API returned {response.status_code}")
+                        
+            except Exception as api_error:
+                logger.warning(f"⚠️ API call failed, falling back to direct database: {api_error}")
                 
-                if response.status_code == 200:
-                    result = response.json()
-                    logger.info(f"✅ Created annotation {result.get('id')} for detection {annotation_payload['detectionId']}")
-                    return result
-                else:
-                    logger.error(f"❌ Failed to create annotation: {response.status_code} - {response.text}")
-                    return None
+                # Fallback to direct database insertion
+                from database import SessionLocal
+                from models import Annotation
+                from datetime import datetime
+                import uuid
+                
+                db = SessionLocal()
+                try:
+                    db_annotation = Annotation(
+                        id=str(uuid.uuid4()),
+                        video_id=video_id,
+                        detection_id=annotation_payload.get('detectionId'),
+                        frame_number=annotation_payload.get('frameNumber', 0),
+                        timestamp=annotation_payload.get('timestamp', 0.0),
+                        end_timestamp=annotation_payload.get('endTimestamp'),
+                        vru_type=annotation_payload.get('vruType', 'pedestrian'),
+                        bounding_box=annotation_payload.get('boundingBox', {}),
+                        occluded=annotation_payload.get('occluded', False),
+                        truncated=annotation_payload.get('truncated', False),
+                        difficult=annotation_payload.get('difficult', False),
+                        notes=annotation_payload.get('notes'),
+                        annotator=annotation_payload.get('annotator'),
+                        validated=annotation_payload.get('validated', False),
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    
+                    db.add(db_annotation)
+                    db.commit()
+                    db.refresh(db_annotation)
+                    
+                    logger.info(f"✅ Created annotation {db_annotation.id} via database fallback")
+                    
+                    # Return in API format for consistency
+                    return {
+                        "id": db_annotation.id,
+                        "videoId": db_annotation.video_id,
+                        "detectionId": db_annotation.detection_id,
+                        "frameNumber": db_annotation.frame_number,
+                        "timestamp": db_annotation.timestamp,
+                        "vruType": db_annotation.vru_type,
+                        "boundingBox": db_annotation.bounding_box,
+                        "validated": db_annotation.validated,
+                        "createdAt": db_annotation.created_at.isoformat()
+                    }
+                    
+                finally:
+                    db.close()
                     
         except Exception as e:
             logger.error(f"❌ Error creating annotation from detection: {e}")

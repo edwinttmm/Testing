@@ -122,6 +122,22 @@ const Dashboard: React.FC = () => {
     setRealtimeUpdates(prev => prev + 1);
   }, [updateStatsSafely]);
 
+  const handleAnnotationCreated = useCallback((data: any) => {
+    console.log('📝 Annotation created event received:', data);
+    updateStatsSafely(prevStats => ({
+      ...prevStats,
+      detection_event_count: prevStats.detection_event_count + 1,
+      total_detections: prevStats.total_detections + 1
+    }));
+    setRealtimeUpdates(prev => prev + 1);
+  }, [updateStatsSafely]);
+
+  const handleAnnotationValidated = useCallback((data: any) => {
+    console.log('✅ Annotation validated event received:', data);
+    // Don't increment counts for validation, just update quality metrics
+    setRealtimeUpdates(prev => prev + 1);
+  }, []);
+
   const handleSignalProcessed = useCallback((data: any) => {
     console.log('📡 Signal processed event received:', data);
     updateStatsSafely(prevStats => {
@@ -263,6 +279,10 @@ const Dashboard: React.FC = () => {
     const unsubscribeTestSessionStart = subscribe('test_session_started', handleTestStarted);
     const unsubscribeDetection = subscribe('detection_event', handleDetectionEvent);
     const unsubscribeDetectionResult = subscribe('detection_result', handleDetectionEvent);
+    const unsubscribeAnnotationCreated = subscribe('annotation_created', handleAnnotationCreated);
+    const unsubscribeAnnotationValidated = subscribe('annotation_validated', handleAnnotationValidated);
+    const unsubscribeAnnotationUpdated = subscribe('annotation_updated', handleAnnotationCreated);
+    const unsubscribeGroundTruthGenerated = subscribe('ground_truth_generated', handleDetectionEvent);
     const unsubscribeSignal = subscribe('signal_processed', handleSignalProcessed);
     const unsubscribeSignalProcessing = subscribe('signal_processing_result', handleSignalProcessed);
 
@@ -275,6 +295,8 @@ const Dashboard: React.FC = () => {
         'test_completed', 'test_session_completed',
         'test_started', 'test_session_started',
         'detection_event', 'detection_result',
+        'annotation_created', 'annotation_updated', 'annotation_validated',
+        'ground_truth_generated',
         'signal_processed', 'signal_processing_result'
       ]
     });
@@ -292,6 +314,10 @@ const Dashboard: React.FC = () => {
       unsubscribeTestSessionStart?.();
       unsubscribeDetection?.();
       unsubscribeDetectionResult?.();
+      unsubscribeAnnotationCreated?.();
+      unsubscribeAnnotationValidated?.();
+      unsubscribeAnnotationUpdated?.();
+      unsubscribeGroundTruthGenerated?.();
       unsubscribeSignal?.();
       unsubscribeSignalProcessing?.();
       
@@ -307,6 +333,8 @@ const Dashboard: React.FC = () => {
     handleTestCompleted,
     handleTestStarted,
     handleDetectionEvent,
+    handleAnnotationCreated,
+    handleAnnotationValidated,
     handleSignalProcessed
   ]);
 
