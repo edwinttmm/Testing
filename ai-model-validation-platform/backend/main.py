@@ -1151,12 +1151,15 @@ async def get_ground_truth(
     video_id: str,
     db: Session = Depends(get_db)
 ):
-    """Get ground truth data for a video"""
+    """Get ground truth data for a video - READ ONLY, does not trigger processing"""
     try:
         # Check if video exists
         video = db.query(Video).filter(Video.id == video_id).first()
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
+        
+        # Log processing status for debugging
+        logger.info(f"📊 Ground truth request for {video.filename}: status={video.processing_status}, generated={video.ground_truth_generated}")
         
         # Get ground truth objects from database
         ground_truth_objects = db.query(GroundTruthObject).filter(

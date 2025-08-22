@@ -80,6 +80,18 @@ class GroundTruthService:
     
     def _process_video(self, video_id: str, video_file_path: str):
         """Process video synchronously using YOLO for ground truth generation"""
+        from processing_state_guard import processing_guard
+        
+        # Check if processing can start
+        if not processing_guard.can_start_processing(video_id):
+            logger.warning(f"🚫 Skipping duplicate processing request for video {video_id}")
+            return
+        
+        # Mark as starting processing
+        if not processing_guard.start_processing(video_id):
+            logger.warning(f"🚫 Could not start processing for video {video_id}")
+            return
+        
         db = SessionLocal()
         
         try:
@@ -89,6 +101,7 @@ class GroundTruthService:
             import os
             if not os.path.exists(video_file_path):
                 logger.error(f"❌ Video file not found: {video_file_path}")
+                processing_guard.complete_processing(video_id, success=False)
                 update_video_status(db, video_id, "failed")
                 return
             
@@ -147,6 +160,9 @@ class GroundTruthService:
                 video.ground_truth_generated = True
                 db.commit()
                 logger.info(f"✅ Ground truth processing completed for video {video_id} with {detection_count} detections")
+            
+            # Mark processing as completed
+            processing_guard.complete_processing(video_id, success=True)
             
         except Exception as e:
             logger.error(f"💥 Error processing video {video_id}: {str(e)}")

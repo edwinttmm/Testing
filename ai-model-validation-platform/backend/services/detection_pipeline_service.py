@@ -63,17 +63,17 @@ class DetectionResult:
 # VRU Detection Configuration - Ultra-low thresholds for YOLOv11l debugging
 VRU_DETECTION_CONFIG = {
     "pedestrian": {
-        "min_confidence": 0.01,  # Ultra-low threshold to catch ANY person detection
+        "min_confidence": 0.4,  # Production threshold for reliable pedestrian detection
         "nms_threshold": 0.45,
         "class_id": 0
     },
     "cyclist": {
-        "min_confidence": 0.01,  # Ultra-low threshold for debugging
+        "min_confidence": 0.4,  # Production threshold for reliable cyclist detection
         "nms_threshold": 0.40,
         "class_id": 1
     },
     "motorcyclist": {
-        "min_confidence": 0.01,  # Ultra-low threshold for debugging
+        "min_confidence": 0.4,  # Production threshold for reliable motorcyclist detection
         "nms_threshold": 0.35,
         "class_id": 3  # COCO class 3 is motorcycle, not 2!
     },
@@ -795,10 +795,9 @@ class DetectionPipeline:
                 
                 frame_number += 1
                 
-                # Process every frame for better detection accuracy (especially for pedestrians)
-                # Comment out frame skipping to catch all pedestrians
-                # if frame_number % 5 != 0:
-                #     continue
+                # Process every 5th frame for efficiency (can be adjusted for accuracy vs speed)
+                if frame_number % 5 != 0:
+                    continue
                 
                 try:
                     # Preprocess frame
