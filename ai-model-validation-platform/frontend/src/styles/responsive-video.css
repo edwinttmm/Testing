@@ -1,0 +1,333 @@
+/* Responsive Video Player and Detection UI Styles */
+
+/* Mobile-first approach for video controls */
+@media (max-width: 599px) {
+  /* Video player container */
+  .video-player-container {
+    padding: 8px;
+    margin: 0;
+  }
+
+  /* Video element responsive sizing */
+  .video-player-container video {
+    max-height: 70vh;
+    min-height: 200px;
+    width: 100%;
+    object-fit: contain;
+  }
+
+  /* Touch-friendly controls */
+  .video-controls {
+    padding: 12px 8px;
+    gap: 8px;
+  }
+
+  .video-controls .MuiIconButton-root {
+    min-width: 48px;
+    min-height: 48px;
+    padding: 12px;
+  }
+
+  .video-controls .MuiButton-root {
+    min-height: 44px;
+    font-size: 0.8rem;
+    padding: 8px 16px;
+    touch-action: manipulation;
+  }
+
+  .video-controls .MuiButton-root:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+  }
+
+  /* Progress slider for mobile */
+  .video-progress-slider .MuiSlider-root {
+    height: 8px;
+  }
+
+  .video-progress-slider .MuiSlider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  .video-progress-slider .MuiSlider-thumb:hover {
+    box-shadow: 0px 0px 0px 8px rgba(25, 118, 210, 0.16);
+  }
+
+  /* Volume control adjustments */
+  .volume-control {
+    width: 100%;
+    margin-top: 8px;
+    order: 3;
+  }
+
+  .volume-control .MuiSlider-root {
+    width: 60px;
+    height: 6px;
+  }
+
+  /* Hide playback rate controls on mobile */
+  .playback-rate-controls {
+    display: none;
+  }
+
+  /* Annotations display for mobile */
+  .annotations-container {
+    padding: 8px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  .annotation-chip {
+    min-height: 36px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+    touch-action: manipulation;
+  }
+
+  .annotation-chip:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+  }
+
+  .annotation-chip .annotation-indicator {
+    width: 8px;
+    height: 8px;
+  }
+
+  /* Detection controls for mobile */
+  .detection-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .detection-controls .MuiTypography-subtitle2 {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+  }
+
+  .detection-controls .MuiButton-root {
+    min-height: 44px;
+    font-size: 0.8rem;
+    padding: 12px 24px;
+  }
+
+  /* Screenshots grid for mobile */
+  .screenshots-grid {
+    max-height: 200px;
+    overflow-y: auto;
+    gap: 8px;
+  }
+
+  .screenshot-item {
+    max-width: 150px;
+    touch-action: manipulation;
+  }
+
+  .screenshot-item:active {
+    transform: scale(0.98);
+  }
+}
+
+/* Tablet styles */
+@media (min-width: 600px) and (max-width: 959px) {
+  .video-player-container {
+    padding: 16px;
+  }
+
+  .video-controls {
+    padding: 16px 12px;
+    gap: 12px;
+  }
+
+  .video-controls .MuiIconButton-root {
+    padding: 8px;
+  }
+
+  .video-controls .MuiButton-root {
+    font-size: 0.875rem;
+  }
+
+  .annotations-container {
+    padding: 16px;
+  }
+
+  .annotation-chip {
+    padding: 8px 16px;
+    font-size: 0.75rem;
+  }
+
+  .annotation-chip .annotation-indicator {
+    width: 12px;
+    height: 12px;
+  }
+
+  .detection-controls {
+    gap: 16px;
+  }
+
+  .screenshots-grid {
+    gap: 12px;
+  }
+}
+
+/* Desktop styles */
+@media (min-width: 960px) {
+  .video-player-container {
+    padding: 24px;
+  }
+
+  .video-controls {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .playback-rate-controls {
+    display: flex;
+  }
+
+  .volume-control {
+    margin-top: 0;
+    order: initial;
+    width: auto;
+  }
+
+  .annotations-container {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .screenshots-grid {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* Touch-friendly interactions */
+@media (pointer: coarse) {
+  .MuiIconButton-root,
+  .MuiButton-root,
+  .annotation-chip,
+  .screenshot-item {
+    touch-action: manipulation;
+  }
+
+  .MuiSlider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+
+  .MuiSlider-thumb:hover {
+    box-shadow: 0px 0px 0px 8px rgba(25, 118, 210, 0.16);
+  }
+}
+
+/* High-density displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .video-player-container canvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+
+  .annotation-chip .annotation-indicator {
+    border: 0.5px solid rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Landscape orientation optimizations */
+@media (orientation: landscape) and (max-height: 500px) {
+  .video-player-container video {
+    max-height: 85vh;
+  }
+
+  .video-controls {
+    padding: 8px;
+  }
+
+  .annotations-container {
+    max-height: 80px;
+  }
+
+  .detection-controls .MuiTypography-subtitle2 {
+    display: none;
+  }
+}
+
+/* Portrait orientation optimizations */
+@media (orientation: portrait) and (max-width: 599px) {
+  .video-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .video-controls > * {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .volume-control {
+    order: -1;
+    margin-bottom: 12px;
+  }
+}
+
+/* Accessibility improvements for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .MuiButton-root:active,
+  .annotation-chip:active,
+  .screenshot-item:active {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+  .video-player-container {
+    background-color: #121212;
+  }
+
+  .annotations-container,
+  .screenshots-grid {
+    background-color: #1e1e1e;
+  }
+
+  .annotation-chip {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* Focus improvements for keyboard navigation */
+.video-controls .MuiIconButton-root:focus-visible,
+.video-controls .MuiButton-root:focus-visible,
+.annotation-chip:focus-visible {
+  outline: 2px solid #2196f3;
+  outline-offset: 2px;
+}
+
+/* Custom scrollbar for mobile */
+.annotations-container::-webkit-scrollbar,
+.screenshots-grid::-webkit-scrollbar {
+  width: 4px;
+}
+
+.annotations-container::-webkit-scrollbar-track,
+.screenshots-grid::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+
+.annotations-container::-webkit-scrollbar-thumb,
+.screenshots-grid::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 2px;
+}
+
+.annotations-container::-webkit-scrollbar-thumb:hover,
+.screenshots-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
+}

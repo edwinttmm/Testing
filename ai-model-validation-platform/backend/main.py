@@ -1261,17 +1261,65 @@ async def trigger_ground_truth_processing(
         logger.error(f"Error triggering ground truth processing for video {video_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to trigger processing: {str(e)}")
 
+@app.post("/api/videos/{video_id}/annotations", response_model=AnnotationResponse)
+async def create_video_annotation(
+    video_id: str, 
+    annotation: AnnotationCreate,
+    db: Session = Depends(get_db)
+):
+    """Create new annotation for video - CRITICAL FIX for videoId validation"""
+    try:
+        logger.info(f"Creating annotation for video {video_id}")
+        
+        # Verify video exists
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+        
+        # Create annotation record with all required fields
+        db_annotation = Annotation(
+            id=str(uuid.uuid4()),
+            video_id=video_id,  # Use path parameter
+            detection_id=annotation.detection_id,
+            frame_number=annotation.frame_number,
+            timestamp=annotation.timestamp,
+            end_timestamp=annotation.end_timestamp,
+            vru_type=annotation.vru_type.value if hasattr(annotation.vru_type, 'value') else annotation.vru_type,
+            bounding_box=annotation.bounding_box,
+            occluded=annotation.occluded,
+            truncated=annotation.truncated,
+            difficult=annotation.difficult,
+            notes=annotation.notes,
+            annotator=annotation.annotator,
+            validated=annotation.validated,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        db.add(db_annotation)
+        db.commit()
+        db.refresh(db_annotation)
+        
+        logger.info(f"✅ Created annotation {db_annotation.id} for video {video_id}")
+        return db_annotation
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error creating annotation for video {video_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating annotation: {str(e)}")
+
 @app.get("/api/videos/{video_id}/annotations")
 async def get_video_annotations(video_id: str, db: Session = Depends(get_db)):
     """Get annotations (ground truth data) for a specific video in annotation format"""
     try:
-        # For now, since ground truth service is disabled, return empty annotations
-        # In future, this would convert ground truth objects to annotation format
         logger.info(f"Fetching annotations for video {video_id}")
         
-        # Return empty annotations for now - will be populated when ground truth is working
-        annotations = []
+        # Query existing annotations for this video
+        annotations = db.query(Annotation).filter(Annotation.video_id == video_id).order_by(Annotation.timestamp).all()
         
+        logger.info(f"Found {len(annotations)} annotations for video {video_id}")
         return annotations
         
     except Exception as e:

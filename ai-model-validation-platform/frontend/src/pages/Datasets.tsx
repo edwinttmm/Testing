@@ -232,8 +232,33 @@ const Datasets: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Load videos
-      const videosData = await getAvailableGroundTruthVideos();
+      console.log('📈 Loading initial dataset data...');
+
+      // First try to get videos from ground truth endpoint, then fallback to all videos
+      let videosData: VideoFile[] = [];
+      try {
+        videosData = await getAvailableGroundTruthVideos();
+        console.log('📈 Loaded ground truth videos:', videosData.length);
+      } catch (groundTruthError) {
+        console.warn('⚠️ Ground truth videos not available, trying all videos:', groundTruthError);
+        try {
+          const allVideosResponse = await getAllVideos();
+          videosData = allVideosResponse.videos || [];
+          console.log('📈 Loaded all videos:', videosData.length);
+        } catch (allVideosError) {
+          console.error('❌ Failed to load any videos:', allVideosError);
+          videosData = [];
+        }
+      }
+      
+      // Also try to get projects for better project name resolution
+      let projects: any[] = [];
+      try {
+        projects = await getProjects();
+        console.log('📈 Loaded projects:', projects.length);
+      } catch (projectsError) {
+        console.warn('⚠️ Failed to load projects:', projectsError);
+      }
       
       // Enhance videos with annotation data and project info
       const enhancedVideos = await Promise.all(
@@ -241,37 +266,66 @@ const Datasets: React.FC = () => {
           try {
             const annotations = await getAnnotations(video.id);
             
+            // Try to resolve project name
+            let projectName = 'Unknown Project';
+            if (video.projectId) {
+              const project = projects.find(p => p.id === video.projectId);
+              if (project) {
+                projectName = project.name;
+              }
+            }
+            
             return {
               ...video,
               groundTruthAnnotations: annotations,
               annotationCount: annotations.length,
               detectionTypes: [...new Set(annotations.map(a => a.vruType))],
               quality: assessVideoQuality(video),
-              projectName: 'Unknown Project',
+              projectName,
               thumbnail: generateThumbnail(video),
             } as VideoWithAnnotations;
           } catch (err) {
             console.warn(`Failed to load annotations for video ${video.id}:`, err);
+            
+            // Try to resolve project name even if annotations fail
+            let projectName = 'Unknown Project';
+            if (video.projectId) {
+              const project = projects.find(p => p.id === video.projectId);
+              if (project) {
+                projectName = project.name;
+              }
+            }
+            
             return {
               ...video,
               groundTruthAnnotations: [],
               annotationCount: 0,
               detectionTypes: [],
               quality: 'medium' as const,
-              projectName: 'Unknown Project',
+              projectName,
               thumbnail: generateThumbnail(video),
             } as VideoWithAnnotations;
           }
         })
       );
 
+      console.log('📈 Enhanced videos:', enhancedVideos.length, 'with annotations');
       setVideos(enhancedVideos);
       calculateStats(enhancedVideos);
 
+      if (enhancedVideos.length === 0) {
+        setError('No videos found. Please upload some videos to see dataset information.');
+      }
+
     } catch (err) {
       const apiError = err as ApiError;
-      setError(apiError.message || 'Failed to load dataset information');
+      const errorMessage = apiError.message || 'Failed to load dataset information';
+      setError(errorMessage);
       console.error('Failed to load dataset data:', err);
+      
+      // Set empty state but don't crash
+      setVideos([]);
+      calculateStats([]);
     } finally {
       setLoading(false);
     }
@@ -904,7 +958,7 @@ const Datasets: React.FC = () => {
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      {video.projectName}
+                      {video.projectName || 'No Project Assigned'}
                     </Typography>
 
                     <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
@@ -977,7 +1031,7 @@ const Datasets: React.FC = () => {
                     }
                     secondary={
                       <>
-                        {video.projectName} • {formatDuration(video.duration || 0)} • {formatFileSize(video.size || video.fileSize || video.file_size || 0)}
+                        {video.projectName || 'No Project'} • {formatDuration(video.duration || 0)} • {formatFileSize(video.size || video.fileSize || video.file_size || 0)}
                         {video.detectionTypes.length > 0 && (
                           <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                             {video.detectionTypes.map((type) => (
@@ -1155,7 +1209,7 @@ const Datasets: React.FC = () => {
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2">Project:</Typography>
                       <Typography variant="body2" fontWeight="bold">
-                        {selectedVideo.projectName}
+                        {selectedVideo.projectName || 'No Project Assigned'}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>

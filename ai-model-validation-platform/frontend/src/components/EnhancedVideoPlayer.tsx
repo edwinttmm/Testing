@@ -13,6 +13,11 @@ import {
   Alert,
   CircularProgress,
   LinearProgress,
+  Switch,
+  FormControlLabel,
+  Badge,
+  Divider,
+  Grid,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -25,6 +30,12 @@ import {
   Refresh,
   ErrorOutline,
   Replay,
+  Stop,
+  CameraAlt,
+  Visibility,
+  VisibilityOff,
+  PlayCircle,
+  StopCircle,
 } from '@mui/icons-material';
 import { VideoFile, GroundTruthAnnotation } from '../services/types';
 import {
@@ -48,6 +59,11 @@ interface EnhancedVideoPlayerProps {
   frameRate?: number;
   autoRetry?: boolean;
   maxRetries?: number;
+  onDetectionStart?: () => void;
+  onDetectionStop?: () => void;
+  onScreenshot?: (frameNumber: number, timestamp: number) => void;
+  showDetectionControls?: boolean;
+  detectionScreenshots?: Array<{frameNumber: number, timestamp: number, imageUrl: string}>;
 }
 
 interface PlaybackError {
@@ -67,6 +83,11 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   frameRate = 30,
   autoRetry = true,
   maxRetries = 3,
+  onDetectionStart,
+  onDetectionStop,
+  onScreenshot,
+  showDetectionControls = false,
+  detectionScreenshots = [],
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,6 +109,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<PlaybackError | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  
+  // Detection state
+  const [isDetectionRunning, setIsDetectionRunning] = useState(false);
+  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [screenshotCount, setScreenshotCount] = useState(0);
+  const [autoScreenshot, setAutoScreenshot] = useState(false);
 
   // Calculate current frame number
   const currentFrame = Math.floor(currentTime * frameRate);
@@ -409,7 +436,54 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, []);
 
+  // Detection control handlers
+  const handleDetectionStart = useCallback(() => {
+    setIsDetectionRunning(true);
+    setScreenshotCount(0);
+    onDetectionStart?.();
+  }, [onDetectionStart]);
+
+  const handleDetectionStop = useCallback(() => {
+    setIsDetectionRunning(false);
+    onDetectionStop?.();
+  }, [onDetectionStop]);
+
+  const handleScreenshot = useCallback(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    ctx.drawImage(videoElement, 0, 0);
+
+    // Convert to blob and create URL
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const imageUrl = URL.createObjectURL(blob);
+        setScreenshotCount(prev => prev + 1);
+        onScreenshot?.(currentFrame, currentTime);
+      }
+    }, 'image/jpeg', 0.9);
+  }, [currentFrame, currentTime, onScreenshot]);
+
   // Setup video event listeners
+  // Add detection state effect
+  useEffect(() => {
+    if (isDetectionRunning) {
+      const interval = setInterval(() => {
+        if (autoScreenshot) {
+          handleScreenshot();
+        }
+      }, 2000); // Screenshot every 2 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [isDetectionRunning, autoScreenshot, handleScreenshot]);
+
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
@@ -420,12 +494,32 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     };
 
     const handleLoadedMetadata = () => {
-      setDuration(videoElement.duration);
-      setVideoSize({ 
-        width: videoElement.videoWidth, 
-        height: videoElement.videoHeight 
-      });
-      setLoading(false);
+      const videoDuration = videoElement.duration;
+      console.log('🎥 Video metadata loaded - Duration:', videoDuration, 'Size:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+      
+      // Fix for videos showing incorrect duration or failing early
+      if (videoDuration && !isNaN(videoDuration) && videoDuration > 0) {
+        setDuration(videoDuration);
+        setVideoSize({ 
+          width: videoElement.videoWidth, 
+          height: videoElement.videoHeight 
+        });
+        setLoading(false);
+        setError(null);
+        setRetryCount(0);
+        
+        // Ensure video can play to full duration by setting proper buffering
+        videoElement.preload = 'metadata';
+      } else {
+        console.warn('🎥 Invalid video duration detected:', videoDuration);
+        // Retry with force reload
+        setTimeout(() => {
+          if (videoElement) {
+            videoElement.currentTime = 0;
+            videoElement.load();
+          }
+        }, 100);
+      }
     };
 
     const handleCanPlay = () => {
@@ -443,9 +537,29 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     const handleTimeUpdate = () => {
       if (videoElement.currentTime !== undefined) {
         const time = videoElement.currentTime;
+        const videoDuration = videoElement.duration;
+        
+        // Prevent premature stopping before full duration
+        if (time >= videoDuration && videoDuration > 0) {
+          // Only pause if we've truly reached the end
+          const timeDiff = Math.abs(time - videoDuration);
+          if (timeDiff < 0.1) { // Within 100ms of actual end
+            setIsPlaying(false);
+            // Stop detection if running
+            if (isDetectionRunning) {
+              handleDetectionStop();
+            }
+          }
+        }
+        
         setCurrentTime(time);
         const frame = Math.floor(time * frameRate);
         onTimeUpdate?.(time, frame);
+        
+        // Auto-screenshot during detection
+        if (isDetectionRunning && autoScreenshot && Math.floor(time) % 2 === 0) { // Every 2 seconds
+          handleScreenshot();
+        }
       }
     };
 
@@ -459,7 +573,15 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
 
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
-    const handleEnded = () => setIsPlaying(false);
+    const handleEnded = () => {
+      console.log('🎥 Video ended at time:', videoElement.currentTime, 'of duration:', videoElement.duration);
+      setIsPlaying(false);
+      
+      // Stop detection if running
+      if (isDetectionRunning) {
+        handleDetectionStop();
+      }
+    };
     
     const handleError = (event: Event) => {
       console.error('Video error event:', event);
@@ -576,9 +698,19 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   }
 
   return (
-    <Card sx={{ mb: 2 }}>
-      <CardContent>
-        <Box ref={containerRef} sx={{ position: 'relative', bgcolor: 'black', borderRadius: 1 }}>
+    <Card sx={{ mb: 2, width: '100%' }}>
+      <CardContent sx={{ p: { xs: 1, sm: 2, md: 3 } }}>
+        <Box 
+          ref={containerRef} 
+          sx={{ 
+            position: 'relative', 
+            bgcolor: 'black', 
+            borderRadius: 1,
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden'
+          }}
+        >
           {/* Loading overlay */}
           {loading && (
             <Box
@@ -647,10 +779,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
               width: '100%',
               height: 'auto',
               display: 'block',
-              maxHeight: '500px',
+              maxHeight: '70vh',
+              minHeight: '200px',
             }}
             preload="metadata"
             playsInline
+            controls={false}
             onResize={() => {
               const videoElement = videoRef.current;
               if (videoElement && videoElement.videoWidth && videoElement.videoHeight) {
@@ -663,19 +797,46 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
           />
 
           {/* Annotation Canvas Overlay */}
-          <canvas
-            ref={canvasRef}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: annotationMode ? 'auto' : 'none',
-              cursor: annotationMode ? 'crosshair' : 'default',
-            }}
-            onClick={handleCanvasClick}
-          />
+          {showAnnotations && (
+            <canvas
+              ref={canvasRef}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: annotationMode ? 'auto' : 'none',
+                cursor: annotationMode ? 'crosshair' : 'default',
+              }}
+              onClick={handleCanvasClick}
+            />
+          )}
+
+          {/* Detection Status Indicator */}
+          {isDetectionRunning && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                bgcolor: 'rgba(76, 175, 80, 0.9)',
+                color: 'white',
+                px: 2,
+                py: 1,
+                borderRadius: 1,
+                fontSize: '14px',
+                fontWeight: 'bold',
+                zIndex: 6,
+              }}
+            >
+              <CircularProgress size={16} color="inherit" />
+              DETECTING ({screenshotCount} captures)
+            </Box>
+          )}
 
           {/* Annotation Mode Indicator */}
           {annotationMode && (
@@ -691,6 +852,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                 borderRadius: 1,
                 fontSize: '14px',
                 fontWeight: 'bold',
+                zIndex: 5,
               }}
             >
               ANNOTATION MODE
@@ -699,7 +861,17 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         </Box>
 
         {/* Video Controls */}
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ 
+          mt: 2, 
+          px: { xs: 0, sm: 1 },
+          '& .MuiSlider-root': {
+            height: { xs: 8, sm: 4 },
+            '& .MuiSlider-thumb': {
+              width: { xs: 24, sm: 20 },
+              height: { xs: 24, sm: 20 }
+            }
+          }
+        }}>
           {/* Progress Slider */}
           <Box sx={{ mb: 2 }}>
             <Slider
@@ -707,15 +879,30 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
               min={0}
               max={duration}
               onChange={(_, value) => handleSeek(value as number)}
-              sx={{ width: '100%' }}
-              size="small"
+              sx={{ 
+                width: '100%',
+                height: { xs: 8, sm: 4 },
+                '& .MuiSlider-thumb': {
+                  width: { xs: 24, sm: 20 },
+                  height: { xs: 24, sm: 20 },
+                  '&:hover': {
+                    boxShadow: '0px 0px 0px 8px rgba(25, 118, 210, 0.16)'
+                  }
+                }
+              }}
+              size={window.innerWidth < 600 ? 'medium' : 'small'}
               disabled={loading || !!error}
             />
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
-              <Typography variant="caption">
+            <Stack 
+              direction={{ xs: 'column', sm: 'row' }} 
+              justifyContent="space-between" 
+              alignItems={{ xs: 'flex-start', sm: 'center' }} 
+              sx={{ mt: 1, gap: { xs: 0.5, sm: 0 } }}
+            >
+              <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
                 Frame: {currentFrame} | {formatTime(currentTime)} / {formatTime(duration)}
               </Typography>
-              <Typography variant="caption">
+              <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
                 Annotations: {currentAnnotations.length}
                 {loadProgress > 0 && loadProgress < 100 && ` | ${loadProgress.toFixed(0)}% loaded`}
               </Typography>
@@ -723,7 +910,21 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
           </Box>
 
           {/* Control Buttons */}
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+          <Stack 
+            direction="row" 
+            spacing={{ xs: 0.5, sm: 1 }} 
+            alignItems="center" 
+            justifyContent="center"
+            sx={{ 
+              flexWrap: { xs: 'wrap', sm: 'nowrap' },
+              gap: { xs: 0.5, sm: 1 },
+              '& .MuiIconButton-root': {
+                padding: { xs: '12px', sm: '8px' },
+                minWidth: { xs: '48px', sm: 'auto' },
+                minHeight: { xs: '48px', sm: 'auto' }
+              }
+            }}
+          >
             <Tooltip title="Previous Frame">
               <IconButton 
                 onClick={() => stepFrame('backward')} 
@@ -759,7 +960,15 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
               </IconButton>
             </Tooltip>
 
-            <Box sx={{ mx: 2, display: 'flex', alignItems: 'center', minWidth: 120 }}>
+            <Box sx={{ 
+              mx: { xs: 1, sm: 2 }, 
+              display: 'flex', 
+              alignItems: 'center', 
+              minWidth: { xs: 80, sm: 120 },
+              width: { xs: '100%', sm: 'auto' },
+              order: { xs: 3, sm: 0 },
+              mt: { xs: 1, sm: 0 }
+            }}>
               <Tooltip title={isMuted ? 'Unmute' : 'Mute'}>
                 <IconButton onClick={toggleMute} size="small">
                   {isMuted ? <VolumeOff /> : <VolumeUp />}
@@ -772,13 +981,24 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                 step={0.1}
                 onChange={(_, value) => handleVolumeChange(value as number)}
                 size="small"
-                sx={{ ml: 1, width: 80 }}
+                sx={{ 
+                  ml: 1, 
+                  width: { xs: 60, sm: 80 },
+                  height: { xs: 6, sm: 4 }
+                }}
                 disabled={loading || !!error}
               />
             </Box>
 
             {/* Playback Rate */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ 
+              display: { xs: 'none', md: 'flex' }, 
+              alignItems: 'center', 
+              gap: 1,
+              order: { xs: 4, sm: 0 },
+              mt: { xs: 1, sm: 0 },
+              width: { xs: '100%', sm: 'auto' }
+            }}>
               <Typography variant="caption">Speed:</Typography>
               <Box sx={{ display: 'flex', gap: 0.5 }}>
                 {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
@@ -787,7 +1007,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                     size="small"
                     variant={playbackRate === rate ? 'contained' : 'outlined'}
                     onClick={() => handlePlaybackRateChange(rate)}
-                    sx={{ minWidth: 'auto', px: 1, py: 0.5 }}
+                    sx={{ 
+                      minWidth: 'auto', 
+                      px: { xs: 0.5, sm: 1 }, 
+                      py: 0.5,
+                      fontSize: { xs: '0.7rem', sm: '0.75rem' }
+                    }}
                     disabled={loading || !!error}
                   >
                     {rate}x
@@ -806,57 +1031,234 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
               </IconButton>
             </Tooltip>
           </Stack>
-        </Box>
 
-        {/* Current Annotations Info */}
-        {currentAnnotations.length > 0 && (
-          <Paper sx={{ mt: 2, p: 2, bgcolor: 'grey.50' }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Current Frame Annotations ({currentAnnotations.length})
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {currentAnnotations.map(annotation => (
-                <Box
-                  key={annotation.id}
-                  onClick={() => onAnnotationSelect?.(annotation)}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    px: 2,
-                    py: 1,
-                    bgcolor: selectedAnnotation?.id === annotation.id ? 'primary.main' : 'white',
-                    color: selectedAnnotation?.id === annotation.id ? 'white' : 'text.primary',
-                    border: '1px solid',
-                    borderColor: getVRUColor(annotation.vruType),
-                    borderRadius: 1,
-                    cursor: 'pointer',
-                    '&:hover': {
-                      bgcolor: selectedAnnotation?.id === annotation.id ? 'primary.dark' : 'grey.100',
-                    },
+          {/* Detection Controls */}
+          {showDetectionControls && (
+            <>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: { xs: 1, sm: 2 }, 
+                flexWrap: 'wrap',
+                justifyContent: { xs: 'center', sm: 'flex-start' },
+                '& .MuiButton-root': {
+                  minHeight: { xs: '44px', sm: 'auto' },
+                  fontSize: { xs: '0.8rem', sm: '0.875rem' },
+                  px: { xs: 2, sm: 3 }
+                }
+              }}>
+                <Typography 
+                  variant="subtitle2" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    fontSize: { xs: '0.9rem', sm: '1rem' },
+                    width: { xs: '100%', sm: 'auto' },
+                    textAlign: { xs: 'center', sm: 'left' },
+                    mb: { xs: 1, sm: 0 }
                   }}
                 >
-                  <Box
-                    sx={{
-                      width: 12,
-                      height: 12,
-                      bgcolor: getVRUColor(annotation.vruType),
-                      borderRadius: '50%',
-                    }}
-                  />
-                  <Typography variant="caption">
-                    {annotation.vruType} ({annotation.detectionId})
-                  </Typography>
-                  {annotation.validated && (
-                    <Typography variant="caption" sx={{ color: 'success.main' }}>
-                      ✓
-                    </Typography>
-                  )}
-                </Box>
-              ))}
-            </Stack>
-          </Paper>
-        )}
+                  Detection Controls:
+                </Typography>
+                
+                <Button
+                  variant={isDetectionRunning ? "outlined" : "contained"}
+                  color={isDetectionRunning ? "error" : "success"}
+                  size={window.innerWidth < 600 ? "medium" : "small"}
+                  onClick={isDetectionRunning ? handleDetectionStop : handleDetectionStart}
+                  startIcon={isDetectionRunning ? <StopCircle /> : <PlayCircle />}
+                  disabled={loading || !!error}
+                  sx={{
+                    touchAction: 'manipulation',
+                    '&:active': {
+                      transform: 'scale(0.95)'
+                    }
+                  }}
+                >
+                  {isDetectionRunning ? 'Stop Detection' : 'Start Detection'}
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  size={window.innerWidth < 600 ? "medium" : "small"}
+                  onClick={handleScreenshot}
+                  startIcon={<CameraAlt />}
+                  disabled={loading || !!error}
+                  sx={{
+                    touchAction: 'manipulation',
+                    '&:active': {
+                      transform: 'scale(0.95)'
+                    }
+                  }}
+                >
+                  Screenshot ({screenshotCount})
+                </Button>
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoScreenshot}
+                      onChange={(e) => setAutoScreenshot(e.target.checked)}
+                      disabled={!isDetectionRunning}
+                    />
+                  }
+                  label="Auto Screenshots"
+                  sx={{ ml: 1 }}
+                />
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={showAnnotations}
+                      onChange={(e) => setShowAnnotations(e.target.checked)}
+                    />
+                  }
+                  label="Show Annotations"
+                />
+              </Box>
+            </>
+          )}
+        </Box>
+
+        {/* Current Annotations and Screenshots */}
+        <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mt: 1 }}>
+          {/* Annotations */}
+          {showAnnotations && currentAnnotations.length > 0 && (
+            <Grid item xs={12} md={detectionScreenshots.length > 0 ? 6 : 12}>
+              <Paper sx={{ 
+                p: { xs: 1, sm: 2 }, 
+                bgcolor: 'grey.50',
+                borderRadius: { xs: 1, sm: 2 }
+              }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                  Current Frame Annotations ({currentAnnotations.length})
+                </Typography>
+                <Stack 
+                  direction="row" 
+                  spacing={{ xs: 0.5, sm: 1 }} 
+                  flexWrap="wrap" 
+                  useFlexGap
+                  sx={{ maxHeight: { xs: '120px', sm: 'none' }, overflow: 'auto' }}
+                >
+                  {currentAnnotations.map(annotation => (
+                    <Box
+                      key={annotation.id}
+                      onClick={() => onAnnotationSelect?.(annotation)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: { xs: 0.5, sm: 1 },
+                        px: { xs: 1, sm: 2 },
+                        py: { xs: 0.5, sm: 1 },
+                        bgcolor: selectedAnnotation?.id === annotation.id ? 'primary.main' : 'white',
+                        color: selectedAnnotation?.id === annotation.id ? 'white' : 'text.primary',
+                        border: '1px solid',
+                        borderColor: getVRUColor(annotation.vruType),
+                        borderRadius: { xs: 0.5, sm: 1 },
+                        cursor: 'pointer',
+                        minHeight: { xs: '36px', sm: 'auto' },
+                        touchAction: 'manipulation',
+                        '&:hover': {
+                          bgcolor: selectedAnnotation?.id === annotation.id ? 'primary.dark' : 'grey.100',
+                        },
+                        '&:active': {
+                          transform: 'scale(0.95)',
+                          transition: 'transform 0.1s ease'
+                        }
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: { xs: 8, sm: 12 },
+                          height: { xs: 8, sm: 12 },
+                          bgcolor: getVRUColor(annotation.vruType),
+                          borderRadius: '50%',
+                          flexShrink: 0
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                        {annotation.vruType} ({annotation.detectionId})
+                      </Typography>
+                      {annotation.validated && (
+                        <Typography variant="caption" sx={{ 
+                          color: 'success.main',
+                          fontSize: { xs: '0.7rem', sm: '0.75rem' }
+                        }}>
+                          ✓
+                        </Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+          )}
+          
+          {/* Detection Screenshots */}
+          {detectionScreenshots.length > 0 && (
+            <Grid item xs={12} md={showAnnotations && currentAnnotations.length > 0 ? 6 : 12}>
+              <Paper sx={{ 
+                p: { xs: 1, sm: 2 }, 
+                bgcolor: 'grey.50',
+                borderRadius: { xs: 1, sm: 2 }
+              }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                  Detection Screenshots ({detectionScreenshots.length})
+                </Typography>
+                <Stack 
+                  direction="row" 
+                  spacing={{ xs: 0.5, sm: 1 }} 
+                  flexWrap="wrap" 
+                  useFlexGap
+                  sx={{ 
+                    maxHeight: { xs: '200px', sm: 'none' }, 
+                    overflow: { xs: 'auto', sm: 'visible' },
+                    gap: { xs: '8px', sm: '12px' }
+                  }}
+                >
+                  {detectionScreenshots.slice(-4).map((screenshot, index) => ( // Show last 4 screenshots
+                    <Box
+                      key={index}
+                      sx={{
+                        position: 'relative',
+                        width: 120,
+                        height: 80,
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <img
+                        src={screenshot.imageUrl}
+                        alt={`Screenshot frame ${screenshot.frameNumber}`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          bgcolor: 'rgba(0,0,0,0.7)',
+                          color: 'white',
+                          p: 0.5,
+                          fontSize: '0.7rem',
+                        }}
+                      >
+                        Frame {screenshot.frameNumber}
+                      </Box>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+          )}
+        </Grid>
       </CardContent>
     </Card>
   );
