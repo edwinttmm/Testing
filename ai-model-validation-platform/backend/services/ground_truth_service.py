@@ -206,8 +206,9 @@ class GroundTruthService:
                         class_id = int(box.cls.cpu().numpy()[0])
                         confidence = float(box.conf.cpu().numpy()[0])
                         
-                        # Only process VRU-related classes with high confidence
-                        if class_id in self.vru_classes and confidence > 0.5:
+                        # Only process VRU-related classes with ultra-low threshold for debugging
+                        # Using 0.01 threshold to catch all detections including children
+                        if class_id in self.vru_classes and confidence > 0.01:
                             # Get bounding box coordinates
                             x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                             
