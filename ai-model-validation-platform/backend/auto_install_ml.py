@@ -18,7 +18,7 @@ def run_command(cmd, check=True, capture_output=True):
     """Run shell command and return result"""
     try:
         result = subprocess.run(cmd, shell=True, capture_output=capture_output, 
-                              text=True, check=check, timeout=30)
+                              text=True, check=check, timeout=600)
         return result
     except subprocess.TimeoutExpired:
         logger.warning(f"Command timed out: {cmd}")
@@ -108,8 +108,8 @@ def install_packages(packages, extra_index_urls=None):
                 if 'pytorch.org' in url:
                     cmd += ' --trusted-host download.pytorch.org'
         
-        # Add timeout and retry logic
-        cmd += ' --timeout 300 --retries 3'
+        # Add timeout and retry logic - extended for large ML packages
+        cmd += ' --timeout 600 --retries 5'
         
         result = run_command(cmd, check=False, capture_output=True)
         
@@ -122,11 +122,27 @@ def install_packages(packages, extra_index_urls=None):
             # Try alternative installation methods
             if 'torch' in package:
                 logger.info("🔄 Trying CPU-only PyTorch installation...")
-                cpu_cmd = f'"{python_exe}" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --trusted-host download.pytorch.org --trusted-host pypi.org --trusted-host files.pythonhosted.org'
-                cpu_result = run_command(cpu_cmd, check=False)
-                if cpu_result and cpu_result.returncode == 0:
-                    logger.info("✅ CPU-only PyTorch installed successfully")
-                else:
+                # Try PyTorch CPU installation with multiple fallback strategies
+                strategies = [
+                    # Strategy 1: Official PyTorch CPU index
+                    f'"{python_exe}" -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --trusted-host download.pytorch.org --trusted-host pypi.org --trusted-host files.pythonhosted.org --timeout 600',
+                    # Strategy 2: Standard PyPI installation
+                    f'"{python_exe}" -m pip install torch torchvision torchaudio --trusted-host pypi.org --trusted-host files.pythonhosted.org --timeout 600',
+                    # Strategy 3: Install one by one
+                    f'"{python_exe}" -m pip install torch --trusted-host pypi.org --timeout 600 && "{python_exe}" -m pip install torchvision --trusted-host pypi.org --timeout 600 && "{python_exe}" -m pip install torchaudio --trusted-host pypi.org --timeout 600'
+                ]
+                
+                success = False
+                for i, strategy in enumerate(strategies, 1):
+                    logger.info(f"🔄 Trying PyTorch installation strategy {i}/3...")
+                    result = run_command(strategy, check=False)
+                    if result and result.returncode == 0:
+                        logger.info("✅ CPU-only PyTorch installed successfully")
+                        success = True
+                        break
+                    logger.warning(f"Strategy {i} failed, trying next...")
+                
+                if not success:
                     logger.warning("⚠️  Could not install PyTorch - will use fallback mode")
 
 def create_ml_requirements():

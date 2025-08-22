@@ -1,0 +1,27 @@
+# ML/AI Dependencies for AI Model Validation Platform
+# This file contains machine learning packages that are installed automatically
+
+# Core ML packages
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+ultralytics>=8.0.0
+
+# Computer Vision
+opencv-python-headless>=4.8.0
+pillow>=10.0.0
+
+# Numerical computing
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Data handling
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# Optional performance packages
+psutil>=5.9.0
+tqdm>=4.65.0
+
+# Hardware interface (optional)
+pyserial>=3.5
