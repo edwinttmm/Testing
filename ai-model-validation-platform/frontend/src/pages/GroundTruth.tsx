@@ -62,6 +62,15 @@ import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
 import DetectionResultsPanel from '../components/DetectionResultsPanel';
 import DetectionControls from '../components/DetectionControls';
+import {
+  EnhancedVideoAnnotationPlayer,
+  AnnotationProvider,
+  createAnnotationShape,
+  convertToLabelStudio,
+  convertFromLabelStudio,
+  VRU_TYPE_COLORS
+} from '../components/annotation';
+import type { AnnotationShape } from '../components/annotation';
 import { 
   detectionIdManager, 
   generateDetectionId, 
@@ -164,6 +173,12 @@ const GroundTruth: React.FC = () => {
   });
   const [selectedVRUType, setSelectedVRUType] = useState<VRUType>('pedestrian');
   
+  // Enhanced annotation mode toggle
+  const [enhancedAnnotationMode, setEnhancedAnnotationMode] = useState(false);
+  
+  // Enhanced annotation state
+  const [annotationShapes, setAnnotationShapes] = useState<AnnotationShape[]>([]);
+  
   // Video player state
   const [currentFrame, setCurrentFrame] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -184,6 +199,59 @@ const GroundTruth: React.FC = () => {
   
   // File input ref for upload
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const annotationImportRef = useRef<HTMLInputElement>(null);
+
+  // VRU color mapping (using enhanced system colors)
+  const getVRUColor = useCallback((vruType: string): string => {
+    return VRU_TYPE_COLORS[vruType as keyof typeof VRU_TYPE_COLORS] || '#607d8b';
+  }, []);
+
+  // Convert existing annotations to shapes for enhanced mode
+  const convertAnnotationsToShapes = useCallback((annotations: GroundTruthAnnotation[]): AnnotationShape[] => {
+    return annotations.map(annotation => ({
+      id: annotation.id,
+      type: 'rectangle' as const,
+      points: [
+        { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
+        { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
+        { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
+        { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
+      ],
+      boundingBox: annotation.boundingBox,
+      style: {
+        strokeColor: getVRUColor(annotation.vruType),
+        fillColor: `${getVRUColor(annotation.vruType)}20`,
+        strokeWidth: selectedAnnotation?.id === annotation.id ? 3 : 2,
+        fillOpacity: 0.2,
+      },
+      label: annotation.vruType,
+      confidence: annotation.boundingBox.confidence,
+      visible: true,
+      selected: selectedAnnotation?.id === annotation.id,
+    }));
+  }, [selectedAnnotation, getVRUColor]);
+  
+  // Convert shapes back to ground truth annotations
+  const convertShapesToAnnotations = useCallback((shapes: AnnotationShape[]): Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>[] => {
+    if (!selectedVideo) return [];
+    
+    return shapes.map(shape => ({
+      videoId: selectedVideo.id,
+      detectionId: `det_${shape.id}`,
+      frameNumber: currentFrame,
+      timestamp: currentTime,
+      vruType: (shape.label as VRUType) || 'pedestrian',
+      boundingBox: {
+        ...shape.boundingBox,
+        label: shape.label || 'pedestrian',
+        confidence: shape.confidence || 1.0,
+      },
+      occluded: false,
+      truncated: false,
+      difficult: false,
+      validated: false,
+    }));
+  }, [selectedVideo, currentFrame, currentTime]);
   
   // Manual detection only - no WebSocket or automatic detection
 
@@ -262,6 +330,10 @@ const GroundTruth: React.FC = () => {
       
       const annotationList = await apiService.getAnnotations(videoId);
       setAnnotations(annotationList);
+      
+      // Convert to shapes for enhanced annotation mode
+      const shapes = convertAnnotationsToShapes(annotationList);
+      setAnnotationShapes(shapes);
       
       // Import annotations into detection ID manager
       detectionIdManager.clear();
@@ -392,6 +464,15 @@ const GroundTruth: React.FC = () => {
       }
     }
   }, [selectedVideo, frameRate, loadAnnotations, projectId]);
+
+  // Synchronize annotations and shapes when switching modes
+  useEffect(() => {
+    if (enhancedAnnotationMode) {
+      // Convert existing annotations to shapes when switching to enhanced mode
+      const shapes = convertAnnotationsToShapes(annotations);
+      setAnnotationShapes(shapes);
+    }
+  }, [enhancedAnnotationMode, annotations, convertAnnotationsToShapes]);
 
   const createAnnotationSession = useCallback(async (videoId: string) => {
     try {
@@ -689,24 +770,186 @@ const GroundTruth: React.FC = () => {
     setError(`Detection failed: ${error}`);
   }, []);
 
-  const handleExportAnnotations = useCallback(async (format: 'coco' | 'yolo' | 'pascal' | 'json') => {
+  // Enhanced annotation handlers
+  const handleEnhancedAnnotationCreate = useCallback(async (annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!selectedVideo) return;
 
     try {
-      const blob = await apiService.exportAnnotations(selectedVideo.id, format);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `${selectedVideo.filename}_annotations.${format === 'json' ? 'json' : format}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      setSuccessMessage(`Annotations exported as ${format.toUpperCase()}`);
+      const newAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
+      setAnnotations(prev => [...prev, newAnnotation]);
+      
+      // Update shapes
+      const newShape = createAnnotationShape(
+        'rectangle',
+        [
+          { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
+          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
+          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
+          { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
+        ],
+        {
+          strokeColor: getVRUColor(annotation.vruType),
+          fillColor: `${getVRUColor(annotation.vruType)}20`,
+        }
+      );
+      newShape.id = newAnnotation.id;
+      newShape.label = annotation.vruType;
+      newShape.confidence = annotation.boundingBox.confidence;
+      
+      setAnnotationShapes(prev => [...prev, newShape]);
+      setSuccessMessage(`Created ${annotation.vruType} annotation`);
+    } catch (err) {
+      setError(`Failed to create annotation: ${getErrorMessage(err)}`);
+    }
+  }, [selectedVideo, getVRUColor]);
+
+  const handleEnhancedAnnotationUpdate = useCallback(async (id: string, updates: Partial<GroundTruthAnnotation>) => {
+    try {
+      const updatedAnnotation = await apiService.updateAnnotation(id, updates);
+      setAnnotations(prev => 
+        prev.map(ann => ann.id === id ? updatedAnnotation : ann)
+      );
+      
+      // Update corresponding shape
+      setAnnotationShapes(prev => 
+        prev.map(shape => 
+          shape.id === id 
+            ? { 
+                ...shape, 
+                label: updatedAnnotation.vruType,
+                boundingBox: updatedAnnotation.boundingBox,
+                confidence: updatedAnnotation.boundingBox.confidence,
+                style: {
+                  ...shape.style,
+                  strokeColor: getVRUColor(updatedAnnotation.vruType),
+                  fillColor: `${getVRUColor(updatedAnnotation.vruType)}20`,
+                }
+              } 
+            : shape
+        )
+      );
+      setSuccessMessage('Annotation updated');
+    } catch (err) {
+      setError(`Failed to update annotation: ${getErrorMessage(err)}`);
+    }
+  }, [getVRUColor]);
+
+  const handleEnhancedAnnotationDelete = useCallback(async (annotationId: string) => {
+    try {
+      await apiService.deleteAnnotation(annotationId);
+      setAnnotations(prev => prev.filter(ann => ann.id !== annotationId));
+      setAnnotationShapes(prev => prev.filter(shape => shape.id !== annotationId));
+      if (selectedAnnotation?.id === annotationId) {
+        setSelectedAnnotation(null);
+      }
+      setSuccessMessage('Annotation deleted');
+    } catch (err) {
+      setError(`Failed to delete annotation: ${getErrorMessage(err)}`);
+    }
+  }, [selectedAnnotation]);
+
+  const handleExportAnnotations = useCallback(async (format: 'coco' | 'yolo' | 'pascal' | 'json' | 'labelstudio') => {
+    if (!selectedVideo) return;
+
+    try {
+      if (format === 'labelstudio') {
+        // Export Label Studio format using enhanced annotations
+        const labelStudioAnnotation = convertToLabelStudio(annotationShapes);
+        const blob = new Blob([JSON.stringify(labelStudioAnnotation, null, 2)], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${selectedVideo.filename}_annotations_labelstudio.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        setSuccessMessage(`Annotations exported as Label Studio JSON`);
+      } else {
+        const blob = await apiService.exportAnnotations(selectedVideo.id, format);
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${selectedVideo.filename}_annotations.${format === 'json' ? 'json' : format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        setSuccessMessage(`Annotations exported as ${format.toUpperCase()}`);
+      }
     } catch (err) {
       setError(`Failed to export annotations: ${getErrorMessage(err)}`);
     }
-  }, [selectedVideo]);
+  }, [selectedVideo, annotationShapes]);
+
+  // Import annotations handler
+  const handleImportAnnotations = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        const data = JSON.parse(content);
+        
+        // Check if it's Label Studio format
+        if (data.result && Array.isArray(data.result)) {
+          // Convert Label Studio format to shapes
+          const shapes = convertFromLabelStudio(data);
+          setAnnotationShapes(shapes);
+          
+          // Convert shapes to ground truth annotations and save them
+          const newAnnotations = convertShapesToAnnotations(shapes);
+          
+          // Save annotations to backend
+          const savedAnnotations: GroundTruthAnnotation[] = [];
+          for (const annotation of newAnnotations) {
+            if (selectedVideo) {
+              try {
+                const savedAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
+                savedAnnotations.push(savedAnnotation);
+              } catch (err) {
+                console.error('Failed to save imported annotation:', err);
+              }
+            }
+          }
+          
+          setAnnotations(prev => [...prev, ...savedAnnotations]);
+          setSuccessMessage(`Imported ${savedAnnotations.length} annotations from Label Studio format`);
+        } else {
+          // Try to import as regular annotation format
+          if (Array.isArray(data)) {
+            const shapes = data.map((item: any) => createAnnotationShape(
+              item.type || 'rectangle',
+              item.points || [
+                { x: item.x || 0, y: item.y || 0 },
+                { x: (item.x || 0) + (item.width || 50), y: item.y || 0 },
+                { x: (item.x || 0) + (item.width || 50), y: (item.y || 0) + (item.height || 50) },
+                { x: item.x || 0, y: (item.y || 0) + (item.height || 50) },
+              ],
+              {
+                strokeColor: getVRUColor(item.label || 'pedestrian'),
+                fillColor: `${getVRUColor(item.label || 'pedestrian')}20`,
+              }
+            ));
+            
+            setAnnotationShapes(prev => [...prev, ...shapes]);
+            setSuccessMessage(`Imported ${shapes.length} annotations`);
+          }
+        }
+      } catch (err) {
+        setError(`Failed to import annotations: ${getErrorMessage(err)}`);
+      }
+    };
+    
+    reader.readAsText(file);
+    
+    // Clear the input
+    if (annotationImportRef.current) {
+      annotationImportRef.current.value = '';
+    }
+  }, [selectedVideo, convertShapesToAnnotations, getVRUColor]);
 
   const getStatusIcon = (status: VideoFile['status'] | UploadingVideo['status']) => {
     switch (status) {
@@ -1086,8 +1329,22 @@ const GroundTruth: React.FC = () => {
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="h6">
               {selectedVideo?.filename || selectedVideo?.name} - Ground Truth Annotation
+              <Chip
+                label={enhancedAnnotationMode ? 'Enhanced Mode' : 'Classic Mode'}
+                size="small"
+                color={enhancedAnnotationMode ? 'primary' : 'default'}
+                sx={{ ml: 2 }}
+              />
             </Typography>
             <Stack direction="row" spacing={1}>
+              <Button
+                variant={enhancedAnnotationMode ? 'contained' : 'outlined'}
+                size="small"
+                onClick={() => setEnhancedAnnotationMode(!enhancedAnnotationMode)}
+                sx={{ minWidth: 140 }}
+              >
+                {enhancedAnnotationMode ? 'Classic Mode' : 'Enhanced Mode'}
+              </Button>
               <FormControl size="small" sx={{ minWidth: 120 }}>
                 <InputLabel>VRU Type</InputLabel>
                 <Select
@@ -1119,25 +1376,57 @@ const GroundTruth: React.FC = () => {
               {selectedVideo && (
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, lg: 8 }}>
-                    {/* Detection Controls */}
-                    <DetectionControls
-                      video={selectedVideo}
-                      onDetectionStart={handleDetectionStart}
-                      onDetectionComplete={handleDetectionComplete}
-                      onDetectionError={handleDetectionError}
-                      disabled={false}
-                    />
+                    {!enhancedAnnotationMode && (
+                      <>
+                        {/* Detection Controls */}
+                        <DetectionControls
+                          video={selectedVideo}
+                          onDetectionStart={handleDetectionStart}
+                          onDetectionComplete={handleDetectionComplete}
+                          onDetectionError={handleDetectionError}
+                          disabled={false}
+                        />
+                        
+                        <VideoAnnotationPlayer
+                          video={selectedVideo}
+                          annotations={annotations}
+                          onAnnotationSelect={setSelectedAnnotation}
+                          onTimeUpdate={handleTimeUpdate}
+                          onCanvasClick={handleCanvasClick}
+                          annotationMode={annotationMode}
+                          selectedAnnotation={selectedAnnotation}
+                          frameRate={frameRate}
+                        />
+                      </>
+                    )}
                     
-                    <VideoAnnotationPlayer
-                      video={selectedVideo}
-                      annotations={annotations}
-                      onAnnotationSelect={setSelectedAnnotation}
-                      onTimeUpdate={handleTimeUpdate}
-                      onCanvasClick={handleCanvasClick}
-                      annotationMode={annotationMode}
-                      selectedAnnotation={selectedAnnotation}
-                      frameRate={frameRate}
-                    />
+                    {enhancedAnnotationMode && (
+                      <>
+                        {/* Detection Controls */}
+                        <DetectionControls
+                          video={selectedVideo}
+                          onDetectionStart={handleDetectionStart}
+                          onDetectionComplete={handleDetectionComplete}
+                          onDetectionError={handleDetectionError}
+                          disabled={false}
+                        />
+                        
+                        <EnhancedVideoAnnotationPlayer
+                          video={selectedVideo}
+                          annotations={annotations}
+                          onAnnotationSelect={setSelectedAnnotation}
+                          onTimeUpdate={handleTimeUpdate}
+                          onCanvasClick={handleCanvasClick}
+                          annotationMode={annotationMode}
+                          selectedAnnotation={selectedAnnotation}
+                          frameRate={frameRate}
+                          showDetectionControls={false}
+                          onAnnotationCreate={handleEnhancedAnnotationCreate}
+                          onAnnotationUpdate={handleEnhancedAnnotationUpdate}
+                          onAnnotationDelete={handleEnhancedAnnotationDelete}
+                        />
+                      </>
+                    )}
                   </Grid>
                   <Grid size={{ xs: 12, lg: 4 }}>
                     <Typography variant="h6" gutterBottom>
@@ -1186,9 +1475,17 @@ const GroundTruth: React.FC = () => {
                         <strong>Total Annotations:</strong> {annotations.length}<br/>
                         <strong>Validated:</strong> {annotations.filter(a => a.validated).length}<br/>
                         <strong>Current Frame:</strong> {annotations.filter(a => a.frameNumber === currentFrame).length}<br/>
-                        <strong>Mode:</strong> <span style={{ color: '#4caf50' }}>
+                        <strong>Detection Mode:</strong> <span style={{ color: '#4caf50' }}>
                           🎮 Manual Detection Only
+                        </span><br/>
+                        <strong>Annotation Mode:</strong> <span style={{ color: enhancedAnnotationMode ? '#2196f3' : '#666' }}>
+                          {enhancedAnnotationMode ? '🚀 Enhanced (Label Studio)' : '🎯 Classic'}
                         </span>
+                        {enhancedAnnotationMode && (
+                          <>
+                            <br/><strong>Enhanced Features:</strong> Polygon tools, brush, advanced editing, Label Studio compatibility
+                          </>
+                        )}
                         {annotations.length === 0 && !isDetectionRunning && (
                           <>
                             <br/><em style={{ color: '#666' }}>💡 Use detection controls above to analyze this video.</em>
@@ -1204,7 +1501,7 @@ const GroundTruth: React.FC = () => {
             <TabPanel value={activeTab} index={1}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, lg: 8 }}>
-                  {selectedVideo && (
+                  {selectedVideo && !enhancedAnnotationMode && (
                     <VideoAnnotationPlayer
                       video={selectedVideo}
                       annotations={annotations}
@@ -1214,6 +1511,23 @@ const GroundTruth: React.FC = () => {
                       annotationMode={annotationMode}
                       selectedAnnotation={selectedAnnotation}
                       frameRate={frameRate}
+                    />
+                  )}
+                  
+                  {selectedVideo && enhancedAnnotationMode && (
+                    <EnhancedVideoAnnotationPlayer
+                      video={selectedVideo}
+                      annotations={annotations}
+                      onAnnotationSelect={setSelectedAnnotation}
+                      onTimeUpdate={handleTimeUpdate}
+                      onCanvasClick={handleCanvasClick}
+                      annotationMode={annotationMode}
+                      selectedAnnotation={selectedAnnotation}
+                      frameRate={frameRate}
+                      showDetectionControls={false}
+                      onAnnotationCreate={handleEnhancedAnnotationCreate}
+                      onAnnotationUpdate={handleEnhancedAnnotationUpdate}
+                      onAnnotationDelete={handleEnhancedAnnotationDelete}
                     />
                   )}
                 </Grid>
@@ -1260,7 +1574,7 @@ const GroundTruth: React.FC = () => {
                 <Typography variant="h6" gutterBottom>
                   Export Annotations
                 </Typography>
-                <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+                <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }}>
                   <Button 
                     variant="outlined" 
                     startIcon={<GetApp />}
@@ -1289,18 +1603,43 @@ const GroundTruth: React.FC = () => {
                   >
                     Export Pascal VOC
                   </Button>
+                  {enhancedAnnotationMode && (
+                    <Button 
+                      variant="outlined" 
+                      startIcon={<GetApp />}
+                      onClick={() => handleExportAnnotations('labelstudio')}
+                      color="primary"
+                    >
+                      Export Label Studio
+                    </Button>
+                  )}
                 </Stack>
 
                 <Typography variant="h6" gutterBottom>
                   Import Annotations
                 </Typography>
-                <Button
-                  variant="outlined"
-                  startIcon={<Publish />}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Import Annotations
-                </Button>
+                <Stack direction="row" spacing={2}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Publish />}
+                    onClick={() => annotationImportRef.current?.click()}
+                  >
+                    Import JSON/Label Studio
+                  </Button>
+                  {enhancedAnnotationMode && (
+                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                      Enhanced mode supports Label Studio format import/export
+                    </Typography>
+                  )}
+                </Stack>
+                
+                <input
+                  ref={annotationImportRef}
+                  type="file"
+                  accept=".json"
+                  style={{ display: 'none' }}
+                  onChange={handleImportAnnotations}
+                />
               </Box>
             </TabPanel>
           </Box>
