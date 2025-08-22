@@ -33,10 +33,8 @@ const Dashboard: React.FC = () => {
   const { 
     isConnected, 
     on: subscribe, 
-    emit,
-    error: wsError  
+    emit
   } = useWebSocket();
-  // wsError is available but not used in HTTP-only mode
 
   const formatTimeAgo = (dateString: string | null | undefined) => {
     if (!dateString) return 'Unknown time';

@@ -186,9 +186,7 @@ const GroundTruth: React.FC = () => {
   
   // HTTP-only detection workflow - WebSocket functionality completely removed
   // Simplified HTTP-only detection hook (no WebSocket functionality)
-  const { 
-    disconnect: _wsDisconnect
-  } = useDetectionWebSocket({
+  useDetectionWebSocket({
     enabled: false, // WebSocket completely disabled
     onUpdate: () => {
       // No WebSocket updates in HTTP-only mode
@@ -213,8 +211,6 @@ const GroundTruth: React.FC = () => {
   // Dynamic project ID state that can be derived from video context
   const [projectId, setProjectId] = useState<string | null>(urlProjectId || null);
   const [projectContext, setProjectContext] = useState<'url' | 'video' | 'central' | null>(urlProjectId ? 'url' : null);
-  
-  // Project ID context management - debug logs removed for production
 
   // Utility function to get the best available project context for operations
   const getProjectContextForOperation = useCallback((operationVideo?: VideoFile) => {
@@ -281,7 +277,6 @@ const GroundTruth: React.FC = () => {
   const loadAnnotations = useCallback(async (videoId: string, videoProjectId?: string) => {
     try {
       // Use video's project context if available, otherwise use current project context
-      const _contextualProjectId = videoProjectId || projectId;
       
       const annotationList = await apiService.getAnnotations(videoId);
       setAnnotations(annotationList);
@@ -302,7 +297,7 @@ const GroundTruth: React.FC = () => {
       console.error('Error loading annotations for video:', videoId, err);
       setAnnotations([]);
     }
-  }, [projectId]);
+  }, []);
 
   const uploadFiles = useCallback(async (files: File[]) => {
     const newUploadingVideos: UploadingVideo[] = files.map(file => ({

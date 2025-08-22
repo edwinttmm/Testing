@@ -19,9 +19,7 @@ import {
 import {
   LinkOff,
   VideoLibrary,
-  Label,
   Assessment,
-  Warning,
   Info,
 } from '@mui/icons-material';
 import { VideoFile } from '../services/types';

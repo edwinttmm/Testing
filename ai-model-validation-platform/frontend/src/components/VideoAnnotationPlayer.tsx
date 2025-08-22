@@ -9,7 +9,6 @@ import {
   CardContent,
   Tooltip,
   Stack,
-  CircularProgress,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -28,7 +27,7 @@ import {
   setVideoSource,
   addVideoEventListeners,
 } from '../utils/videoUtils';
-import { videoUtils, generateVideoUrl, getFallbackVideoUrl, VideoMetadata } from '../utils/videoUtils';
+// Removed unused video utility imports
 import { isDebugEnabled } from '../utils/envConfig';
 
 interface VideoAnnotationPlayerProps {
@@ -259,12 +258,12 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
       if (cleanupListeners) {
         cleanupListeners();
       }
-      const currentVideoElement = videoRef.current;
-      if (currentVideoElement) {
-        cleanupVideoElement(currentVideoElement);
+      // Use captured videoElement to avoid stale closure
+      if (videoElement) {
+        cleanupVideoElement(videoElement);
       }
     };
-  }, [video.url, frameRate, onTimeUpdate]);
+  }, [video.url, frameRate, onTimeUpdate, drawAnnotations]);
 
   // Redraw annotations when dependencies change (optimized to prevent render loops)
   useEffect(() => {
@@ -273,7 +272,7 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         drawAnnotations();
       });
     }
-  }, [currentAnnotations, selectedAnnotation?.id, videoSize.width, videoSize.height]);
+  }, [drawAnnotations, currentAnnotations.length]);
 
   // Handle canvas click
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
