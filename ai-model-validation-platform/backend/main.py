@@ -1596,9 +1596,9 @@ async def run_detection_pipeline(
             "target_classes": request.target_classes
         }
         
-        # Run detection (await the async method)
-        detections = await detection_pipeline_service.process_video(
-            video.file_path, pipeline_config
+        # Run detection with complete database storage and screenshot capture
+        detections = await detection_pipeline_service.process_video_with_storage(
+            video.file_path, video.id, pipeline_config
         )
         
         return DetectionPipelineResponse(
@@ -1624,6 +1624,151 @@ async def get_available_models():
         "default": "yolov8n",
         "recommended": "yolov8s"
     }
+
+@app.get("/api/videos/{video_id}/detections")
+async def get_video_detections(
+    video_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get all detection events for a video with complete data including bounding boxes and screenshots"""
+    try:
+        from models import DetectionEvent, TestSession
+        
+        # Get detection events for this video through test sessions
+        detections = db.query(DetectionEvent).join(TestSession).filter(
+            TestSession.video_id == video_id
+        ).order_by(DetectionEvent.timestamp.asc()).all()
+        
+        if not detections:
+            return {
+                "video_id": video_id,
+                "total_detections": 0,
+                "detections": [],
+                "message": "No detections found. Run detection pipeline first."
+            }
+        
+        # Convert to response format with complete data
+        detection_list = []
+        for detection in detections:
+            detection_data = {
+                "id": detection.id,
+                "detection_id": detection.detection_id,
+                "timestamp": detection.timestamp,
+                "frame_number": detection.frame_number,
+                "confidence": detection.confidence,
+                "class_label": detection.class_label,
+                "vru_type": detection.vru_type,
+                "validation_result": detection.validation_result,
+                
+                # Bounding box data
+                "bounding_box": {
+                    "x": detection.bounding_box_x,
+                    "y": detection.bounding_box_y,
+                    "width": detection.bounding_box_width,
+                    "height": detection.bounding_box_height
+                } if detection.bounding_box_x is not None else None,
+                
+                # Visual evidence
+                "screenshot_path": detection.screenshot_path,
+                "screenshot_zoom_path": detection.screenshot_zoom_path,
+                "has_visual_evidence": detection.screenshot_path is not None,
+                
+                # Metadata
+                "processing_time_ms": detection.processing_time_ms,
+                "model_version": detection.model_version,
+                "created_at": detection.created_at.isoformat() if detection.created_at else None,
+                
+                # Test session info
+                "test_session_id": detection.test_session_id
+            }
+            detection_list.append(detection_data)
+        
+        # Group by test session for organization
+        test_sessions = {}
+        for detection in detection_list:
+            session_id = detection["test_session_id"]
+            if session_id not in test_sessions:
+                test_sessions[session_id] = []
+            test_sessions[session_id].append(detection)
+        
+        return {
+            "video_id": video_id,
+            "total_detections": len(detection_list),
+            "detections": detection_list,
+            "detection_summary": {
+                "by_class": {},
+                "by_confidence": {
+                    "high": len([d for d in detection_list if d.get("confidence", 0) >= 0.8]),
+                    "medium": len([d for d in detection_list if 0.5 <= d.get("confidence", 0) < 0.8]),
+                    "low": len([d for d in detection_list if d.get("confidence", 0) < 0.5])
+                },
+                "with_screenshots": len([d for d in detection_list if d["has_visual_evidence"]])
+            },
+            "test_sessions": list(test_sessions.keys()),
+            "message": f"Found {len(detection_list)} detections with visual evidence"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting video detections: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get detections: {str(e)}")
+
+@app.get("/api/test-sessions/{session_id}/detections")
+async def get_test_session_detections(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get all detection events for a specific test session"""
+    try:
+        from models import DetectionEvent, TestSession
+        
+        # Verify test session exists
+        test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if not test_session:
+            raise HTTPException(status_code=404, detail="Test session not found")
+        
+        # Get detections for this session
+        detections = db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id == session_id
+        ).order_by(DetectionEvent.timestamp.asc()).all()
+        
+        detection_list = []
+        for detection in detections:
+            detection_data = {
+                "id": detection.id,
+                "detection_id": detection.detection_id,
+                "timestamp": detection.timestamp,
+                "frame_number": detection.frame_number,
+                "confidence": detection.confidence,
+                "class_label": detection.class_label,
+                "vru_type": detection.vru_type,
+                "bounding_box": {
+                    "x": detection.bounding_box_x,
+                    "y": detection.bounding_box_y,
+                    "width": detection.bounding_box_width,
+                    "height": detection.bounding_box_height
+                } if detection.bounding_box_x is not None else None,
+                "screenshot_path": detection.screenshot_path,
+                "screenshot_zoom_path": detection.screenshot_zoom_path,
+                "validation_result": detection.validation_result
+            }
+            detection_list.append(detection_data)
+        
+        return {
+            "test_session_id": session_id,
+            "test_session_name": test_session.name,
+            "video_id": test_session.video_id,
+            "total_detections": len(detection_list),
+            "detections": detection_list,
+            "session_status": test_session.status,
+            "started_at": test_session.started_at.isoformat() if test_session.started_at else None,
+            "completed_at": test_session.completed_at.isoformat() if test_session.completed_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting test session detections: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get session detections: {str(e)}")
 
 # Signal Processing endpoints
 @app.post("/api/signals/process", response_model=SignalProcessingResponse)
