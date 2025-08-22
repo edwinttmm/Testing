@@ -745,16 +745,17 @@ class DetectionPipeline:
         
         return enhanced_detections
 
-    async def process_video(self, video_path: str, config: dict = None) -> List[Dict]:
+    async def process_video(self, video_path: str, video_id: str = None, config: dict = None) -> List[Dict]:
         """Process video file and return detections for API endpoint - Non-blocking background task version"""
         return await asyncio.get_event_loop().run_in_executor(
             self.thread_executor, 
             self._process_video_sync, 
             video_path, 
+            video_id,
             config
         )
     
-    def _process_video_sync(self, video_path: str, config: dict = None) -> List[Dict]:
+    def _process_video_sync(self, video_path: str, video_id: str = None, config: dict = None) -> List[Dict]:
         """Synchronous video processing moved to thread pool"""
         try:
             logger.info(f"🎬 Starting video processing in background thread: {video_path}")
@@ -786,8 +787,17 @@ class DetectionPipeline:
             
             logger.info(f"📊 Video properties: {total_frames} frames, {fps:.2f} fps, {duration:.2f}s")
             
-            # Initialize timeline
-            video_id = str(uuid.uuid4())
+            # Initialize timeline - Generate video_id if not provided
+            if not video_id:
+                # Try to extract video ID from filename (format: uuid.ext)
+                video_filename = Path(video_path).stem
+                if len(video_filename.split('-')) == 5:  # UUID format check
+                    video_id = video_filename
+                    logger.info(f"📁 Extracted video ID from filename: {video_id}")
+                else:
+                    video_id = str(uuid.uuid4())
+                    logger.info(f"🆔 Generated new video ID: {video_id}")
+            
             self.timestamp_sync.initialize_video_timeline(video_id, fps)
             
             all_detections = []
@@ -821,7 +831,7 @@ class DetectionPipeline:
                         detection.frame_number = frame_number
                         detection.timestamp = frame_number / fps
                         
-                        # Convert to API response format
+                        # Convert to API response format - FIXED: Include videoId for API compatibility
                         detection_dict = {
                             "id": detection.detection_id or str(uuid.uuid4()),
                             "frame_number": detection.frame_number,
@@ -831,6 +841,11 @@ class DetectionPipeline:
                             "bounding_box": detection.bounding_box.to_dict(),
                             "vru_type": detection.class_label,  # Map class_label to vru_type
                         }
+                        
+                        # Critical fix: Add video ID for Pydantic validation if available
+                        if video_id:
+                            detection_dict["videoId"] = video_id  # For API/Pydantic validation
+                            detection_dict["video_id"] = video_id  # For database compatibility
                         
                         all_detections.append(detection_dict)
                         
@@ -923,8 +938,8 @@ class DetectionPipeline:
         
         db = SessionLocal()
         try:
-            # First run the detection processing
-            detections = await self.process_video(video_path, config)
+            # First run the detection processing - FIXED: Pass video_id for API compatibility
+            detections = await self.process_video(video_path, video_id, config)
             
             logger.info(f"🗃️ Storing {len(detections)} detections in database with screenshots...")
             
