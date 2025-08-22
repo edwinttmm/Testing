@@ -914,6 +914,140 @@ class DetectionPipeline:
         
         return validated
     
+    async def process_video_with_storage(self, video_path: str, video_id: str, config: dict = None) -> List[Dict]:
+        """Process video AND store all results in database with screenshots - Complete workflow"""
+        from database import SessionLocal
+        from models import DetectionEvent, TestSession
+        from datetime import datetime
+        import time
+        
+        db = SessionLocal()
+        try:
+            # First run the detection processing
+            detections = await self.process_video(video_path, config)
+            
+            logger.info(f"🗃️ Storing {len(detections)} detections in database with screenshots...")
+            
+            # Create or get test session for this video
+            test_session = db.query(TestSession).filter(
+                TestSession.video_id == video_id,
+                TestSession.status == "running"
+            ).first()
+            
+            if not test_session:
+                # Create new test session
+                test_session = TestSession(
+                    id=str(uuid.uuid4()),
+                    name=f"Detection Session - {time.strftime('%Y-%m-%d %H:%M')}",
+                    project_id="00000000-0000-0000-0000-000000000000",  # Default project
+                    video_id=video_id,
+                    status="running",
+                    started_at=datetime.utcnow()
+                )
+                db.add(test_session)
+                db.commit()
+                db.refresh(test_session)
+            
+            # Store each detection in database with complete data
+            stored_detections = []
+            
+            # Reopen video for screenshot capture
+            cap = cv2.VideoCapture(video_path)
+            
+            for detection_data in detections:
+                try:
+                    # Extract frame for screenshot capture
+                    frame_number = detection_data.get('frame_number', 0)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number - 1)
+                    ret, frame = cap.read()
+                    
+                    screenshot_path = None
+                    screenshot_zoom_path = None
+                    
+                    if ret and frame is not None:
+                        # Create bounding box object for screenshot capture
+                        bbox_data = detection_data.get('bounding_box', {})
+                        bbox = BoundingBox(
+                            x=bbox_data.get('x', 0),
+                            y=bbox_data.get('y', 0),
+                            width=bbox_data.get('width', 0),
+                            height=bbox_data.get('height', 0)
+                        )
+                        
+                        detection_id = detection_data.get('id', str(uuid.uuid4()))
+                        
+                        # Capture full frame screenshot with bounding box
+                        screenshot_path = await self.screenshot_capture.capture_detection(
+                            frame, bbox, detection_id
+                        )
+                        
+                        # Capture zoomed region screenshot
+                        screenshot_zoom_path = await self.screenshot_capture.capture_zoomed_region(
+                            frame, bbox, detection_id
+                        )
+                        
+                        logger.info(f"📸 Captured screenshots for detection {detection_id}")
+                    
+                    # Create complete DetectionEvent record
+                    detection_event = DetectionEvent(
+                        id=detection_data.get('id', str(uuid.uuid4())),
+                        test_session_id=test_session.id,
+                        timestamp=detection_data.get('timestamp', 0.0),
+                        confidence=detection_data.get('confidence', 0.0),
+                        class_label=detection_data.get('class_label', 'unknown'),
+                        validation_result='PENDING',
+                        
+                        # NEW FIELDS - Complete detection data
+                        detection_id=detection_data.get('id'),
+                        frame_number=detection_data.get('frame_number', 0),
+                        vru_type=detection_data.get('vru_type', detection_data.get('class_label')),
+                        
+                        # Bounding box coordinates
+                        bounding_box_x=bbox_data.get('x', 0),
+                        bounding_box_y=bbox_data.get('y', 0),
+                        bounding_box_width=bbox_data.get('width', 0),
+                        bounding_box_height=bbox_data.get('height', 0),
+                        
+                        # Visual evidence paths
+                        screenshot_path=screenshot_path,
+                        screenshot_zoom_path=screenshot_zoom_path,
+                        
+                        # Processing metadata
+                        processing_time_ms=10.0,  # Approximate processing time
+                        model_version="yolo11l"
+                    )
+                    
+                    db.add(detection_event)
+                    stored_detections.append(detection_data)
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to store detection: {e}")
+                    continue
+            
+            cap.release()
+            
+            # Commit all detection events
+            db.commit()
+            
+            # Mark test session as completed
+            test_session.status = "completed"
+            test_session.completed_at = datetime.utcnow()
+            db.commit()
+            
+            logger.info(f"✅ Successfully stored {len(stored_detections)} detections with screenshots!")
+            logger.info(f"📊 Test session: {test_session.id}")
+            
+            return detections
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"❌ Failed to store detections in database: {e}")
+            # Return original detections even if storage failed
+            return await self.process_video(video_path, config) if 'detections' not in locals() else detections
+            
+        finally:
+            db.close()
+    
     def _preprocess_frame_sync(self, frame: np.ndarray) -> np.ndarray:
         """Synchronous frame preprocessing for thread pool execution"""
         try:

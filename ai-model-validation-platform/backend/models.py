@@ -118,14 +118,35 @@ class DetectionEvent(Base):
     validation_result = Column(String, index=True)  # Index for filtering by validation result ('TP', 'FP', 'FN')
     ground_truth_match_id = Column(String(36), ForeignKey("ground_truth_objects.id", ondelete="SET NULL"), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    # NEW FIELDS FOR COMPLETE DETECTION STORAGE
+    detection_id = Column(String(36), nullable=True, index=True)  # Unique detection identifier
+    frame_number = Column(Integer, nullable=True, index=True)  # Frame correlation
+    vru_type = Column(String, nullable=True, index=True)  # VRU classification
+    
+    # Bounding box coordinates (spatial data)
+    bounding_box_x = Column(Float, nullable=True)  # X coordinate
+    bounding_box_y = Column(Float, nullable=True)  # Y coordinate  
+    bounding_box_width = Column(Float, nullable=True)  # Width
+    bounding_box_height = Column(Float, nullable=True)  # Height
+    
+    # Visual evidence paths
+    screenshot_path = Column(String, nullable=True)  # Full frame screenshot
+    screenshot_zoom_path = Column(String, nullable=True)  # Zoomed region screenshot
+    
+    # Processing metadata
+    processing_time_ms = Column(Float, nullable=True)  # Time taken for detection
+    model_version = Column(String, nullable=True)  # ML model version used
 
     test_session = relationship("TestSession", back_populates="detection_events")
 
-    # Composite index for performance-critical queries
+    # Updated composite indexes for performance-critical queries
     __table_args__ = (
         Index('idx_detection_session_timestamp', 'test_session_id', 'timestamp'),
         Index('idx_detection_session_validation', 'test_session_id', 'validation_result'),
         Index('idx_detection_timestamp_confidence', 'timestamp', 'confidence'),
+        Index('idx_detection_frame_class', 'frame_number', 'class_label'),  # New index
+        Index('idx_detection_bbox_area', 'bounding_box_width', 'bounding_box_height'),  # New index
     )
 
 class Annotation(Base):
