@@ -77,6 +77,7 @@ from services.detection_pipeline_service import DetectionPipeline as DetectionPi
 from services.signal_processing_service import SignalProcessingWorkflow
 from services.project_management_service import ProjectManager as ProjectManagementService
 from services.validation_analysis_service import ValidationWorkflow as ValidationAnalysisService
+from services.progress_tracker import progress_tracker
 # ID Generation Service - multiple classes available, importing the main one
 try:
     from services.id_generation_service import IDGenerator as IDGenerationService
@@ -1888,6 +1889,56 @@ async def get_enhanced_dashboard_stats(
             active_tests=0,
             total_detections=0
         )
+
+# Progress tracking endpoints for WebSocket connections
+@app.get("/api/progress/tasks")
+async def list_active_tasks():
+    """List all active progress-tracked tasks"""
+    return {
+        "active_tasks": progress_tracker.list_active_tasks(),
+        "total_active": len(progress_tracker.list_active_tasks())
+    }
+
+@app.get("/api/progress/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """Get status of specific task"""
+    status = progress_tracker.get_task_status(task_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return status
+
+# WebSocket endpoint for real-time progress updates
+from fastapi import WebSocket, WebSocketDisconnect
+import asyncio
+import json
+
+@app.websocket("/ws/progress/{task_id}")
+async def websocket_progress_endpoint(websocket: WebSocket, task_id: str):
+    """WebSocket endpoint for real-time progress updates"""
+    await websocket.accept()
+    
+    try:
+        # Register WebSocket connection
+        await progress_tracker.register_websocket(task_id, websocket)
+        
+        # Keep connection alive and handle disconnections
+        while True:
+            try:
+                # Wait for messages (ping/pong to keep alive)
+                message = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                # Echo back to confirm connection
+                await websocket.send_text(json.dumps({"type": "pong", "message": "alive"}))
+            except asyncio.TimeoutError:
+                # Send ping to check if client is still connected
+                await websocket.send_text(json.dumps({"type": "ping"}))
+                
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for task {task_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for task {task_id}: {e}")
+    finally:
+        # Clean up WebSocket registration
+        progress_tracker.unregister_websocket(task_id)
 
 # Integrate annotation system after app is fully configured
 from integration_main import integrate_annotation_system
