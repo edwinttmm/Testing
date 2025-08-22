@@ -878,7 +878,8 @@ class DetectionPipeline:
                 confidence = detection.get("confidence", 0.0)
                 
                 config = VRU_DETECTION_CONFIG.get(class_label, {})
-                min_confidence = config.get("min_confidence", 0.5)
+                # Use ultra-low default threshold (0.01) to match VRU_DETECTION_CONFIG
+                min_confidence = config.get("min_confidence", 0.01)
                 
                 if confidence >= min_confidence:
                     # Ensure all required fields are present
