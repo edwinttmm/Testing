@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
-import { Box, styled } from '@mui/material';
+import { Box } from '@mui/material';
+import { styled } from '@mui/material/styles';
 import { useAnnotation } from './AnnotationManager';
 import { AnnotationShape, Point, Rectangle, ResizeHandle, SelectionBox } from './types';
 

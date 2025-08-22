@@ -49,3 +49,6 @@ pandas==2.1.4
 
 # PostgreSQL Driver
 psycopg2-binary
+
+# Signal Acquisition Hardware
+labjack-ljm==1.21.0  # LabJack voltage signal acquisition

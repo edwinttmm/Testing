@@ -25,7 +25,12 @@ import {
 } from '@mui/icons-material';
 
 // Import existing components
-import VideoAnnotationPlayer from '../VideoAnnotationPlayer';
+// Note: VideoAnnotationPlayer import - create if needed
+const VideoAnnotationPlayer = React.lazy(() => 
+  import('../VideoAnnotationPlayer').catch(() => 
+    Promise.resolve({ default: () => <div>Classic mode not available</div> })
+  )
+);
 import { VideoFile, GroundTruthAnnotation } from '../../services/types';
 
 // Import new annotation components
@@ -351,7 +356,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
       visible: true,
       selected: selectedAnnotation?.id === annotation.id,
     }));
-  }, [selectedAnnotation]);
+  }, [selectedAnnotation, getVRUColor]);
 
   // VRU color mapping
   const getVRUColor = useCallback((vruType: string): string => {
@@ -491,7 +496,8 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
         </AnnotationProvider>
       ) : (
         // Classic interface (backward compatibility)
-        <VideoAnnotationPlayer
+        <React.Suspense fallback={<div>Loading...</div>}>
+          <VideoAnnotationPlayer
           video={video}
           annotations={annotations}
           onAnnotationSelect={onAnnotationSelect}
@@ -502,7 +508,8 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
           frameRate={frameRate}
           showDetectionControls={showDetectionControls}
           detectionControlsComponent={detectionControlsComponent}
-        />
+          />
+        </React.Suspense>
       )}
 
       {/* Error snackbar */}

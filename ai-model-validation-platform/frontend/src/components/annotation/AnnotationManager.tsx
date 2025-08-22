@@ -102,7 +102,7 @@ function annotationReducer(state: AnnotationState, action: AnnotationActionType)
       return {
         ...state,
         selectedShapeIds: action.append
-          ? [...new Set([...state.selectedShapeIds, ...action.ids])]
+          ? Array.from(new Set([...state.selectedShapeIds, ...action.ids]))
           : action.ids,
       };
 
