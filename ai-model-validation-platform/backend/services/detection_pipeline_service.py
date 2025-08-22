@@ -831,7 +831,7 @@ class DetectionPipeline:
                         detection.frame_number = frame_number
                         detection.timestamp = frame_number / fps
                         
-                        # Convert to API response format - FIXED: Include videoId for API compatibility
+                        # Convert to API response format - FIXED: Always include videoId for API compatibility
                         detection_dict = {
                             "id": detection.detection_id or str(uuid.uuid4()),
                             "frame_number": detection.frame_number,
@@ -840,12 +840,9 @@ class DetectionPipeline:
                             "confidence": detection.confidence,
                             "bounding_box": detection.bounding_box.to_dict(),
                             "vru_type": detection.class_label,  # Map class_label to vru_type
+                            "videoId": video_id,  # CRITICAL: Always include for API/Pydantic validation
+                            "video_id": video_id  # For database compatibility
                         }
-                        
-                        # Critical fix: Add video ID for Pydantic validation if available
-                        if video_id:
-                            detection_dict["videoId"] = video_id  # For API/Pydantic validation
-                            detection_dict["video_id"] = video_id  # For database compatibility
                         
                         all_detections.append(detection_dict)
                         
