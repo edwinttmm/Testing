@@ -35,7 +35,7 @@ interface ContextMenuProps {
   anchorPosition?: { top: number; left: number } | null;
   onClose: () => void;
   targetShape?: AnnotationShape | null;
-  clickPoint?: Point;
+  clickPoint?: Point | null;
   onShapeEdit?: (shape: AnnotationShape) => void;
   onLabelEdit?: (shape: AnnotationShape) => void;
   onPropertiesEdit?: (shape: AnnotationShape) => void;
@@ -217,7 +217,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         label: 'Edit Shape',
         icon: <Edit />,
         action: handleEdit,
-        disabled: targetShape.locked,
+        disabled: targetShape.locked || false,
       });
 
       items.push({
@@ -386,7 +386,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
             <MenuItem
               key={item.id}
               onClick={item.action}
-              disabled={item.disabled}
+              disabled={item.disabled || false}
               sx={{
                 minHeight: 36,
                 '&:hover': !item.disabled ? {

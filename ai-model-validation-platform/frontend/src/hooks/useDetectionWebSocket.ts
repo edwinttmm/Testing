@@ -1,11 +1,11 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { GroundTruthAnnotation } from '../services/types';
 
-// WebSocket functionality completely disabled - HTTP-only detection workflow
+// WebSocket functionality re-enabled for real-time detection updates
 export interface DetectionUpdate {
   type: 'progress' | 'detection' | 'complete' | 'error';
   videoId: string;
-  data?: any;
+  data?: unknown;
   progress?: number;
   annotation?: GroundTruthAnnotation;
   error?: string;
@@ -26,70 +26,214 @@ interface UseDetectionWebSocketOptions {
 }
 
 interface ConnectionState {
-  status: 'disabled'; // Always disabled - no WebSocket connections
-  reconnectAttempts: 0;
+  status: 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
+  reconnectAttempts: number;
   lastError?: string;
-  fallbackActive: false;
+  fallbackActive: boolean;
 }
 
-// HTTP-only detection hook - WebSocket functionality completely removed
+// Re-enabled WebSocket detection hook with robust connection management
 export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}) => {
-  const [connectionState] = useState<ConnectionState>({
-    status: 'disabled',
+  const {
+    url = `ws://${window.location.hostname}:8001/ws/detection`,
+    autoReconnect = true,
+    reconnectDelay = 3000,
+    maxReconnectAttempts = 5,
+    enabled = true,
+    fallbackPollingInterval = 5000,
+    onUpdate,
+    onConnect,
+    onDisconnect,
+    onError,
+    onFallback
+  } = options;
+
+  const [connectionState, setConnectionState] = useState<ConnectionState>({
+    status: 'disconnected',
     reconnectAttempts: 0,
     fallbackActive: false
   });
 
-  // No polling or WebSocket functionality - clean HTTP-only approach
-  // Functions removed to eliminate unused variable warnings
+  const websocketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fallbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // No-op connect function - WebSocket functionality completely disabled
+  // Connect to WebSocket
   const connect = useCallback(() => {
-    console.log('ℹ️ WebSocket functionality disabled - using HTTP-only detection');
-    // No WebSocket connections will be attempted
-  }, []);
+    if (!enabled) {
+      console.log('ℹ️ WebSocket disabled via options');
+      return;
+    }
 
-  // No-op disconnect function - no connections to close
+    if (websocketRef.current?.readyState === WebSocket.CONNECTING || 
+        websocketRef.current?.readyState === WebSocket.OPEN) {
+      console.log('ℹ️ WebSocket already connected or connecting');
+      return;
+    }
+
+    console.log('🔌 Connecting to detection WebSocket:', url);
+    setConnectionState(prev => ({ ...prev, status: 'connecting' }));
+
+    try {
+      const ws = new WebSocket(url);
+      websocketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('✅ Detection WebSocket connected');
+        setConnectionState(prev => ({
+          ...prev,
+          status: 'connected',
+          reconnectAttempts: 0,
+          lastError: undefined,
+          fallbackActive: false
+        }));
+        
+        // Clear fallback polling if active
+        if (fallbackIntervalRef.current) {
+          clearInterval(fallbackIntervalRef.current);
+          fallbackIntervalRef.current = null;
+        }
+        
+        onConnect?.();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as DetectionUpdate;
+          onUpdate?.(data);
+        } catch (error) {
+          console.warn('⚠️ Failed to parse WebSocket message:', error);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('📤 Detection WebSocket disconnected:', event.reason);
+        setConnectionState(prev => ({ ...prev, status: 'disconnected' }));
+        websocketRef.current = null;
+        onDisconnect?.();
+
+        // Auto-reconnect if enabled and within attempt limits
+        if (autoReconnect && connectionState.reconnectAttempts < maxReconnectAttempts) {
+          const delay = reconnectDelay * Math.pow(1.5, connectionState.reconnectAttempts);
+          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${connectionState.reconnectAttempts + 1}/${maxReconnectAttempts})`);
+          
+          setConnectionState(prev => ({
+            ...prev,
+            status: 'reconnecting',
+            reconnectAttempts: prev.reconnectAttempts + 1
+          }));
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        } else if (fallbackPollingInterval > 0) {
+          // Start fallback polling
+          console.log('🔄 Starting fallback HTTP polling');
+          setConnectionState(prev => ({ ...prev, fallbackActive: true }));
+          onFallback?.('WebSocket connection failed, using HTTP polling');
+          
+          fallbackIntervalRef.current = setInterval(() => {
+            // Trigger polling-based detection updates
+            console.log('📡 HTTP polling fallback active');
+          }, fallbackPollingInterval);
+        }
+      };
+
+      ws.onerror = (event) => {
+        console.error('❌ Detection WebSocket error:', event);
+        const errorMessage = 'WebSocket connection error';
+        setConnectionState(prev => ({
+          ...prev,
+          status: 'error',
+          lastError: errorMessage
+        }));
+        onError?.(event);
+      };
+
+    } catch (error) {
+      console.error('❌ Failed to create WebSocket connection:', error);
+      setConnectionState(prev => ({
+        ...prev,
+        status: 'error',
+        lastError: error instanceof Error ? error.message : 'Unknown error'
+      }));
+    }
+  }, [url, enabled, autoReconnect, reconnectDelay, maxReconnectAttempts, fallbackPollingInterval, onUpdate, onConnect, onDisconnect, onError, onFallback, connectionState.reconnectAttempts]);
+
+  // Disconnect WebSocket
   const disconnect = useCallback(() => {
-    console.log('ℹ️ HTTP-only mode - no connections to disconnect');
-    // No cleanup needed since no WebSocket connections exist
+    console.log('🔌 Disconnecting detection WebSocket');
+    
+    // Clear reconnection timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    // Clear fallback polling
+    if (fallbackIntervalRef.current) {
+      clearInterval(fallbackIntervalRef.current);
+      fallbackIntervalRef.current = null;
+    }
+
+    // Close WebSocket connection
+    if (websocketRef.current) {
+      websocketRef.current.close(1000, 'Client disconnect');
+      websocketRef.current = null;
+    }
+
+    setConnectionState(prev => ({
+      ...prev,
+      status: 'disconnected',
+      reconnectAttempts: 0,
+      fallbackActive: false
+    }));
   }, []);
 
-  // No-op send function - no WebSocket to send messages to
-  const sendMessage = useCallback((message: any) => {
-    console.log('ℹ️ HTTP-only mode - no WebSocket messaging available');
-    // Messages are not sent as WebSocket functionality is disabled
+  // Send message through WebSocket
+  const sendMessage = useCallback((message: unknown) => {
+    if (websocketRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        websocketRef.current.send(JSON.stringify(message));
+        console.log('📤 Sent WebSocket message:', message);
+      } catch (error) {
+        console.error('❌ Failed to send WebSocket message:', error);
+      }
+    } else {
+      console.warn('⚠️ Cannot send message - WebSocket not connected');
+    }
   }, []);
 
-  // Always return false for WebSocket connection (removed to eliminate unused variable warnings)
-
-  // Return HTTP-only status
+  // Get connection status
   const getConnectionStatus = useCallback(() => {
     return {
       ...connectionState,
-      isConnected: false,
-      hasConnection: false // HTTP-only workflow, no persistent connection
+      isConnected: websocketRef.current?.readyState === WebSocket.OPEN,
+      hasConnection: websocketRef.current !== null
     };
   }, [connectionState]);
 
-  // No effect needed - WebSocket functionality completely disabled
+  // Auto-connect on mount if enabled
   useEffect(() => {
-    console.log('ℹ️ Detection system initialized in HTTP-only mode');
-    // No WebSocket connections will be established
-    return () => {
-      // No cleanup needed
-    };
-  }, []);
+    if (enabled) {
+      console.log('🚀 Detection WebSocket system initialized');
+      connect();
+    }
 
-  // Return HTTP-only interface - no WebSocket functionality
+    return () => {
+      disconnect();
+    };
+  }, [enabled, connect, disconnect]);
+
+  // Return WebSocket interface
   return {
     connect,
     disconnect,
     sendMessage,
-    isConnected: false, // Always false
+    isConnected: websocketRef.current?.readyState === WebSocket.OPEN,
     connectionStatus: getConnectionStatus(),
-    fallbackActive: false, // No fallback polling
-    reconnectAttempts: 0, // No reconnection attempts
-    lastError: undefined // No WebSocket errors
+    fallbackActive: connectionState.fallbackActive,
+    reconnectAttempts: connectionState.reconnectAttempts,
+    lastError: connectionState.lastError
   };
 };

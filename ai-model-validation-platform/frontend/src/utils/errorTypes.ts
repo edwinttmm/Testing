@@ -4,8 +4,8 @@ export interface AppError extends Error {
   code?: string;
   statusCode?: number;
   status?: number;
-  details?: any;
-  context?: Record<string, any>;
+  details?: Record<string, unknown>;
+  context?: Record<string, unknown>;
   timestamp?: string;
   retry?: boolean;
 }
@@ -15,7 +15,7 @@ export class NetworkError extends Error {
   retry = true;
   timestamp: string;
   statusCode: number;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   
   constructor(message = 'Network request failed', statusCode = 0, context = {}) {
     super(message);
@@ -31,7 +31,7 @@ export class WebSocketError extends Error {
   retry = true;
   timestamp: string;
   statusCode: number;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   
   constructor(message = 'WebSocket connection failed', statusCode = 0, context = {}) {
     super(message);
@@ -47,7 +47,7 @@ export class ValidationError extends Error {
   retry = false;
   timestamp: string;
   statusCode: number;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   
   constructor(message = 'Validation failed', statusCode = 0, context = {}) {
     super(message);
@@ -81,7 +81,7 @@ export function createAppError(type: string, message: string, statusCode = 0, co
 export const ErrorFactory = { 
   createAppError,
   createNetworkError: (message?: string, context = {}) => new NetworkError(message, 0, context),
-  createApiError: (response: any, data: any, context = {}) => new NetworkError('API Error', response?.status || 0, { ...context, response, data }),
+  createApiError: (response: Record<string, unknown>, data: Record<string, unknown>, context = {}) => new NetworkError('API Error', response?.status as number || 0, { ...context, response, data }),
   createValidationError: (message?: string, context = {}) => new ValidationError(message, 0, context),
   createWebSocketError: (message?: string, context = {}) => new WebSocketError(message, 0, context)
 };

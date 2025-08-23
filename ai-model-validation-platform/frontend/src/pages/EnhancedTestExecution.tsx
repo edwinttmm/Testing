@@ -22,7 +22,6 @@ import {
   Switch,
   FormControlLabel,
   CircularProgress,
-  Grid,
   Paper,
   IconButton,
   Tooltip,
@@ -30,6 +29,7 @@ import {
   Divider,
   Badge,
 } from '@mui/material';
+import { FixedGrid } from '../components/ui/FixedUIComponents';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
@@ -392,8 +392,8 @@ const EnhancedTestExecution: React.FC = () => {
       {/* Project Selection and Controls */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={3}>
+          <FixedGrid container spacing={2} alignItems="center">
+            <FixedGrid item xs={12} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Project</InputLabel>
                 <Select
@@ -410,9 +410,9 @@ const EnhancedTestExecution: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6} md={2}>
+            <FixedGrid item xs={12} sm={6} md={2}>
               <TextField
                 label="Latency (ms)"
                 type="number"
@@ -425,9 +425,9 @@ const EnhancedTestExecution: React.FC = () => {
                 fullWidth
                 size="small"
               />
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6} md={2}>
+            <FixedGrid item xs={12} sm={6} md={2}>
               <Button
                 variant="outlined"
                 startIcon={<VideoIcon />}
@@ -437,9 +437,9 @@ const EnhancedTestExecution: React.FC = () => {
               >
                 Videos ({selectedVideos.length})
               </Button>
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6} md={2}>
+            <FixedGrid item xs={12} sm={6} md={2}>
               <Button
                 variant="outlined"
                 startIcon={<SpeedIcon />}
@@ -448,9 +448,9 @@ const EnhancedTestExecution: React.FC = () => {
               >
                 Test Config
               </Button>
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={12} md={3}>
+            <FixedGrid item xs={12} sm={12} md={3}>
               <Stack direction="row" spacing={1}>
                 <Button
                   variant="contained"
@@ -462,8 +462,8 @@ const EnhancedTestExecution: React.FC = () => {
                   Start Sequential
                 </Button>
               </Stack>
-            </Grid>
-          </Grid>
+            </FixedGrid>
+          </FixedGrid>
         </CardContent>
       </Card>
 
@@ -538,8 +538,8 @@ const EnhancedTestExecution: React.FC = () => {
       >
         <DialogTitle>Test Configuration</DialogTitle>
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+          <FixedGrid container spacing={3} sx={{ mt: 1 }}>
+            <FixedGrid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -552,9 +552,9 @@ const EnhancedTestExecution: React.FC = () => {
                 }
                 label="Sequential Playback"
               />
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6}>
+            <FixedGrid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -567,9 +567,9 @@ const EnhancedTestExecution: React.FC = () => {
                 }
                 label="Auto Advance Videos"
               />
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6}>
+            <FixedGrid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -582,9 +582,9 @@ const EnhancedTestExecution: React.FC = () => {
                 }
                 label="Loop Playback"
               />
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6}>
+            <FixedGrid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -597,9 +597,9 @@ const EnhancedTestExecution: React.FC = () => {
                 }
                 label="Random Order"
               />
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6}>
+            <FixedGrid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -612,9 +612,9 @@ const EnhancedTestExecution: React.FC = () => {
                 }
                 label="Sync External Signals"
               />
-            </Grid>
+            </FixedGrid>
 
-            <Grid item xs={12} sm={6}>
+            <FixedGrid item xs={12} sm={6}>
               <TextField
                 label="Advance Delay (ms)"
                 type="number"
@@ -627,8 +627,8 @@ const EnhancedTestExecution: React.FC = () => {
                 fullWidth
                 helperText="Delay between video transitions"
               />
-            </Grid>
-          </Grid>
+            </FixedGrid>
+          </FixedGrid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTestConfigDialogOpen(false)}>

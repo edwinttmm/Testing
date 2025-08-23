@@ -18,8 +18,8 @@ interface UseWebSocketReturn {
   error: Error | null;
   connect: () => void;
   disconnect: () => void;
-  emit: (event: string, data?: any) => void;
-  on: (event: string, callback: (...args: any[]) => void) => () => void;
+  emit: (event: string, data?: unknown) => void;
+  on: <T = unknown>(event: string, callback: (data: T) => void) => () => void;
 }
 
 // WebSocket connection pool to prevent multiple connections to the same URL
@@ -53,7 +53,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectCountRef = useRef(0);
-  const listenersRef = useRef<Map<string, Set<(...args: any[]) => void>>>(new Map());
+  const listenersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
   const scheduleReconnectRef = useRef<(() => void) | null>(null);
 
   const clearReconnectTimeout = useCallback(() => {
@@ -185,7 +185,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     setError(null);
   }, [clearReconnectTimeout]);
 
-  const emit = useCallback((event: string, data?: any) => {
+  const emit = useCallback((event: string, data?: unknown) => {
     if (socketRef.current?.connected) {
       if (isDebugEnabled()) {
         console.log(`📡 Emitting WebSocket event: ${event}`, data);
@@ -200,7 +200,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, []);
 
-  const on = useCallback((event: string, callback: (...args: any[]) => void) => {
+  const on = useCallback(<T = unknown>(event: string, callback: (data: T) => void) => {
     // Track listeners for cleanup and reconnection
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, new Set());

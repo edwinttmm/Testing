@@ -1,4 +1,4 @@
-import { GroundTruthAnnotation } from './types';
+import { GroundTruthAnnotation, Detection, DetectionUpdate } from './types';
 import { apiService } from './api';
 import { isDebugEnabled } from '../utils/envConfig';
 
@@ -67,7 +67,7 @@ class DetectionService {
           };
         }
         throw new Error(result.error || 'Detection failed');
-      } catch (backendError: any) {
+      } catch (backendError: unknown) {
         console.warn('Backend detection failed:', backendError.message);
         
         // Try fallback detection if enabled and retries remain
@@ -82,7 +82,7 @@ class DetectionService {
         throw backendError;
       }
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
       if (isDebugEnabled()) {
@@ -161,7 +161,7 @@ class DetectionService {
         processingTime: response.processingTime || 0
       };
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Backend detection error:', error);
       
       // Provide more specific error messages
@@ -258,7 +258,7 @@ class DetectionService {
   
   private convertDetectionsToAnnotations(
     videoId: string,
-    detections: any[]
+    detections: Detection[]
   ): GroundTruthAnnotation[] {
     // Convert backend detections to annotations format
     return detections.map(det => ({
@@ -286,7 +286,7 @@ class DetectionService {
   }
   
   // WebSocket functionality completely removed - HTTP-only detection service
-  connectWebSocket(videoId: string, onUpdate: (data: any) => void): void {
+  connectWebSocket(videoId: string, onUpdate: (data: DetectionUpdate) => void): void {
     console.log('ℹ️ WebSocket functionality disabled - using HTTP-only detection workflow');
     // No WebSocket connections will be established
   }

@@ -7,10 +7,8 @@ interface BrushToolProps {
   enabled?: boolean;
 }
 
-const BrushTool: React.FC<BrushToolProps> = ({
-  onStrokeComplete,
-  enabled = false,
-}) => {
+// Hook that provides brush tool functionality
+export const useBrushTool = (props: BrushToolProps) => {
   const { state, actions } = useAnnotation();
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -26,9 +24,46 @@ const BrushTool: React.FC<BrushToolProps> = ({
     return brushSettings.size * pressure;
   }, [brushSettings.size]);
 
+  // Interpolate points between two positions for smoother strokes
+  const interpolatePoints = useCallback((start: Point, end: Point, steps: number): Point[] => {
+    const points: Point[] = [];
+    for (let i = 1; i <= steps; i++) {
+      const ratio = i / (steps + 1);
+      points.push({
+        x: start.x + (end.x - start.x) * ratio,
+        y: start.y + (end.y - start.y) * ratio,
+      });
+    }
+    return points;
+  }, []);
+
+  // Smooth stroke path using simple averaging
+  const smoothStrokePath = useCallback((points: Point[]): Point[] => {
+    if (points.length < 3) return points;
+
+    const smoothed: Point[] = [points[0]]; // Keep first point
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const current = points[i];
+      const next = points[i + 1];
+
+      // Simple averaging for smoothing
+      const smoothedPoint = {
+        x: (prev.x + current.x + next.x) / 3,
+        y: (prev.y + current.y + next.y) / 3,
+      };
+
+      smoothed.push(smoothedPoint);
+    }
+
+    smoothed.push(points[points.length - 1]); // Keep last point
+    return smoothed;
+  }, []);
+
   // Start brush stroke
   const startStroke = useCallback((point: Point, pressure: number = 1) => {
-    if (!enabled) return;
+    if (!props.enabled) return;
 
     const strokePoint = {
       ...point,
@@ -42,7 +77,7 @@ const BrushTool: React.FC<BrushToolProps> = ({
     lastPointRef.current = point;
     strokeStartTimeRef.current = Date.now();
     actions.setDrawing(true);
-  }, [enabled, getBrushSize, actions]);
+  }, [props.enabled, getBrushSize, actions]);
 
   // Add point to current stroke with interpolation for smooth lines
   const addPoint = useCallback((point: Point, pressure: number = 1) => {
@@ -66,20 +101,15 @@ const BrushTool: React.FC<BrushToolProps> = ({
 
     setCurrentStroke(prev => [...prev, ...newPoints]);
     lastPointRef.current = point;
-  }, [isDrawing, getBrushSize]);
+  }, [isDrawing, getBrushSize, interpolatePoints]);
 
-  // Interpolate points between two positions for smoother strokes
-  const interpolatePoints = useCallback((start: Point, end: Point, steps: number): Point[] => {
-    const points: Point[] = [];
-    for (let i = 1; i <= steps; i++) {
-      const ratio = i / (steps + 1);
-      points.push({
-        x: start.x + (end.x - start.x) * ratio,
-        y: start.y + (end.y - start.y) * ratio,
-      });
-    }
-    return points;
-  }, []);
+  // Cancel current stroke
+  const cancelStroke = useCallback(() => {
+    setCurrentStroke([]);
+    setIsDrawing(false);
+    lastPointRef.current = null;
+    actions.setDrawing(false);
+  }, [actions]);
 
   // Complete brush stroke
   const completeStroke = useCallback(() => {
@@ -122,46 +152,14 @@ const BrushTool: React.FC<BrushToolProps> = ({
     };
 
     actions.addShape(shape);
-    onStrokeComplete?.(shape);
+    props.onStrokeComplete?.(shape);
 
     // Reset state
     setCurrentStroke([]);
     setIsDrawing(false);
     lastPointRef.current = null;
     actions.setDrawing(false);
-  }, [currentStroke, brushSettings, state.settings.defaultStyle, actions, onStrokeComplete]);
-
-  // Cancel current stroke
-  const cancelStroke = useCallback(() => {
-    setCurrentStroke([]);
-    setIsDrawing(false);
-    lastPointRef.current = null;
-    actions.setDrawing(false);
-  }, [actions]);
-
-  // Smooth stroke path using simple averaging
-  const smoothStrokePath = useCallback((points: Point[]): Point[] => {
-    if (points.length < 3) return points;
-
-    const smoothed: Point[] = [points[0]]; // Keep first point
-
-    for (let i = 1; i < points.length - 1; i++) {
-      const prev = points[i - 1];
-      const current = points[i];
-      const next = points[i + 1];
-
-      // Simple averaging for smoothing
-      const smoothedPoint = {
-        x: (prev.x + current.x + next.x) / 3,
-        y: (prev.y + current.y + next.y) / 3,
-      };
-
-      smoothed.push(smoothedPoint);
-    }
-
-    smoothed.push(points[points.length - 1]); // Keep last point
-    return smoothed;
-  }, []);
+  }, [currentStroke, brushSettings, state.settings.defaultStyle, actions, props, cancelStroke, smoothStrokePath]);
 
   // Update brush preview
   const updatePreview = useCallback((point: Point) => {
@@ -170,17 +168,17 @@ const BrushTool: React.FC<BrushToolProps> = ({
 
   // Handle mouse events
   const handleMouseDown = useCallback((point: Point, event: MouseEvent) => {
-    if (!enabled) return;
+    if (!props.enabled) return;
 
     event.preventDefault();
     event.stopPropagation();
 
     const pressure = (event as any).pressure || 1;
     startStroke(point, pressure);
-  }, [enabled, startStroke]);
+  }, [props.enabled, startStroke]);
 
   const handleMouseMove = useCallback((point: Point, event?: MouseEvent) => {
-    if (!enabled) return;
+    if (!props.enabled) return;
 
     updatePreview(point);
 
@@ -188,10 +186,10 @@ const BrushTool: React.FC<BrushToolProps> = ({
       const pressure = (event as any)?.pressure || 1;
       addPoint(point, pressure);
     }
-  }, [enabled, isDrawing, updatePreview, addPoint]);
+  }, [props.enabled, isDrawing, updatePreview, addPoint]);
 
   const handleMouseUp = useCallback((point: Point, event: MouseEvent) => {
-    if (!enabled || !isDrawing) return;
+    if (!props.enabled || !isDrawing) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -202,15 +200,15 @@ const BrushTool: React.FC<BrushToolProps> = ({
     
     // Complete stroke after a short delay to allow final point processing
     setTimeout(completeStroke, 10);
-  }, [enabled, isDrawing, addPoint, completeStroke]);
+  }, [props.enabled, isDrawing, addPoint, completeStroke]);
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
-    if (!enabled) return;
+    if (!props.enabled) return;
 
     if (event.key === 'Escape' && isDrawing) {
       cancelStroke();
     }
-  }, [enabled, isDrawing, cancelStroke]);
+  }, [props.enabled, isDrawing, cancelStroke]);
 
   // Render current brush stroke
   const renderCurrentStroke = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -247,7 +245,7 @@ const BrushTool: React.FC<BrushToolProps> = ({
 
   // Render brush preview cursor
   const renderBrushPreview = useCallback((ctx: CanvasRenderingContext2D) => {
-    if (!enabled || !brushPreview) return;
+    if (!props.enabled || !brushPreview) return;
 
     ctx.save();
     
@@ -276,22 +274,22 @@ const BrushTool: React.FC<BrushToolProps> = ({
     ctx.stroke();
 
     ctx.restore();
-  }, [enabled, brushPreview, brushSettings, state.settings.defaultStyle]);
+  }, [props.enabled, brushPreview, brushSettings, state.settings.defaultStyle]);
 
   // Get tool cursor
   const getCursor = useCallback(() => {
-    if (!enabled) return 'default';
+    if (!props.enabled) return 'default';
     return 'none'; // Hide cursor, we'll draw our own
-  }, [enabled]);
+  }, [props.enabled]);
 
   // Get tool status text
   const getStatusText = useCallback(() => {
-    if (!enabled) return '';
+    if (!props.enabled) return '';
     if (brushSettings.isEraser) {
       return isDrawing ? 'Erasing...' : 'Eraser mode - Click and drag to erase';
     }
     return isDrawing ? 'Drawing...' : 'Click and drag to paint';
-  }, [enabled, isDrawing, brushSettings.isEraser]);
+  }, [props.enabled, isDrawing, brushSettings.isEraser]);
 
   // Handle brush setting changes
   const updateBrushSettings = useCallback((updates: Partial<typeof brushSettings>) => {
@@ -302,40 +300,124 @@ const BrushTool: React.FC<BrushToolProps> = ({
 
   // Cleanup on unmount or disable
   useEffect(() => {
-    if (!enabled && isDrawing) {
+    if (!props.enabled && isDrawing) {
       cancelStroke();
     }
-  }, [enabled, isDrawing, cancelStroke]);
+  }, [props.enabled, isDrawing, cancelStroke]);
 
-  // Return tool interface
   return {
-    enabled,
-    isActive: isDrawing,
-    cursor: getCursor(),
-    statusText: getStatusText(),
-    currentStroke,
-    brushPreview,
-    settings: brushSettings,
-    
     // Event handlers
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
     handleKeyPress,
     
+    // Tool state
+    isDrawing,
+    enabled: props.enabled || false,
+    currentStroke,
+    brushPreview,
+    
     // Actions
-    complete: completeStroke,
-    cancel: cancelStroke,
-    updateSettings: updateBrushSettings,
+    startStroke,
+    addPoint,
+    completeStroke,
+    cancelStroke,
+    updatePreview,
+    updateBrushSettings,
     
     // Rendering
-    render: renderCurrentStroke,
-    renderPreview: renderBrushPreview,
+    renderCurrentStroke,
+    renderBrushPreview,
     
-    // State queries
-    strokeLength: currentStroke.length,
-    isErasing: brushSettings.isEraser,
+    // Tool properties
+    getCursor,
+    getStatusText,
+    
+    // Settings
+    brushSettings,
   } as const;
+};
+
+// React component for BrushTool with UI controls
+const BrushTool: React.FC<BrushToolProps> = (props) => {
+  const brushTool = useBrushTool(props);
+  
+  return (
+    <div className="brush-tool-controls" style={{
+      padding: '12px',
+      border: '1px solid #e0e0e0',
+      borderRadius: '8px',
+      backgroundColor: '#fafafa',
+      marginBottom: '8px'
+    }}>
+      {/* Brush tool controls UI */}
+      <div className="brush-settings" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div className="setting-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '12px', fontWeight: '500', color: '#555' }}>
+            Size: {brushTool.brushSettings.size}px
+          </label>
+          <input
+            type="range"
+            min="1"
+            max="50"
+            value={brushTool.brushSettings.size}
+            onChange={(e) => brushTool.updateBrushSettings({ size: parseInt(e.target.value) })}
+            style={{ width: '100%' }}
+          />
+        </div>
+        
+        <div className="setting-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '12px', fontWeight: '500', color: '#555' }}>
+            Opacity: {Math.round(brushTool.brushSettings.opacity * 100)}%
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value={brushTool.brushSettings.opacity}
+            onChange={(e) => brushTool.updateBrushSettings({ opacity: parseFloat(e.target.value) })}
+            style={{ width: '100%' }}
+          />
+        </div>
+        
+        <div className="setting-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            fontSize: '12px', 
+            cursor: 'pointer' 
+          }}>
+            <input
+              type="checkbox"
+              checked={brushTool.brushSettings.isEraser}
+              onChange={(e) => brushTool.updateBrushSettings({ isEraser: e.target.checked })}
+            />
+            Eraser Mode
+          </label>
+        </div>
+      </div>
+      
+      {brushTool.enabled && (
+        <div 
+          className="tool-status" 
+          style={{ 
+            marginTop: '8px',
+            padding: '6px',
+            backgroundColor: '#f0f7ff',
+            border: '1px solid #b3d9ff',
+            borderRadius: '4px',
+            fontSize: '11px',
+            color: '#1976d2'
+          }}
+        >
+          {brushTool.getStatusText()}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default BrushTool;

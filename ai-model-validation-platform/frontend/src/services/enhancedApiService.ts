@@ -32,7 +32,7 @@ interface RequestMetrics {
 class EnhancedApiService {
   private api: AxiosInstance;
   private retryConfig: RetryConfig;
-  private pendingRequests: Map<string, Promise<any>>;
+  private pendingRequests: Map<string, Promise<unknown>>;
   private requestMetrics: Map<string, RequestMetrics>;
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private isOnline: boolean = navigator.onLine;
@@ -149,7 +149,7 @@ class EnhancedApiService {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private generateCacheKey(method: string, url: string, params?: any, data?: any): string {
+  private generateCacheKey(method: string, url: string, params?: Record<string, unknown>, data?: Record<string, unknown>): string {
     const key = `${method.toUpperCase()}_${url}`;
     if (params) {
       const paramString = new URLSearchParams(params).toString();
@@ -195,7 +195,7 @@ class EnhancedApiService {
     requestFn: () => Promise<T>,
     requestId: string
   ): Promise<T> {
-    let lastError: any;
+    let lastError: unknown;
     const metrics = this.requestMetrics.get(requestId);
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {
@@ -379,7 +379,7 @@ class EnhancedApiService {
   private async enhancedRequest<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     url: string,
-    data?: any,
+    data?: Record<string, unknown>,
     config?: AxiosRequestConfig
   ): Promise<T> {
     const cacheKey = this.generateCacheKey(method, url, config?.params, data);
@@ -492,7 +492,7 @@ class EnhancedApiService {
       const result = await this.enhancedRequest<Project>('POST', '/api/projects', project);
       console.log('✅ Project created successfully:', result.id);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Project creation failed:', error);
       throw error;
     }
@@ -634,11 +634,11 @@ class EnhancedApiService {
     return this.enhancedRequest<T>('GET', url, undefined, config);
   }
 
-  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async post<T = unknown>(url: string, data?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     return this.enhancedRequest<T>('POST', url, data, config);
   }
 
-  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async put<T = unknown>(url: string, data?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     return this.enhancedRequest<T>('PUT', url, data, config);
   }
 
@@ -646,7 +646,7 @@ class EnhancedApiService {
     return this.enhancedRequest<T>('DELETE', url, undefined, config);
   }
 
-  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async patch<T = unknown>(url: string, data?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     return this.enhancedRequest<T>('PATCH', url, data, config);
   }
 }

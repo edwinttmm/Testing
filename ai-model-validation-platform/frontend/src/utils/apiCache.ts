@@ -6,12 +6,12 @@ interface CacheEntry<T> {
 }
 
 interface PendingRequest {
-  promise: Promise<any>;
+  promise: Promise<unknown>;
   timestamp: number;
 }
 
 class ApiCache {
-  private cache = new Map<string, CacheEntry<any>>();
+  private cache = new Map<string, CacheEntry<unknown>>();
   private pendingRequests = new Map<string, PendingRequest>();
   private defaultTTL = 5 * 60 * 1000; // 5 minutes default
   private maxCacheSize = 100;
@@ -24,7 +24,7 @@ class ApiCache {
     ['health', { ttl: 60 * 1000 }], // 1 minute for health check
   ]);
 
-  private getCacheKey(method: string, url: string, params?: any): string {
+  private getCacheKey(method: string, url: string, params?: Record<string, unknown>): string {
     const paramStr = params ? JSON.stringify(params) : '';
     return `${method}:${url}:${paramStr}`;
   }
@@ -77,7 +77,7 @@ class ApiCache {
     }
   }
 
-  get<T>(method: string, url: string, params?: any): T | null {
+  get<T>(method: string, url: string, params?: Record<string, unknown>): T | null {
     const key = this.getCacheKey(method, url, params);
     const entry = this.cache.get(key);
 
@@ -88,7 +88,7 @@ class ApiCache {
     return entry.data;
   }
 
-  set<T>(method: string, url: string, data: T, params?: any): void {
+  set<T>(method: string, url: string, data: T, params?: Record<string, unknown>): void {
     const key = this.getCacheKey(method, url, params);
     const ttl = this.getTTL(url);
     const now = Date.now();
@@ -103,7 +103,7 @@ class ApiCache {
   }
 
   // Request deduplication - returns existing promise if request is already pending
-  getPendingRequest(method: string, url: string, params?: any): Promise<any> | null {
+  getPendingRequest(method: string, url: string, params?: Record<string, unknown>): Promise<unknown> | null {
     const key = this.getCacheKey(method, url, params);
     const pending = this.pendingRequests.get(key);
 
@@ -114,7 +114,7 @@ class ApiCache {
     return null;
   }
 
-  setPendingRequest(method: string, url: string, promise: Promise<any>, params?: any): void {
+  setPendingRequest(method: string, url: string, promise: Promise<unknown>, params?: Record<string, unknown>): void {
     const key = this.getCacheKey(method, url, params);
     this.pendingRequests.set(key, {
       promise,
@@ -127,7 +127,7 @@ class ApiCache {
     });
   }
 
-  invalidate(method: string, url: string, params?: any): void {
+  invalidate(method: string, url: string, params?: Record<string, unknown>): void {
     const key = this.getCacheKey(method, url, params);
     this.cache.delete(key);
     this.pendingRequests.delete(key);

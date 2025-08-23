@@ -8,7 +8,7 @@ import { useCallback, useRef, useEffect } from 'react';
 /**
  * Prevents excessive function calls by debouncing
  */
-export const useDebounce = <T extends (...args: any[]) => any>(
+export const useDebounce = <T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number
 ): T => {
@@ -31,7 +31,7 @@ export const useDebounce = <T extends (...args: any[]) => any>(
 /**
  * Throttles function calls to prevent excessive execution
  */
-export const useThrottle = <T extends (...args: any[]) => any>(
+export const useThrottle = <T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number
 ): T => {
@@ -61,7 +61,7 @@ export const useThrottle = <T extends (...args: any[]) => any>(
 /**
  * Prevents component re-renders when props haven't actually changed
  */
-export const useShallowMemo = <T>(value: T, dependencies: any[]): T => {
+export const useShallowMemo = <T>(value: T, dependencies: unknown[]): T => {
   const ref = useRef<T>(value);
   const depsRef = useRef(dependencies);
 
@@ -82,7 +82,7 @@ export const useShallowMemo = <T>(value: T, dependencies: any[]): T => {
 export const useOptimizedCanvasDraw = (
   canvasRef: React.RefObject<HTMLCanvasElement>,
   drawFunction: () => void,
-  dependencies: any[]
+  dependencies: unknown[]
 ) => {
   const lastDepsRef = useRef(dependencies);
   const isDrawingRef = useRef(false);
@@ -135,7 +135,7 @@ export const useRenderPerformance = (componentName: string, enabled: boolean = p
 /**
  * Stable callback hook that prevents unnecessary re-creation
  */
-export const useStableCallback = <T extends (...args: any[]) => any>(callback: T): T => {
+export const useStableCallback = <T extends (...args: unknown[]) => unknown>(callback: T): T => {
   const callbackRef = useRef(callback);
   
   useEffect(() => {
@@ -143,7 +143,7 @@ export const useStableCallback = <T extends (...args: any[]) => any>(callback: T
   });
 
   return useCallback(
-    ((...args: any[]) => callbackRef.current(...args)) as T,
+    ((...args: unknown[]) => callbackRef.current(...args)) as T,
     []
   );
 };

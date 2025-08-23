@@ -17,7 +17,7 @@ interface ResponsiveContainerProps extends Omit<ContainerProps, 'maxWidth'> {
   children: React.ReactNode;
   fullHeight?: boolean;
   padding?: number | string;
-  maxWidth?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | false | number;
+  maxWidth?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | false;
   responsive?: boolean;
 }
 
@@ -204,7 +204,7 @@ export const ResponsiveTypography: React.FC<ResponsiveTypographyProps> = ({
     <Box
       component="span"
       sx={{
-        ...theme.typography[getVariant() as keyof typeof theme.typography],
+        ...(theme.typography[getVariant() as keyof typeof theme.typography] as Record<string, unknown>),
         color,
         textAlign: align,
         display: 'block',

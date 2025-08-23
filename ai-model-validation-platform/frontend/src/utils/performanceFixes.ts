@@ -3,13 +3,13 @@
  * Fixes common performance issues and memory leaks
  */
 
-import { useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import { debounce } from 'lodash';
 
 /**
  * Debounced callback hook to prevent excessive API calls
  */
-export const useDebouncedCallback = <T extends (...args: any[]) => any>(
+export const useDebouncedCallback = <T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number = 300
 ): T => {
@@ -17,7 +17,7 @@ export const useDebouncedCallback = <T extends (...args: any[]) => any>(
   callbackRef.current = callback;
 
   return useCallback(
-    debounce((...args: any[]) => callbackRef.current(...args), delay),
+    debounce((...args: unknown[]) => callbackRef.current(...args), delay),
     [delay]
   ) as T;
 };
@@ -45,16 +45,18 @@ export const useOptimizedEffect = (
       }
     };
   }, deps);
+  
+  return undefined; // Explicit return for void function
 };
 
 /**
  * Memoized stable reference to prevent unnecessary re-renders
  */
-export const useStableCallback = <T extends (...args: any[]) => any>(callback: T): T => {
+export const useStableCallback = <T extends (...args: unknown[]) => unknown>(callback: T): T => {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
   
-  return useCallback((...args: any[]) => callbackRef.current(...args), []) as T;
+  return useCallback((...args: unknown[]) => callbackRef.current(...args), []) as T;
 };
 
 /**
@@ -121,7 +123,7 @@ export const useIntersectionObserver = (
  * Virtual scrolling helper for large lists
  */
 export const useVirtualScroll = (
-  items: any[],
+  items: unknown[],
   itemHeight: number,
   containerHeight: number,
   buffer: number = 5
