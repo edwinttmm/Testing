@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from sqlalchemy import func, select, delete
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError, TimeoutError
+from sqlalchemy import func, select, delete, text
 from typing import List, Optional, AsyncIterator
 from pydantic import ValidationError
 from datetime import datetime
@@ -82,6 +82,7 @@ from services.signal_processing_service import SignalProcessingWorkflow
 from services.project_management_service import ProjectManager as ProjectManagementService
 from services.validation_analysis_service import ValidationWorkflow as ValidationAnalysisService
 from services.progress_tracker import progress_tracker
+from services.video_validation_service import video_validation_service
 # ID Generation Service - multiple classes available, importing the main one
 try:
     from services.id_generation_service import IDGenerator as IDGenerationService
@@ -93,8 +94,6 @@ except ImportError:
             import uuid
             return str(uuid.uuid4())
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
@@ -105,6 +104,15 @@ app = FastAPI(
 # Configure logging
 setup_logging(settings)
 logger = logging.getLogger(__name__)
+
+# Safe database initialization with error handling
+try:
+    from database import safe_create_indexes_and_tables
+    safe_create_indexes_and_tables()
+    logger.info("✅ Database initialized safely")
+except Exception as e:
+    logger.warning(f"⚠️ Database initialization warning (continuing): {e}")
+    # Continue with app startup even if database has issues
 
 # Create necessary directories
 create_directories(settings)
@@ -165,9 +173,83 @@ def safe_isoformat(date_value) -> Optional[str]:
     # Fallback: convert to string
     return str(date_value)
 
+def validate_video_file(file_path: str) -> tuple[bool, str]:
+    """
+    Validate video file integrity and compatibility.
+    
+    Args:
+        file_path: Path to the video file
+        
+    Returns:
+        tuple: (is_valid: bool, message: str)
+    """
+    try:
+        import cv2
+        
+        # Basic file existence check
+        if not os.path.exists(file_path):
+            return False, "Video file does not exist"
+        
+        # Check file size
+        file_size = os.path.getsize(file_path)
+        if file_size == 0:
+            return False, "Video file is empty"
+        
+        if file_size < 1024:  # Less than 1KB
+            return False, "Video file is too small to be valid"
+        
+        # Try to open with OpenCV
+        cap = cv2.VideoCapture(file_path)
+        if not cap.isOpened():
+            return False, "Could not open video file - invalid format or corrupted"
+        
+        try:
+            # Check if video has frames
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if frame_count == 0:
+                return False, "Video file contains no frames"
+            
+            # Check basic properties
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            if fps <= 0:
+                return False, "Invalid frame rate detected"
+            
+            if width <= 0 or height <= 0:
+                return False, "Invalid video dimensions detected"
+            
+            # Try to read first frame to verify codec compatibility
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                return False, "Could not read video frames - codec may be unsupported"
+            
+            # Check if frame has valid data
+            if frame.size == 0:
+                return False, "Video frames contain no data"
+            
+            # Try to read a few more frames to ensure consistency
+            for i in range(min(5, frame_count - 1)):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+            
+            cap.release()
+            return True, f"Video file is valid ({frame_count} frames, {fps:.1f}fps, {width}x{height})"
+            
+        except Exception as read_error:
+            cap.release()
+            return False, f"Error reading video data: {str(read_error)}"
+            
+    except ImportError:
+        return False, "OpenCV not available for video validation"
+    except Exception as e:
+        return False, f"Video validation failed: {str(e)}"
+
 def extract_video_metadata(file_path: str) -> Optional[dict]:
     """
-    Extract video metadata using OpenCV.
+    Extract video metadata using OpenCV with enhanced validation.
     
     Args:
         file_path: Path to the video file
@@ -176,6 +258,12 @@ def extract_video_metadata(file_path: str) -> Optional[dict]:
         dict: Video metadata including duration and resolution, or None if extraction fails
     """
     try:
+        # First validate the file
+        is_valid, validation_message = validate_video_file(file_path)
+        if not is_valid:
+            logger.warning(f"Video validation failed for {file_path}: {validation_message}")
+            return None
+        
         import cv2
         
         cap = cv2.VideoCapture(file_path)
@@ -200,7 +288,9 @@ def extract_video_metadata(file_path: str) -> Optional[dict]:
             "resolution": f"{width}x{height}",
             "width": width,
             "height": height,
-            "frame_count": int(frame_count)
+            "frame_count": int(frame_count),
+            "validated": True,
+            "validation_message": validation_message
         }
         
         logger.info(f"Extracted video metadata: {metadata}")
@@ -306,6 +396,19 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
 @app.exception_handler(SQLAlchemyError)
 async def database_exception_handler(request: Request, exc: SQLAlchemyError):
     logger.error(f"Database error: {exc}")
+    
+    # Check for connection timeout or pool exhaustion
+    error_str = str(exc).lower()
+    if "timeout" in error_str or "pool" in error_str or "connection" in error_str:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "detail": "Database temporarily unavailable. Please try again.",
+                "error": "Connection timeout or pool exhausted",
+                "retry_after": 10
+            }
+        )
+    
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -349,10 +452,19 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 def get_db():
-    """Database dependency with proper error handling"""
+    """Database dependency with enhanced error handling and connection management"""
     db = SessionLocal()
     try:
+        # Test connection health before yielding
+        db.execute(text("SELECT 1"))
         yield db
+    except (OperationalError, TimeoutError) as e:
+        db.rollback()
+        logger.error(f"Database connection error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database temporarily unavailable. Please try again."
+        )
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error: {str(e)}")
@@ -360,8 +472,18 @@ def get_db():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database operation failed"
         )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected database error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as close_error:
+            logger.warning(f"Error closing database connection: {close_error}")
 
 def ensure_central_store_project(db: Session):
     """Ensure the central store project exists in the database"""
@@ -497,17 +619,25 @@ async def upload_video_central(
     """Upload video to central store without project assignment"""
     temp_file_path = None
     try:
-        # Generate secure filename and validate extension
-        secure_filename, file_extension = generate_secure_filename(file.filename)
+        # Enhanced file validation using new service
+        upload_validation = video_validation_service.validate_upload_file(file, file.filename)
+        if not upload_validation["valid"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File validation failed: {'; '.join(upload_validation['errors'])}"
+            )
+        
+        secure_filename = upload_validation["secure_filename"]
+        file_extension = upload_validation["file_extension"]
         
         # Setup paths for chunked upload with temp file
         upload_dir = settings.upload_directory
         os.makedirs(upload_dir, exist_ok=True)
-        final_file_path = secure_join_path(upload_dir, secure_filename)
         
-        # Use a temporary file during upload to prevent partial files in upload directory
-        import tempfile
-        temp_fd, temp_file_path = tempfile.mkstemp(suffix=file_extension, dir=upload_dir)
+        # Create temp file safely using validation service
+        temp_file_path, final_file_path = video_validation_service.create_temp_file_safely(
+            file_extension, upload_dir
+        )
         
         # MEMORY OPTIMIZED: Chunked upload with size validation
         chunk_size = 64 * 1024  # 64KB chunks
@@ -515,7 +645,7 @@ async def upload_video_central(
         bytes_written = 0
         
         try:
-            with os.fdopen(temp_fd, 'wb') as temp_file:
+            with open(temp_file_path, 'wb') as temp_file:
                 # Process file in chunks without loading entire file into memory
                 while True:
                     chunk = await file.read(chunk_size)
@@ -538,15 +668,13 @@ async def upload_video_central(
                 os.fsync(temp_file.fileno())
         
         except Exception as upload_error:
-            # Clean up temporary file on upload error
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+            # Clean up temporary file on upload error using validation service
+            video_validation_service.cleanup_temp_file(temp_file_path)
             raise upload_error
         
         # Validate minimum file size (prevent empty files)
         if bytes_written == 0:
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+            video_validation_service.cleanup_temp_file(temp_file_path)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Empty file not allowed"
@@ -557,17 +685,33 @@ async def upload_video_central(
             os.rename(temp_file_path, final_file_path)
             temp_file_path = None  # File successfully moved
         except OSError as move_error:
-            # Clean up on move failure
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+            # Clean up on move failure using validation service
+            video_validation_service.cleanup_temp_file(temp_file_path)
             logger.error(f"Failed to move uploaded file: {move_error}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to save uploaded file"
             )
         
-        # Extract video metadata
-        video_metadata = extract_video_metadata(final_file_path)
+        # ENHANCED: Comprehensive video validation and metadata extraction
+        validation_result = video_validation_service.validate_video_file(final_file_path)
+        
+        if not validation_result["valid"]:
+            # Remove invalid file
+            try:
+                os.unlink(final_file_path)
+            except OSError:
+                logger.warning(f"Could not remove invalid file: {final_file_path}")
+            
+            error_messages = validation_result["errors"] + validation_result.get("warnings", [])
+            logger.warning(f"Video validation failed: {'; '.join(error_messages)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Video validation failed: {'; '.join(error_messages)}"
+            )
+        
+        # Use enhanced metadata from validation (with fallback)
+        video_metadata = validation_result.get("metadata") or extract_video_metadata(final_file_path)
         
         # Ensure central store project exists
         ensure_central_store_project(db)
@@ -620,19 +764,11 @@ async def upload_video_central(
         
     except HTTPException:
         # Clean up any remaining temp files on HTTP exceptions
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.unlink(temp_file_path)
-            except OSError:
-                logger.warning(f"Could not clean up temp file: {temp_file_path}")
+        video_validation_service.cleanup_temp_file(temp_file_path)
         raise
     except Exception as e:
         # Clean up any remaining temp files on unexpected errors
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.unlink(temp_file_path)
-            except OSError:
-                logger.warning(f"Could not clean up temp file: {temp_file_path}")
+        video_validation_service.cleanup_temp_file(temp_file_path)
         logger.error(f"Central video upload error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -647,8 +783,16 @@ async def upload_video(
 ):
     temp_file_path = None
     try:
-        # Generate secure filename and validate extension
-        secure_filename, file_extension = generate_secure_filename(file.filename)
+        # Enhanced file validation using new service
+        upload_validation = video_validation_service.validate_upload_file(file, file.filename)
+        if not upload_validation["valid"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File validation failed: {'; '.join(upload_validation['errors'])}"
+            )
+        
+        secure_filename = upload_validation["secure_filename"]
+        file_extension = upload_validation["file_extension"]
         
         # Verify project exists early to avoid unnecessary file operations
         project = get_project(db=db, project_id=project_id, user_id="anonymous")
@@ -731,8 +875,25 @@ async def upload_video(
                 detail="Failed to save uploaded file"
             )
         
-        # Extract video metadata
-        video_metadata = extract_video_metadata(final_file_path)
+        # ENHANCED: Comprehensive video validation and metadata extraction
+        validation_result = video_validation_service.validate_video_file(final_file_path)
+        
+        if not validation_result["valid"]:
+            # Remove invalid file
+            try:
+                os.unlink(final_file_path)
+            except OSError:
+                logger.warning(f"Could not remove invalid file: {final_file_path}")
+            
+            error_messages = validation_result["errors"] + validation_result.get("warnings", [])
+            logger.warning(f"Video validation failed: {'; '.join(error_messages)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Video validation failed: {'; '.join(error_messages)}"
+            )
+        
+        # Use enhanced metadata from validation (with fallback)
+        video_metadata = validation_result.get("metadata") or extract_video_metadata(final_file_path)
         
         # Create database record with actual file size and metadata
         video_record = Video(
@@ -783,6 +944,7 @@ async def upload_video(
             "uploadedAt": video_record.created_at.isoformat(),
             "createdAt": video_record.created_at.isoformat(),
             "status": "uploaded",
+            "processingStatus": video_record.processing_status,  # FIXED: Add missing field
             "groundTruthGenerated": False,
             "groundTruthStatus": "pending",
             "detectionCount": 0,
@@ -1560,10 +1722,50 @@ async def get_dashboard_stats(
         }
 
 
-# Health check
+# Health check endpoints
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Basic health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/health/database")
+async def database_health_check():
+    """Comprehensive database health check"""
+    try:
+        from services.database_health_service import database_health_service
+        health_status = database_health_service.get_comprehensive_health_status()
+        return health_status
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return {
+            "overall_status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@app.get("/health/diagnostics")
+async def system_diagnostics():
+    """Comprehensive system diagnostics"""
+    try:
+        from services.database_health_service import database_health_service
+        diagnostics = database_health_service.get_database_diagnostics()
+        
+        # Add system information
+        diagnostics["system_info"] = {
+            "upload_directory_exists": os.path.exists(settings.upload_directory),
+            "upload_directory_writable": os.access(settings.upload_directory, os.W_OK) if os.path.exists(settings.upload_directory) else False,
+            "api_version": settings.app_version,
+            "debug_mode": settings.api_debug
+        }
+        
+        return diagnostics
+    except Exception as e:
+        logger.error(f"System diagnostics failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 # Enhanced API Endpoints for Architectural Services
 
@@ -2178,6 +2380,32 @@ socketio_app = create_socketio_app(app)
 
 # Performance and monitoring enhancements
 @app.middleware("http")
+async def database_error_middleware(request, call_next):
+    """Database error handling middleware"""
+    try:
+        response = await call_next(request)
+        return response
+    except (OperationalError, TimeoutError) as e:
+        logger.error(f"Database connection error: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Database temporarily unavailable. Please try again.",
+                "error": "Connection timeout",
+                "retry_after": 5
+            }
+        )
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in middleware: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Database operation failed",
+                "error": "Internal server error"
+            }
+        )
+
+@app.middleware("http")
 async def add_security_headers(request, call_next):
     """Add security headers to all responses"""
     response = await call_next(request)
@@ -2203,9 +2431,10 @@ async def startup_event():
     """Initialize services on startup"""
     logger.info("🚀 AI Model Validation Platform API starting up...")
     
-    # Initialize database with enhanced schema
+    # Initialize database with enhanced schema using safe method
     try:
-        Base.metadata.create_all(bind=engine)
+        from database import safe_create_indexes_and_tables
+        safe_create_indexes_and_tables()
         logger.info("✅ Database schema initialized with performance indexes")
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")

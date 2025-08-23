@@ -284,6 +284,8 @@ class PreAnnotationConfig(BaseModel):
     target_classes: Optional[List[str]] = Field(None, description="Target object classes")
     batch_size: int = Field(1, ge=1, le=32, description="Processing batch size")
     max_detections: int = Field(100, ge=1, description="Maximum detections per frame")
+    
+    model_config = {'protected_namespaces': ()}
 
 class PreAnnotationStatus(BaseModel):
     """Schema for pre-annotation status"""
@@ -311,6 +313,8 @@ class PreAnnotationResult(BaseModel):
     frame_coverage: float  # percentage of frames with detections
     annotations_created: int
     created_at: datetime
+    
+    model_config = {'protected_namespaces': ()}
 
 # ============================================================================
 # WEBSOCKET MESSAGE SCHEMAS
