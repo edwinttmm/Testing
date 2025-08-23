@@ -2,10 +2,11 @@ import React from 'react';
 import { io, Socket } from 'socket.io-client';
 import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
 
-export interface WebSocketMessage {
+export interface WebSocketMessage<T = unknown> {
   type: string;
-  payload: any;
+  payload: T;
   timestamp: string;
+  id?: string;
 }
 
 export interface ConnectionMetrics {
@@ -32,7 +33,7 @@ class WebSocketService {
   private socket: Socket | null = null;
   private url: string;
   private options: WebSocketServiceOptions;
-  private subscribers: Map<string, Set<(data: any) => void>> = new Map();
+  private subscribers: Map<string, Set<(data: unknown) => void>> = new Map();
   private connectionState: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -182,12 +183,12 @@ class WebSocketService {
         });
 
         // Handle all incoming messages
-        this.socket.onAny((eventName: string, data: any) => {
+        this.socket.onAny((eventName: string, data: unknown) => {
           if (!eventName.startsWith('connect')) {
             this.metrics.totalMessages++;
             console.log(`📨 WebSocket message [${eventName}]:`, data);
             
-            const message: WebSocketMessage = {
+            const message: WebSocketMessage<unknown> = {
               type: eventName,
               payload: data,
               timestamp: new Date().toISOString()
@@ -278,7 +279,7 @@ class WebSocketService {
     }
   }
 
-  private notifySubscribers(eventType: string, data: any): void {
+  private notifySubscribers(eventType: string, data: unknown): void {
     const subscribers = this.subscribers.get(eventType);
     if (subscribers) {
       subscribers.forEach(callback => {
@@ -292,7 +293,7 @@ class WebSocketService {
   }
 
   // Public subscription methods
-  subscribe(eventType: string, callback: (data: any) => void): () => void {
+  subscribe<T = unknown>(eventType: string, callback: (data: T) => void): () => void {
     if (!this.subscribers.has(eventType)) {
       this.subscribers.set(eventType, new Set());
     }
@@ -315,7 +316,7 @@ class WebSocketService {
   }
 
   // Send message to server
-  emit(eventType: string, data?: any): boolean {
+  emit<T = unknown>(eventType: string, data?: T): boolean {
     if (this.connectionState !== 'connected' || !this.socket) {
       safeConsoleWarn(`Cannot emit ${eventType}: WebSocket not connected`, { connectionState: this.connectionState, hasSocket: !!this.socket }, { function: 'emit', eventType });
       return false;
@@ -400,7 +401,7 @@ const websocketService = new WebSocketService();
 export const useWebSocket = (eventType?: string) => {
   const [connectionState, setConnectionState] = React.useState(websocketService.connectionStatus);
   const [isConnected, setIsConnected] = React.useState(websocketService.isConnected);
-  const [lastMessage, setLastMessage] = React.useState<WebSocketMessage | null>(null);
+  const [lastMessage, setLastMessage] = React.useState<WebSocketMessage<unknown> | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -437,11 +438,11 @@ export const useWebSocket = (eventType?: string) => {
     };
   }, [eventType]);
 
-  const emit = React.useCallback((type: string, data?: any) => {
+  const emit = React.useCallback(<T = unknown>(type: string, data?: T) => {
     return websocketService.emit(type, data);
   }, []);
 
-  const subscribe = React.useCallback((type: string, callback: (data: any) => void) => {
+  const subscribe = React.useCallback(<T = unknown>(type: string, callback: (data: T) => void) => {
     return websocketService.subscribe(type, callback);
   }, []);
 

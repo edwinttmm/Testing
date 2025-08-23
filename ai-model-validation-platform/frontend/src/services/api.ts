@@ -225,7 +225,7 @@ class ApiService {
   }
 
   // Transform backend snake_case responses to frontend camelCase
-  private transformResponseData(data: any): any {
+  private transformResponseData(data: unknown): unknown {
     if (!data || typeof data !== 'object') {
       return data;
     }
@@ -236,7 +236,8 @@ class ApiService {
     }
 
     // Handle objects
-    const transformed: any = {};
+    if (!data || typeof data !== 'object') return data;
+    const transformed: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
       let newKey = key;
       
@@ -278,54 +279,67 @@ class ApiService {
   }
 
   // Add URL field to video responses if missing or relative
-  private enhanceVideoData(video: any): any {
-    console.log('🚨 enhanceVideoData called for video:', { id: video?.id, filename: video?.filename, originalUrl: video?.url });
+  private enhanceVideoData(video: unknown): VideoFile {
+    if (!video || typeof video !== 'object') {
+      throw new Error('Invalid video data provided to enhanceVideoData');
+    }
     
-    if (video && (video.filename || video.id)) {
+    const videoObj = video as Record<string, unknown>;
+    console.log('🚨 enhanceVideoData called for video:', { 
+      id: videoObj.id, 
+      filename: videoObj.filename, 
+      originalUrl: videoObj.url 
+    });
+    
+    if (videoObj && (videoObj.filename || videoObj.id)) {
       const videoConfig = getServiceConfig('video');
       
       console.log('🚨 enhanceVideoData - Video config baseUrl:', videoConfig.baseUrl);
-      console.log('🚨 enhanceVideoData - Original video URL:', video.url);
-      console.log('🚨 enhanceVideoData - Video filename:', video.filename);
-      console.log('🚨 enhanceVideoData - Video ID:', video.id);
+      console.log('🚨 enhanceVideoData - Original video URL:', videoObj.url);
+      console.log('🚨 enhanceVideoData - Video filename:', videoObj.filename);
+      console.log('🚨 enhanceVideoData - Video ID:', videoObj.id);
       
       // Convert relative URLs to absolute URLs
-      if (video.url && video.url.startsWith('/')) {
+      if (videoObj.url && typeof videoObj.url === 'string' && videoObj.url.startsWith('/')) {
         console.log('🚨 enhanceVideoData - Converting relative URL to absolute');
         const videoConfig = getServiceConfig('video');
-        video.url = `${videoConfig.baseUrl}${video.url}`;
-        console.log('🚨 enhanceVideoData - Enhanced video URL:', video.url, 'from relative path');
-      } else if (!video.url || video.url === '') {
+        videoObj.url = `${videoConfig.baseUrl}${videoObj.url}`;
+        console.log('🚨 enhanceVideoData - Enhanced video URL:', videoObj.url, 'from relative path');
+      } else if (!videoObj.url || videoObj.url === '') {
         console.log('🚨 enhanceVideoData - URL missing or empty, constructing from filename');
         // If URL is missing or empty, try to construct from backend base URL and filename
-        if (video.filename) {
+        if (videoObj.filename && typeof videoObj.filename === 'string') {
           const videoConfig = getServiceConfig('video');
-          video.url = `${videoConfig.baseUrl}/uploads/${video.filename}`;
-          console.log('🚨 enhanceVideoData - Constructed video URL from filename:', video.url);
+          videoObj.url = `${videoConfig.baseUrl}/uploads/${videoObj.filename}`;
+          console.log('🚨 enhanceVideoData - Constructed video URL from filename:', videoObj.url);
         } else {
-          console.warn('🚨 enhanceVideoData - Video object is missing both URL and filename. ID:', video.id);
-          video.url = '';
+          console.warn('🚨 enhanceVideoData - Video object is missing both URL and filename. ID:', videoObj.id);
+          videoObj.url = '';
         }
       } else {
-        console.log('🚨 enhanceVideoData - Video URL already absolute:', video.url);
+        console.log('🚨 enhanceVideoData - Video URL already absolute:', videoObj.url);
       }
     }
     
     // Ensure status is properly mapped
-    if (video && video.processing_status && !video.status) {
-      video.status = video.processing_status === 'completed' ? 'completed' : 'processing';
+    if (videoObj && videoObj.processing_status && !videoObj.status) {
+      videoObj.status = videoObj.processing_status === 'completed' ? 'completed' : 'processing';
     }
     
-    console.log('🚨 enhanceVideoData - Final enhanced video:', { id: video?.id, filename: video?.filename, finalUrl: video?.url });
-    return video;
+    console.log('🚨 enhanceVideoData - Final enhanced video:', { 
+      id: videoObj.id, 
+      filename: videoObj.filename, 
+      finalUrl: videoObj.url 
+    });
+    return videoObj as VideoFile;
   }
 
   // Enhanced request method with caching and deduplication
   private async cachedRequest<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     url: string,
-    data?: any,
-    config?: any
+    data?: unknown,
+    config?: Record<string, unknown>
   ): Promise<T> {
     // Cache key generation for request tracking
     const params = config?.params;
@@ -428,7 +442,7 @@ class ApiService {
       apiCache.invalidatePattern('/api/projects');
       apiCache.invalidatePattern('/api/dashboard');
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('API Service - Project creation failed:', error);
       throw error;
     }
@@ -591,7 +605,7 @@ class ApiService {
       
       // Transform ground truth data to ensure proper structure
       if (response.data && response.data.objects) {
-        response.data.objects = response.data.objects.map((obj: any) => ({
+        response.data.objects = response.data.objects.map((obj: unknown) => ({
           ...obj,
           // Ensure bounding box has required properties
           boundingBox: obj.bounding_box || obj.boundingBox || {
@@ -621,7 +635,7 @@ class ApiService {
         status: 'pending',
         message: 'No ground truth data available'
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.warn(`Ground truth fetch failed for video ${videoId}:`, error);
       // Return empty ground truth structure as fallback
       return {
@@ -800,7 +814,7 @@ class ApiService {
         console.log('✅ Health check passed:', result);
       }
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Health check failed:', error.message);
       throw error;
     }
@@ -835,7 +849,7 @@ class ApiService {
     try {
       const response = await this.api.get(`/api/videos/${videoId}/detections`);
       return response.data.detections || [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch video detections:', error);
       throw ErrorFactory.createApiError(error.response, null, { originalError: error });
     }
@@ -846,14 +860,14 @@ class ApiService {
     try {
       const response = await this.api.get(`/api/test-sessions/${sessionId}/detections`);
       return response.data.detections || [];
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fetch session detections:', error);
       throw ErrorFactory.createApiError(error.response, null, { originalError: error });
     }
   }
 
   // Signal Processing
-  async processSignal(signalType: SignalType, signalData: any, config?: any): Promise<SignalProcessingResult> {
+  async processSignal(signalType: SignalType, signalData: unknown, config?: Record<string, unknown>): Promise<SignalProcessingResult> {
     return this.cachedRequest<SignalProcessingResult>('POST', '/api/signals/process', {
       signal_type: signalType,
       signal_data: signalData,
@@ -933,22 +947,22 @@ class ApiService {
   }
 
   // Generic request methods for custom endpoints
-  async get<T = any>(url: string, config?: any): Promise<T> {
+  async get<T = unknown>(url: string, config?: Record<string, unknown>): Promise<T> {
     const response = await this.api.get<T>(url, config);
     return response.data;
   }
 
-  async post<T = any>(url: string, data?: any, config?: any): Promise<T> {
+  async post<T = unknown>(url: string, data?: unknown, config?: Record<string, unknown>): Promise<T> {
     const response = await this.api.post<T>(url, data, config);
     return response.data;
   }
 
-  async put<T = any>(url: string, data?: any, config?: any): Promise<T> {
+  async put<T = unknown>(url: string, data?: unknown, config?: Record<string, unknown>): Promise<T> {
     const response = await this.api.put<T>(url, data, config);
     return response.data;
   }
 
-  async delete<T = any>(url: string, config?: any): Promise<T> {
+  async delete<T = unknown>(url: string, config?: Record<string, unknown>): Promise<T> {
     const response = await this.api.delete<T>(url, config);
     return response.data;
   }

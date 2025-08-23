@@ -23,11 +23,13 @@ export enum ProjectStatus {
 }
 
 // API Response Types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data?: T;
   message?: string;
   error?: string;
   status?: number;
+  success?: boolean;
+  timestamp?: string;
 }
 
 // Project Types
@@ -104,7 +106,7 @@ export interface VideoFile {
   format?: string;
   codec?: string;
   thumbnailUrl?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface VideoUpload {
@@ -116,7 +118,31 @@ export interface VideoUpload {
 export type VRUType = 'pedestrian' | 'cyclist' | 'motorcyclist' | 'wheelchair_user' | 'scooter_rider';
 
 // Export VRUType for annotation components
-export { VRUType as AnnotationVRUType };
+export type { VRUType as AnnotationVRUType };
+
+// WebSocket Message Types
+export interface WebSocketMessage<T = unknown> {
+  type: string;
+  payload: T;
+  timestamp: number;
+  id?: string;
+}
+
+// Detection Service Types
+export interface DetectionUpdate {
+  videoId: string;
+  detections: Detection[];
+  processingProgress: number;
+  status: 'processing' | 'completed' | 'failed';
+}
+
+// Signal Processing Types
+export interface SignalData {
+  type: SignalType;
+  data: Record<string, unknown>;
+  timestamp: number;
+  metadata?: Record<string, unknown>;
+}
 
 // Annotation Types
 export interface Detection {
@@ -151,6 +177,44 @@ export interface BoundingBox {
   height: number;
   label: string;
   confidence: number;
+}
+
+// Enhanced Point and Shape Types for Annotation Canvas
+export interface Point {
+  x: number;
+  y: number;
+  pressure?: number;
+  size?: number;
+  timestamp?: number;
+}
+
+export interface Size {
+  width: number;
+  height: number;
+}
+
+export interface Rectangle extends Point, Size {}
+
+export interface AnnotationStyle {
+  strokeColor: string;
+  fillColor: string;
+  strokeWidth: number;
+  fillOpacity: number;
+  fontSize?: number;
+  dashArray?: number[];
+}
+
+export interface AnnotationShape {
+  id: string;
+  type: 'rectangle' | 'polygon' | 'brush' | 'point';
+  points: Point[];
+  boundingBox: Rectangle;
+  style: AnnotationStyle;
+  label?: string;
+  confidence?: number;
+  locked?: boolean;
+  selected?: boolean;
+  visible?: boolean;
 }
 
 // Ground Truth Annotation Types
@@ -389,7 +453,7 @@ export interface StatisticalValidation {
   confidenceInterval: number;
   pValue: number;
   statisticalSignificance: boolean;
-  trendAnalysis: Record<string, any>;
+  trendAnalysis: Record<string, number | string | boolean>;
   createdAt: string;
 }
 
@@ -407,7 +471,7 @@ export interface SignalProcessingResult {
   signalType: SignalType;
   processingTime: number;
   success: boolean;
-  metadata: Record<string, any>;
+  metadata: Record<string, number | string | boolean>;
   createdAt: string;
 }
 
@@ -423,8 +487,8 @@ export interface VideoQualityAssessment {
   qualityScore: number;
   resolutionQuality: string;
   frameRateQuality: string;
-  brightnessAnalysis: Record<string, any>;
-  noiseAnalysis: Record<string, any>;
+  brightnessAnalysis: Record<string, number | string>;
+  noiseAnalysis: Record<string, number | string>;
 }
 
 export interface DetectionPipelineConfig {
@@ -436,7 +500,7 @@ export interface DetectionPipelineConfig {
 
 export interface DetectionPipelineResult {
   videoId: string;
-  detections: Array<Record<string, any>>;
+  detections: Array<Record<string, number | string | boolean>>;
   processingTime: number;
   modelUsed: string;
   totalDetections: number;
@@ -500,21 +564,21 @@ export interface ApiError {
   message: string;
   code?: string;
   status: number;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 // ApiError class for proper error handling
 export class ApiError extends Error {
   public status: number;
   public code?: string;
-  public details?: any;
+  public details?: Record<string, unknown>;
 
-  constructor(message: string, status: number = 500, code?: string, details?: any) {
+  constructor(message: string, status: number = 500, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code || 'UNKNOWN_ERROR';
-    this.details = details;
+    this.details = details || undefined;
     
     // Maintain proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, ApiError.prototype);

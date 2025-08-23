@@ -1,6 +1,31 @@
 // Enhanced Annotation System - Label Studio Inspired
 // Main exports for the annotation system
 
+import type {
+  Point,
+  Size,
+  Rectangle,
+  AnnotationShape,
+  AnnotationStyle,
+  DrawingTool,
+  AnnotationState,
+  CanvasTransform,
+  AnnotationSettings,
+  BrushSettings,
+  AnnotationAction,
+  KeyboardShortcut,
+  ContextMenuItem,
+  SelectionBox,
+  ResizeHandle,
+  AnnotationEvent,
+  ZoomPanState,
+  BrushStroke,
+  LabelStudioRegion,
+  LabelStudioTask,
+  LabelStudioAnnotation,
+  EnhancedGroundTruthAnnotation,
+} from './types';
+
 // Core components
 export { default as EnhancedAnnotationCanvas } from './EnhancedAnnotationCanvas';
 export { default as AnnotationToolbar } from './AnnotationToolbar';
@@ -14,9 +39,9 @@ export { default as EnhancedVideoAnnotationPlayer } from './EnhancedVideoAnnotat
 export { AnnotationProvider, useAnnotation } from './AnnotationManager';
 
 // Drawing tools
-export { default as PolygonTool } from './tools/PolygonTool';
-export { default as BrushTool } from './tools/BrushTool';
-export { default as SelectionTool } from './tools/SelectionTool';
+export { default as PolygonTool, usePolygonTool } from './tools/PolygonTool';
+export { default as BrushTool, useBrushTool } from './tools/BrushTool';
+export { default as SelectionTool, useSelectionTool } from './tools/SelectionTool';
 
 // Types
 export type {
@@ -100,31 +125,40 @@ export const convertToLabelStudio = (shapes: AnnotationShape[]): LabelStudioAnno
 };
 
 export const convertFromLabelStudio = (annotation: LabelStudioAnnotation): AnnotationShape[] => {
-  return annotation.result.map(region => ({
-    id: region.id,
-    type: region.type as any,
-    points: region.value.points || [
-      { x: region.value.x * 8, y: region.value.y * 6 },
-      { x: (region.value.x + region.value.width) * 8, y: region.value.y * 6 },
-      { x: (region.value.x + region.value.width) * 8, y: (region.value.y + region.value.height) * 6 },
-      { x: region.value.x * 8, y: (region.value.y + region.value.height) * 6 },
-    ],
-    boundingBox: {
-      x: region.value.x * 8,
-      y: region.value.y * 6,
-      width: region.value.width * 8,
-      height: region.value.height * 6,
-    },
-    style: {
-      strokeColor: '#3498db',
-      fillColor: 'rgba(52, 152, 219, 0.2)',
-      strokeWidth: 2,
-      fillOpacity: 0.2,
-    },
-    label: region.value.rectanglelabels?.[0],
-    visible: true,
-    selected: false,
-  }));
+  return annotation.result.map(region => {
+    // Type-safe value extraction
+    const value = region.value as any; // temporary for migration
+    const x = typeof value.x === 'number' ? value.x : 0;
+    const y = typeof value.y === 'number' ? value.y : 0;
+    const width = typeof value.width === 'number' ? value.width : 100;
+    const height = typeof value.height === 'number' ? value.height : 100;
+    
+    return {
+      id: region.id,
+      type: region.type as 'rectangle' | 'polygon' | 'brush' | 'point',
+      points: (value.points as Point[]) || [
+        { x: x * 8, y: y * 6 },
+        { x: (x + width) * 8, y: y * 6 },
+        { x: (x + width) * 8, y: (y + height) * 6 },
+        { x: x * 8, y: (y + height) * 6 },
+      ],
+      boundingBox: {
+        x: x * 8,
+        y: y * 6,
+        width: width * 8,
+        height: height * 6,
+      },
+      style: {
+        strokeColor: '#3498db',
+        fillColor: 'rgba(52, 152, 219, 0.2)',
+        strokeWidth: 2,
+        fillOpacity: 0.2,
+      },
+      label: value.rectanglelabels?.[0] || undefined,
+      visible: true,
+      selected: false,
+    };
+  });
 };
 
 // Default configurations

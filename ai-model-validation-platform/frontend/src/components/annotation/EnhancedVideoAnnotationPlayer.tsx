@@ -23,6 +23,15 @@ import {
   History as HistoryIcon,
   Fullscreen,
 } from '@mui/icons-material';
+import { VideoFile, GroundTruthAnnotation, VRUType } from '../../services/types';
+import { AnnotationShape, Point } from './types';
+import { AnnotationProvider, useAnnotation } from './AnnotationManager';
+import EnhancedAnnotationCanvas from './EnhancedAnnotationCanvas';
+import AnnotationToolbar from './AnnotationToolbar';
+import KeyboardShortcuts from './KeyboardShortcuts';
+import AnnotationHistory from './AnnotationHistory';
+import ContextMenu from './ContextMenu';
+import ZoomPanControls from './ZoomPanControls';
 
 // Import existing components
 // Note: VideoAnnotationPlayer import - create if needed
@@ -31,17 +40,6 @@ const VideoAnnotationPlayer = React.lazy(() =>
     Promise.resolve({ default: () => <div>Classic mode not available</div> })
   )
 );
-import { VideoFile, GroundTruthAnnotation } from '../../services/types';
-
-// Import new annotation components
-import { AnnotationProvider, useAnnotation } from './AnnotationManager';
-import EnhancedAnnotationCanvas from './EnhancedAnnotationCanvas';
-import AnnotationToolbar from './AnnotationToolbar';
-import KeyboardShortcuts from './KeyboardShortcuts';
-import AnnotationHistory from './AnnotationHistory';
-import ContextMenu from './ContextMenu';
-import ZoomPanControls from './ZoomPanControls';
-import { AnnotationShape, Point } from './types';
 
 interface EnhancedVideoAnnotationPlayerProps {
   video: VideoFile;
@@ -176,7 +174,7 @@ const EnhancedAnnotationInterface: React.FC<{
                 <EnhancedAnnotationCanvas
                   width={canvasSize.width}
                   height={canvasSize.height}
-                  videoElement={videoElement}
+                  videoElement={videoElement!}
                   onShapeClick={handleShapeClick}
                   onCanvasClick={handleCanvasClick}
                   onShapeChange={handleShapeChange}
@@ -261,7 +259,7 @@ const EnhancedAnnotationInterface: React.FC<{
                   </Stack>
                   
                   <ZoomPanControls
-                    containerRef={canvasContainerRef}
+                    containerRef={canvasContainerRef as React.RefObject<HTMLElement>}
                     contentSize={canvasSize}
                     compact
                   />
@@ -285,7 +283,7 @@ const EnhancedAnnotationInterface: React.FC<{
           
           {/* Zoom/Pan controls */}
           <ZoomPanControls
-            containerRef={canvasContainerRef}
+            containerRef={canvasContainerRef as React.RefObject<HTMLElement>}
             contentSize={canvasSize}
           />
         </Box>
@@ -295,8 +293,8 @@ const EnhancedAnnotationInterface: React.FC<{
       <ContextMenu
         anchorPosition={contextMenu?.position || null}
         onClose={handleContextMenuClose}
-        targetShape={contextMenu?.targetShape}
-        clickPoint={contextMenu?.clickPoint}
+        targetShape={contextMenu?.targetShape || null}
+        clickPoint={contextMenu?.clickPoint || null}
       />
 
       {/* Keyboard shortcuts */}
@@ -356,10 +354,10 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
       visible: true,
       selected: selectedAnnotation?.id === annotation.id,
     }));
-  }, [selectedAnnotation, getVRUColor]);
+  }, [selectedAnnotation]);
 
   // VRU color mapping
-  const getVRUColor = useCallback((vruType: string): string => {
+  const getVRUColor = useCallback((vruType: VRUType): string => {
     const colors = {
       pedestrian: '#2196f3',
       cyclist: '#4caf50',
@@ -380,7 +378,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
       detectionId: `det_${Date.now()}`,
       frameNumber: Math.floor((videoRef.current?.currentTime || 0) * frameRate),
       timestamp: videoRef.current?.currentTime || 0,
-      vruType: shape.label || 'pedestrian',
+      vruType: (shape.label as VRUType) || 'pedestrian',
       boundingBox: {
         ...shape.boundingBox,
         label: shape.label || 'pedestrian',
@@ -405,7 +403,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
         label: shape.label || 'pedestrian',
         confidence: shape.confidence || 1.0,
       },
-      vruType: shape.label || 'pedestrian',
+      vruType: (shape.label as VRUType) || 'pedestrian',
     };
 
     onAnnotationUpdate(shape.id, updates);
@@ -434,6 +432,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
       video.addEventListener('loadedmetadata', updateCanvasSize);
       return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
     }
+    return undefined;
   }, []);
 
   // Convert annotations to shapes
@@ -472,7 +471,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
         // Enhanced annotation interface
         <AnnotationProvider
           initialShapes={initialShapes}
-          onChange={handleShapeUpdate}
+          onChange={(shapes: AnnotationShape[]) => shapes.forEach(handleShapeUpdate)}
         >
           <EnhancedAnnotationInterface
             video={video}
@@ -500,11 +499,11 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
           <VideoAnnotationPlayer
           video={video}
           annotations={annotations}
-          onAnnotationSelect={onAnnotationSelect}
-          onTimeUpdate={onTimeUpdate}
-          onCanvasClick={onCanvasClick}
+          onAnnotationSelect={onAnnotationSelect || (() => {})}
+          onTimeUpdate={onTimeUpdate || (() => {})}
+          onCanvasClick={onCanvasClick || (() => {})}
           annotationMode={annotationMode}
-          selectedAnnotation={selectedAnnotation}
+          selectedAnnotation={selectedAnnotation || null}
           frameRate={frameRate}
           showDetectionControls={showDetectionControls}
           detectionControlsComponent={detectionControlsComponent}

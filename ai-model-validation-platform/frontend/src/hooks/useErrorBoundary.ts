@@ -69,17 +69,19 @@ export const useAsyncError = () => {
 export const useApiError = () => {
   const { captureError } = useErrorBoundary();
 
-  const handleApiError = useCallback((error: any, context?: string) => {
+  const handleApiError = useCallback((error: unknown, context?: string) => {
     let formattedError: Error;
+    
+    const errorObj = error as Record<string, unknown>;
 
-    if (error.response) {
+    if (errorObj && typeof errorObj === 'object' && 'response' in errorObj) {
       // API responded with an error status
       formattedError = ErrorFactory.createApiError(
-        error.response, 
-        error.response.data, 
+        errorObj.response as Record<string, unknown>, 
+        (errorObj.response as Record<string, unknown>)?.data as Record<string, unknown>, 
         { context, originalError: error }
       );
-    } else if (error.request) {
+    } else if (errorObj && typeof errorObj === 'object' && 'request' in errorObj) {
       // Network error - no response received
       formattedError = ErrorFactory.createNetworkError(
         undefined, 
@@ -87,7 +89,10 @@ export const useApiError = () => {
       );
     } else {
       // Something else went wrong
-      formattedError = new Error(error.message || 'Unknown API error');
+      const message = errorObj && typeof errorObj === 'object' && 'message' in errorObj 
+        ? String(errorObj.message) 
+        : 'Unknown API error';
+      formattedError = new Error(message);
     }
 
     captureError(formattedError, context);
@@ -118,7 +123,7 @@ export const useWebSocketError = () => {
 export const useValidationError = () => {
   const { captureError } = useErrorBoundary();
 
-  const handleValidationError = useCallback((field: string, value: any, rule: string) => {
+  const handleValidationError = useCallback((field: string, value: unknown, rule: string) => {
     const error = ErrorFactory.createValidationError(`Validation error: ${field}`, { value, rule });
     captureError(error, `validation-${field}`);
     return error;

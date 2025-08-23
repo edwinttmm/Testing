@@ -71,25 +71,43 @@ FixedListItem.displayName = 'FixedListItem';
 
 /**
  * Fixed Grid that handles props correctly for MUI v5+
+ * Properly types breakpoint props according to Material-UI Grid specification
  */
-interface FixedGridProps extends Omit<GridProps, 'item' | 'container'> {
+interface FixedGridProps extends Omit<GridProps, 'xs' | 'sm' | 'md' | 'lg' | 'xl'> {
   item?: boolean;
   container?: boolean;
+  xs?: boolean | number | 'auto';
+  sm?: boolean | number | 'auto';
+  md?: boolean | number | 'auto';
+  lg?: boolean | number | 'auto';
+  xl?: boolean | number | 'auto';
 }
 
 export const FixedGrid = memo(forwardRef<HTMLDivElement, FixedGridProps>(({
   item = false,
   container = false,
+  xs,
+  sm,
+  md,
+  lg,
+  xl,
+  children,
   ...props
 }, ref) => {
-  return (
-    <Grid
-      ref={ref}
-      {...(item && { item: true })}
-      {...(container && { container: true })}
-      {...props}
-    />
-  );
+  // Build Grid props object with proper typing
+  const gridProps: GridProps = {
+    ref,
+    ...(item && { item: true }),
+    ...(container && { container: true }),
+    ...(xs !== undefined && { xs }),
+    ...(sm !== undefined && { sm }),
+    ...(md !== undefined && { md }),
+    ...(lg !== undefined && { lg }),
+    ...(xl !== undefined && { xl }),
+    ...props,
+  };
+
+  return <Grid {...gridProps}>{children}</Grid>;
 }));
 
 FixedGrid.displayName = 'FixedGrid';
@@ -130,9 +148,12 @@ EnhancedButton.displayName = 'EnhancedButton';
 /**
  * Enhanced TextField with better error handling
  */
-interface EnhancedTextFieldProps extends TextFieldProps {
+interface EnhancedTextFieldProps extends Omit<TextFieldProps, 'helperText' | 'value' | 'multiline'> {
   maxLength?: number;
   showCharCount?: boolean;
+  helperText?: React.ReactNode;
+  value?: unknown;
+  multiline?: boolean;
 }
 
 export const EnhancedTextField = memo(forwardRef<HTMLDivElement, EnhancedTextFieldProps>(({
@@ -159,7 +180,7 @@ export const EnhancedTextField = memo(forwardRef<HTMLDivElement, EnhancedTextFie
       ref={ref}
       value={value}
       helperText={enhancedHelperText}
-      error={props.error || isOverLimit}
+      error={props.error || Boolean(isOverLimit)}
       inputProps={{
         maxLength,
         ...props.inputProps,
@@ -221,6 +242,7 @@ export const EnhancedAlert = memo(({
       const timer = setTimeout(onDismiss, dismissDelay);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [autoDismiss, dismissDelay, onDismiss]);
 
   return (

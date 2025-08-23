@@ -1,4 +1,6 @@
 // Enhanced Annotation System Types
+import { VRUType } from '../../services/types';
+
 export interface Point {
   x: number;
   y: number;
@@ -36,7 +38,7 @@ export interface DrawingTool {
   id: string;
   name: string;
   type: 'rectangle' | 'polygon' | 'brush' | 'point' | 'select';
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   cursor: string;
   hotkey?: string;
   isActive?: boolean;
@@ -79,8 +81,8 @@ export interface AnnotationAction {
   type: 'create' | 'update' | 'delete' | 'move' | 'resize' | 'select';
   timestamp: number;
   description: string;
-  before?: any;
-  after?: any;
+  before?: AnnotationShape | AnnotationShape[];
+  after?: AnnotationShape | AnnotationShape[];
   shapeIds: string[];
 }
 
@@ -144,14 +146,14 @@ export interface BrushStroke {
 export interface LabelStudioRegion {
   id: string;
   type: string;
-  value: any;
-  results: any[];
-  meta?: any;
+  value: Record<string, unknown>;
+  results: Record<string, unknown>[];
+  meta?: Record<string, unknown>;
 }
 
 export interface LabelStudioTask {
   id: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   annotations: LabelStudioAnnotation[];
 }
 
@@ -160,6 +162,10 @@ export interface LabelStudioAnnotation {
   created_username?: string;
   created_ago?: string;
   result: LabelStudioRegion[];
+  task?: number;
+  completed_by?: number;
+  was_cancelled?: boolean;
+  ground_truth?: boolean;
 }
 
 // Integration with existing Ground Truth types
@@ -169,7 +175,7 @@ export interface EnhancedGroundTruthAnnotation {
   frameNumber: number;
   timestamp: number;
   shapes: AnnotationShape[];
-  vruType: string;
+  vruType: VRUType;
   confidence: number;
   validated: boolean;
   notes?: string;

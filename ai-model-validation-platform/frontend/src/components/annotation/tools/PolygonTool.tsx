@@ -8,11 +8,8 @@ interface PolygonToolProps {
   enabled?: boolean;
 }
 
-const PolygonTool: React.FC<PolygonToolProps> = ({
-  onComplete,
-  onCancel,
-  enabled = false,
-}) => {
+// Hook that provides polygon tool functionality
+export const usePolygonTool = (props: PolygonToolProps) => {
   const { state, actions } = useAnnotation();
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -24,13 +21,13 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
 
   // Start polygon drawing
   const startPolygon = useCallback((point: Point) => {
-    if (!enabled) return;
+    if (!props.enabled) return;
     
     setCurrentPoints([point]);
     setIsDrawing(true);
     startPointRef.current = point;
     actions.setDrawing(true);
-  }, [enabled, actions]);
+  }, [props.enabled, actions]);
 
   // Add point to polygon
   const addPoint = useCallback((point: Point) => {
@@ -71,7 +68,7 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
 
     const shape = actions.getShapeById(shapeId);
     if (shape) {
-      onComplete?.(shape);
+      props.onComplete?.(shape);
     }
 
     // Reset state
@@ -80,7 +77,7 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
     setPreviewPoint(null);
     startPointRef.current = null;
     actions.setDrawing(false);
-  }, [currentPoints, actions, state.settings.defaultStyle, onComplete]);
+  }, [currentPoints, actions, state.settings.defaultStyle, props]);
 
   // Cancel polygon
   const cancelPolygon = useCallback(() => {
@@ -89,8 +86,8 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
     setPreviewPoint(null);
     startPointRef.current = null;
     actions.setDrawing(false);
-    onCancel?.();
-  }, [actions, onCancel]);
+    props.onCancel?.();
+  }, [actions, props]);
 
   // Update preview point for live drawing feedback
   const updatePreview = useCallback((point: Point) => {
@@ -100,7 +97,7 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
 
   // Handle mouse events
   const handleMouseClick = useCallback((point: Point, event: MouseEvent) => {
-    if (!enabled) return;
+    if (!props.enabled) return;
     
     event.preventDefault();
     event.stopPropagation();
@@ -110,25 +107,25 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
     } else {
       addPoint(point);
     }
-  }, [enabled, isDrawing, startPolygon, addPoint]);
+  }, [props.enabled, isDrawing, startPolygon, addPoint]);
 
   const handleMouseMove = useCallback((point: Point) => {
-    if (enabled && isDrawing) {
+    if (props.enabled && isDrawing) {
       updatePreview(point);
     }
-  }, [enabled, isDrawing, updatePreview]);
+  }, [props.enabled, isDrawing, updatePreview]);
 
   const handleDoubleClick = useCallback((point: Point, event: MouseEvent) => {
-    if (!enabled || !isDrawing) return;
+    if (!props.enabled || !isDrawing) return;
     
     event.preventDefault();
     event.stopPropagation();
     
     completePolygon();
-  }, [enabled, isDrawing, completePolygon]);
+  }, [props.enabled, isDrawing, completePolygon]);
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
-    if (!enabled || !isDrawing) return;
+    if (!props.enabled || !isDrawing) return;
 
     switch (event.key) {
       case 'Escape':
@@ -147,7 +144,7 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
         }
         break;
     }
-  }, [enabled, isDrawing, currentPoints.length, cancelPolygon, completePolygon]);
+  }, [props.enabled, isDrawing, currentPoints.length, cancelPolygon, completePolygon]);
 
   // Render current polygon being drawn
   const renderCurrentPolygon = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -218,47 +215,127 @@ const PolygonTool: React.FC<PolygonToolProps> = ({
 
   // Get tool cursor based on state
   const getCursor = useCallback(() => {
-    if (!enabled) return 'default';
+    if (!props.enabled) return 'default';
     if (isDrawing) return 'crosshair';
     return 'crosshair';
-  }, [enabled, isDrawing]);
+  }, [props.enabled, isDrawing]);
 
   // Get tool status text
   const getStatusText = useCallback(() => {
-    if (!enabled) return '';
+    if (!props.enabled) return '';
     if (!isDrawing) return 'Click to start polygon';
     if (currentPoints.length < MIN_POINTS) {
       return `Click to add point (${currentPoints.length}/${MIN_POINTS} minimum)`;
     }
     return `Click to add point, double-click or Enter to finish, Esc to cancel (${currentPoints.length} points)`;
-  }, [enabled, isDrawing, currentPoints.length]);
+  }, [props.enabled, isDrawing, currentPoints.length]);
 
-  // Return tool interface
   return {
-    enabled,
-    isActive: isDrawing,
-    cursor: getCursor(),
-    statusText: getStatusText(),
-    currentPoints,
-    previewPoint,
-    
     // Event handlers
     handleMouseClick,
     handleMouseMove,
     handleDoubleClick,
     handleKeyPress,
     
+    // Tool state
+    isDrawing,
+    enabled: props.enabled || false,
+    currentPoints,
+    previewPoint,
+    
     // Actions
-    complete: completePolygon,
-    cancel: cancelPolygon,
+    startPolygon,
+    addPoint,
+    completePolygon,
+    cancelPolygon,
+    updatePreview,
     
     // Rendering
-    render: renderCurrentPolygon,
+    renderCurrentPolygon,
     
-    // State queries
-    canComplete: currentPoints.length >= MIN_POINTS,
-    pointCount: currentPoints.length,
+    // Tool properties
+    getCursor,
+    getStatusText,
+    
+    // Constants
+    MIN_POINTS,
+    CLOSE_THRESHOLD,
   } as const;
+};
+
+// React component for PolygonTool with UI controls
+const PolygonTool: React.FC<PolygonToolProps> = (props) => {
+  const polygonTool = usePolygonTool(props);
+  
+  return (
+    <div className="polygon-tool-controls" style={{
+      padding: '12px',
+      border: '1px solid #e0e0e0',
+      borderRadius: '8px',
+      backgroundColor: '#fafafa',
+      marginBottom: '8px'
+    }}>
+      {/* Polygon tool controls UI */}
+      <div className="polygon-info" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ 
+          fontSize: '14px', 
+          fontWeight: '500', 
+          color: '#333',
+          borderBottom: '1px solid #ddd',
+          paddingBottom: '6px'
+        }}>
+          Polygon Tool
+        </div>
+        
+        {polygonTool.isDrawing && (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '4px',
+            fontSize: '12px',
+            color: '#666'
+          }}>
+            <div>Points: {polygonTool.currentPoints.length}</div>
+            <div>Minimum: {polygonTool.MIN_POINTS}</div>
+            {polygonTool.currentPoints.length >= polygonTool.MIN_POINTS && (
+              <div style={{ color: '#2e7d32', fontWeight: '500' }}>
+                Ready to close (double-click or Enter)
+              </div>
+            )}
+          </div>
+        )}
+        
+        <div style={{ 
+          fontSize: '11px', 
+          color: '#999',
+          lineHeight: '1.4'
+        }}>
+          <div>• Click to add vertices</div>
+          <div>• Double-click to finish</div>
+          <div>• Backspace to remove last point</div>
+          <div>• Escape to cancel</div>
+          <div>• Click near start point to close</div>
+        </div>
+      </div>
+      
+      {polygonTool.enabled && (
+        <div 
+          className="tool-status" 
+          style={{ 
+            marginTop: '8px',
+            padding: '6px',
+            backgroundColor: '#f0f7ff',
+            border: '1px solid #b3d9ff',
+            borderRadius: '4px',
+            fontSize: '11px',
+            color: '#1976d2'
+          }}
+        >
+          {polygonTool.getStatusText()}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default PolygonTool;

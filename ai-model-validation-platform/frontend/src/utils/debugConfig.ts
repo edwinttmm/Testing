@@ -79,7 +79,7 @@ export const isDebugEnabled = (component?: keyof DebugConfig['components']): boo
 /**
  * Conditional console.log for development
  */
-export const debugLog = (component: keyof DebugConfig['components'], message: string, ...args: any[]): void => {
+export const debugLog = (component: keyof DebugConfig['components'], message: string, ...args: unknown[]): void => {
   if (isDebugEnabled(component)) {
     console.log(`[${component.toUpperCase()}] ${message}`, ...args);
   }
@@ -88,7 +88,7 @@ export const debugLog = (component: keyof DebugConfig['components'], message: st
 /**
  * Conditional console.warn for development
  */
-export const debugWarn = (component: keyof DebugConfig['components'], message: string, ...args: any[]): void => {
+export const debugWarn = (component: keyof DebugConfig['components'], message: string, ...args: unknown[]): void => {
   if (isDebugEnabled(component)) {
     console.warn(`[${component.toUpperCase()}] ${message}`, ...args);
   }
@@ -97,7 +97,7 @@ export const debugWarn = (component: keyof DebugConfig['components'], message: s
 /**
  * Conditional console.error for development
  */
-export const debugError = (component: keyof DebugConfig['components'], message: string, ...args: any[]): void => {
+export const debugError = (component: keyof DebugConfig['components'], message: string, ...args: unknown[]): void => {
   if (isDebugEnabled(component)) {
     console.error(`[${component.toUpperCase()}] ${message}`, ...args);
   }

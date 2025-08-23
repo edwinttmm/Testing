@@ -4,7 +4,7 @@
  */
 
 // Global error serialization utility
-export const serializeError = (error: any): string => {
+export const serializeError = (error: unknown): string => {
   try {
     if (error === null) return 'null';
     if (error === undefined) return 'undefined';
@@ -17,17 +17,18 @@ export const serializeError = (error: any): string => {
     }
     
     // Handle objects with message property
-    if (error && typeof error === 'object' && error.message) {
+    if (error && typeof error === 'object' && 'message' in error && error.message) {
       return String(error.message);
     }
     
     // Handle network errors
     if (error && typeof error === 'object') {
-      if (error.code === 'NETWORK_ERROR' || error.name === 'NetworkError') {
+      if ('code' in error && error.code === 'NETWORK_ERROR' || 'name' in error && error.name === 'NetworkError') {
         return 'Network connection failed - backend may be offline';
       }
-      if (error.status) {
-        return `HTTP ${error.status}: ${error.statusText || 'Unknown error'}`;
+      if ('status' in error && error.status) {
+        const statusText = 'statusText' in error ? error.statusText || 'Unknown error' : 'Unknown error';
+        return `HTTP ${error.status}: ${statusText}`;
       }
     }
     
