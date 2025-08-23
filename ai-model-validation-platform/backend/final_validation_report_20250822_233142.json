@@ -1,0 +1,233 @@
+{
+  "test_start_time": "2025-08-22T23:31:40.118433",
+  "system_info": {
+    "backend_url": "http://localhost:8000",
+    "frontend_url": "http://localhost:3000",
+    "test_environment": "Local Development"
+  },
+  "phase_results": {
+    "Phase 1: Critical Issues Resolution": {
+      "tests": [
+        {
+          "name": "Response Schema Validation",
+          "status": "PASSED",
+          "execution_time": 0.08630108833312988,
+          "details": "Tested response schemas for video upload and project creation. Found 0 issues.",
+          "metrics": {},
+          "issues": []
+        },
+        {
+          "name": "Database Connection Stability",
+          "status": "PASSED",
+          "execution_time": 0.3078439235687256,
+          "details": "Database stability test: 50/50 requests successful, 0.05s avg response time",
+          "metrics": {
+            "total_requests": 50,
+            "successful_requests": 50,
+            "failed_requests": 0,
+            "average_response_time": 0.05106122,
+            "success_rate": 100.0
+          },
+          "issues": []
+        },
+        {
+          "name": "Video File Processing",
+          "status": "PASSED",
+          "execution_time": 0.06723618507385254,
+          "details": "Video processing test completed. Tested valid files, corrupted files, and non-video files. Found 0 issues.",
+          "metrics": {},
+          "issues": []
+        },
+        {
+          "name": "API Error Handling",
+          "status": "PASSED",
+          "execution_time": 0.020437002182006836,
+          "details": "API error handling test completed. Tested 4 error scenarios. Found 0 issues.",
+          "metrics": {},
+          "issues": []
+        }
+      ],
+      "issues_found": [],
+      "score": 100.0,
+      "execution_time": 0.4835686683654785,
+      "status": "COMPLETED"
+    },
+    "Phase 2: Complete Feature Validation": {
+      "tests": [
+        {
+          "name": "Video Upload & Processing Workflow",
+          "status": "FAILED",
+          "execution_time": 1.0365476608276367,
+          "details": "Failed to retrieve uploaded video",
+          "metrics": {}
+        },
+        {
+          "name": "Project Management System",
+          "status": "WORKING",
+          "execution_time": 0.05364203453063965,
+          "details": "Project management workflow completed successfully. Project fab31c73-a688-402f-8c79-f81598ad8e05 created, retrieved, updated, and listed.",
+          "metrics": {
+            "project_name": "Full Workflow Test 27f06667",
+            "project_status": "Active",
+            "operations_completed": 4
+          }
+        },
+        {
+          "name": "Test Execution Workflow",
+          "status": "WORKING",
+          "execution_time": 0.00706171989440918,
+          "details": "Test execution workflow endpoints accessible and responding correctly.",
+          "metrics": {
+            "sessions_endpoint_status": "available",
+            "response_format": "json",
+            "existing_sessions": 1
+          }
+        },
+        {
+          "name": "Real-time Communication",
+          "status": "WORKING",
+          "execution_time": 0.0034940242767333984,
+          "details": "Real-time communication endpoints accessible.",
+          "metrics": {
+            "socketio_endpoint_status": "available",
+            "response_code": 400
+          }
+        }
+      ],
+      "features_working": 3,
+      "score": 75.0,
+      "execution_time": 1.1020822525024414,
+      "status": "COMPLETED"
+    },
+    "Phase 3: Performance & Stability": {
+      "tests": [
+        {
+          "name": "Load Testing (20 concurrent users)",
+          "status": "PASSED",
+          "execution_time": 0.28349781036376953,
+          "details": "Load test completed: 100.0% success rate, 0.08s avg response time",
+          "metrics": {
+            "concurrent_users": 20,
+            "total_operations": 60,
+            "successful_operations": 60,
+            "success_rate": 100.0,
+            "average_response_time": 0.08121415774027506,
+            "max_response_time": 0.14692258834838867
+          }
+        },
+        {
+          "name": "Stress Testing (large files)",
+          "status": "PASSED",
+          "execution_time": 0.4781367778778076,
+          "details": "Stress test: 100.0% success rate, 209.2 req/s",
+          "metrics": {
+            "total_requests": 100,
+            "successful_requests": 100,
+            "success_rate": 100.0,
+            "duration": 0.47804999351501465,
+            "requests_per_second": 209.18314267660207
+          }
+        },
+        {
+          "name": "Error Recovery",
+          "status": "PASSED",
+          "execution_time": 0.012701988220214844,
+          "details": "Error recovery test: 3/3 tests passed",
+          "metrics": {
+            "recovery_tests_passed": 3,
+            "total_recovery_tests": 3,
+            "recovery_success_rate": 100.0
+          }
+        }
+      ],
+      "performance_metrics": {
+        "Load Testing (20 concurrent users)": {
+          "concurrent_users": 20,
+          "total_operations": 60,
+          "successful_operations": 60,
+          "success_rate": 100.0,
+          "average_response_time": 0.08121415774027506,
+          "max_response_time": 0.14692258834838867
+        },
+        "Stress Testing (large files)": {
+          "total_requests": 100,
+          "successful_requests": 100,
+          "success_rate": 100.0,
+          "duration": 0.47804999351501465,
+          "requests_per_second": 209.18314267660207
+        },
+        "Error Recovery": {
+          "recovery_tests_passed": 3,
+          "total_recovery_tests": 3,
+          "recovery_success_rate": 100.0
+        }
+      },
+      "score": 100.0,
+      "execution_time": 0.7762439250946045,
+      "status": "COMPLETED"
+    },
+    "Phase 4: User Experience Validation": {
+      "tests": [
+        {
+          "name": "Frontend Accessibility",
+          "status": "PASSED",
+          "execution_time": 0.016693830490112305,
+          "details": "Frontend accessibility: 2/3 basic checks passed",
+          "metrics": {
+            "has_title": true,
+            "has_viewport": true,
+            "has_semantic_structure": false,
+            "content_length": 1711
+          }
+        },
+        {
+          "name": "API Response Quality",
+          "status": "PASSED",
+          "execution_time": 0.024867534637451172,
+          "details": "API response quality: 0 issues found",
+          "metrics": {
+            "endpoints_tested": 3,
+            "quality_issues": []
+          }
+        },
+        {
+          "name": "Documentation Availability",
+          "status": "PASSED",
+          "execution_time": 0.004618167877197266,
+          "details": "Documentation available at /docs with proper API documentation",
+          "metrics": {
+            "docs_accessible": true,
+            "has_swagger": true,
+            "has_api_info": true,
+            "content_length": 952
+          }
+        }
+      ],
+      "ux_score": 100.0,
+      "execution_time": 0.04860520362854004,
+      "status": "COMPLETED"
+    }
+  },
+  "overall_scores": {
+    "critical_functionality": 0,
+    "performance": 0,
+    "error_handling": 0,
+    "user_experience": 0
+  },
+  "critical_issues": [],
+  "recommendations": [],
+  "final_assessment": {
+    "overall_score": 78.75,
+    "recommendation": "REQUIRES FIXES",
+    "risk_level": "HIGH",
+    "critical_issues_count": 0,
+    "phase_scores": {
+      "Phase 1: Critical Issues Resolution": 100.0,
+      "Phase 2: Complete Feature Validation": 75.0,
+      "Phase 3: Performance & Stability": 100.0,
+      "Phase 4: User Experience Validation": 0
+    },
+    "test_completion_time": "2025-08-22T23:31:42.530335",
+    "summary": "System scored 78.8% overall. REQUIRES FIXES."
+  }
+}

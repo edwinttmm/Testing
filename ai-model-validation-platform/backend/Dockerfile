@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (including LabJack support)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y \
     libgthread-2.0-0 \
     ffmpeg \
     build-essential \
+    libusb-1.0-0-dev \
+    libudev-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure pip for better reliability

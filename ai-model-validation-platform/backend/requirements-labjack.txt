@@ -1,0 +1,10 @@
+# Optional LabJack Requirements
+# Install only if you need voltage signal acquisition from LabJack devices
+# Usage: pip install -r requirements-labjack.txt
+
+# LabJack hardware support
+labjack-ljm==1.21.0
+
+# USB/Serial hardware dependencies (Linux)
+# These are system libraries, install with apt-get:
+# apt-get install libusb-1.0-0-dev libudev-dev pkg-config
