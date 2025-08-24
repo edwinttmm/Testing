@@ -85,7 +85,7 @@ class ApiCache {
       return null;
     }
 
-    return entry.data;
+    return entry.data as T;
   }
 
   set<T>(method: string, url: string, data: T, params?: Record<string, unknown>): void {

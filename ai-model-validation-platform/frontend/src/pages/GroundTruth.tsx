@@ -43,6 +43,7 @@ import {
   GetApp,
   Publish,
   CropFree,
+  PlayArrow,
 } from '@mui/icons-material';
 import { 
   VideoFile, 
@@ -229,7 +230,7 @@ const GroundTruth: React.FC = () => {
       visible: true,
       selected: selectedAnnotation?.id === annotation.id,
     }));
-  }, [selectedAnnotation, getVRUColor]);
+  }, [selectedAnnotation?.id, getVRUColor]);
   
   // Convert shapes back to ground truth annotations
   const convertShapesToAnnotations = useCallback((shapes: AnnotationShape[]): Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>[] => {
@@ -252,6 +253,153 @@ const GroundTruth: React.FC = () => {
       validated: false,
     }));
   }, [selectedVideo, currentFrame, currentTime]);
+
+  // Detection configuration state
+  const [detectionConfig, setDetectionConfig] = useState<DetectionConfig>({
+    confidenceThreshold: 0.5,
+    nmsThreshold: 0.5,
+    modelName: 'yolov8s',
+    targetClasses: ['person', 'bicycle', 'motorcycle'],
+    maxRetries: 2,
+    retryDelay: 1000,
+    useFallback: true
+  });
+
+  // Bulk video operations state
+  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
+  const [bulkOperationMode, setBulkOperationMode] = useState(false);
+  const [processingQueue, setProcessingQueue] = useState<VideoFile[]>([]);
+  const [batchProcessingStatus, setBatchProcessingStatus] = useState<{
+    isRunning: boolean;
+    processed: number;
+    total: number;
+    currentVideo?: string;
+  }>({ isRunning: false, processed: 0, total: 0 });
+
+  // Detection configuration handlers
+  const handleDetectionConfigChange = useCallback((config: Partial<DetectionConfig>) => {
+    setDetectionConfig(prev => ({ ...prev, ...config }));
+  }, []);
+
+  // Enhanced video processing with getVideoDetections
+  const handleProcessVideo = useCallback(async (video: VideoFile) => {
+    try {
+      setDetectionError(null);
+      setIsDetectionRunning(true);
+      
+      // Get existing detections first
+      const existingDetections = await getVideoDetections(video.id);
+      if (existingDetections.length > 0) {
+        const annotations = existingDetections.map((det: any) => ({
+          id: det.id || `det-${Date.now()}-${Math.random()}`,
+          videoId: video.id,
+          detectionId: det.detection_id || det.detectionId || `DET_${Date.now()}`,
+          frameNumber: det.frame_number || det.frameNumber || 0,
+          timestamp: det.timestamp || 0,
+          vruType: det.vru_type || det.vruType || 'pedestrian',
+          boundingBox: det.bounding_box || det.boundingBox || { x: 0, y: 0, width: 50, height: 100, confidence: 0.5, label: 'pedestrian' },
+          occluded: det.occluded || false,
+          truncated: det.truncated || false,
+          difficult: det.difficult || false,
+          validated: det.validated || false,
+          createdAt: det.created_at || det.createdAt || new Date().toISOString(),
+          updatedAt: det.updated_at || det.updatedAt || new Date().toISOString()
+        }));
+        setAnnotations(annotations);
+        setDetectionResults(annotations);
+        setSuccessMessage(`Loaded ${annotations.length} existing detections for video`);
+      } else {
+        // Run new detection with current config
+        const result = await detectionService.runDetection(video.id, detectionConfig);
+        if (result.success) {
+          setAnnotations(result.detections);
+          setDetectionResults(result.detections);
+          setSuccessMessage(`Detection completed! Found ${result.detections.length} objects.`);
+        } else {
+          throw new Error(result.error || 'Detection failed');
+        }
+      }
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      setDetectionError(errorMsg);
+      setError(`Video processing failed: ${errorMsg}`);
+    } finally {
+      setIsDetectionRunning(false);
+    }
+  }, [detectionConfig]);
+
+  // Bulk video selection handlers
+  const handleVideoToggleSelection = useCallback((videoId: string) => {
+    setSelectedVideoIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(videoId)) {
+        newSet.delete(videoId);
+      } else {
+        newSet.add(videoId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleSelectAllVideos = useCallback(() => {
+    const allVideoIds = videos.filter(v => v.status === 'completed').map(v => v.id);
+    setSelectedVideoIds(new Set(allVideoIds));
+  }, [videos]);
+
+  const handleDeselectAllVideos = useCallback(() => {
+    setSelectedVideoIds(new Set());
+  }, []);
+
+  // Batch processing handlers
+  const handleBatchProcess = useCallback(async () => {
+    const selectedVideos = videos.filter(v => selectedVideoIds.has(v.id) && v.status === 'completed');
+    if (selectedVideos.length === 0) {
+      setError('Please select at least one completed video for batch processing');
+      return;
+    }
+
+    setBatchProcessingStatus({ isRunning: true, processed: 0, total: selectedVideos.length });
+    setProcessingQueue(selectedVideos);
+
+    try {
+      let processed = 0;
+      for (const video of selectedVideos) {
+        setBatchProcessingStatus(prev => ({ ...prev, currentVideo: video.filename, processed }));
+        await handleProcessVideo(video);
+        processed++;
+        setBatchProcessingStatus(prev => ({ ...prev, processed }));
+      }
+      setSuccessMessage(`Successfully processed ${processed} videos in batch`);
+    } catch (error) {
+      setError(`Batch processing failed: ${getErrorMessage(error)}`);
+    } finally {
+      setBatchProcessingStatus({ isRunning: false, processed: 0, total: 0 });
+      setProcessingQueue([]);
+      setSelectedVideoIds(new Set());
+    }
+  }, [videos, selectedVideoIds, handleProcessVideo]);
+
+  const handleBatchDelete = useCallback(async () => {
+    const selectedVideos = videos.filter(v => selectedVideoIds.has(v.id));
+    if (selectedVideos.length === 0) {
+      setError('Please select at least one video to delete');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete ${selectedVideos.length} videos? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      for (const video of selectedVideos) {
+        await handleDeleteVideo(video.id);
+      }
+      setSuccessMessage(`Successfully deleted ${selectedVideos.length} videos`);
+      setSelectedVideoIds(new Set());
+    } catch (error) {
+      setError(`Batch delete failed: ${getErrorMessage(error)}`);
+    }
+  }, [videos, selectedVideoIds]);
   
   // Manual detection only - no WebSocket or automatic detection
 
@@ -993,6 +1141,170 @@ const GroundTruth: React.FC = () => {
         </Button>
       </Box>
 
+      {/* Detection Configuration Panel */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Detection Configuration
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Model</InputLabel>
+                <Select
+                  value={detectionConfig.modelName}
+                  label="Model"
+                  onChange={(e) => handleDetectionConfigChange({ modelName: e.target.value })}
+                >
+                  <MenuItem value="yolov8n">YOLOv8 Nano (Fast)</MenuItem>
+                  <MenuItem value="yolov8s">YOLOv8 Small (Balanced)</MenuItem>
+                  <MenuItem value="yolov8m">YOLOv8 Medium (Accurate)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <Typography variant="caption" display="block">
+                Confidence: {detectionConfig.confidenceThreshold}
+              </Typography>
+              <input
+                type="range"
+                min="0.1"
+                max="0.9"
+                step="0.1"
+                value={detectionConfig.confidenceThreshold}
+                onChange={(e) => handleDetectionConfigChange({ confidenceThreshold: parseFloat(e.target.value) })}
+                style={{ width: '100%' }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <Typography variant="caption" display="block">
+                NMS: {detectionConfig.nmsThreshold}
+              </Typography>
+              <input
+                type="range"
+                min="0.1"
+                max="0.9"
+                step="0.1"
+                value={detectionConfig.nmsThreshold}
+                onChange={(e) => handleDetectionConfigChange({ nmsThreshold: parseFloat(e.target.value) })}
+                style={{ width: '100%' }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Target Classes</InputLabel>
+                <Select
+                  multiple
+                  value={detectionConfig.targetClasses}
+                  label="Target Classes"
+                  onChange={(e) => handleDetectionConfigChange({ targetClasses: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value })}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {(selected as string[]).map((value) => (
+                        <Chip key={value} label={value} size="small" />
+                      ))}
+                    </Box>
+                  )}
+                >
+                  <MenuItem value="person">Person</MenuItem>
+                  <MenuItem value="bicycle">Bicycle</MenuItem>
+                  <MenuItem value="motorcycle">Motorcycle</MenuItem>
+                  <MenuItem value="car">Car</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Processing Queue Status */}
+      {batchProcessingStatus.isRunning && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Processing Queue Status
+            </Typography>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                Processing: {batchProcessingStatus.currentVideo || 'Initializing...'}
+              </Typography>
+              <LinearProgress 
+                variant="determinate" 
+                value={(batchProcessingStatus.processed / batchProcessingStatus.total) * 100} 
+                sx={{ mt: 1 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {batchProcessingStatus.processed} of {batchProcessingStatus.total} videos completed
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bulk Operations Controls */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              Bulk Video Operations
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant={bulkOperationMode ? 'contained' : 'outlined'}
+                onClick={() => setBulkOperationMode(!bulkOperationMode)}
+              >
+                {bulkOperationMode ? 'Exit Bulk Mode' : 'Bulk Select'}
+              </Button>
+            </Stack>
+          </Box>
+          
+          {bulkOperationMode && (
+            <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+              <Button
+                size="small"
+                onClick={handleSelectAllVideos}
+                disabled={videos.filter(v => v.status === 'completed').length === 0}
+              >
+                Select All Completed
+              </Button>
+              <Button
+                size="small"
+                onClick={handleDeselectAllVideos}
+                disabled={selectedVideoIds.size === 0}
+              >
+                Deselect All
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleBatchProcess}
+                disabled={selectedVideoIds.size === 0 || batchProcessingStatus.isRunning}
+                startIcon={<PlayArrow />}
+              >
+                Process Selected ({selectedVideoIds.size})
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                onClick={handleBatchDelete}
+                disabled={selectedVideoIds.size === 0}
+                startIcon={<Delete />}
+              >
+                Delete Selected ({selectedVideoIds.size})
+              </Button>
+            </Stack>
+          )}
+          
+          {selectedVideoIds.size > 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              {selectedVideoIds.size} video{selectedVideoIds.size > 1 ? 's' : ''} selected for bulk operations
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, md: 3 }}>
@@ -1137,6 +1449,16 @@ const GroundTruth: React.FC = () => {
             {/* Show completed videos */}
             {videos.map((video) => (
               <ListItem key={video.id} divider>
+                {bulkOperationMode && (
+                  <Box sx={{ mr: 2 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedVideoIds.has(video.id)}
+                      onChange={() => handleVideoToggleSelection(video.id)}
+                      disabled={video.status !== 'completed'}
+                    />
+                  </Box>
+                )}
                 <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
                   {getStatusIcon(video.status)}
                 </Box>
@@ -1208,6 +1530,15 @@ const GroundTruth: React.FC = () => {
                         </span>
                       </Tooltip>
                     )}
+                    <Tooltip title="Process Video">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleProcessVideo(video)}
+                        disabled={video.status !== 'completed' || isDetectionRunning}
+                      >
+                        <PlayArrow />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="View Details">
                       <IconButton 
                         size="small" 
@@ -1374,60 +1705,63 @@ const GroundTruth: React.FC = () => {
 
             <TabPanel value={activeTab} index={0}>
               {selectedVideo && (
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, lg: 8 }}>
-                    {!enhancedAnnotationMode && (
-                      <>
-                        {/* Detection Controls */}
-                        <DetectionControls
-                          video={selectedVideo}
-                          onDetectionStart={handleDetectionStart}
-                          onDetectionComplete={handleDetectionComplete}
-                          onDetectionError={handleDetectionError}
-                          disabled={false}
-                        />
-                        
-                        <VideoAnnotationPlayer
-                          video={selectedVideo}
-                          annotations={annotations}
-                          onAnnotationSelect={setSelectedAnnotation}
-                          onTimeUpdate={handleTimeUpdate}
-                          onCanvasClick={handleCanvasClick}
-                          annotationMode={annotationMode}
-                          selectedAnnotation={selectedAnnotation}
-                          frameRate={frameRate}
-                        />
-                      </>
-                    )}
-                    
-                    {enhancedAnnotationMode && (
-                      <>
-                        {/* Detection Controls */}
-                        <DetectionControls
-                          video={selectedVideo}
-                          onDetectionStart={handleDetectionStart}
-                          onDetectionComplete={handleDetectionComplete}
-                          onDetectionError={handleDetectionError}
-                          disabled={false}
-                        />
-                        
-                        <EnhancedVideoAnnotationPlayer
-                          video={selectedVideo}
-                          annotations={annotations}
-                          onAnnotationSelect={setSelectedAnnotation}
-                          onTimeUpdate={handleTimeUpdate}
-                          onCanvasClick={handleCanvasClick}
-                          annotationMode={annotationMode}
-                          selectedAnnotation={selectedAnnotation}
-                          frameRate={frameRate}
-                          showDetectionControls={false}
-                          onAnnotationCreate={handleEnhancedAnnotationCreate}
-                          onAnnotationUpdate={handleEnhancedAnnotationUpdate}
-                          onAnnotationDelete={handleEnhancedAnnotationDelete}
-                        />
-                      </>
-                    )}
-                  </Grid>
+                <AnnotationProvider>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, lg: 8 }}>
+                      {!enhancedAnnotationMode && (
+                        <>
+                          {/* Detection Controls */}
+                          <DetectionControls
+                            video={selectedVideo}
+                            onDetectionStart={handleDetectionStart}
+                            onDetectionComplete={handleDetectionComplete}
+                            onDetectionError={handleDetectionError}
+                            disabled={false}
+                            initialConfig={detectionConfig}
+                          />
+                          
+                          <VideoAnnotationPlayer
+                            video={selectedVideo}
+                            annotations={annotations}
+                            onAnnotationSelect={setSelectedAnnotation}
+                            onTimeUpdate={handleTimeUpdate}
+                            onCanvasClick={handleCanvasClick}
+                            annotationMode={annotationMode}
+                            selectedAnnotation={selectedAnnotation}
+                            frameRate={frameRate}
+                          />
+                        </>
+                      )}
+                      
+                      {enhancedAnnotationMode && (
+                        <>
+                          {/* Detection Controls */}
+                          <DetectionControls
+                            video={selectedVideo}
+                            onDetectionStart={handleDetectionStart}
+                            onDetectionComplete={handleDetectionComplete}
+                            onDetectionError={handleDetectionError}
+                            disabled={false}
+                            initialConfig={detectionConfig}
+                          />
+                          
+                          <EnhancedVideoAnnotationPlayer
+                            video={selectedVideo}
+                            annotations={annotations}
+                            onAnnotationSelect={setSelectedAnnotation}
+                            onTimeUpdate={handleTimeUpdate}
+                            onCanvasClick={handleCanvasClick}
+                            annotationMode={annotationMode}
+                            selectedAnnotation={selectedAnnotation}
+                            frameRate={frameRate}
+                            showDetectionControls={false}
+                            onAnnotationCreate={handleEnhancedAnnotationCreate}
+                            onAnnotationUpdate={handleEnhancedAnnotationUpdate}
+                            onAnnotationDelete={handleEnhancedAnnotationDelete}
+                          />
+                        </>
+                      )}
+                    </Grid>
                   <Grid size={{ xs: 12, lg: 4 }}>
                     <Typography variant="h6" gutterBottom>
                       Video Information
@@ -1494,59 +1828,64 @@ const GroundTruth: React.FC = () => {
                       </Typography>
                     </Paper>
                   </Grid>
-                </Grid>
+                  </Grid>
+                </AnnotationProvider>
               )}
             </TabPanel>
 
             <TabPanel value={activeTab} index={1}>
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, lg: 8 }}>
-                  {selectedVideo && !enhancedAnnotationMode && (
-                    <VideoAnnotationPlayer
-                      video={selectedVideo}
-                      annotations={annotations}
-                      onAnnotationSelect={setSelectedAnnotation}
-                      onTimeUpdate={handleTimeUpdate}
-                      onCanvasClick={handleCanvasClick}
-                      annotationMode={annotationMode}
-                      selectedAnnotation={selectedAnnotation}
-                      frameRate={frameRate}
-                    />
-                  )}
-                  
-                  {selectedVideo && enhancedAnnotationMode && (
-                    <EnhancedVideoAnnotationPlayer
-                      video={selectedVideo}
-                      annotations={annotations}
-                      onAnnotationSelect={setSelectedAnnotation}
-                      onTimeUpdate={handleTimeUpdate}
-                      onCanvasClick={handleCanvasClick}
-                      annotationMode={annotationMode}
-                      selectedAnnotation={selectedAnnotation}
-                      frameRate={frameRate}
-                      showDetectionControls={false}
-                      onAnnotationCreate={handleEnhancedAnnotationCreate}
-                      onAnnotationUpdate={handleEnhancedAnnotationUpdate}
-                      onAnnotationDelete={handleEnhancedAnnotationDelete}
-                    />
-                  )}
+                  <AnnotationProvider>
+                    {selectedVideo && !enhancedAnnotationMode && (
+                      <VideoAnnotationPlayer
+                        video={selectedVideo}
+                        annotations={annotations}
+                        onAnnotationSelect={setSelectedAnnotation}
+                        onTimeUpdate={handleTimeUpdate}
+                        onCanvasClick={handleCanvasClick}
+                        annotationMode={annotationMode}
+                        selectedAnnotation={selectedAnnotation}
+                        frameRate={frameRate}
+                      />
+                    )}
+                    
+                    {selectedVideo && enhancedAnnotationMode && (
+                      <EnhancedVideoAnnotationPlayer
+                        video={selectedVideo}
+                        annotations={annotations}
+                        onAnnotationSelect={setSelectedAnnotation}
+                        onTimeUpdate={handleTimeUpdate}
+                        onCanvasClick={handleCanvasClick}
+                        annotationMode={annotationMode}
+                        selectedAnnotation={selectedAnnotation}
+                        frameRate={frameRate}
+                        showDetectionControls={false}
+                        onAnnotationCreate={handleEnhancedAnnotationCreate}
+                        onAnnotationUpdate={handleEnhancedAnnotationUpdate}
+                        onAnnotationDelete={handleEnhancedAnnotationDelete}
+                      />
+                    )}
+                  </AnnotationProvider>
                 </Grid>
                 <Grid size={{ xs: 12, lg: 4 }}>
-                  <AnnotationTools
-                    selectedAnnotation={selectedAnnotation}
-                    onAnnotationUpdate={handleAnnotationUpdate}
-                    onAnnotationDelete={handleAnnotationDelete}
-                    onAnnotationValidate={handleAnnotationValidate}
-                    onToolSelect={setSelectedTool}
-                    selectedTool={selectedTool}
-                    onCreateAnnotation={handleAnnotationCreate}
-                    annotationMode={annotationMode}
-                    onAnnotationModeToggle={setAnnotationMode}
-                    showAnnotations={showAnnotations}
-                    onShowAnnotationsToggle={setShowAnnotations}
-                    frameNumber={currentFrame}
-                    timestamp={currentTime}
-                  />
+                  <AnnotationProvider>
+                    <AnnotationTools
+                      selectedAnnotation={selectedAnnotation}
+                      onAnnotationUpdate={handleAnnotationUpdate}
+                      onAnnotationDelete={handleAnnotationDelete}
+                      onAnnotationValidate={handleAnnotationValidate}
+                      onToolSelect={setSelectedTool}
+                      selectedTool={selectedTool}
+                      onCreateAnnotation={handleAnnotationCreate}
+                      annotationMode={annotationMode}
+                      onAnnotationModeToggle={setAnnotationMode}
+                      showAnnotations={showAnnotations}
+                      onShowAnnotationsToggle={setShowAnnotations}
+                      frameNumber={currentFrame}
+                      timestamp={currentTime}
+                    />
+                  </AnnotationProvider>
                 </Grid>
               </Grid>
             </TabPanel>

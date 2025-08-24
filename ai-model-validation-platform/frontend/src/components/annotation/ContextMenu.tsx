@@ -137,6 +137,35 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
     handleClose();
   }, [handleClose]);
 
+  const handleChangeColor = useCallback(() => {
+    const shapesToUpdate = targetShape ? [targetShape] : selectedShapes;
+    const currentColor = shapesToUpdate[0]?.style?.strokeColor || '#3498db';
+    const newColor = prompt('Enter hex color:', currentColor);
+    if (newColor && newColor !== currentColor) {
+      shapesToUpdate.forEach(shape => {
+        actions.updateShape(shape.id, {
+          style: { ...shape.style, strokeColor: newColor }
+        });
+      });
+    }
+    handleClose();
+  }, [targetShape, selectedShapes, actions, handleClose]);
+
+  const handleChangeBrush = useCallback(() => {
+    const shapesToUpdate = targetShape ? [targetShape] : selectedShapes;
+    const currentWidth = shapesToUpdate[0]?.style?.strokeWidth || 2;
+    const newWidth = prompt('Enter stroke width (1-20):', currentWidth.toString());
+    const width = parseInt(newWidth || '0', 10);
+    if (width > 0 && width <= 20 && width !== currentWidth) {
+      shapesToUpdate.forEach(shape => {
+        actions.updateShape(shape.id, {
+          style: { ...shape.style, strokeWidth: width }
+        });
+      });
+    }
+    handleClose();
+  }, [targetShape, selectedShapes, actions, handleClose]);
+
   const handleConvertShape = useCallback((newType: 'rectangle' | 'polygon' | 'point' | 'brush') => {
     if (!targetShape) return;
 
@@ -235,6 +264,25 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       });
 
       items.push({ id: 'divider1', label: '', separator: true, action: () => {} });
+    }
+
+    // Style actions
+    if (targetShape || hasSelection) {
+      items.push({
+        id: 'change-color',
+        label: 'Change Color',
+        icon: <ColorLens />,
+        action: handleChangeColor,
+      });
+
+      items.push({
+        id: 'change-brush',
+        label: 'Change Brush',
+        icon: <Brush />,
+        action: handleChangeBrush,
+      });
+      
+      items.push({ id: 'divider-style', label: '', separator: true, action: () => {} });
     }
 
     // Edit actions
@@ -354,7 +402,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   }, [
     targetShape, hasSelection, multipleSelected, selectedShapes, hasClipboard, state.clipboard.length, state.shapes.length,
     handleEdit, handleEditLabel, handleShowProperties, handleCopy, handleDuplicate, handleDelete, handlePaste,
-    handleVisibilityToggle, handleLockToggle, handleBringToFront, handleSendToBack, handleSetLabel
+    handleVisibilityToggle, handleLockToggle, handleBringToFront, handleSendToBack, handleSetLabel,
+    handleChangeColor, handleChangeBrush
   ]);
 
   const menuItems = getMenuItems();

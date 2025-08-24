@@ -15,7 +15,7 @@ export interface ResponsiveValue {
   xl?: boolean | number | 'auto';
 }
 
-export interface StandardizedGridProps extends Omit<GridProps, 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'container'> {
+export interface StandardizedGridProps extends Omit<GridProps, 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'container' | 'direction'> {
   children: ReactNode;
   
   // Container/Item configuration
@@ -35,8 +35,8 @@ export interface StandardizedGridProps extends Omit<GridProps, 'xs' | 'sm' | 'md
   // Spacing configuration
   spacing?: number | string | { xs?: number; sm?: number; md?: number; lg?: number; xl?: number };
   
-  // Layout utilities
-  direction?: 'row' | 'column' | 'row-reverse' | 'column-reverse' | ResponsiveValue;
+  // Layout utilities - Fixed to use proper types
+  direction?: 'row' | 'column' | 'row-reverse' | 'column-reverse';
   justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around' | 'space-evenly';
   alignItems?: 'flex-start' | 'center' | 'flex-end' | 'stretch' | 'baseline';
   wrap?: 'nowrap' | 'wrap' | 'wrap-reverse';

@@ -174,15 +174,20 @@ export const LazyImage: React.FC<LazyImageProps> = ({
 
 // Memoization utilities
 export const shallowEqual = (obj1: unknown, obj2: unknown): boolean => {
-  const keys1 = Object.keys(obj1);
-  const keys2 = Object.keys(obj2);
+  // Type guard for objects
+  if (typeof obj1 !== 'object' || obj1 === null || typeof obj2 !== 'object' || obj2 === null) {
+    return obj1 === obj2;
+  }
+  
+  const keys1 = Object.keys(obj1 as Record<string, unknown>);
+  const keys2 = Object.keys(obj2 as Record<string, unknown>);
 
   if (keys1.length !== keys2.length) {
     return false;
   }
 
   for (const key of keys1) {
-    if (obj1[key] !== obj2[key]) {
+    if ((obj1 as Record<string, unknown>)[key] !== (obj2 as Record<string, unknown>)[key]) {
       return false;
     }
   }
@@ -211,7 +216,7 @@ export const deepEqual = (obj1: unknown, obj2: unknown): boolean => {
   }
 
   for (const key of keys1) {
-    if (!deepEqual(obj1[key], obj2[key])) {
+    if (!deepEqual((obj1 as Record<string, unknown>)[key], (obj2 as Record<string, unknown>)[key])) {
       return false;
     }
   }

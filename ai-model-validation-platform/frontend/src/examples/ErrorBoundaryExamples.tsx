@@ -67,9 +67,9 @@ export const ApiErrorBoundaryExample: React.FC = () => {
       // Simulate API call that might fail
       const response = await fetch('/api/nonexistent-endpoint');
       if (!response.ok) {
-        throw ErrorFactory.createApiError(response, null, { context: 'example-api-call' });
+        throw ErrorFactory.createApiError(response as any, {} as Record<string, unknown>, { context: 'example-api-call' });
       }
-      const result = await response.json();
+      const result: Record<string, any> = await response.json();
       setData(result);
     } catch (error) {
       handleApiError(error, 'api-example');

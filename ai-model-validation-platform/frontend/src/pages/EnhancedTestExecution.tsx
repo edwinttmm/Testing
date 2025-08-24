@@ -54,7 +54,7 @@ import {
   WifiOff as WifiOffIcon,
 } from '@mui/icons-material';
 
-import { Project, TestSession, VideoFile } from '../services/types';
+import { Project, TestSession, TestResult, VideoFile } from '../services/types';
 import { apiService } from '../services/api';
 import VideoSelectionDialog from '../components/VideoSelectionDialog';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
@@ -92,7 +92,7 @@ const EnhancedTestExecution = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedVideos, setSelectedVideos] = useState<VideoFile[]>([]);
-  const [testResults, setTestResults] = useState<any[]>([]);
+  const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [currentSession, setCurrentSession] = useState<TestSession | null>(null);
   
@@ -292,6 +292,147 @@ const EnhancedTestExecution = () => {
     }
   }, [testConfig.autoAdvance, testConfig.latencyMs, advanceToNextVideo]);
 
+  // Session Management Functions
+  const loadSessions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.get<TestSession[]>('/api/sessions');
+      setSessions(response);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load sessions');
+      showSnackbar('Failed to load sessions', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showSnackbar]);
+
+  const createSession = useCallback(async () => {
+    if (!sessionName.trim()) {
+      showSnackbar('Session name is required', 'warning');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const newSession = {
+        name: sessionName,
+        description: sessionDescription,
+        projectId: selectedProject?.id,
+        videoIds: selectedVideos.map(v => v.id),
+        config: testConfig,
+        status: 'created' as const,
+        createdAt: new Date(),
+      };
+
+      const response = await apiService.post<TestSession>('/api/sessions', newSession);
+      setSessions(prev => [...prev, response]);
+      setCurrentSession(response);
+      setSessionName('');
+      setSessionDescription('');
+      setSessionDialogOpen(false);
+      showSnackbar('Session created successfully', 'success');
+    } catch (err: any) {
+      setError(err.message || 'Failed to create session');
+      showSnackbar('Failed to create session', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionName, sessionDescription, selectedProject, selectedVideos, testConfig, showSnackbar]);
+
+  const deleteSession = useCallback(async (sessionId: string) => {
+    try {
+      await apiService.delete(`/api/sessions/${sessionId}`);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (currentSession?.id === sessionId) {
+        setCurrentSession(null);
+      }
+      showSnackbar('Session deleted successfully', 'success');
+    } catch (err: any) {
+      showSnackbar('Failed to delete session', 'error');
+    }
+  }, [currentSession, showSnackbar]);
+
+  const startTestExecution = useCallback(async () => {
+    if (!currentSession) {
+      showSnackbar('Please select a session to start', 'warning');
+      return;
+    }
+
+    try {
+      setIsRunning(true);
+      setTestResults([]);
+      
+      // Initialize WebSocket connection for real-time updates
+      const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
+      wsRef.current = new WebSocket(`${wsUrl}/ws/test/${currentSession.id}`);
+      
+      wsRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'test_result') {
+          setTestResults(prev => [...prev, data.payload]);
+        } else if (data.type === 'session_complete') {
+          setIsRunning(false);
+          showSnackbar('Test execution completed', 'success');
+        }
+      };
+      
+      wsRef.current.onerror = () => {
+        setIsRunning(false);
+        showSnackbar('WebSocket connection failed', 'error');
+      };
+
+      // Start the test execution
+      await apiService.post(`/api/sessions/${currentSession.id}/start`);
+      showSnackbar('Test execution started', 'info');
+      
+    } catch (err: any) {
+      setIsRunning(false);
+      showSnackbar('Failed to start test execution', 'error');
+    }
+  }, [currentSession, showSnackbar]);
+
+  const stopTestExecution = useCallback(async () => {
+    try {
+      if (currentSession) {
+        await apiService.post(`/api/sessions/${currentSession.id}/stop`);
+      }
+      
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      
+      setIsRunning(false);
+      showSnackbar('Test execution stopped', 'info');
+    } catch (err: any) {
+      showSnackbar('Failed to stop test execution', 'error');
+    }
+  }, [currentSession, showSnackbar]);
+
+  const exportTestResults = useCallback(() => {
+    if (testResults.length === 0) {
+      showSnackbar('No test results to export', 'warning');
+      return;
+    }
+
+    const csvContent = [
+      'Video,Status,Timestamp,Processing Time,Confidence,Details',
+      ...testResults.map(result => 
+        `"${result.videoName || 'Unknown'}","${result.status}","${result.timestamp}","${result.processingTime}ms","${result.confidence || 'N/A'}","${result.details || ''}"`
+      )
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `test-results-${currentSession?.name || 'session'}-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    
+    showSnackbar('Test results exported', 'success');
+  }, [testResults, currentSession, showSnackbar]);
+
   // Load projects and start connection monitoring
   useEffect(() => {
     const loadProjects = async () => {
@@ -311,6 +452,7 @@ const EnhancedTestExecution = () => {
     };
 
     loadProjects();
+    loadSessions();
     performConnectionCheck();
 
     // Set up periodic connection checks
@@ -321,7 +463,7 @@ const EnhancedTestExecution = () => {
         clearInterval(connectionCheckInterval.current);
       }
     };
-  }, [performConnectionCheck, showSnackbar]);
+  }, [performConnectionCheck, loadSessions, showSnackbar]);
 
   // Cleanup
   useEffect(() => {
@@ -459,22 +601,224 @@ const EnhancedTestExecution = () => {
               </Button>
             </FixedGrid>
 
-            <FixedGrid xs={12} sm={12} md={3}>
+            <FixedGrid xs={12} sm={6} md={2}>
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => setSessionDialogOpen(true)}
+                disabled={!selectedProject || selectedVideos.length === 0}
+                fullWidth
+              >
+                New Session
+              </Button>
+            </FixedGrid>
+
+            <FixedGrid xs={12} sm={6} md={2}>
               <Stack direction="row" spacing={1}>
-                <Button
-                  variant="contained"
-                  startIcon={<PlayIcon />}
-                  onClick={initializeSequentialPlayback}
-                  disabled={!selectedProject || selectedVideos.length === 0}
-                  fullWidth
-                >
-                  Start Sequential
-                </Button>
+                {isRunning ? (
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<StopIcon />}
+                    onClick={stopTestExecution}
+                    fullWidth
+                  >
+                    Stop Test
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    startIcon={<PlayIcon />}
+                    onClick={startTestExecution}
+                    disabled={!currentSession}
+                    fullWidth
+                  >
+                    Start Test
+                  </Button>
+                )}
               </Stack>
             </FixedGrid>
           </FixedGrid>
         </CardContent>
       </Card>
+
+      {/* Session Management */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Test Sessions
+          </Typography>
+          
+          {sessions.length === 0 ? (
+            <Alert severity="info">
+              No test sessions created yet. Create a new session to start testing.
+            </Alert>
+          ) : (
+            <Box sx={{ overflowX: 'auto' }}>
+              <Paper sx={{ minWidth: 800 }}>
+                {sessions.map((session) => (
+                  <Box
+                    key={session.id}
+                    sx={{
+                      p: 2,
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: currentSession?.id === session.id ? 'action.selected' : 'transparent',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
+                    }}
+                    onClick={() => setCurrentSession(session)}
+                  >
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="subtitle1" fontWeight="medium">
+                          {session.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {session.description || 'No description'}
+                        </Typography>
+                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                          <Chip
+                            label={session.status || 'created'}
+                            size="small"
+                            color={session.status === 'running' ? 'warning' : session.status === 'completed' ? 'success' : 'default'}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            Videos: {session.videoIds?.length || 0}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Created: {session.createdAt ? new Date(session.createdAt).toLocaleDateString() : 'Unknown'}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                      <Stack direction="row" spacing={1}>
+                        <Tooltip title="Edit Session">
+                          <IconButton size="small" onClick={(e) => {
+                            e.stopPropagation();
+                            setSessionName(session.name);
+                            setSessionDescription(session.description || '');
+                            setSessionDialogOpen(true);
+                          }}>
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Session">
+                          <IconButton 
+                            size="small" 
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete session "${session.name}"?`)) {
+                                deleteSession(session.id);
+                              }
+                            }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+                  </Box>
+                ))}
+              </Paper>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Test Results Display */}
+      {testResults.length > 0 && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+              <Typography variant="h6">
+                Test Results ({testResults.length})
+              </Typography>
+              <Button
+                variant="outlined"
+                startIcon={<ReportIcon />}
+                onClick={exportTestResults}
+                size="small"
+              >
+                Export CSV
+              </Button>
+            </Stack>
+            
+            <Box sx={{ overflowX: 'auto' }}>
+              <Paper sx={{ minWidth: 1000 }}>
+                <Box sx={{ display: 'table', width: '100%' }}>
+                  {/* Table Header */}
+                  <Box sx={{ 
+                    display: 'table-row', 
+                    bgcolor: 'grey.100',
+                    fontWeight: 'medium'
+                  }}>
+                    <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>Video</Box>
+                    <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>Status</Box>
+                    <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>Timestamp</Box>
+                    <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>Processing Time</Box>
+                    <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>Confidence</Box>
+                    <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>Details</Box>
+                  </Box>
+                  
+                  {/* Table Body */}
+                  {testResults.map((result, index) => (
+                    <Box key={index} sx={{ display: 'table-row' }}>
+                      <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="body2">{result.videoName || 'Unknown'}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Chip
+                          size="small"
+                          icon={result.status === 'success' ? <CheckCircleIcon /> : result.status === 'failed' ? <ErrorIcon /> : <InfoIcon />}
+                          label={result.status}
+                          color={result.status === 'success' ? 'success' : result.status === 'failed' ? 'error' : 'default'}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="body2">
+                          {result.timestamp ? new Date(result.timestamp).toLocaleString() : 'N/A'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="body2">{result.processingTime ? `${result.processingTime}ms` : 'N/A'}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="body2">{result.confidence ? `${(result.confidence * 100).toFixed(1)}%` : 'N/A'}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'table-cell', p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {result.details || 'No details'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Paper>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Test Execution Status */}
+      {isRunning && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <CircularProgress size={24} />
+              <Typography variant="h6">
+                Test Execution in Progress
+              </Typography>
+            </Box>
+            <LinearProgress sx={{ mb: 2 }} />
+            <Typography variant="body2" color="text.secondary">
+              Session: {currentSession?.name} | Videos processed: {testResults.length}
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sequential Playback Controls */}
       {playbackState.isSequentialMode && playbackState.playingVideo && (
@@ -645,6 +989,80 @@ const EnhancedTestExecution = () => {
           </Button>
           <Button onClick={() => setTestConfigDialogOpen(false)} variant="contained">
             Save Configuration
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Session Dialog */}
+      <Dialog
+        open={sessionDialogOpen}
+        onClose={() => {
+          setSessionDialogOpen(false);
+          setSessionName('');
+          setSessionDescription('');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {sessionName ? 'Edit Session' : 'Create New Test Session'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <TextField
+              autoFocus
+              label="Session Name"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              fullWidth
+              required
+              sx={{ mb: 2 }}
+            />
+            
+            <TextField
+              label="Description"
+              value={sessionDescription}
+              onChange={(e) => setSessionDescription(e.target.value)}
+              fullWidth
+              multiline
+              rows={3}
+              sx={{ mb: 2 }}
+            />
+            
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This session will include {selectedVideos.length} videos from project "{selectedProject?.name}".
+            </Alert>
+            
+            <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Test Configuration Summary:
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1}>
+                <Chip size="small" label={`Batch Size: ${testConfig.batchSize}`} />
+                <Chip size="small" label={testConfig.concurrent ? 'Concurrent' : 'Sequential'} />
+                <Chip size="small" label={testConfig.autoAdvance ? 'Auto Advance' : 'Manual'} />
+                <Chip size="small" label={`Latency: ${testConfig.latencyMs}ms`} />
+                {testConfig.loopPlayback && <Chip size="small" label="Loop" color="primary" />}
+                {testConfig.randomOrder && <Chip size="small" label="Random" color="secondary" />}
+              </Stack>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setSessionDialogOpen(false);
+            setSessionName('');
+            setSessionDescription('');
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={createSession} 
+            variant="contained"
+            disabled={!sessionName.trim() || loading}
+            startIcon={loading ? <CircularProgress size={16} /> : undefined}
+          >
+            {sessionName ? 'Update Session' : 'Create Session'}
           </Button>
         </DialogActions>
       </Dialog>

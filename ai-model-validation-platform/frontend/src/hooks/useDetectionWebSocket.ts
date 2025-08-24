@@ -117,8 +117,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
           setConnectionState(prev => {
             if (prev.reconnectAttempts < maxReconnectAttempts) {
               const delay = reconnectDelay * Math.pow(1.5, prev.reconnectAttempts);
-          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${connectionState.reconnectAttempts + 1}/${maxReconnectAttempts})`);
-          
+              
               console.log(`🔄 Reconnecting in ${delay}ms (attempt ${prev.reconnectAttempts + 1}/${maxReconnectAttempts})`);
               
               reconnectTimeoutRef.current = setTimeout(() => {
@@ -127,7 +126,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
               
               return {
                 ...prev,
-                status: 'reconnecting',
+                status: 'reconnecting' as const,
                 reconnectAttempts: prev.reconnectAttempts + 1
               };
             }

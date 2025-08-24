@@ -1,7 +1,7 @@
 import React from 'react';
 import { io, Socket } from 'socket.io-client';
 import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
-import { isValidWebSocketData, isConnectionStatus, isObject, isString } from '../utils/typeGuards';
+import { isValidWebSocketData, isConnectionStatus, isObject, isString, safeGet } from '../utils/typeGuards';
 
 export interface WebSocketMessage<T = unknown> {
   type: string;

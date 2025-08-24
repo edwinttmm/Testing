@@ -181,6 +181,13 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       }
     }
     
+    // Check for pan mode (space key or middle mouse button)
+    if (mouseEvent.button === 1 || (mouseEvent.button === 0 && mouseEvent.shiftKey && state.activeToolId === 'select')) {
+      setIsPanning(true);
+      setLastPanPoint(point);
+      return;
+    }
+
     // Handle different tool types
     switch (state.activeToolId) {
       case 'select': {
@@ -242,6 +249,20 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     
     const mouseEvent = event.nativeEvent;
     const point = getMousePos(mouseEvent);
+    
+    // Handle panning
+    if (isPanning && lastPanPoint) {
+      const deltaX = point.x - lastPanPoint.x;
+      const deltaY = point.y - lastPanPoint.y;
+      
+      actions.setTransform({
+        translateX: state.canvasTransform.translateX + deltaX,
+        translateY: state.canvasTransform.translateY + deltaY,
+      });
+      
+      setLastPanPoint(point);
+      return;
+    }
     
     // Handle resize
     if (activeResizeHandle && dragStart) {
@@ -352,6 +373,13 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     const mouseEvent = event.nativeEvent;
     const point = getMousePos(mouseEvent);
     
+    // End panning
+    if (isPanning) {
+      setIsPanning(false);
+      setLastPanPoint(null);
+      return;
+    }
+    
     // Clear resize handle
     if (activeResizeHandle) {
       setActiveResizeHandle(null);
@@ -391,14 +419,28 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
           
         case 'brush':
           // Create brush stroke shape
-          const xs = currentPath.map(p => p.x);
-          const ys = currentPath.map(p => p.y);
-          const x = Math.min(...xs);
-          const y = Math.min(...ys);
-          const width = Math.max(...xs) - x;
-          const height = Math.max(...ys) - y;
-          
-          // TODO: Implement brush stroke creation
+          if (currentPath.length > 1) {
+            const xs = currentPath.map(p => p.x);
+            const ys = currentPath.map(p => p.y);
+            const x = Math.min(...xs);
+            const y = Math.min(...ys);
+            const width = Math.max(...xs) - x;
+            const height = Math.max(...ys) - y;
+            
+            const brushShape: AnnotationShape = {
+              id: `brush_${Date.now()}`,
+              type: 'brush',
+              points: [...currentPath],
+              boundingBox: { x, y, width, height },
+              style: {
+                ...state.settings.defaultStyle,
+                strokeWidth: state.settings.brushSettings.size,
+                fillOpacity: state.settings.brushSettings.opacity,
+              },
+            };
+            
+            actions.addShape(brushShape);
+          }
           setIsDrawing(false);
           setCurrentPath([]);
           break;
@@ -431,6 +473,34 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       setCurrentPath([]);
     }
   }, [disabled, state.activeToolId, isDrawing, currentPath, actions]);
+
+  // Wheel event handler for zoom
+  const handleWheel = useCallback((event: React.WheelEvent) => {
+    if (disabled) return;
+    
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.1, Math.min(5, state.canvasTransform.scale * delta));
+    
+    // Zoom towards mouse cursor
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      
+      const scaleDiff = newScale - state.canvasTransform.scale;
+      const newTranslateX = state.canvasTransform.translateX - mouseX * scaleDiff;
+      const newTranslateY = state.canvasTransform.translateY - mouseY * scaleDiff;
+      
+      actions.setTransform({
+        scale: newScale,
+        translateX: newTranslateX,
+        translateY: newTranslateY,
+      });
+    } else {
+      actions.setTransform({ scale: newScale });
+    }
+  }, [disabled, state.canvasTransform, actions]);
 
   // Drawing function
   const draw = useCallback(() => {
@@ -617,6 +687,31 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     state.activeToolId, videoElement, isDrawing, currentPath, selectionBox, resizeHandles
   ]);
 
+  // Keyboard event listeners
+  useEffect(() => {
+    const keyDownHandler = (event: KeyboardEvent) => {
+      if (event.key === ' ' && !isPanning) {
+        event.preventDefault();
+        // Space key enables pan mode temporarily
+      }
+    };
+
+    const keyUpHandler = (event: KeyboardEvent) => {
+      if (event.key === ' ') {
+        event.preventDefault();
+        // Release pan mode
+      }
+    };
+
+    window.addEventListener('keydown', keyDownHandler);
+    window.addEventListener('keyup', keyUpHandler);
+    
+    return () => {
+      window.removeEventListener('keydown', keyDownHandler);
+      window.removeEventListener('keyup', keyUpHandler);
+    };
+  }, [isPanning]);
+
   // Animation loop
   useEffect(() => {
     let animationFrame: number;
@@ -649,6 +744,10 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
 
   // Set cursor based on active tool and hover state
   const canvasCursor = useMemo(() => {
+    if (isPanning || lastPanPoint) {
+      return 'grabbing';
+    }
+    
     if (activeResizeHandle) {
       const handle = resizeHandles.find(h => h.id === activeResizeHandle);
       return handle ? handle.cursor : 'default';
@@ -667,7 +766,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       default:
         return 'default';
     }
-  }, [state.activeToolId, activeResizeHandle, resizeHandles]);
+  }, [state.activeToolId, activeResizeHandle, resizeHandles, isPanning, lastPanPoint]);
 
   return (
     <CanvasContainer
@@ -676,6 +775,8 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onDoubleClick={handleDoubleClick}
+      onWheel={handleWheel}
+      tabIndex={0}
     >
       <Canvas ref={canvasRef} />
       <OverlayCanvas ref={overlayCanvasRef} />

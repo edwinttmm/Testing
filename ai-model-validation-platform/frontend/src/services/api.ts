@@ -32,7 +32,9 @@ import {
   hasResponseData,
   convertToVideoFile,
   safeConvertArray,
-  isApiErrorResponse
+  isApiErrorResponse,
+  safeParams,
+  safeExtractErrorData
 } from '../utils/typeGuards';
 import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
@@ -136,26 +138,34 @@ class ApiService {
         if (isString(responseData)) {
           errorMessage = responseData;
         } else if (isObject(responseData)) {
-          errorMessage = safeGet(responseData, 'message', 
-                       safeGet(responseData, 'detail',
-                       safeGet(responseData, 'error', 
-                       `Server error: ${error.response.status}`)));
+          const messageFromData = safeGet(responseData, 'message', undefined);
+          const detailFromData = safeGet(responseData, 'detail', undefined);
+          const errorFromData = safeGet(responseData, 'error', undefined);
+          
+          errorMessage = (isString(messageFromData) ? messageFromData : null) ||
+                        (isString(detailFromData) ? detailFromData : null) ||
+                        (isString(errorFromData) ? errorFromData : null) ||
+                        `Server error: ${error.response.status}`;
         } else {
           errorMessage = `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`;
         }
         
         apiError.message = errorMessage;
-        apiError.details = isObject(responseData) ? responseData : undefined;
+        if (isObject(responseData)) {
+          apiError.details = responseData;
+        }
 
         // Create custom error for error boundary handling
+        const errorContext = {
+          originalError: error,
+          method: safeGet(error, 'config.method', undefined),
+          url: safeGet(error, 'config.url', undefined)
+        };
+        
         customError = ErrorFactory.createApiError(
-          error.response,
-          responseData,
-          { 
-            originalError: error,
-            method: safeGet(error, 'config.method', undefined),
-            url: safeGet(error, 'config.url', undefined)
-          }
+          error.response as any,
+          (isObject(responseData) ? responseData : {}) as Record<string, unknown>,
+          errorContext
         );
 
       } else if (isAxiosError(error) && error.request) {
@@ -164,13 +174,15 @@ class ApiService {
         apiError.message = errorMessage;
         apiError.code = 'NETWORK_ERROR';
         
+        const networkErrorContext = {
+          originalError: error,
+          method: safeGet(error, 'config.method', undefined),
+          url: safeGet(error, 'config.url', undefined)
+        };
+        
         customError = ErrorFactory.createNetworkError(
           undefined,
-          { 
-            originalError: error,
-            method: safeGet(error, 'config.method', undefined),
-            url: safeGet(error, 'config.url', undefined)
-          }
+          networkErrorContext
         );
 
       } else if (isAxiosError(error) && error.code === 'ECONNABORTED') {
@@ -203,11 +215,11 @@ class ApiService {
         const statusText = safeGet(error, 'response.statusText', undefined);
         const code = safeGet(error, 'code', undefined);
         
-        if (method) errorContext.method = method;
-        if (url) errorContext.url = url;
-        if (status) errorContext.status = status;
-        if (statusText) errorContext.statusText = statusText;
-        if (code) errorContext.errorCode = code;
+        if (isString(method)) errorContext.method = method;
+        if (isString(url)) errorContext.url = url;
+        if (isNumber(status)) errorContext.status = status;
+        if (isString(statusText)) errorContext.statusText = statusText;
+        if (isString(code)) errorContext.errorCode = code;
       }
       
       // Report error to error reporting service
@@ -363,7 +375,7 @@ class ApiService {
     // Only cache GET requests
     if (method === 'GET') {
       // Check cache first
-      const cached = apiCache.get<T>(method, url, params);
+      const cached = apiCache.get<T>(method, url, safeParams(params));
       if (cached !== null) {
         if (isDebugEnabled()) {
           console.log(`📋 Cache hit for ${method} ${url}`);
@@ -372,12 +384,12 @@ class ApiService {
       }
 
       // Check for pending request to avoid duplication
-      const pending = apiCache.getPendingRequest(method, url, params);
+      const pending = apiCache.getPendingRequest(method, url, safeParams(params));
       if (pending) {
         if (isDebugEnabled()) {
           console.log(`⏳ Request deduplication for ${method} ${url}`);
         }
-        return pending;
+        return pending as Promise<T>;
       }
     }
 
@@ -390,7 +402,7 @@ class ApiService {
     }).then(response => {
       // Cache successful GET responses
       if (method === 'GET') {
-        apiCache.set(method, url, response.data, params);
+        apiCache.set(method, url, response.data, safeParams(params));
         if (isDebugEnabled()) {
           console.log(`💾 Cached response for ${method} ${url}`);
         }
@@ -405,7 +417,7 @@ class ApiService {
 
     // Track pending request for deduplication
     if (method === 'GET') {
-      apiCache.setPendingRequest(method, url, requestPromise, params);
+      apiCache.setPendingRequest(method, url, requestPromise, safeParams(params));
     }
 
     return requestPromise;
@@ -623,9 +635,11 @@ class ApiService {
       const response = await this.api.get(`/api/videos/${videoId}/ground-truth`);
       
       // Transform ground truth data to ensure proper structure
-      if (hasResponseData(response) && isObject(response.data) && Array.isArray(safeGet(response.data, 'objects', []))) {
-        response.data.objects = response.data.objects.map((obj: unknown) => {
-          if (!isObject(obj)) return obj;
+      if (hasResponseData(response) && isObject(response.data)) {
+        const objectsData = safeGet(response.data, 'objects', []);
+        if (Array.isArray(objectsData)) {
+          (response.data as any).objects = objectsData.map((obj: unknown) => {
+            if (!isObject(obj)) return obj;
           
           // Safely extract bounding box data
           const boundingBoxData = safeGet(obj, 'bounding_box', safeGet(obj, 'boundingBox', {}));
@@ -651,7 +665,8 @@ class ApiService {
             truncated: safeGet(obj, 'truncated', false),
             difficult: safeGet(obj, 'difficult', false)
           };
-        });
+          });
+        }
       }
       
       return response.data || {
@@ -882,8 +897,8 @@ class ApiService {
       return response.data.detections || [];
     } catch (error: unknown) {
       console.error('Failed to fetch video detections:', error);
-      const errorData = isAxiosError(error) ? error.response : null;
-      throw ErrorFactory.createApiError(errorData, null, { originalError: error });
+      const errorData = isAxiosError(error) ? safeExtractErrorData(error.response) : null;
+      throw ErrorFactory.createApiError(errorData || {}, {}, { originalError: error });
     }
   }
 
@@ -894,8 +909,8 @@ class ApiService {
       return response.data.detections || [];
     } catch (error: unknown) {
       console.error('Failed to fetch session detections:', error);
-      const errorData = isAxiosError(error) ? error.response : null;
-      throw ErrorFactory.createApiError(errorData, null, { originalError: error });
+      const errorData = isAxiosError(error) ? safeExtractErrorData(error.response) : null;
+      throw ErrorFactory.createApiError(errorData || {}, {}, { originalError: error });
     }
   }
 

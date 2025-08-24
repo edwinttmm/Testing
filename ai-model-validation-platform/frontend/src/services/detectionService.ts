@@ -172,15 +172,17 @@ class DetectionService {
       
       // Provide more specific error messages using type guards
       if (isObject(error)) {
-        const status = safeGet(error, 'status', 0);
+        const status = safeGet(error, 'status', undefined);
         const message = safeGet(error, 'message', '');
         
-        if (status === 404) {
-          throw new Error('Video not found on server. Please re-upload the video.');
-        } else if (status === 422) {
-          throw new Error('Invalid video format or detection parameters.');
-        } else if (status >= 500) {
-          throw new Error('Server error during detection. Please try again.');
+        if (isNumber(status)) {
+          if (status === 404) {
+            throw new Error('Video not found on server. Please re-upload the video.');
+          } else if (status === 422) {
+            throw new Error('Invalid video format or detection parameters.');
+          } else if (status >= 500) {
+            throw new Error('Server error during detection. Please try again.');
+          }
         } else if (isString(message) && message.includes('Network Error')) {
           throw new Error('Network connection failed. Please check your connection.');
         }
@@ -279,23 +281,23 @@ class DetectionService {
       }
       
       return {
-        id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`),
+        id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`) as string,
         videoId,
-        detectionId: safeGet(det, 'detectionId', ''),
-        frameNumber: safeGet(det, 'frame', safeGet(det, 'frameNumber', 0)),
-        timestamp: safeGet(det, 'timestamp', 0),
+        detectionId: safeGet(det, 'detectionId', '') as string,
+        frameNumber: safeGet(det, 'frame', safeGet(det, 'frameNumber', 0)) as number,
+        timestamp: safeGet(det, 'timestamp', 0) as number,
         vruType: safeGet(det, 'vruType', 'pedestrian') as VRUType,
         boundingBox: {
-          x: safeGet(det, 'x', safeGet(det, 'bbox.x', 0)),
-          y: safeGet(det, 'y', safeGet(det, 'bbox.y', 0)),
-          width: safeGet(det, 'width', safeGet(det, 'bbox.width', 100)),
-          height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)),
-          label: safeGet(det, 'label', 'pedestrian'),
-          confidence: safeGet(det, 'confidence', 0.5)
+          x: safeGet(det, 'x', safeGet(det, 'bbox.x', 0)) as number,
+          y: safeGet(det, 'y', safeGet(det, 'bbox.y', 0)) as number,
+          width: safeGet(det, 'width', safeGet(det, 'bbox.width', 100)) as number,
+          height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)) as number,
+          label: safeGet(det, 'label', 'pedestrian') as string,
+          confidence: safeGet(det, 'confidence', 0.5) as number
         },
-        occluded: safeGet(det, 'occluded', false),
-        truncated: safeGet(det, 'truncated', false),
-        difficult: safeGet(det, 'difficult', false),
+        occluded: safeGet(det, 'occluded', false) as boolean,
+        truncated: safeGet(det, 'truncated', false) as boolean,
+        difficult: safeGet(det, 'difficult', false) as boolean,
         validated: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()

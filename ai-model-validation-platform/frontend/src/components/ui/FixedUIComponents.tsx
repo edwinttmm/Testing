@@ -181,7 +181,7 @@ export const EnhancedTextField = memo(forwardRef<HTMLDivElement, EnhancedTextFie
         maxLength,
         ...props.inputProps,
       }}
-      multiline={multiline}
+      multiline={multiline ?? false}
       {...props}
     />
   );
