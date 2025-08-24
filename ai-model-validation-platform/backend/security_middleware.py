@@ -93,7 +93,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         
         # Remove server header
-        response.headers.pop("server", None)
+        if "server" in response.headers:
+            del response.headers["server"]
         
         # Custom security header
         response.headers["X-Security-Version"] = "1.0"
