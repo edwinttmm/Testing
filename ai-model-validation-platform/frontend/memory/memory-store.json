@@ -1,0 +1,22 @@
+{
+  "default": [
+    {
+      "key": "fixes/analysis",
+      "value": "Import Analysis Complete: \n1. EnhancedVideoAnnotationPlayer.tsx: Import order correct (React, MUI, local)\n2. performanceFixes.ts: React imports already present \n3. annotation/index.ts: All required type imports present\n4. services/types.ts: Export type already correct (line 121)\n5. @types/lodash: Successfully installed\n6. React imports: Present in all files using React hooks\n7. Import order: Generally follows best practices across codebase\n8. No critical import issues found - most reported issues were already resolved",
+      "namespace": "default",
+      "timestamp": 1756031875741
+    },
+    {
+      "key": "hooks/error",
+      "value": "BrushTool.tsx line 44 syntax error - Declaration or statement expected",
+      "namespace": "default",
+      "timestamp": 1756033491086
+    },
+    {
+      "key": "fixes/hooks-completed",
+      "value": "Fixed useDetectionWebSocket lastError undefined issue, useWebSocket generic types, websocketService generic types. Hook React.FC typing was already correct. Build now fails on different error (Response vs Record) indicating hook issues resolved.",
+      "namespace": "default",
+      "timestamp": 1756033900506
+    }
+  ]
+}

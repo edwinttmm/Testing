@@ -120,76 +120,85 @@ const SequentialVideoManager: React.FC<SequentialVideoManagerProps> = ({
   }, [videos, playbackState.playbackOrder, playbackState.currentIndex]);
 
   const advanceToNext = useCallback(() => {
-    const nextIndex = playbackState.currentIndex + 1;
-    
-    if (nextIndex < playbackState.playbackOrder.length) {
-      const actualIndex = playbackState.playbackOrder[nextIndex];
-      const nextVideo = videos[actualIndex];
+    setPlaybackState(prev => {
+      const nextIndex = prev.currentIndex + 1;
       
-      setPlaybackState(prev => ({
-        ...prev,
-        currentIndex: nextIndex,
-        currentVideo: nextVideo,
-        totalProgress: (nextIndex / playbackState.playbackOrder.length) * 100,
-      }));
-
-      onVideoChange?.(nextVideo, nextIndex);
-      onProgress?.((nextIndex / playbackState.playbackOrder.length) * 100);
-    } else if (loopPlayback) {
-      // Loop back to first video
-      const firstVideo = videos[playbackState.playbackOrder[0]];
-      setPlaybackState(prev => ({
-        ...prev,
-        currentIndex: 0,
-        currentVideo: firstVideo,
-        totalProgress: 0,
-        playedVideos: [],
-      }));
-      onVideoChange?.(firstVideo, 0);
-      onProgress?.(0);
-    } else {
-      // End of sequence
-      setPlaybackState(prev => ({
-        ...prev,
-        isPlaying: false,
-        totalProgress: 100,
-      }));
-      onPlaybackComplete?.();
-    }
-  }, [playbackState, videos, loopPlayback, onVideoChange, onProgress, onPlaybackComplete]);
+      if (nextIndex < prev.playbackOrder.length) {
+        const actualIndex = prev.playbackOrder[nextIndex];
+        const nextVideo = videos[actualIndex];
+        
+        onVideoChange?.(nextVideo, nextIndex);
+        onProgress?.((nextIndex / prev.playbackOrder.length) * 100);
+        
+        return {
+          ...prev,
+          currentIndex: nextIndex,
+          currentVideo: nextVideo,
+          totalProgress: (nextIndex / prev.playbackOrder.length) * 100,
+        };
+      } else if (loopPlayback) {
+        // Loop back to first video
+        const firstVideo = videos[prev.playbackOrder[0]];
+        onVideoChange?.(firstVideo, 0);
+        onProgress?.(0);
+        
+        return {
+          ...prev,
+          currentIndex: 0,
+          currentVideo: firstVideo,
+          totalProgress: 0,
+          playedVideos: [],
+        };
+      } else {
+        // End of sequence
+        onPlaybackComplete?.();
+        
+        return {
+          ...prev,
+          isPlaying: false,
+          totalProgress: 100,
+        };
+      }
+    });
+  }, [videos, loopPlayback, onVideoChange, onProgress, onPlaybackComplete]);
 
   const goToPrevious = useCallback(() => {
-    const prevIndex = Math.max(0, playbackState.currentIndex - 1);
-    const actualIndex = playbackState.playbackOrder[prevIndex];
-    const prevVideo = videos[actualIndex];
-    
-    setPlaybackState(prev => ({
-      ...prev,
-      currentIndex: prevIndex,
-      currentVideo: prevVideo,
-      totalProgress: (prevIndex / playbackState.playbackOrder.length) * 100,
-    }));
-
-    onVideoChange?.(prevVideo, prevIndex);
-    onProgress?.((prevIndex / playbackState.playbackOrder.length) * 100);
-  }, [playbackState, videos, onVideoChange, onProgress]);
+    setPlaybackState(prev => {
+      const prevIndex = Math.max(0, prev.currentIndex - 1);
+      const actualIndex = prev.playbackOrder[prevIndex];
+      const prevVideo = videos[actualIndex];
+      
+      onVideoChange?.(prevVideo, prevIndex);
+      onProgress?.((prevIndex / prev.playbackOrder.length) * 100);
+      
+      return {
+        ...prev,
+        currentIndex: prevIndex,
+        currentVideo: prevVideo,
+        totalProgress: (prevIndex / prev.playbackOrder.length) * 100,
+      };
+    });
+  }, [videos, onVideoChange, onProgress]);
 
   const jumpToVideo = useCallback((index: number) => {
-    if (index >= 0 && index < playbackState.playbackOrder.length) {
-      const actualIndex = playbackState.playbackOrder[index];
-      const video = videos[actualIndex];
-      
-      setPlaybackState(prev => ({
-        ...prev,
-        currentIndex: index,
-        currentVideo: video,
-        totalProgress: (index / playbackState.playbackOrder.length) * 100,
-      }));
-
-      onVideoChange?.(video, index);
-      onProgress?.((index / playbackState.playbackOrder.length) * 100);
-    }
-  }, [playbackState, videos, onVideoChange, onProgress]);
+    setPlaybackState(prev => {
+      if (index >= 0 && index < prev.playbackOrder.length) {
+        const actualIndex = prev.playbackOrder[index];
+        const video = videos[actualIndex];
+        
+        onVideoChange?.(video, index);
+        onProgress?.((index / prev.playbackOrder.length) * 100);
+        
+        return {
+          ...prev,
+          currentIndex: index,
+          currentVideo: video,
+          totalProgress: (index / prev.playbackOrder.length) * 100,
+        };
+      }
+      return prev;
+    });
+  }, [videos, onVideoChange, onProgress]);
 
   const handleVideoEnd = useCallback(() => {
     // Mark current video as played
@@ -230,15 +239,17 @@ const SequentialVideoManager: React.FC<SequentialVideoManagerProps> = ({
   }, []);
 
   const shuffleOrder = useCallback(() => {
-    const newOrder = [...playbackState.playbackOrder].sort(() => Math.random() - 0.5);
-    setPlaybackState(prev => ({
-      ...prev,
-      playbackOrder: newOrder,
-      currentIndex: 0,
-      currentVideo: videos[newOrder[0]],
-      totalProgress: 0,
-    }));
-  }, [playbackState.playbackOrder, videos]);
+    setPlaybackState(prev => {
+      const newOrder = [...prev.playbackOrder].sort(() => Math.random() - 0.5);
+      return {
+        ...prev,
+        playbackOrder: newOrder,
+        currentIndex: 0,
+        currentVideo: videos[newOrder[0]],
+        totalProgress: 0,
+      };
+    });
+  }, [videos]);
 
   const currentVideo = getCurrentVideo();
 
@@ -418,25 +429,25 @@ const SequentialVideoManager: React.FC<SequentialVideoManagerProps> = ({
         <DialogTitle>Playback Settings</DialogTitle>
         <DialogContent>
           <FixedGrid container spacing={2} sx={{ mt: 1 }}>
-            <FixedGrid item xs={12}>
+            <FixedGrid xs={12}>
               <FormControlLabel
                 control={<Switch checked={autoAdvance} disabled />}
                 label="Auto Advance (controlled by parent)"
               />
             </FixedGrid>
-            <FixedGrid item xs={12}>
+            <FixedGrid xs={12}>
               <FormControlLabel
                 control={<Switch checked={loopPlayback} disabled />}
                 label="Loop Playback (controlled by parent)"
               />
             </FixedGrid>
-            <FixedGrid item xs={12}>
+            <FixedGrid xs={12}>
               <FormControlLabel
                 control={<Switch checked={syncExternalSignals} disabled />}
                 label="Sync External Signals (controlled by parent)"
               />
             </FixedGrid>
-            <FixedGrid item xs={12}>
+            <FixedGrid xs={12}>
               <TextField
                 label="Advance Delay (ms)"
                 type="number"
@@ -446,29 +457,29 @@ const SequentialVideoManager: React.FC<SequentialVideoManagerProps> = ({
                 helperText="Delay between video transitions (controlled by parent)"
               />
             </FixedGrid>
-            <FixedGrid item xs={12}>
+            <FixedGrid xs={12}>
               <Divider sx={{ my: 1 }} />
               <Typography variant="subtitle2" gutterBottom>
                 Current Session Stats
               </Typography>
               <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
                 <FixedGrid container spacing={1}>
-                  <FixedGrid item xs={6}>
+                  <FixedGrid xs={6}>
                     <Typography variant="caption" display="block">
                       Total Videos: {videos.length}
                     </Typography>
                   </FixedGrid>
-                  <FixedGrid item xs={6}>
+                  <FixedGrid xs={6}>
                     <Typography variant="caption" display="block">
                       Videos Played: {playbackState.playedVideos.length}
                     </Typography>
                   </FixedGrid>
-                  <FixedGrid item xs={6}>
+                  <FixedGrid xs={6}>
                     <Typography variant="caption" display="block">
                       Current Index: {playbackState.currentIndex + 1}
                     </Typography>
                   </FixedGrid>
-                  <FixedGrid item xs={6}>
+                  <FixedGrid xs={6}>
                     <Typography variant="caption" display="block">
                       Progress: {Math.round(playbackState.totalProgress)}%
                     </Typography>

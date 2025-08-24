@@ -1,6 +1,7 @@
 import React from 'react';
 import { io, Socket } from 'socket.io-client';
 import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
+import { isValidWebSocketData, isConnectionStatus, isObject, isString } from '../utils/typeGuards';
 
 export interface WebSocketMessage<T = unknown> {
   type: string;
@@ -298,7 +299,7 @@ class WebSocketService {
       this.subscribers.set(eventType, new Set());
     }
     
-    this.subscribers.get(eventType)!.add(callback);
+    this.subscribers.get(eventType)!.add(callback as (data: unknown) => void);
     
     console.log(`🔔 Subscribed to WebSocket event: ${eventType}`);
 
@@ -306,7 +307,7 @@ class WebSocketService {
     return () => {
       const subscribers = this.subscribers.get(eventType);
       if (subscribers) {
-        subscribers.delete(callback);
+        subscribers.delete(callback as (data: unknown) => void);
         if (subscribers.size === 0) {
           this.subscribers.delete(eventType);
         }
@@ -319,6 +320,12 @@ class WebSocketService {
   emit<T = unknown>(eventType: string, data?: T): boolean {
     if (this.connectionState !== 'connected' || !this.socket) {
       safeConsoleWarn(`Cannot emit ${eventType}: WebSocket not connected`, { connectionState: this.connectionState, hasSocket: !!this.socket }, { function: 'emit', eventType });
+      return false;
+    }
+
+    // Validate data before sending
+    if (data !== undefined && !isValidWebSocketData(data)) {
+      console.warn(`⚠️ Invalid data for WebSocket emit [${eventType}]:`, data);
       return false;
     }
 
@@ -362,15 +369,27 @@ class WebSocketService {
         reject(new Error('WebSocket connection timeout'));
       }, timeout);
 
-      const unsubscribe = this.subscribe('connection', (data) => {
-        if (data.status === 'connected') {
+      const unsubscribe = this.subscribe('connection', (data: unknown) => {
+        if (!isObject(data)) {
+          console.warn('⚠️ Invalid connection data received:', data);
+          return;
+        }
+        
+        const status = safeGet(data, 'status', '');
+        if (!isConnectionStatus(status)) {
+          console.warn('⚠️ Invalid connection status received:', status);
+          return;
+        }
+        
+        if (status === 'connected') {
           clearTimeout(timeoutTimer);
           unsubscribe();
           resolve(true);
-        } else if (data.status === 'error' || data.status === 'reconnect_failed') {
+        } else if (status === 'error' || status === 'reconnect_failed') {
           clearTimeout(timeoutTimer);
           unsubscribe();
-          reject(new Error(`WebSocket connection failed: ${data.error || 'unknown error'}`));
+          const errorMessage = safeGet(data, 'error', 'unknown error');
+          reject(new Error(`WebSocket connection failed: ${errorMessage}`));
         }
       });
 
@@ -406,12 +425,24 @@ export const useWebSocket = (eventType?: string) => {
 
   React.useEffect(() => {
     // Subscribe to connection events
-    const unsubscribeConnection = websocketService.subscribe('connection', (data) => {
-      setConnectionState(data.status);
-      setIsConnected(data.status === 'connected');
+    const unsubscribeConnection = websocketService.subscribe('connection', (data: unknown) => {
+      if (!isObject(data)) {
+        console.warn('⚠️ Invalid connection data in hook:', data);
+        return;
+      }
       
-      if (data.status === 'error') {
-        setError(data.error || 'Connection error');
+      const status = data.status;
+      if (!isConnectionStatus(status)) {
+        console.warn('⚠️ Invalid connection status in hook:', status);
+        return;
+      }
+      
+      setConnectionState(status);
+      setIsConnected(status === 'connected');
+      
+      if (status === 'error') {
+        const errorMessage = isString(data.error) ? data.error : 'Connection error';
+        setError(errorMessage);
       } else {
         setError(null);
       }
@@ -420,7 +451,12 @@ export const useWebSocket = (eventType?: string) => {
     // Subscribe to specific event type if provided
     let unsubscribeEvent: (() => void) | undefined;
     if (eventType) {
-      unsubscribeEvent = websocketService.subscribe(eventType, (data) => {
+      unsubscribeEvent = websocketService.subscribe(eventType, (data: unknown) => {
+        if (!isValidWebSocketData(data)) {
+          console.warn(`⚠️ Invalid WebSocket data for event ${eventType}:`, data);
+          return;
+        }
+        
         setLastMessage({
           type: eventType,
           payload: data,

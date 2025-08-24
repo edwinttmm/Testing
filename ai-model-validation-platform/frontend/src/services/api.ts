@@ -21,6 +21,19 @@ import {
   GroundTruthAnnotation,
   AnnotationSession
 } from './types';
+import {
+  isObject,
+  isString,
+  isNumber,
+  isAxiosError,
+  parseErrorResponse,
+  safeGet,
+  safeSpread,
+  hasResponseData,
+  convertToVideoFile,
+  safeConvertArray,
+  isApiErrorResponse
+} from '../utils/typeGuards';
 import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
@@ -103,7 +116,7 @@ class ApiService {
     );
   }
 
-  private handleError(error: AxiosError | any): AppError {
+  private handleError(error: AxiosError | unknown): AppError {
     const apiError: AppError = {
       name: 'ApiError',
       message: 'An unexpected error occurred',
@@ -114,25 +127,25 @@ class ApiService {
     let errorMessage = 'An unexpected error occurred';
 
     try {
-      if (error?.response) {
+      if (isAxiosError(error) && error.response) {
         // Server responded with error status
         apiError.status = error.response.status;
         const responseData = error.response.data;
         
-        // Safely extract error message
-        if (typeof responseData === 'string') {
+        // Safely extract error message using type guards
+        if (isString(responseData)) {
           errorMessage = responseData;
-        } else if (responseData && typeof responseData === 'object') {
-          errorMessage = responseData.message || 
-                       responseData.detail || 
-                       responseData.error || 
-                       `Server error: ${error.response.status}`;
+        } else if (isObject(responseData)) {
+          errorMessage = safeGet(responseData, 'message', 
+                       safeGet(responseData, 'detail',
+                       safeGet(responseData, 'error', 
+                       `Server error: ${error.response.status}`)));
         } else {
           errorMessage = `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`;
         }
         
         apiError.message = errorMessage;
-        apiError.details = responseData;
+        apiError.details = isObject(responseData) ? responseData : undefined;
 
         // Create custom error for error boundary handling
         customError = ErrorFactory.createApiError(
@@ -140,12 +153,12 @@ class ApiService {
           responseData,
           { 
             originalError: error,
-            method: error.config?.method,
-            url: error.config?.url 
+            method: safeGet(error, 'config.method', undefined),
+            url: safeGet(error, 'config.url', undefined)
           }
         );
 
-      } else if (error?.request) {
+      } else if (isAxiosError(error) && error.request) {
         // Network error - no response received
         errorMessage = 'Network error - please check your connection';
         apiError.message = errorMessage;
@@ -155,12 +168,12 @@ class ApiService {
           undefined,
           { 
             originalError: error,
-            method: error.config?.method,
-            url: error.config?.url 
+            method: safeGet(error, 'config.method', undefined),
+            url: safeGet(error, 'config.url', undefined)
           }
         );
 
-      } else if (error?.code === 'ECONNABORTED') {
+      } else if (isAxiosError(error) && error.code === 'ECONNABORTED') {
         // Request timeout
         errorMessage = 'Request timeout - please try again';
         apiError.message = errorMessage;
@@ -169,28 +182,33 @@ class ApiService {
 
       } else {
         // Request setup error or other error
-        errorMessage = error?.message || 'Unknown error occurred';
-        
-        // Prevent [object Object] error messages
-        if (errorMessage === '[object Object]' || typeof errorMessage !== 'string') {
-          errorMessage = 'An error occurred while processing your request';
-        }
+        const parsedError = parseErrorResponse(error);
+        errorMessage = parsedError.message;
         
         apiError.message = errorMessage;
+        apiError.status = parsedError.status || 500;
         customError = new Error(`Request error: ${errorMessage}`);
       }
 
-      // Safely build error context
-      const errorContext: Record<string, any> = {
+      // Safely build error context using type guards
+      const errorContext: Record<string, unknown> = {
         timestamp: new Date().toISOString(),
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
       };
       
-      if (error?.config?.method) errorContext.method = error.config.method;
-      if (error?.config?.url) errorContext.url = error.config.url;
-      if (error?.response?.status) errorContext.status = error.response.status;
-      if (error?.response?.statusText) errorContext.statusText = error.response.statusText;
-      if (error?.code) errorContext.errorCode = error.code;
+      if (isAxiosError(error)) {
+        const method = safeGet(error, 'config.method', undefined);
+        const url = safeGet(error, 'config.url', undefined);
+        const status = safeGet(error, 'response.status', undefined);
+        const statusText = safeGet(error, 'response.statusText', undefined);
+        const code = safeGet(error, 'code', undefined);
+        
+        if (method) errorContext.method = method;
+        if (url) errorContext.url = url;
+        if (status) errorContext.status = status;
+        if (statusText) errorContext.statusText = statusText;
+        if (code) errorContext.errorCode = code;
+      }
       
       // Report error to error reporting service
       try {
@@ -226,7 +244,7 @@ class ApiService {
 
   // Transform backend snake_case responses to frontend camelCase
   private transformResponseData(data: unknown): unknown {
-    if (!data || typeof data !== 'object') {
+    if (!isObject(data) && !Array.isArray(data)) {
       return data;
     }
 
@@ -235,8 +253,8 @@ class ApiService {
       return data.map(item => this.transformResponseData(item));
     }
 
-    // Handle objects
-    if (!data || typeof data !== 'object') return data;
+    // Handle objects - using type guard
+    if (!isObject(data)) return data;
     const transformed: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
       let newKey = key;
@@ -280,18 +298,20 @@ class ApiService {
 
   // Add URL field to video responses if missing or relative
   private enhanceVideoData(video: unknown): VideoFile {
-    if (!video || typeof video !== 'object') {
-      throw new Error('Invalid video data provided to enhanceVideoData');
+    // Use safe conversion with type guards
+    const convertedVideo = convertToVideoFile(video);
+    if (!convertedVideo) {
+      throw new Error('Unable to convert video data to VideoFile format');
     }
     
-    const videoObj = video as Record<string, unknown>;
+    const videoObj = { ...convertedVideo };
     console.log('🚨 enhanceVideoData called for video:', { 
       id: videoObj.id, 
       filename: videoObj.filename, 
-      originalUrl: videoObj.url 
+      originalUrl: videoObj.url
     });
     
-    if (videoObj && (videoObj.filename || videoObj.id)) {
+    if (videoObj.filename || videoObj.id) {
       const videoConfig = getServiceConfig('video');
       
       console.log('🚨 enhanceVideoData - Video config baseUrl:', videoConfig.baseUrl);
@@ -300,7 +320,7 @@ class ApiService {
       console.log('🚨 enhanceVideoData - Video ID:', videoObj.id);
       
       // Convert relative URLs to absolute URLs
-      if (videoObj.url && typeof videoObj.url === 'string' && videoObj.url.startsWith('/')) {
+      if (isString(videoObj.url) && videoObj.url.startsWith('/')) {
         console.log('🚨 enhanceVideoData - Converting relative URL to absolute');
         const videoConfig = getServiceConfig('video');
         videoObj.url = `${videoConfig.baseUrl}${videoObj.url}`;
@@ -308,7 +328,7 @@ class ApiService {
       } else if (!videoObj.url || videoObj.url === '') {
         console.log('🚨 enhanceVideoData - URL missing or empty, constructing from filename');
         // If URL is missing or empty, try to construct from backend base URL and filename
-        if (videoObj.filename && typeof videoObj.filename === 'string') {
+        if (isString(videoObj.filename) && videoObj.filename.trim()) {
           const videoConfig = getServiceConfig('video');
           videoObj.url = `${videoConfig.baseUrl}/uploads/${videoObj.filename}`;
           console.log('🚨 enhanceVideoData - Constructed video URL from filename:', videoObj.url);
@@ -321,17 +341,13 @@ class ApiService {
       }
     }
     
-    // Ensure status is properly mapped
-    if (videoObj && videoObj.processing_status && !videoObj.status) {
-      videoObj.status = videoObj.processing_status === 'completed' ? 'completed' : 'processing';
-    }
-    
     console.log('🚨 enhanceVideoData - Final enhanced video:', { 
       id: videoObj.id, 
       filename: videoObj.filename, 
-      finalUrl: videoObj.url 
+      finalUrl: videoObj.url
     });
-    return videoObj as VideoFile;
+    
+    return videoObj;
   }
 
   // Enhanced request method with caching and deduplication
@@ -352,7 +368,7 @@ class ApiService {
         if (isDebugEnabled()) {
           console.log(`📋 Cache hit for ${method} ${url}`);
         }
-        return cached;
+        return cached as T;
       }
 
       // Check for pending request to avoid duplication
@@ -590,8 +606,11 @@ class ApiService {
   }
 
   async getVideo(videoId: string): Promise<VideoFile> {
-    const response = await this.api.get<VideoFile>(`/api/videos/${videoId}`);
-    return response.data;
+    const response = await this.api.get(`/api/videos/${videoId}`);
+    if (!hasResponseData(response) || !isObject(response.data)) {
+      throw new Error('Invalid video response from server');
+    }
+    return this.enhanceVideoData(response.data);
   }
 
   async deleteVideo(videoId: string): Promise<void> {
@@ -604,28 +623,35 @@ class ApiService {
       const response = await this.api.get(`/api/videos/${videoId}/ground-truth`);
       
       // Transform ground truth data to ensure proper structure
-      if (response.data && response.data.objects) {
-        response.data.objects = response.data.objects.map((obj: unknown) => ({
-          ...obj,
-          // Ensure bounding box has required properties
-          boundingBox: obj.bounding_box || obj.boundingBox || {
-            x: obj.x || 0,
-            y: obj.y || 0,
-            width: obj.width || 100,
-            height: obj.height || 100,
-            confidence: obj.confidence || 1.0,
-            label: obj.class_label || obj.classLabel || 'unknown'
-          },
-          // Map VRU type
-          vruType: obj.vru_type || obj.vruType || this.mapClassToVruType(obj.class_label || obj.classLabel),
-          detectionId: obj.detection_id || obj.detectionId || obj.id,
-          frameNumber: obj.frame_number || obj.frameNumber || 0,
-          timestamp: obj.timestamp || 0,
-          validated: obj.validated ?? false,
-          occluded: obj.occluded ?? false,
-          truncated: obj.truncated ?? false,
-          difficult: obj.difficult ?? false
-        }));
+      if (hasResponseData(response) && isObject(response.data) && Array.isArray(safeGet(response.data, 'objects', []))) {
+        response.data.objects = response.data.objects.map((obj: unknown) => {
+          if (!isObject(obj)) return obj;
+          
+          // Safely extract bounding box data
+          const boundingBoxData = safeGet(obj, 'bounding_box', safeGet(obj, 'boundingBox', {}));
+          const boundingBox = isObject(boundingBoxData) ? boundingBoxData : {
+            x: safeGet(obj, 'x', 0),
+            y: safeGet(obj, 'y', 0),
+            width: safeGet(obj, 'width', 100),
+            height: safeGet(obj, 'height', 100),
+            confidence: safeGet(obj, 'confidence', 1.0),
+            label: safeGet(obj, 'class_label', safeGet(obj, 'classLabel', 'unknown'))
+          };
+          
+          return {
+            ...obj,
+            boundingBox,
+            vruType: safeGet(obj, 'vru_type', safeGet(obj, 'vruType', 
+              this.mapClassToVruType(safeGet(obj, 'class_label', safeGet(obj, 'classLabel', ''))))),
+            detectionId: safeGet(obj, 'detection_id', safeGet(obj, 'detectionId', safeGet(obj, 'id', ''))),
+            frameNumber: safeGet(obj, 'frame_number', safeGet(obj, 'frameNumber', 0)),
+            timestamp: safeGet(obj, 'timestamp', 0),
+            validated: safeGet(obj, 'validated', false),
+            occluded: safeGet(obj, 'occluded', false),
+            truncated: safeGet(obj, 'truncated', false),
+            difficult: safeGet(obj, 'difficult', false)
+          };
+        });
       }
       
       return response.data || {
@@ -649,7 +675,11 @@ class ApiService {
   }
 
   // Helper method to map class labels to VRU types
-  private mapClassToVruType(classLabel: string): string {
+  private mapClassToVruType(classLabel: unknown): string {
+    if (!isString(classLabel)) {
+      return 'pedestrian';
+    }
+    
     const mapping: { [key: string]: string } = {
       'person': 'pedestrian',
       'pedestrian': 'pedestrian',
@@ -661,7 +691,7 @@ class ApiService {
       'scooter': 'scooter_rider'
     };
     
-    return mapping[classLabel?.toLowerCase()] || 'pedestrian';
+    return mapping[classLabel.toLowerCase()] || 'pedestrian';
   }
 
   // Annotation endpoints
@@ -815,7 +845,8 @@ class ApiService {
       }
       return result;
     } catch (error: unknown) {
-      console.error('❌ Health check failed:', error.message);
+      const errorMessage = parseErrorResponse(error).message;
+      console.error('❌ Health check failed:', errorMessage);
       throw error;
     }
   }
@@ -851,7 +882,8 @@ class ApiService {
       return response.data.detections || [];
     } catch (error: unknown) {
       console.error('Failed to fetch video detections:', error);
-      throw ErrorFactory.createApiError(error.response, null, { originalError: error });
+      const errorData = isAxiosError(error) ? error.response : null;
+      throw ErrorFactory.createApiError(errorData, null, { originalError: error });
     }
   }
 
@@ -862,7 +894,8 @@ class ApiService {
       return response.data.detections || [];
     } catch (error: unknown) {
       console.error('Failed to fetch session detections:', error);
-      throw ErrorFactory.createApiError(error.response, null, { originalError: error });
+      const errorData = isAxiosError(error) ? error.response : null;
+      throw ErrorFactory.createApiError(errorData, null, { originalError: error });
     }
   }
 

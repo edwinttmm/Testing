@@ -286,8 +286,9 @@ describe('Annotation Display and Management', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('annotation-ann-1-bbox')).toHaveTextContent('100, 100, 50, 100');
-        expect(screen.getByTestId('annotation-ann-2-bbox')).toHaveTextContent('200, 150, 80, 120');
       });
+      
+      expect(screen.getByTestId('annotation-ann-2-bbox')).toHaveTextContent('200, 150, 80, 120');
     });
   });
 

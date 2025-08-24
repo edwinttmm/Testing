@@ -70,11 +70,12 @@ export const FixedListItem = memo(forwardRef<HTMLLIElement, FixedListItemProps>(
 FixedListItem.displayName = 'FixedListItem';
 
 /**
- * Fixed Grid that handles props correctly for MUI v5+
+ * Fixed Grid that handles props correctly for MUI v7+
+ * Uses the modern Grid API without the 'item' prop
  * Properly types breakpoint props according to Material-UI Grid specification
  */
 interface FixedGridProps extends Omit<GridProps, 'xs' | 'sm' | 'md' | 'lg' | 'xl'> {
-  item?: boolean;
+  // The 'item' prop is deprecated in MUI v7+, no longer needed
   container?: boolean;
   xs?: boolean | number | 'auto';
   sm?: boolean | number | 'auto';
@@ -84,7 +85,6 @@ interface FixedGridProps extends Omit<GridProps, 'xs' | 'sm' | 'md' | 'lg' | 'xl
 }
 
 export const FixedGrid = memo(forwardRef<HTMLDivElement, FixedGridProps>(({
-  item = false,
   container = false,
   xs,
   sm,
@@ -94,10 +94,9 @@ export const FixedGrid = memo(forwardRef<HTMLDivElement, FixedGridProps>(({
   children,
   ...props
 }, ref) => {
-  // Build Grid props object with proper typing
+  // Build Grid props object with modern API (no 'item' prop needed)
   const gridProps: GridProps = {
     ref,
-    ...(item && { item: true }),
     ...(container && { container: true }),
     ...(xs !== undefined && { xs }),
     ...(sm !== undefined && { sm }),
@@ -148,12 +147,9 @@ EnhancedButton.displayName = 'EnhancedButton';
 /**
  * Enhanced TextField with better error handling
  */
-interface EnhancedTextFieldProps extends Omit<TextFieldProps, 'helperText' | 'value' | 'multiline'> {
+type EnhancedTextFieldProps = TextFieldProps & {
   maxLength?: number;
   showCharCount?: boolean;
-  helperText?: React.ReactNode;
-  value?: unknown;
-  multiline?: boolean;
 }
 
 export const EnhancedTextField = memo(forwardRef<HTMLDivElement, EnhancedTextFieldProps>(({

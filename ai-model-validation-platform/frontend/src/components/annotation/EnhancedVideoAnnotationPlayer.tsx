@@ -58,20 +58,22 @@ interface EnhancedVideoAnnotationPlayerProps {
 }
 
 // Enhanced annotation interface component
-const EnhancedAnnotationInterface: React.FC<{
+interface EnhancedAnnotationInterfaceProps {
   video: VideoFile;
   videoElement: HTMLVideoElement | null;
   canvasSize: { width: number; height: number };
   onShapeCreate: (shape: AnnotationShape) => void;
   onShapeUpdate: (shape: AnnotationShape) => void;
   onShapeDelete: (shapeId: string) => void;
-}> = ({ 
-  video, 
-  videoElement, 
-  canvasSize, 
-  onShapeCreate, 
-  onShapeUpdate, 
-  onShapeDelete 
+}
+
+const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = ({
+  video,
+  videoElement,
+  canvasSize,
+  onShapeCreate,
+  onShapeUpdate,
+  onShapeDelete
 }) => {
   const { state, actions } = useAnnotation();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -171,14 +173,16 @@ const EnhancedAnnotationInterface: React.FC<{
                   bgcolor: 'black',
                 }}
               >
-                <EnhancedAnnotationCanvas
-                  width={canvasSize.width}
-                  height={canvasSize.height}
-                  videoElement={videoElement!}
-                  onShapeClick={handleShapeClick}
-                  onCanvasClick={handleCanvasClick}
-                  onShapeChange={handleShapeChange}
-                />
+                {videoElement && (
+                  <EnhancedAnnotationCanvas
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    videoElement={videoElement}
+                    onShapeClick={handleShapeClick}
+                    onCanvasClick={handleCanvasClick}
+                    onShapeChange={handleShapeChange}
+                  />
+                )}
                 
                 {/* Overlay controls */}
                 <Box
@@ -293,7 +297,7 @@ const EnhancedAnnotationInterface: React.FC<{
       <ContextMenu
         anchorPosition={contextMenu?.position || null}
         onClose={handleContextMenuClose}
-        targetShape={contextMenu?.targetShape || null}
+        targetShape={contextMenu?.targetShape ?? null}
         clickPoint={contextMenu?.clickPoint || null}
       />
 
@@ -309,7 +313,7 @@ const EnhancedAnnotationInterface: React.FC<{
 };
 
 // Main component with backward compatibility
-const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps> = (props) => {
+const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps) => {
   const {
     video,
     annotations,
@@ -354,7 +358,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
       visible: true,
       selected: selectedAnnotation?.id === annotation.id,
     }));
-  }, [selectedAnnotation]);
+  }, [selectedAnnotation, getVRUColor]);
 
   // VRU color mapping
   const getVRUColor = useCallback((vruType: VRUType): string => {
@@ -378,7 +382,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
       detectionId: `det_${Date.now()}`,
       frameNumber: Math.floor((videoRef.current?.currentTime || 0) * frameRate),
       timestamp: videoRef.current?.currentTime || 0,
-      vruType: (shape.label as VRUType) || 'pedestrian',
+      vruType: (shape.label || 'pedestrian') as VRUType,
       boundingBox: {
         ...shape.boundingBox,
         label: shape.label || 'pedestrian',
@@ -403,7 +407,7 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
         label: shape.label || 'pedestrian',
         confidence: shape.confidence || 1.0,
       },
-      vruType: (shape.label as VRUType) || 'pedestrian',
+      vruType: (shape.label || 'pedestrian') as VRUType,
     };
 
     onAnnotationUpdate(shape.id, updates);
@@ -499,9 +503,9 @@ const EnhancedVideoAnnotationPlayer: React.FC<EnhancedVideoAnnotationPlayerProps
           <VideoAnnotationPlayer
           video={video}
           annotations={annotations}
-          onAnnotationSelect={onAnnotationSelect || (() => {})}
-          onTimeUpdate={onTimeUpdate || (() => {})}
-          onCanvasClick={onCanvasClick || (() => {})}
+          onAnnotationSelect={onAnnotationSelect ?? (() => {})}
+          onTimeUpdate={onTimeUpdate ?? (() => {})}
+          onCanvasClick={onCanvasClick ?? (() => {})}
           annotationMode={annotationMode}
           selectedAnnotation={selectedAnnotation || null}
           frameRate={frameRate}

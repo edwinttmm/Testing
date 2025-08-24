@@ -1,6 +1,7 @@
-import { GroundTruthAnnotation, Detection, DetectionUpdate } from './types';
+import { GroundTruthAnnotation, Detection, DetectionUpdate, VRUType } from './types';
 import { apiService } from './api';
 import { isDebugEnabled } from '../utils/envConfig';
+import { isObject, isArray, isString, isNumber, safeGet, hasDetectionProperties } from '../utils/typeGuards';
 
 export interface DetectionConfig {
   confidenceThreshold: number;
@@ -68,7 +69,8 @@ class DetectionService {
         }
         throw new Error(result.error || 'Detection failed');
       } catch (backendError: unknown) {
-        console.warn('Backend detection failed:', backendError.message);
+        const errorMessage = backendError instanceof Error ? backendError.message : String(backendError);
+        console.warn('Backend detection failed:', errorMessage);
         
         // Try fallback detection if enabled and retries remain
         if (config.useFallback && this.retryCount.get(videoId) === undefined) {
@@ -147,8 +149,12 @@ class DetectionService {
         throw new Error('Invalid detection response format');
       }
       
+      // Type-safe detection conversion
+      const validDetections = isArray(detections) ? 
+        detections.filter(hasDetectionProperties) : [];
+      
       // Convert backend detections to annotations
-      const annotations = this.convertDetectionsToAnnotations(videoId, detections);
+      const annotations = this.convertDetectionsToAnnotations(videoId, validDetections);
       
       if (isDebugEnabled()) {
         console.log('🎯 Converted detections to annotations:', annotations.length, 'annotations');
@@ -164,15 +170,20 @@ class DetectionService {
     } catch (error: unknown) {
       console.error('Backend detection error:', error);
       
-      // Provide more specific error messages
-      if (error.status === 404) {
-        throw new Error('Video not found on server. Please re-upload the video.');
-      } else if (error.status === 422) {
-        throw new Error('Invalid video format or detection parameters.');
-      } else if (error.status >= 500) {
-        throw new Error('Server error during detection. Please try again.');
-      } else if (error.message?.includes('Network Error')) {
-        throw new Error('Network connection failed. Please check your connection.');
+      // Provide more specific error messages using type guards
+      if (isObject(error)) {
+        const status = safeGet(error, 'status', 0);
+        const message = safeGet(error, 'message', '');
+        
+        if (status === 404) {
+          throw new Error('Video not found on server. Please re-upload the video.');
+        } else if (status === 422) {
+          throw new Error('Invalid video format or detection parameters.');
+        } else if (status >= 500) {
+          throw new Error('Server error during detection. Please try again.');
+        } else if (isString(message) && message.includes('Network Error')) {
+          throw new Error('Network connection failed. Please check your connection.');
+        }
       }
       
       throw error;
@@ -258,31 +269,38 @@ class DetectionService {
   
   private convertDetectionsToAnnotations(
     videoId: string,
-    detections: Detection[]
+    detections: unknown[]
   ): GroundTruthAnnotation[] {
-    // Convert backend detections to annotations format
-    return detections.map(det => ({
-      id: det.id || `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      videoId,
-      detectionId: det.detectionId || '',
-      frameNumber: det.frame || 0,
-      timestamp: det.timestamp || 0,
-      vruType: det.vruType || 'pedestrian',
-      boundingBox: {
-        x: det.x || det.bbox?.x || 0,
-        y: det.y || det.bbox?.y || 0,
-        width: det.width || det.bbox?.width || 100,
-        height: det.height || det.bbox?.height || 100,
-        label: det.label || 'pedestrian',
-        confidence: det.confidence || 0.5
-      },
-      occluded: det.occluded || false,
-      truncated: det.truncated || false,
-      difficult: det.difficult || false,
-      validated: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }));
+    // Convert backend detections to annotations format with type safety
+    return detections.map((det, index) => {
+      if (!isObject(det)) {
+        console.warn(`Invalid detection at index ${index}:`, det);
+        det = {}; // Use empty object as fallback
+      }
+      
+      return {
+        id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`),
+        videoId,
+        detectionId: safeGet(det, 'detectionId', ''),
+        frameNumber: safeGet(det, 'frame', safeGet(det, 'frameNumber', 0)),
+        timestamp: safeGet(det, 'timestamp', 0),
+        vruType: safeGet(det, 'vruType', 'pedestrian') as VRUType,
+        boundingBox: {
+          x: safeGet(det, 'x', safeGet(det, 'bbox.x', 0)),
+          y: safeGet(det, 'y', safeGet(det, 'bbox.y', 0)),
+          width: safeGet(det, 'width', safeGet(det, 'bbox.width', 100)),
+          height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)),
+          label: safeGet(det, 'label', 'pedestrian'),
+          confidence: safeGet(det, 'confidence', 0.5)
+        },
+        occluded: safeGet(det, 'occluded', false),
+        truncated: safeGet(det, 'truncated', false),
+        difficult: safeGet(det, 'difficult', false),
+        validated: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    });
   }
   
   // WebSocket functionality completely removed - HTTP-only detection service
