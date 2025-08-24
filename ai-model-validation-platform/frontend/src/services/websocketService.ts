@@ -56,9 +56,11 @@ class WebSocketService {
         return 'ws://localhost:8000';
       }
       
-      // Handle specific production server (155.138.239.131)
-      if (hostname === '155.138.239.131') {
-        return 'ws://155.138.239.131:8000';
+      // Handle production server - configurable via environment
+      if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
+        const isSecure = window.location.protocol === 'https:';
+        const wsProtocol = isSecure ? 'wss:' : 'ws:';
+        return `${wsProtocol}//${hostname}:8000`;
       }
       
       // Generic fallback for other environments
