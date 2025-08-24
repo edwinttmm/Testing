@@ -132,9 +132,9 @@ class EnvironmentConfigManager {
       const hostname = window.location.hostname;
       const protocol = window.location.protocol;
       
-      // Handle specific production server
-      if (hostname === '155.138.239.131') {
-        return 'http://155.138.239.131:8000';
+      // Handle production server - configurable via environment
+      if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
+        return `${protocol}//${hostname}:8000`;
       }
       
       // Handle local development

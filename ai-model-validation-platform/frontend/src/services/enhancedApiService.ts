@@ -39,7 +39,7 @@ class EnhancedApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000';
+    this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     this.pendingRequests = new Map();
     this.requestMetrics = new Map();
     

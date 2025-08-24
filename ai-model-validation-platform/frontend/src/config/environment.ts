@@ -93,8 +93,8 @@ class EnvironmentService {
   private getApiPort(): number {
     const hostname = window.location.hostname;
     
-    // Production server
-    if (hostname === '155.138.239.131') {
+    // Production server - update with actual production URL when deployed
+    if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
       return 8000;
     }
     

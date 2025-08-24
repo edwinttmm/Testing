@@ -17,6 +17,9 @@ import uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
 from config import settings, setup_logging, create_directories, validate_environment
+from security_middleware import setup_security_middleware, SecurityHeadersMiddleware
+from logging_config import setup_logging as setup_enhanced_logging, security_logger
+from security_validator import validate_security_configuration, SecurityValidationError
 from socketio_server import sio, create_socketio_app
 from constants import CENTRAL_STORE_PROJECT_ID, CENTRAL_STORE_PROJECT_NAME, CENTRAL_STORE_PROJECT_DESCRIPTION
 
@@ -94,24 +97,85 @@ except ImportError:
             import uuid
             return str(uuid.uuid4())
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Application lifespan with security validation and startup checks"""
+    
+    # Setup enhanced logging first
+    try:
+        setup_enhanced_logging(settings)
+        logger = logging.getLogger(__name__)
+        logger.info(f"🚀 Starting {settings.app_name} v{settings.app_version}")
+        logger.info(f"Environment: {settings.app_environment}")
+    except Exception as e:
+        print(f"❌ Logging setup failed: {e}")
+        raise
+    
+    # Perform security validation
+    try:
+        logger.info("🔒 Performing security validation...")
+        validate_security_configuration(settings)
+        security_logger.logger.info("Security validation completed successfully")
+    except SecurityValidationError as e:
+        logger.error(f"❌ Security validation failed: {e}")
+        if settings.app_environment.lower() == 'production':
+            raise
+        else:
+            logger.warning("⚠️ Continuing in development mode despite security issues")
+    except Exception as e:
+        logger.error(f"❌ Security validation error: {e}")
+        raise
+    
+    # Create necessary directories
+    try:
+        create_directories(settings)
+        validate_environment(settings)
+    except Exception as e:
+        logger.error(f"❌ Environment setup failed: {e}")
+        raise
+    
+    # Enhanced database initialization with comprehensive startup system
+    try:
+        from database_startup import safe_startup_database
+        database_ready = safe_startup_database()
+        if database_ready:
+            logger.info("✅ Database initialization system ready")
+        else:
+            logger.warning("⚠️ Database startup completed with issues (continuing)")
+    except Exception as e:
+        logger.warning(f"⚠️ Database initialization warning (continuing): {e}")
+    
+    # Log startup completion
+    logger.info("✅ Application startup completed successfully")
+    security_logger.logger.info("Application started", extra={
+        'extra_data': {
+            'event_type': 'application_startup',
+            'environment': settings.app_environment,
+            'debug_mode': settings.api_debug
+        }
+    })
+    
+    yield
+    
+    # Shutdown
+    logger.info("🔄 Application shutdown initiated")
+    security_logger.logger.info("Application shutdown", extra={
+        'extra_data': {
+            'event_type': 'application_shutdown'
+        }
+    })
+
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
     version=settings.app_version,
-    debug=settings.api_debug
+    debug=settings.api_debug,
+    lifespan=lifespan
 )
 
-# Configure logging
+# Configure logging (fallback if lifespan fails)
 setup_logging(settings)
 logger = logging.getLogger(__name__)
-
-# Safe database initialization with error handling
-try:
-    from database import safe_create_indexes_and_tables
-    safe_create_indexes_and_tables()
-    logger.info("✅ Database initialized safely")
-except Exception as e:
-    logger.warning(f"⚠️ Database initialization warning (continuing): {e}")
     # Continue with app startup even if database has issues
 
 # Create necessary directories
@@ -120,8 +184,12 @@ create_directories(settings)
 # Validate environment configuration
 validate_environment(settings)
 
-# CORS configuration from settings
+# Setup security middleware
+setup_security_middleware(app, settings)
+
+# CORS configuration from settings (after security middleware)
 allowed_origins = settings.cors_origins
+logger.info(f"CORS configured for {len(allowed_origins)} origins")
 
 app.add_middleware(
     CORSMiddleware,
@@ -139,6 +207,10 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Include enhanced test execution router
 app.include_router(enhanced_test_router)
 app.include_router(signal_validation_router)
+
+# Include database health check router
+from api_database_health import router as database_health_router
+app.include_router(database_health_router)
 
 ground_truth_service = GroundTruthService()
 # validation_service = ValidationService()  # Temporarily disabled
@@ -2428,18 +2500,23 @@ async def add_process_time_header(request, call_next):
 # Enhanced startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on startup"""
+    """Initialize services on startup with enhanced database management"""
     logger.info("🚀 AI Model Validation Platform API starting up...")
     
-    # Initialize database with enhanced schema using safe method
+    # Verify database startup status
     try:
-        from database import safe_create_indexes_and_tables
-        safe_create_indexes_and_tables()
-        logger.info("✅ Database schema initialized with performance indexes")
+        from database_startup import get_database_startup_status
+        startup_status = get_database_startup_status()
+        
+        if startup_status.get('database_startup_success'):
+            logger.info("✅ Database startup verification passed")
+        else:
+            logger.warning("⚠️ Database startup issues detected")
+            logger.info(f"Database Status: {startup_status}")
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
+        logger.error(f"❌ Database startup verification failed: {e}")
     
-    # Ensure central store project exists
+    # Ensure central store project exists (fallback)
     try:
         db = SessionLocal()
         ensure_central_store_project(db)
