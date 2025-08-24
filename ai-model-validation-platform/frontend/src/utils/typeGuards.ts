@@ -234,3 +234,276 @@ export function hasDetectionProperties(obj: unknown): boolean {
 export function isValidWebSocketData(data: unknown): data is Record<string, unknown> {
   return isObject(data) && ('type' in data || 'event' in data);
 }
+
+/**
+ * Parse error response safely with type checking
+ */
+export function parseErrorResponse(error: unknown): { message: string; code?: string | number; details?: unknown; status?: number } {
+  if (isAxiosError(error)) {
+    const response = error.response;
+    if (response && isObject(response.data)) {
+      return {
+        message: isString(response.data.message) ? response.data.message : error.message,
+        code: response.status,
+        status: response.status,
+        details: response.data
+      };
+    }
+    const result: { message: string; code?: string | number; details?: unknown; status?: number } = {
+      message: error.message,
+      details: error
+    };
+    if (error.code !== undefined) {
+      result.code = error.code;
+    }
+    return result;
+  }
+  
+  if (isError(error)) {
+    return {
+      message: error.message,
+      details: error
+    };
+  }
+  
+  if (isObject(error) && hasProperty(error, 'message') && isString(error.message)) {
+    const result: { message: string; code?: string | number; details?: unknown; status?: number } = {
+      message: error.message,
+      details: error
+    };
+    if (hasProperty(error, 'code') && (isString(error.code) || isNumber(error.code))) {
+      result.code = error.code;
+    }
+    return result;
+  }
+  
+  return {
+    message: 'Unknown error occurred',
+    details: error
+  };
+}
+
+/**
+ * Safe object spreading with type validation - overloaded function
+ */
+export function safeSpread<T extends Record<string, unknown>>(source: unknown): T;
+export function safeSpread<T extends Record<string, unknown>>(target: T, source: unknown): T;
+export function safeSpread<T extends Record<string, unknown>>(
+  targetOrSource: T | unknown,
+  source?: unknown
+): T {
+  // Single parameter usage: safeSpread<T>(obj)
+  if (arguments.length === 1) {
+    const sourceObj = targetOrSource;
+    if (!isObject(sourceObj)) {
+      return {} as T;
+    }
+    try {
+      return { ...sourceObj } as T;
+    } catch (error) {
+      console.warn('Safe spread failed:', error);
+      return {} as T;
+    }
+  }
+  
+  // Two parameter usage: safeSpread(target, source)
+  const target = targetOrSource as T;
+  if (!isObject(source)) {
+    return target;
+  }
+  
+  try {
+    return { ...target, ...source } as T;
+  } catch (error) {
+    console.warn('Safe spread failed:', error);
+    return target;
+  }
+}
+
+/**
+ * Type guard for checking if response has data property
+ */
+export function hasResponseData<T = unknown>(response: unknown): response is { data: T } {
+  return isObject(response) && 'data' in response;
+}
+
+/**
+ * Convert unknown data to VideoFile with validation
+ */
+export function convertToVideoFile(data: unknown): VideoFile | null {
+  if (!isObject(data)) {
+    return null;
+  }
+  
+  // Check required VideoFile properties from types.ts
+  if (!hasProperty(data, 'id') || !isString(data.id)) {
+    return null;
+  }
+  
+  // ProjectId is required in the interface
+  const projectId = isString(data.projectId) ? data.projectId : '';
+  
+  try {
+    const videoFile: VideoFile = {
+      id: data.id,
+      projectId: projectId,
+      filename: isString(data.filename) ? data.filename : `video_${data.id}.mp4`,
+      originalName: isString(data.originalName) ? data.originalName : 
+                   isString(data.original_name) ? data.original_name : data.id,
+      size: isNumber(data.size) ? data.size : 
+           isNumber(data.fileSize) ? data.fileSize :
+           isNumber(data.file_size) ? data.file_size : 0,
+      url: isString(data.url) ? data.url : '',
+      status: isString(data.status) && 
+             ['uploading', 'processing', 'completed', 'failed'].includes(data.status) 
+             ? data.status as 'uploading' | 'processing' | 'completed' | 'failed'
+             : 'uploading',
+      uploadedAt: isString(data.uploadedAt) ? data.uploadedAt : 
+                 isString(data.uploaded_at) ? data.uploaded_at : new Date().toISOString(),
+      
+      // Optional properties - only set if they have valid values
+      name: isString(data.name) ? data.name : (isString(data.filename) ? data.filename : data.id)
+    };
+
+    // Add optional properties only if they exist and are valid
+    if (isNumber(data.fileSize)) {
+      videoFile.fileSize = data.fileSize;
+    }
+    if (isNumber(data.file_size)) {
+      videoFile.file_size = data.file_size;
+    }
+    if (isNumber(data.duration)) {
+      videoFile.duration = data.duration;
+    }
+    if (isString(data.createdAt)) {
+      videoFile.createdAt = data.createdAt;
+    }
+    if (isString(data.created_at)) {
+      videoFile.created_at = data.created_at;
+    }
+    if (isString(data.processing_status) && 
+        ['pending', 'processing', 'completed', 'failed'].includes(data.processing_status)) {
+      videoFile.processing_status = data.processing_status as 'pending' | 'processing' | 'completed' | 'failed';
+    }
+    if (isString(data.groundTruthStatus) && 
+        ['pending', 'processing', 'completed', 'failed'].includes(data.groundTruthStatus)) {
+      videoFile.groundTruthStatus = data.groundTruthStatus as 'pending' | 'processing' | 'completed' | 'failed';
+    }
+    if (data.groundTruthGenerated !== undefined) {
+      videoFile.groundTruthGenerated = Boolean(data.groundTruthGenerated);
+    }
+    if (data.ground_truth_generated !== undefined) {
+      videoFile.ground_truth_generated = Boolean(data.ground_truth_generated);
+    }
+    if (isNumber(data.detectionCount)) {
+      videoFile.detectionCount = data.detectionCount;
+    }
+    if (isNumber(data.width)) {
+      videoFile.width = data.width;
+    }
+    if (isNumber(data.height)) {
+      videoFile.height = data.height;
+    }
+    if (isNumber(data.fps)) {
+      videoFile.fps = data.fps;
+    }
+    if (isNumber(data.bitrate)) {
+      videoFile.bitrate = data.bitrate;
+    }
+    if (isString(data.format)) {
+      videoFile.format = data.format;
+    }
+    if (isString(data.codec)) {
+      videoFile.codec = data.codec;
+    }
+    if (isString(data.thumbnailUrl)) {
+      videoFile.thumbnailUrl = data.thumbnailUrl;
+    }
+    if (isObject(data.metadata)) {
+      videoFile.metadata = data.metadata;
+    }
+    if (isArray(data.annotations)) {
+      videoFile.annotations = data.annotations as any;
+    }
+    
+    return videoFile;
+  } catch (error) {
+    console.warn('Failed to convert to VideoFile:', error);
+    return null;
+  }
+}
+
+/**
+ * Safely convert array with type checking and filtering
+ */
+export function safeConvertArray<T>(
+  data: unknown,
+  converter: (item: unknown) => T | null
+): T[] {
+  if (!isArray(data)) {
+    return [];
+  }
+  
+  try {
+    return data
+      .map(converter)
+      .filter((item): item is T => item !== null);
+  } catch (error) {
+    console.warn('Safe convert array failed:', error);
+    return [];
+  }
+}
+
+/**
+ * Type guard for API error response structure
+ */
+export function isApiErrorResponse(obj: unknown): obj is {
+  error: string;
+  message?: string;
+  code?: string | number;
+  details?: unknown;
+} {
+  return isObject(obj) && 
+    'error' in obj && 
+    isString(obj.error) &&
+    (obj.error.length > 0);
+}
+
+/**
+ * Safely convert unknown to Record<string, unknown> for API parameters
+ */
+export function safeParams(params: unknown): Record<string, unknown> | undefined {
+  if (params == null) {
+    return undefined;
+  }
+  if (isObject(params)) {
+    return params;
+  }
+  // If it's not an object, return undefined instead of trying to convert
+  return undefined;
+}
+
+/**
+ * Safely extract error data from AxiosResponse for ErrorFactory
+ */
+export function safeExtractErrorData(response: unknown): Record<string, unknown> | null {
+  if (!response) {
+    return null;
+  }
+  
+  // Check if it's an AxiosResponse
+  if (isObject(response) && hasProperty(response, 'data') && hasProperty(response, 'status')) {
+    return {
+      status: response.status,
+      data: response.data,
+      statusText: hasProperty(response, 'statusText') ? response.statusText : 'Unknown'
+    };
+  }
+  
+  // If it's already a Record<string, unknown>, return it
+  if (isObject(response)) {
+    return response;
+  }
+  
+  return null;
+}

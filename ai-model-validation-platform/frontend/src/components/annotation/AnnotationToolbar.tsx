@@ -17,6 +17,8 @@ import {
   AccordionDetails,
   Stack,
   Chip,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   CropFree as RectangleIcon,
@@ -40,6 +42,8 @@ import {
   VisibilityOff,
   Lock,
   LockOpen,
+  ColorLens,
+  CropFree,
 } from '@mui/icons-material';
 import { useAnnotation } from './AnnotationManager';
 import { DrawingTool, AnnotationStyle, BrushSettings } from './types';
@@ -72,6 +76,7 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
 }) => {
   const { state, actions } = useAnnotation();
   const [colorMenuAnchor, setColorMenuAnchor] = useState<HTMLElement | null>(null);
+  const [toolMenuAnchor, setToolMenuAnchor] = useState<HTMLElement | null>(null);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
 
   const selectedShapes = actions.getSelectedShapes();
@@ -160,6 +165,29 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
     actions.updateSettings({ gridSize: size });
   }, [actions]);
 
+  // Color menu handlers
+  const handleOpenColorMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setColorMenuAnchor(event.currentTarget);
+  }, []);
+
+  const handleCloseColorMenu = useCallback(() => {
+    setColorMenuAnchor(null);
+  }, []);
+
+  const handleColorSelect = useCallback((color: string) => {
+    handleStyleUpdate({ strokeColor: color });
+    handleCloseColorMenu();
+  }, [handleStyleUpdate, handleCloseColorMenu]);
+
+  // Tool menu handlers
+  const handleOpenToolMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    setToolMenuAnchor(event.currentTarget);
+  }, []);
+
+  const handleCloseToolMenu = useCallback(() => {
+    setToolMenuAnchor(null);
+  }, []);
+
   // Brush settings handler
   const handleBrushSettingsUpdate = useCallback((updates: Partial<BrushSettings>) => {
     actions.updateSettings({
@@ -208,6 +236,17 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
           </Tooltip>
           <Tooltip title="Redo (Ctrl+Y)">
             <IconButton onClick={handleRedo}><Redo /></IconButton>
+          </Tooltip>
+        </ButtonGroup>
+        
+        <Divider orientation="vertical" flexItem />
+        
+        <ButtonGroup size="small" disabled={disabled}>
+          <Tooltip title="Color Palette">
+            <IconButton onClick={handleOpenColorMenu}><Palette /></IconButton>
+          </Tooltip>
+          <Tooltip title="Grid Tools">
+            <IconButton onClick={handleOpenToolMenu}><Grid3x3 /></IconButton>
           </Tooltip>
         </ButtonGroup>
         
@@ -323,6 +362,27 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
         </Stack>
       </Box>
 
+      <Divider sx={{ mb: 2 }} />
+
+      {/* Advanced Tools */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          Advanced Tools
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Tooltip title="Color Palette">
+            <IconButton onClick={handleOpenColorMenu} disabled={disabled}>
+              <Palette />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Grid Tools">
+            <IconButton onClick={handleOpenToolMenu} disabled={disabled}>
+              <Grid3x3 />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </Box>
+      
       <Divider sx={{ mb: 2 }} />
 
       {/* Style Controls */}
@@ -547,6 +607,85 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
           </Stack>
         </AccordionDetails>
       </Accordion>
+
+      {/* Color Menu */}
+      <Menu
+        anchorEl={colorMenuAnchor}
+        open={Boolean(colorMenuAnchor)}
+        onClose={handleCloseColorMenu}
+        PaperProps={{
+          style: {
+            maxWidth: 200,
+          },
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ p: 1, fontWeight: 600 }}>
+          Color Palette
+        </Typography>
+        <Box sx={{ p: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {PRESET_COLORS.map((color) => (
+            <Box
+              key={color}
+              sx={{
+                width: 32,
+                height: 32,
+                bgcolor: color,
+                border: '2px solid',
+                borderColor: (hasSelection && selectedShapes[0]?.style.strokeColor === color) ? '#000' : '#ccc',
+                borderRadius: 1,
+                cursor: 'pointer',
+                '&:hover': { transform: 'scale(1.1)', borderColor: '#000' }
+              }}
+              onClick={() => handleColorSelect(color)}
+            />
+          ))}
+        </Box>
+        <Divider />
+        <MenuItem onClick={() => {
+          const customColor = prompt('Enter hex color:', '#000000');
+          if (customColor) {
+            handleColorSelect(customColor);
+          }
+        }}>
+          <ListItemIcon><ColorLens /></ListItemIcon>
+          <ListItemText primary="Custom Color..." />
+        </MenuItem>
+      </Menu>
+
+      {/* Tool Menu */}
+      <Menu
+        anchorEl={toolMenuAnchor}
+        open={Boolean(toolMenuAnchor)}
+        onClose={handleCloseToolMenu}
+        PaperProps={{
+          style: {
+            minWidth: 180,
+          },
+        }}
+      >
+        <MenuItem onClick={() => {
+          actions.updateSettings({ showGrid: !state.settings.showGrid });
+          handleCloseToolMenu();
+        }}>
+          <ListItemIcon><Grid3x3 /></ListItemIcon>
+          <ListItemText primary={state.settings.showGrid ? 'Hide Grid' : 'Show Grid'} />
+        </MenuItem>
+        <MenuItem onClick={() => {
+          actions.updateSettings({ snapToGrid: !state.settings.snapToGrid });
+          handleCloseToolMenu();
+        }}>
+          <ListItemIcon><RectangleIcon /></ListItemIcon>
+          <ListItemText primary={state.settings.snapToGrid ? 'Disable Snap' : 'Enable Snap'} />
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => {
+          actions.clearAll();
+          handleCloseToolMenu();
+        }}>
+          <ListItemIcon><Delete /></ListItemIcon>
+          <ListItemText primary="Clear All Shapes" />
+        </MenuItem>
+      </Menu>
     </Paper>
   );
 };

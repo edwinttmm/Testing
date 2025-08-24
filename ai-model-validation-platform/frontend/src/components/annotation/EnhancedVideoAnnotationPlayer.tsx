@@ -16,6 +16,16 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  FormControlLabel,
+  Switch,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Divider,
+  ListItemText,
+  List,
+  ListItem,
 } from '@mui/material';
 import {
   Help,
@@ -86,6 +96,15 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [videoSettings, setVideoSettings] = useState({
+    quality: '720p',
+    playbackRate: 1.0,
+    showAnnotations: true,
+    showConfidence: true,
+    autoPlay: false,
+    enableTooltips: true
+  });
 
   // Handle shape creation from canvas
   const handleCanvasClick = useCallback((point: Point, event: MouseEvent) => {
@@ -148,11 +167,51 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     if (!videoElement) return;
     
     if (videoElement.paused) {
-      videoElement.play();
+      videoElement.play().catch(error => {
+        console.error('Error playing video:', error);
+        // Handle autoplay restrictions or other errors
+      });
     } else {
       videoElement.pause();
     }
   }, [videoElement]);
+
+  // Handle fullscreen toggle
+  const handleFullscreenToggle = useCallback(async () => {
+    if (!canvasContainerRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await canvasContainerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('Fullscreen toggle error:', error);
+    }
+  }, []);
+
+  // Handle settings change
+  const handleSettingsChange = useCallback((key: string, value: any) => {
+    setVideoSettings(prev => ({ ...prev, [key]: value }));
+    
+    // Apply settings immediately if video is available
+    if (videoElement && key === 'playbackRate') {
+      videoElement.playbackRate = value;
+    }
+  }, [videoElement]);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -221,6 +280,34 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
                       }}
                     >
                       <HistoryIcon />
+                    </IconButton>
+                  </Tooltip>
+                  
+                  <Tooltip title="Settings">
+                    <IconButton
+                      size="small"
+                      onClick={() => setShowSettings(true)}
+                      sx={{ 
+                        bgcolor: 'rgba(0,0,0,0.7)', 
+                        color: 'white',
+                        '&:hover': { bgcolor: 'rgba(0,0,0,0.9)' }
+                      }}
+                    >
+                      <Settings />
+                    </IconButton>
+                  </Tooltip>
+                  
+                  <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleFullscreenToggle()}
+                      sx={{ 
+                        bgcolor: 'rgba(0,0,0,0.7)', 
+                        color: 'white',
+                        '&:hover': { bgcolor: 'rgba(0,0,0,0.9)' }
+                      }}
+                    >
+                      <Fullscreen />
                     </IconButton>
                   </Tooltip>
                 </Box>
@@ -301,6 +388,121 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
         clickPoint={contextMenu?.clickPoint || null}
       />
 
+      {/* Settings Dialog */}
+      <Dialog
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Video Player Settings</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3}>
+            {/* Video Quality */}
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Video Quality</InputLabel>
+                <Select
+                  value={videoSettings.quality}
+                  onChange={(e) => handleSettingsChange('quality', e.target.value)}
+                  label="Video Quality"
+                >
+                  <MenuItem value="480p">480p</MenuItem>
+                  <MenuItem value="720p">720p</MenuItem>
+                  <MenuItem value="1080p">1080p</MenuItem>
+                  <MenuItem value="auto">Auto</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            {/* Playback Speed */}
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Playback Speed</InputLabel>
+                <Select
+                  value={videoSettings.playbackRate}
+                  onChange={(e) => handleSettingsChange('playbackRate', e.target.value)}
+                  label="Playback Speed"
+                >
+                  <MenuItem value={0.25}>0.25x</MenuItem>
+                  <MenuItem value={0.5}>0.5x</MenuItem>
+                  <MenuItem value={0.75}>0.75x</MenuItem>
+                  <MenuItem value={1.0}>1x</MenuItem>
+                  <MenuItem value={1.25}>1.25x</MenuItem>
+                  <MenuItem value={1.5}>1.5x</MenuItem>
+                  <MenuItem value={2.0}>2x</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Divider />
+            </Grid>
+            
+            {/* Annotation Settings */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom>
+                Annotation Display
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={videoSettings.showAnnotations}
+                    onChange={(e) => handleSettingsChange('showAnnotations', e.target.checked)}
+                  />
+                }
+                label="Show Annotations"
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={videoSettings.showConfidence}
+                    onChange={(e) => handleSettingsChange('showConfidence', e.target.checked)}
+                  />
+                }
+                label="Show Confidence Scores"
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={videoSettings.enableTooltips}
+                    onChange={(e) => handleSettingsChange('enableTooltips', e.target.checked)}
+                  />
+                }
+                label="Enable Tooltips"
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={videoSettings.autoPlay}
+                    onChange={(e) => handleSettingsChange('autoPlay', e.target.checked)}
+                  />
+                }
+                label="Auto-play Videos"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSettings(false)}>Cancel</Button>
+          <Button onClick={() => setShowSettings(false)} variant="contained">
+            Apply Settings
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Keyboard shortcuts */}
       <KeyboardShortcuts
         onFrameNavigate={handleFrameNavigate}
@@ -335,6 +537,18 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
   const [enhancedMode, setEnhancedMode] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // VRU color mapping - moved before usage to fix dependency order
+  const getVRUColor = useCallback((vruType: VRUType): string => {
+    const colors = {
+      pedestrian: '#2196f3',
+      cyclist: '#4caf50',
+      motorcyclist: '#ff9800',
+      wheelchair_user: '#9c27b0',
+      scooter_rider: '#ff5722',
+    };
+    return colors[vruType as keyof typeof colors] || '#607d8b';
+  }, []);
+
   // Convert existing annotations to shapes
   const convertAnnotationsToShapes = useCallback((annotations: GroundTruthAnnotation[]): AnnotationShape[] => {
     return annotations.map(annotation => ({
@@ -359,18 +573,6 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
       selected: selectedAnnotation?.id === annotation.id,
     }));
   }, [selectedAnnotation, getVRUColor]);
-
-  // VRU color mapping
-  const getVRUColor = useCallback((vruType: VRUType): string => {
-    const colors = {
-      pedestrian: '#2196f3',
-      cyclist: '#4caf50',
-      motorcyclist: '#ff9800',
-      wheelchair_user: '#9c27b0',
-      scooter_rider: '#ff5722',
-    };
-    return colors[vruType as keyof typeof colors] || '#607d8b';
-  }, []);
 
   // Handle shape creation
   const handleShapeCreate = useCallback((shape: AnnotationShape) => {
@@ -419,7 +621,7 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
     onAnnotationDelete(shapeId);
   }, [onAnnotationDelete]);
 
-  // Update canvas size when video loads
+  // Update canvas size when video loads and apply settings
   useEffect(() => {
     const updateCanvasSize = () => {
       if (videoRef.current) {
@@ -428,6 +630,12 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
           width: video.videoWidth || 800,
           height: video.videoHeight || 600,
         });
+        
+        // Apply video settings
+        video.playbackRate = videoSettings.playbackRate;
+        if (videoSettings.autoPlay) {
+          video.autoplay = true;
+        }
       }
     };
 
@@ -437,7 +645,15 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
       return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
     }
     return undefined;
-  }, []);
+  }, [videoSettings]);
+
+  // Apply settings when they change
+  useEffect(() => {
+    if (videoRef.current) {
+      const video = videoRef.current;
+      video.playbackRate = videoSettings.playbackRate;
+    }
+  }, [videoSettings.playbackRate]);
 
   // Convert annotations to shapes
   const initialShapes = useMemo(() => {
@@ -515,15 +731,48 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
         </React.Suspense>
       )}
 
-      {/* Error snackbar */}
+      {/* Enhanced Error Display */}
       <Snackbar
         open={!!error}
-        autoHideDuration={5000}
+        autoHideDuration={6000}
         onClose={() => setError(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" onClose={() => setError(null)}>
+        <Alert 
+          severity="error" 
+          onClose={() => setError(null)}
+          action={
+            <Button color="inherit" size="small" onClick={() => setError(null)}>
+              DISMISS
+            </Button>
+          }
+        >
           {error}
+        </Alert>
+      </Snackbar>
+      
+      {/* Video-specific error display */}
+      <Snackbar
+        open={!!videoError && !videoLoadError}
+        autoHideDuration={8000}
+        onClose={() => setVideoError(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert 
+          severity="warning" 
+          onClose={() => setVideoError(null)}
+          action={
+            <Stack direction="row" spacing={1}>
+              <Button color="inherit" size="small" onClick={handleVideoRetry}>
+                RETRY
+              </Button>
+              <Button color="inherit" size="small" onClick={() => setVideoError(null)}>
+                DISMISS
+              </Button>
+            </Stack>
+          }
+        >
+          <strong>{videoError?.type.toUpperCase()}:</strong> {videoError?.message}
         </Alert>
       </Snackbar>
     </Box>

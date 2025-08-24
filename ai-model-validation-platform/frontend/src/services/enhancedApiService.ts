@@ -149,15 +149,20 @@ class EnhancedApiService {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private generateCacheKey(method: string, url: string, params?: Record<string, unknown>, data?: Record<string, unknown>): string {
+  private generateCacheKey(method: string, url: string, params?: Record<string, unknown>, data?: Record<string, unknown> | FormData): string {
     const key = `${method.toUpperCase()}_${url}`;
     if (params) {
-      const paramString = new URLSearchParams(params).toString();
+      const paramString = new URLSearchParams(params as Record<string, string>).toString();
       return `${key}_${paramString}`;
     }
     if (data && method !== 'GET') {
-      const dataString = JSON.stringify(data);
-      return `${key}_${btoa(dataString)}`;
+      if (data instanceof FormData) {
+        // For FormData, create a simple key based on size and type
+        return `${key}_formdata_${Date.now()}`;
+      } else {
+        const dataString = JSON.stringify(data);
+        return `${key}_${btoa(dataString)}`;
+      }
     }
     return key;
   }
@@ -379,7 +384,7 @@ class EnhancedApiService {
   private async enhancedRequest<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     url: string,
-    data?: Record<string, unknown>,
+    data?: Record<string, unknown> | FormData,
     config?: AxiosRequestConfig
   ): Promise<T> {
     const cacheKey = this.generateCacheKey(method, url, config?.params, data);
@@ -403,7 +408,7 @@ class EnhancedApiService {
       const pending = this.pendingRequests.get(cacheKey);
       if (pending) {
         console.log(`🔄 Deduplicating request: ${method} ${url}`);
-        return pending;
+        return pending as Promise<T>;
       }
     }
 

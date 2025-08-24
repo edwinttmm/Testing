@@ -3,7 +3,7 @@
  * Defines standardized patterns and types for consistent component development
  */
 
-import { ReactNode, ComponentType, RefAttributes, ForwardRefExoticComponent } from 'react';
+import React, { ReactNode, ComponentType, RefAttributes, ForwardRefExoticComponent } from 'react';
 
 // ============================================================================
 // COMPONENT TYPE PATTERNS
@@ -22,6 +22,10 @@ export interface BaseComponentProps {
   'data-testid'?: string;
   /** Component ID */
   id?: string;
+  /** Aria label for accessibility */
+  'aria-label'?: string;
+  /** Role attribute */
+  role?: string;
 }
 
 /**
@@ -65,7 +69,9 @@ export interface AsyncComponentProps extends LoadingComponentProps, ErrorCompone
  * PREFERRED: Function component with explicit return type
  * This is the recommended pattern for new components
  */
-export type StandardComponent<P = {}> = (props: P) => JSX.Element;
+export type StandardComponent<P = {}> = ((props: P) => React.JSX.Element) & {
+  displayName?: string;
+};
 
 /**
  * PREFERRED: Function component with forwardRef
@@ -177,13 +183,16 @@ export const createStandardComponent = <P extends BaseComponentProps>(
 
   if (config?.devWarnings && process.env.NODE_ENV === 'development') {
     const originalComponent = component;
-    component = (props: P) => {
+    const wrappedComponent = (props: P) => {
       // Add development warnings
-      if (config.a11y?.required && !props['aria-label'] && !props.id) {
+      const baseProps = props as BaseComponentProps;
+      if (config.a11y?.required && !baseProps['aria-label'] && !baseProps.id) {
         console.warn(`Component ${config.displayName || 'Unknown'} should have aria-label or id for accessibility`);
       }
       return originalComponent(props);
     };
+    wrappedComponent.displayName = config.displayName;
+    return wrappedComponent as StandardComponent<P>;
   }
 
   return component;
@@ -205,14 +214,14 @@ export interface ConditionalRenderProps extends BaseComponentProps {
  * Pattern for compound components
  */
 export interface CompoundComponentProps extends BaseComponentProps {
-  as?: keyof JSX.IntrinsicElements | ComponentType<any>;
+  as?: keyof React.JSX.IntrinsicElements | ComponentType<any>;
 }
 
 /**
  * Pattern for polymorphic components
  */
-export type PolymorphicComponent<P, T extends keyof JSX.IntrinsicElements = 'div'> = {
-  [K in T]: (props: P & JSX.IntrinsicElements[K]) => JSX.Element;
+export type PolymorphicComponent<P, T extends keyof React.JSX.IntrinsicElements = 'div'> = {
+  [K in T]: (props: P & React.JSX.IntrinsicElements[K]) => React.JSX.Element;
 }[T];
 
 // ============================================================================
@@ -242,7 +251,8 @@ export const validateComponentProps = <P extends BaseComponentProps>(
   }
 
   // Check accessibility
-  if (!props['aria-label'] && !props.id && props.role) {
+  const baseProps = props as BaseComponentProps;
+  if (!baseProps['aria-label'] && !baseProps.id && baseProps.role) {
     console.warn(`${componentName}: Components with roles should have aria-label or id`);
   }
 };
@@ -261,10 +271,10 @@ export const migrateFromReactFC = <P extends BaseComponentProps>(
     if (process.env.NODE_ENV === 'development') {
       console.warn(`Component is using deprecated React.FC pattern. Consider migrating to StandardComponent.`);
     }
-    return component(props) as JSX.Element;
+    return component(props) as React.JSX.Element;
   };
 
-  migratedComponent.displayName = component.displayName || 'MigratedComponent';
+  migratedComponent.displayName = component.displayName ?? 'MigratedComponent';
   return migratedComponent;
 };
 

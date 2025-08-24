@@ -65,6 +65,7 @@ export interface ProjectCreate {
   cameraModel: string;
   cameraView: CameraType;
   signalType: SignalType;
+  [key: string]: unknown;
 }
 
 export interface ProjectUpdate {
@@ -74,6 +75,7 @@ export interface ProjectUpdate {
   cameraView?: CameraType;
   signalType?: SignalType;
   status?: ProjectStatus;
+  [key: string]: unknown;
 }
 
 // Video Types
@@ -276,22 +278,41 @@ export interface AnnotationTool {
 export interface TestSession {
   id: string;
   projectId: string;
-  videoId: string;
+  videoId?: string;
+  videoIds?: string[];
   name: string;
   description?: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  createdAt?: string;
+  status: 'created' | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  createdAt?: string | Date;
   startedAt?: string;
   completedAt?: string;
-  detectionEvents: DetectionEvent[];
+  config?: any; // Test configuration object
+  detectionEvents?: DetectionEvent[];
   metrics?: TestMetrics;
 }
 
 export interface TestSessionCreate {
   projectId: string;
-  videoId: string;
+  videoId?: string;
+  videoIds?: string[];
   name: string;
   description?: string;
+  config?: any;
+  [key: string]: unknown;
+}
+
+export interface TestResult {
+  id: string;
+  sessionId: string;
+  videoId: string;
+  videoName?: string;
+  status: 'success' | 'failed' | 'pending' | 'processing';
+  timestamp: string | Date;
+  processingTime?: number;
+  confidence?: number;
+  details?: string;
+  detections?: Detection[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface DetectionEvent {
@@ -591,7 +612,9 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.code = code || 'UNKNOWN_ERROR';
-    this.details = details || undefined;
+    if (details !== undefined) {
+      this.details = details;
+    }
     
     // Maintain proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, ApiError.prototype);

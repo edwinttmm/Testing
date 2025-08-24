@@ -84,13 +84,12 @@ export {
 // ============================================================================
 
 // Alias for existing error boundary components
-export { default as ErrorBoundary } from './ErrorBoundary';
+export { default as ErrorBoundary, withErrorBoundary } from './ErrorBoundary';
 export { default as LegacyWebSocketErrorBoundary } from './WebSocketErrorBoundary';
 export { default as LegacyAsyncErrorBoundary } from './AsyncErrorBoundary';
 
 // Grid aliases for migration
 export { FixedGrid as Grid } from './FixedUIComponents';
-export { StandardizedGrid } from './StandardizedGrid';
 
 // ============================================================================
 // COMPONENT MIGRATION MAP
@@ -126,19 +125,19 @@ export const MigrationMap = {
  */
 export default {
   // Most used components
-  Grid: StandardizedGrid,
-  ErrorBoundary: UnifiedErrorBoundary,
-  Button: EnhancedButton,
-  TextField: EnhancedTextField,
-  Alert: EnhancedAlert,
-  Loading: LoadingWrapper,
+  Grid: require('./StandardizedGrid').default,
+  ErrorBoundary: require('./UnifiedErrorBoundary').default,
+  Button: require('./FixedUIComponents').EnhancedButton,
+  TextField: require('./FixedUIComponents').EnhancedTextField,
+  Alert: require('./FixedUIComponents').EnhancedAlert,
+  Loading: require('./FixedUIComponents').LoadingWrapper,
   
   // Utilities
-  createComponent,
-  createResponsiveGrid,
-  useResponsiveGrid,
+  createComponent: require('./ComponentStandards').createComponent,
+  createResponsiveGrid: require('./StandardizedGrid').createResponsiveGrid,
+  useResponsiveGrid: require('./StandardizedGrid').useResponsiveGrid,
   
   // Migration helpers
-  migrateFromReactFC,
+  migrateFromReactFC: require('./ComponentStandards').migrateFromReactFC,
   MigrationMap,
 };
