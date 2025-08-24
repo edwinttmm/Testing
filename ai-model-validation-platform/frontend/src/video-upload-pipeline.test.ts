@@ -1,8 +1,8 @@
-import { apiService } from '../../ai-model-validation-platform/frontend/src/services/api';
-import { detectionService } from '../../ai-model-validation-platform/frontend/src/services/detectionService';
+import { apiService } from './services/api';
+import { detectionService } from './services/detectionService';
 
 // Mock dependencies
-jest.mock('../../ai-model-validation-platform/frontend/src/services/api');
+jest.mock('./services/api');
 const mockApiService = apiService as jest.Mocked<typeof apiService>;
 
 describe('Video Upload and Detection Pipeline Integration', () => {
@@ -171,21 +171,26 @@ describe('Video Upload and Detection Pipeline Integration', () => {
         (progress) => {
           progressHistory.push(progress);
           
-          // Verify progress is monotonically increasing
-          if (progressHistory.length > 1) {
-            const currentProgress = progressHistory[progressHistory.length - 1];
-            const previousProgress = progressHistory[progressHistory.length - 2];
-            expect(currentProgress).toBeGreaterThanOrEqual(previousProgress);
+          // Validate progress is within valid range (avoid conditional expects)
+          if (progress < 0 || progress > 100) {
+            throw new Error(`Invalid progress value: ${progress}. Must be between 0 and 100.`);
           }
-          
-          // Verify progress is within valid range
-          expect(progress).toBeGreaterThanOrEqual(0);
-          expect(progress).toBeLessThanOrEqual(100);
         }
       );
 
       expect(progressHistory).toEqual(progressSteps);
       expect(uploadResult.fileSize).toBe(mockFile.size);
+      
+      // Verify progress was monotonically increasing after callback completion
+      for (let i = 1; i < progressHistory.length; i++) {
+        expect(progressHistory[i]).toBeGreaterThanOrEqual(progressHistory[i - 1]);
+      }
+      
+      // Verify all progress values are within valid range
+      progressHistory.forEach(progress => {
+        expect(progress).toBeGreaterThanOrEqual(0);
+        expect(progress).toBeLessThanOrEqual(100);
+      });
     });
 
     it('should handle multiple file format uploads', async () => {

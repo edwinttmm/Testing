@@ -81,8 +81,9 @@ describe('Video System Integration Tests', () => {
       // Check video metadata display
       await waitFor(() => {
         expect(screen.getByText(/5\.03/)).toBeInTheDocument(); // Duration
-        expect(screen.getByText(/30/)).toBeInTheDocument(); // Frame rate or FPS reference
       });
+      
+      expect(screen.getByText(/30/)).toBeInTheDocument(); // Frame rate or FPS reference
     });
 
     it('calculates frame numbers correctly', async () => {
@@ -126,8 +127,9 @@ describe('Video System Integration Tests', () => {
       // Should show annotation info
       await waitFor(() => {
         expect(screen.getByText(/pedestrian/i)).toBeInTheDocument();
-        expect(screen.getByText(/cyclist/i)).toBeInTheDocument();
       });
+      
+      expect(screen.getByText(/cyclist/i)).toBeInTheDocument();
     });
 
     it('handles annotation mode correctly', async () => {
@@ -185,9 +187,10 @@ describe('Video System Integration Tests', () => {
       // Check playback rate controls
       await waitFor(() => {
         expect(screen.getByText(/speed/i)).toBeInTheDocument();
-        expect(screen.getByText(/1x/)).toBeInTheDocument();
-        expect(screen.getByText(/2x/)).toBeInTheDocument();
       });
+      
+      expect(screen.getByText(/1x/)).toBeInTheDocument();
+      expect(screen.getByText(/2x/)).toBeInTheDocument();
     });
 
     it('handles video errors gracefully', async () => {

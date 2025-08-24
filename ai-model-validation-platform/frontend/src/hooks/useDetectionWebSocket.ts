@@ -28,7 +28,7 @@ interface UseDetectionWebSocketOptions {
 interface ConnectionState {
   status: 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
   reconnectAttempts: number;
-  lastError?: string;
+  lastError: string | null;
   fallbackActive: boolean;
 }
 
@@ -51,6 +51,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
   const [connectionState, setConnectionState] = useState<ConnectionState>({
     status: 'disconnected',
     reconnectAttempts: 0,
+    lastError: null,
     fallbackActive: false
   });
 
@@ -84,7 +85,6 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
           ...prev,
           status: 'connected',
           reconnectAttempts: 0,
-          lastError: undefined,
           fallbackActive: false
         }));
         
@@ -113,19 +113,26 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         onDisconnect?.();
 
         // Auto-reconnect if enabled and within attempt limits
-        if (autoReconnect && connectionState.reconnectAttempts < maxReconnectAttempts) {
-          const delay = reconnectDelay * Math.pow(1.5, connectionState.reconnectAttempts);
+        if (autoReconnect) {
+          setConnectionState(prev => {
+            if (prev.reconnectAttempts < maxReconnectAttempts) {
+              const delay = reconnectDelay * Math.pow(1.5, prev.reconnectAttempts);
           console.log(`🔄 Reconnecting in ${delay}ms (attempt ${connectionState.reconnectAttempts + 1}/${maxReconnectAttempts})`);
           
-          setConnectionState(prev => ({
-            ...prev,
-            status: 'reconnecting',
-            reconnectAttempts: prev.reconnectAttempts + 1
-          }));
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, delay);
+              console.log(`🔄 Reconnecting in ${delay}ms (attempt ${prev.reconnectAttempts + 1}/${maxReconnectAttempts})`);
+              
+              reconnectTimeoutRef.current = setTimeout(() => {
+                connect();
+              }, delay);
+              
+              return {
+                ...prev,
+                status: 'reconnecting',
+                reconnectAttempts: prev.reconnectAttempts + 1
+              };
+            }
+            return prev;
+          });
         } else if (fallbackPollingInterval > 0) {
           // Start fallback polling
           console.log('🔄 Starting fallback HTTP polling');
@@ -158,7 +165,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         lastError: error instanceof Error ? error.message : 'Unknown error'
       }));
     }
-  }, [url, enabled, autoReconnect, reconnectDelay, maxReconnectAttempts, fallbackPollingInterval, onUpdate, onConnect, onDisconnect, onError, onFallback, connectionState.reconnectAttempts]);
+  }, [url, enabled, autoReconnect, reconnectDelay, maxReconnectAttempts, fallbackPollingInterval, onUpdate, onConnect, onDisconnect, onError, onFallback]);
 
   // Disconnect WebSocket
   const disconnect = useCallback(() => {

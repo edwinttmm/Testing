@@ -87,7 +87,7 @@ interface PlaybackState {
   videoProgress: Record<string, number>;
 }
 
-const EnhancedTestExecution: React.FC = () => {
+const EnhancedTestExecution = () => {
   const [sessions, setSessions] = useState<TestSession[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -227,61 +227,70 @@ const EnhancedTestExecution: React.FC = () => {
   }, [selectedVideos, testConfig.randomOrder]);
 
   const advanceToNextVideo = useCallback(() => {
-    if (!playbackState.isSequentialMode) return;
+    setPlaybackState(prev => {
+      if (!prev.isSequentialMode) return prev;
 
-    const nextIndex = playbackState.currentVideoIndex + 1;
-    
-    if (nextIndex < selectedVideos.length) {
-      const nextVideo = selectedVideos[nextIndex];
-      setPlaybackState(prev => ({
-        ...prev,
-        currentVideoIndex: nextIndex,
-        playingVideo: nextVideo,
-        totalProgress: (nextIndex / selectedVideos.length) * 100,
-      }));
-      showSnackbar(`Advanced to video ${nextIndex + 1} of ${selectedVideos.length}`, 'info');
-    } else if (testConfig.loopPlayback) {
-      // Loop back to first video
-      setPlaybackState(prev => ({
-        ...prev,
-        currentVideoIndex: 0,
-        playingVideo: selectedVideos[0],
-        totalProgress: 0,
-      }));
-      showSnackbar('Looping back to first video', 'info');
-    } else {
-      // End of sequence
-      setPlaybackState(prev => ({
-        ...prev,
-        isSequentialMode: false,
-        totalProgress: 100,
-      }));
-      showSnackbar('Sequential playback completed', 'success');
-    }
-  }, [playbackState, selectedVideos, testConfig.loopPlayback, showSnackbar]);
+      const nextIndex = prev.currentVideoIndex + 1;
+      
+      if (nextIndex < selectedVideos.length) {
+        const nextVideo = selectedVideos[nextIndex];
+        showSnackbar(`Advanced to video ${nextIndex + 1} of ${selectedVideos.length}`, 'info');
+        return {
+          ...prev,
+          currentVideoIndex: nextIndex,
+          playingVideo: nextVideo,
+          totalProgress: (nextIndex / selectedVideos.length) * 100,
+        };
+      } else if (testConfig.loopPlayback) {
+        // Loop back to first video
+        showSnackbar('Looping back to first video', 'info');
+        return {
+          ...prev,
+          currentVideoIndex: 0,
+          playingVideo: selectedVideos[0],
+          totalProgress: 0,
+        };
+      } else {
+        // End of sequence
+        showSnackbar('Sequential playback completed', 'success');
+        return {
+          ...prev,
+          isSequentialMode: false,
+          totalProgress: 100,
+        };
+      }
+    });
+  }, [selectedVideos, testConfig.loopPlayback, showSnackbar]);
 
   const goToPreviousVideo = useCallback(() => {
-    if (!playbackState.isSequentialMode) return;
+    setPlaybackState(prev => {
+      if (!prev.isSequentialMode) return prev;
 
-    const prevIndex = Math.max(0, playbackState.currentVideoIndex - 1);
-    const prevVideo = selectedVideos[prevIndex];
-    
-    setPlaybackState(prev => ({
-      ...prev,
-      currentVideoIndex: prevIndex,
-      playingVideo: prevVideo,
-      totalProgress: (prevIndex / selectedVideos.length) * 100,
-    }));
-    showSnackbar(`Moved to video ${prevIndex + 1} of ${selectedVideos.length}`, 'info');
-  }, [playbackState, selectedVideos, showSnackbar]);
+      const prevIndex = Math.max(0, prev.currentVideoIndex - 1);
+      const prevVideo = selectedVideos[prevIndex];
+      
+      showSnackbar(`Moved to video ${prevIndex + 1} of ${selectedVideos.length}`, 'info');
+      return {
+        ...prev,
+        currentVideoIndex: prevIndex,
+        playingVideo: prevVideo,
+        totalProgress: (prevIndex / selectedVideos.length) * 100,
+      };
+    });
+  }, [selectedVideos, showSnackbar]);
 
   const handleVideoEnd = useCallback(() => {
-    if (testConfig.autoAdvance && playbackState.isSequentialMode) {
-      setTimeout(() => {
-        advanceToNextVideo();
-      }, testConfig.latencyMs);
+    if (testConfig.autoAdvance) {
+      setPlaybackState(prev => {
+        if (prev.isSequentialMode) {
+          setTimeout(() => {
+            advanceToNextVideo();
+          }, testConfig.latencyMs);
+        }
+        return prev;
+      });
     }
-  }, [testConfig.autoAdvance, testConfig.latencyMs, playbackState.isSequentialMode, advanceToNextVideo]);
+  }, [testConfig.autoAdvance, testConfig.latencyMs, advanceToNextVideo]);
 
   // Load projects and start connection monitoring
   useEffect(() => {
@@ -393,7 +402,7 @@ const EnhancedTestExecution: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <FixedGrid container spacing={2} alignItems="center">
-            <FixedGrid item xs={12} sm={6} md={3}>
+            <FixedGrid xs={12} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Project</InputLabel>
                 <Select
@@ -412,7 +421,7 @@ const EnhancedTestExecution: React.FC = () => {
               </FormControl>
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6} md={2}>
+            <FixedGrid xs={12} sm={6} md={2}>
               <TextField
                 label="Latency (ms)"
                 type="number"
@@ -427,7 +436,7 @@ const EnhancedTestExecution: React.FC = () => {
               />
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6} md={2}>
+            <FixedGrid xs={12} sm={6} md={2}>
               <Button
                 variant="outlined"
                 startIcon={<VideoIcon />}
@@ -439,7 +448,7 @@ const EnhancedTestExecution: React.FC = () => {
               </Button>
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6} md={2}>
+            <FixedGrid xs={12} sm={6} md={2}>
               <Button
                 variant="outlined"
                 startIcon={<SpeedIcon />}
@@ -450,7 +459,7 @@ const EnhancedTestExecution: React.FC = () => {
               </Button>
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={12} md={3}>
+            <FixedGrid xs={12} sm={12} md={3}>
               <Stack direction="row" spacing={1}>
                 <Button
                   variant="contained"
@@ -539,7 +548,7 @@ const EnhancedTestExecution: React.FC = () => {
         <DialogTitle>Test Configuration</DialogTitle>
         <DialogContent>
           <FixedGrid container spacing={3} sx={{ mt: 1 }}>
-            <FixedGrid item xs={12} sm={6}>
+            <FixedGrid xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -554,7 +563,7 @@ const EnhancedTestExecution: React.FC = () => {
               />
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6}>
+            <FixedGrid xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -569,7 +578,7 @@ const EnhancedTestExecution: React.FC = () => {
               />
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6}>
+            <FixedGrid xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -584,7 +593,7 @@ const EnhancedTestExecution: React.FC = () => {
               />
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6}>
+            <FixedGrid xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -599,7 +608,7 @@ const EnhancedTestExecution: React.FC = () => {
               />
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6}>
+            <FixedGrid xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -614,7 +623,7 @@ const EnhancedTestExecution: React.FC = () => {
               />
             </FixedGrid>
 
-            <FixedGrid item xs={12} sm={6}>
+            <FixedGrid xs={12} sm={6}>
               <TextField
                 label="Advance Delay (ms)"
                 type="number"

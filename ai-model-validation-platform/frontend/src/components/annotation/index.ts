@@ -125,7 +125,7 @@ export const convertToLabelStudio = (shapes: AnnotationShape[]): LabelStudioAnno
 };
 
 export const convertFromLabelStudio = (annotation: LabelStudioAnnotation): AnnotationShape[] => {
-  return annotation.result.map(region => {
+  return annotation.result.map((region: any) => {
     // Type-safe value extraction
     const value = region.value as any; // temporary for migration
     const x = typeof value.x === 'number' ? value.x : 0;

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Menu,
   MenuItem,
@@ -53,10 +53,10 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const { state, actions } = useAnnotation();
   const [isOpen, setIsOpen] = useState(!!anchorPosition);
 
-  const selectedShapes = actions.getSelectedShapes();
-  const hasSelection = selectedShapes.length > 0;
-  const hasClipboard = state.clipboard.length > 0;
-  const multipleSelected = selectedShapes.length > 1;
+  const selectedShapes = useMemo(() => actions.getSelectedShapes(), [actions]);
+  const hasSelection = useMemo(() => selectedShapes.length > 0, [selectedShapes.length]);
+  const hasClipboard = useMemo(() => state.clipboard.length > 0, [state.clipboard.length]);
+  const multipleSelected = useMemo(() => selectedShapes.length > 1, [selectedShapes.length]);
 
   useEffect(() => {
     setIsOpen(!!anchorPosition);
@@ -217,7 +217,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
         label: 'Edit Shape',
         icon: <Edit />,
         action: handleEdit,
-        disabled: targetShape.locked || false,
+        disabled: targetShape.locked ?? false,
       });
 
       items.push({
@@ -386,7 +386,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
             <MenuItem
               key={item.id}
               onClick={item.action}
-              disabled={item.disabled || false}
+              disabled={item.disabled ?? false}
               sx={{
                 minHeight: 36,
                 '&:hover': !item.disabled ? {

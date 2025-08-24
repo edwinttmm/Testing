@@ -157,6 +157,19 @@ export interface Detection {
   validated: boolean;
   createdAt: string;
   updatedAt?: string;
+  // Additional properties for API compatibility
+  frame?: number;
+  frameNumber?: number;
+  bbox?: BoundingBox;
+  label?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  time?: number;
+  occluded?: boolean;
+  truncated?: boolean;
+  difficult?: boolean;
 }
 
 export interface Annotation {

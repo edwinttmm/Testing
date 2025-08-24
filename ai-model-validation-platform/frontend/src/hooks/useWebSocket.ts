@@ -205,25 +205,31 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     if (!listenersRef.current.has(event)) {
       listenersRef.current.set(event, new Set());
     }
-    listenersRef.current.get(event)!.add(callback);
+    const callbacks = listenersRef.current.get(event);
+    if (callbacks) {
+      callbacks.add(callback as (data: unknown) => void);
+    }
 
     // Add listener to current socket if connected
     if (socketRef.current) {
-      socketRef.current.on(event, callback);
+      socketRef.current.on(event, callback as (data: unknown) => void);
     }
 
     // Return cleanup function
     return () => {
       const callbacks = listenersRef.current.get(event);
       if (callbacks) {
-        callbacks.delete(callback);
+        callbacks.delete(callback as (data: unknown) => void);
+        if (callbacks.size === 0) {
+          listenersRef.current.delete(event);
+        }
         if (callbacks.size === 0) {
           listenersRef.current.delete(event);
         }
       }
       
       if (socketRef.current) {
-        socketRef.current.off(event, callback);
+        socketRef.current.off(event, callback as (data: unknown) => void);
       }
     };
   }, []);

@@ -17,9 +17,9 @@ export const useDebouncedCallback = <T extends (...args: unknown[]) => unknown>(
   callbackRef.current = callback;
 
   return useCallback(
-    debounce((...args: unknown[]) => callbackRef.current(...args), delay),
+    debounce((...args: unknown[]) => callbackRef.current(...args), delay) as unknown as T,
     [delay]
-  ) as T;
+  );
 };
 
 /**
@@ -29,7 +29,7 @@ export const useOptimizedEffect = (
   effect: () => void | (() => void),
   deps: React.DependencyList
 ) => {
-  const cleanupRef = useRef<(() => void) | void>();
+  const cleanupRef = useRef<(() => void) | void>(undefined);
 
   useEffect(() => {
     // Clean up previous effect if needed
@@ -92,7 +92,7 @@ export const useIntersectionObserver = (
   callback: (isIntersecting: boolean) => void,
   options: IntersectionObserverInit = {}
 ) => {
-  const targetRef = useRef<Element | null>(null);
+  const targetRef = useRef<Element>(null);
   
   useEffect(() => {
     const element = targetRef.current;
@@ -128,7 +128,7 @@ export const useVirtualScroll = (
   containerHeight: number,
   buffer: number = 5
 ) => {
-  const scrollTop = useRef(0);
+  const scrollTop = useRef<number>(0);
   
   const visibleItems = useMemo(() => {
     const start = Math.max(0, Math.floor(scrollTop.current / itemHeight) - buffer);

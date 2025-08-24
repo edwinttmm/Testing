@@ -496,8 +496,9 @@ describe('TestExecution Component - London School TDD', () => {
       // Verify state consistency
       await waitFor(() => {
         expect(screen.getByText(/Active Session: Test Session 1/)).toBeInTheDocument();
-        expect(screen.getByText(/Connected and ready/)).toBeInTheDocument();
       });
+      
+      expect(screen.getByText(/Connected and ready/)).toBeInTheDocument();
     });
   });
 });
