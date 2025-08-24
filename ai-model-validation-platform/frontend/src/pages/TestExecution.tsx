@@ -105,7 +105,7 @@ const TestExecution: React.FC = () => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setSnackbarOpen(true);
-  }, []);
+  }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
 
   const updateTestProgress = useCallback((progress: any) => {
     // Update progress indicators
@@ -114,7 +114,7 @@ const TestExecution: React.FC = () => {
 
   const addTestResult = useCallback((result: TestResults) => {
     setTestResults(prev => [...prev, result]);
-  }, []);
+  }, [setTestResults]);
 
   const handleTestCompletion = useCallback((data: any) => {
     setIsRunning(false);

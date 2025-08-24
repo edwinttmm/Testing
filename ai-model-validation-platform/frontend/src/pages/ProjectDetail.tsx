@@ -172,14 +172,19 @@ const ProjectDetail: React.FC = () => {
         
         // Find most recent test
         const sortedSessions = [...completedSessions].sort((a, b) => {
-          const timeA = new Date(a.completedAt || a.createdAt || '').getTime();
-          const timeB = new Date(b.completedAt || b.createdAt || '').getTime();
-          return timeB - timeA;
+          const timeA = a.completedAt || a.createdAt;
+          const timeB = b.completedAt || b.createdAt;
+          const timeAStr = typeof timeA === 'string' ? timeA : timeA?.toISOString?.() || '';
+          const timeBStr = typeof timeB === 'string' ? timeB : timeB?.toISOString?.() || '';
+          return new Date(timeBStr).getTime() - new Date(timeAStr).getTime();
         });
         
         const lastTest = sortedSessions[0];
         const lastTestAccuracy = lastTest?.metrics?.accuracy || null;
-        const lastTestTime = lastTest?.completedAt || lastTest?.createdAt || null;
+        const lastTestTimeRaw = lastTest?.completedAt || lastTest?.createdAt || null;
+        const lastTestTime = typeof lastTestTimeRaw === 'string'
+          ? lastTestTimeRaw
+          : lastTestTimeRaw?.toISOString?.() || null;
         
         setProjectStats({
           totalTests,
@@ -532,7 +537,17 @@ const ProjectDetail: React.FC = () => {
                         {video.detectionCount || 0}
                       </TableCell>
                       <TableCell>
-                        {formatTimeAgo(video.created_at || video.createdAt || video.uploadedAt)}
+                        {formatTimeAgo(
+                          (() => {
+                            const dateValue = video.created_at || video.createdAt || video.uploadedAt;
+                            if (typeof dateValue === 'string') {
+                              return dateValue;
+                            } else if (dateValue && typeof dateValue === 'object' && 'toISOString' in dateValue) {
+                              return (dateValue as Date).toISOString();
+                            }
+                            return null;
+                          })()
+                        )}
                       </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -649,7 +664,14 @@ const ProjectDetail: React.FC = () => {
                         {session.metrics?.totalDetections || 0}
                       </TableCell>
                       <TableCell>
-                        {formatTimeAgo((session.completedAt || session.createdAt) ?? null)}
+                        {formatTimeAgo(
+                          (() => {
+                            const dateValue = session.completedAt || session.createdAt;
+                            return typeof dateValue === 'string'
+                              ? dateValue
+                              : dateValue?.toISOString?.() || null;
+                          })()
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -141,8 +141,12 @@ const Results: React.FC = () => {
             const sessionResults = await apiService.getTestResults(session.id);
             
             // Calculate duration
-            const startTime = session.createdAt ? new Date(session.createdAt).getTime() : Date.now();
-            const endTime = session.completedAt ? new Date(session.completedAt).getTime() : Date.now();
+            const startTimeRaw = session.createdAt;
+            const endTimeRaw = session.completedAt;
+            const startTimeStr = typeof startTimeRaw === 'string' ? startTimeRaw : (startTimeRaw && typeof startTimeRaw === 'object' && 'toISOString' in startTimeRaw ? (startTimeRaw as Date).toISOString() : new Date().toISOString());
+            const endTimeStr = typeof endTimeRaw === 'string' ? endTimeRaw : (endTimeRaw && typeof endTimeRaw === 'object' && 'toISOString' in endTimeRaw ? (endTimeRaw as Date).toISOString() : new Date().toISOString());
+            const startTime = new Date(startTimeStr).getTime();
+            const endTime = new Date(endTimeStr).getTime();
             const durationSeconds = Math.max(Math.floor((endTime - startTime) / 1000), 60);
 
             // Try to get pass/fail result (using mock data for now)
@@ -177,8 +181,8 @@ const Results: React.FC = () => {
               falsePositives: sessionResults.falsePositives || 0,
               falseNegatives: sessionResults.falseNegatives || 0,
               totalDetections: sessionResults.totalDetections || 0,
-              startedAt: session.createdAt || new Date().toISOString(),
-              completedAt: session.completedAt,
+              startedAt: typeof session.createdAt === 'string' ? session.createdAt : (session.createdAt && typeof session.createdAt === 'object' && 'toISOString' in session.createdAt ? (session.createdAt as Date).toISOString() : new Date().toISOString()),
+              completedAt: typeof session.completedAt === 'string' ? session.completedAt : (session.completedAt && typeof session.completedAt === 'object' && 'toISOString' in session.completedAt ? (session.completedAt as Date).toISOString() : undefined),
               duration: durationSeconds,
               passFailResult,
               hasDetailedResults: true,
@@ -199,8 +203,8 @@ const Results: React.FC = () => {
               falsePositives: 0,
               falseNegatives: 0,
               totalDetections: 0,
-              startedAt: session.createdAt || new Date().toISOString(),
-              completedAt: session.completedAt,
+              startedAt: typeof session.createdAt === 'string' ? session.createdAt : (session.createdAt && typeof session.createdAt === 'object' && 'toISOString' in session.createdAt ? (session.createdAt as Date).toISOString() : new Date().toISOString()),
+              completedAt: typeof session.completedAt === 'string' ? session.completedAt : (session.completedAt && typeof session.completedAt === 'object' && 'toISOString' in session.completedAt ? (session.completedAt as Date).toISOString() : undefined),
               duration: 60,
               hasDetailedResults: false,
             };

@@ -23,11 +23,11 @@ export const serializeError = (error: unknown): string => {
     
     // Handle network errors
     if (error && typeof error === 'object') {
-      if ('code' in error && error.code === 'NETWORK_ERROR' || 'name' in error && error.name === 'NetworkError') {
+      if (('code' in error && error.code === 'NETWORK_ERROR') || ('name' in error && error.name === 'NetworkError')) {
         return 'Network connection failed - backend may be offline';
       }
       if ('status' in error && error.status) {
-        const statusText = 'statusText' in error ? error.statusText || 'Unknown error' : 'Unknown error';
+        const statusText = 'statusText' in error ? (error.statusText || 'Unknown error') : 'Unknown error';
         return `HTTP ${error.status}: ${statusText}`;
       }
     }

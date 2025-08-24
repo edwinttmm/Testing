@@ -66,7 +66,7 @@ const Dashboard: React.FC = () => {
       video_count: prevStats.video_count + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely]);
+  }, [updateStatsSafely, setRealtimeUpdates]);
 
   const handleProjectCreated = useCallback((data: Project) => {
     console.log('📁 Project created event received:', data);
@@ -75,7 +75,7 @@ const Dashboard: React.FC = () => {
       project_count: prevStats.project_count + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely]);
+  }, [updateStatsSafely, setRealtimeUpdates]);
 
   const handleTestCompleted = useCallback((data: TestSession) => {
     console.log('🧪 Test completed event received:', data);
@@ -106,7 +106,7 @@ const Dashboard: React.FC = () => {
       active_tests: prevStats.active_tests + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely]);
+  }, [updateStatsSafely, setRealtimeUpdates]);
 
   const handleDetectionEvent = useCallback((data: any) => {
     console.log('🎯 Detection event received:', data);
@@ -130,13 +130,13 @@ const Dashboard: React.FC = () => {
       total_detections: prevStats.total_detections + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely]);
+  }, [updateStatsSafely, setRealtimeUpdates]);
 
   const handleAnnotationValidated = useCallback((data: any) => {
     console.log('✅ Annotation validated event received:', data);
     // Don't increment counts for validation, just update quality metrics
     setRealtimeUpdates(prev => prev + 1);
-  }, []);
+  }, [setRealtimeUpdates]);
 
   const handleSignalProcessed = useCallback((data: any) => {
     console.log('📡 Signal processed event received:', data);
@@ -206,7 +206,11 @@ const Dashboard: React.FC = () => {
       // Handle sessions data
       if (sessionsResult.status === 'fulfilled' && Array.isArray(sessionsResult.value)) {
         const recentSessionsData = sessionsResult.value
-          .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime())
+          .sort((a, b) => {
+            const aTime = new Date(a.createdAt || '').getTime();
+            const bTime = new Date(b.createdAt || '').getTime();
+            return bTime - aTime;
+          })
           .slice(0, 4);
         setRecentSessions(recentSessionsData);
       } else if (sessionsResult.status === 'rejected') {
@@ -257,7 +261,7 @@ const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setLoading, setStats, setRecentSessions, setError]);
 
   // WebSocket subscriptions for real-time updates
   useEffect(() => {
@@ -521,7 +525,17 @@ const Dashboard: React.FC = () => {
                     key={session.id || index}
                     sessionNumber={index + 1}
                     type={session.name || `Test Session ${index + 1}`}
-                    timeAgo={formatTimeAgo(session.createdAt || session.completedAt)}
+                    timeAgo={formatTimeAgo(
+                      (() => {
+                        const dateValue = session.createdAt || session.completedAt;
+                        if (typeof dateValue === 'string') {
+                          return dateValue;
+                        } else if (dateValue instanceof Date) {
+                          return dateValue.toISOString();
+                        }
+                        return null;
+                      })()
+                    )}
                     accuracy={session.metrics?.accuracy || 0}
                   />
                 ))

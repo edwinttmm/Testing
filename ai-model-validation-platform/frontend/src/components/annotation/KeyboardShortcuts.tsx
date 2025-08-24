@@ -307,7 +307,7 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
   const HelpDialog = () => (
     <Dialog
       open={showHelpDialog}
-      onClose={onHelpDialogClose}
+      onClose={onHelpDialogClose || (() => {})}
       maxWidth="md"
       fullWidth
       PaperProps={{ sx: { maxHeight: '80vh' } }}

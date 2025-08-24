@@ -54,15 +54,35 @@ const VideoAnnotationPlayer = React.lazy(() =>
 interface EnhancedVideoAnnotationPlayerProps {
   video: VideoFile;
   annotations: GroundTruthAnnotation[];
+  /** 
+   * @future Feature: Multi-user annotation collaboration
+   * @roadmap Planned for v2.0 - Real-time annotation selection sharing
+   * @see Issue #156: Collaborative annotation editing
+   */
   onAnnotationSelect?: (annotation: GroundTruthAnnotation) => void;
   onTimeUpdate?: (currentTime: number, frameNumber: number) => void;
   onCanvasClick?: (x: number, y: number, frameNumber: number, timestamp: number) => void;
+  /** 
+   * @future Feature: Extended annotation modes (collaborative, review, validation)
+   * @roadmap Planned for v1.5 - Multiple annotation workflows
+   * @see Issue #158: Advanced annotation modes
+   */
   annotationMode: boolean;
+  /** 
+   * @future Feature: Multi-selection and annotation groups
+   * @roadmap Planned for v2.0 - Support multiple selected annotations
+   * @see Issue #159: Multi-annotation selection
+   */
   selectedAnnotation?: GroundTruthAnnotation | null;
   frameRate?: number;
   showDetectionControls?: boolean;
   detectionControlsComponent?: React.ReactNode;
   onAnnotationCreate?: (annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  /** 
+   * @future Feature: Real-time multi-user annotation updates
+   * @roadmap Planned for v2.0 - Live collaborative editing
+   * @see Issue #157: Multi-user annotation synchronization
+   */
   onAnnotationUpdate?: (id: string, updates: Partial<GroundTruthAnnotation>) => void;
   onAnnotationDelete?: (id: string) => void;
 }
@@ -93,11 +113,25 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     clickPoint?: Point;
   } | null>(null);
   
+  /** 
+   * @future Feature: Context-aware help and interactive tutorials
+   * @roadmap Planned for v1.6 - Adaptive help system
+   */
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  /** 
+   * @future Feature: Multi-monitor support and advanced fullscreen modes
+   * @roadmap Planned for v1.8 - Extended fullscreen capabilities
+   * @see Issue #160: Multi-monitor annotation support
+   */
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [videoSettings, setVideoSettings] = useState({
+  /** 
+   * @future Feature: User profiles and persistent settings
+   * @roadmap Planned for v1.7 - User preference synchronization
+   * @see Issue #161: User settings persistence
+   */
+ const [videoSettings, setVideoSettings] = useState({
     quality: '720p',
     playbackRate: 1.0,
     showAnnotations: true,
@@ -105,7 +139,6 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     autoPlay: false,
     enableTooltips: true
   });
-
   // Handle shape creation from canvas
   const handleCanvasClick = useCallback((point: Point, event: MouseEvent) => {
     // Only create shapes when using drawing tools
@@ -121,7 +154,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
         clickPoint: point,
       });
     }
-  }, [state.activeToolId]);
+  }, [state.activeToolId, setContextMenu]);
 
   // Handle shape click
   const handleShapeClick = useCallback((shape: AnnotationShape, event: MouseEvent) => {
@@ -134,7 +167,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
       // Regular click - select shape
       actions.selectShapes([shape.id], event.shiftKey);
     }
-  }, [actions]);
+  }, [actions, setContextMenu]);
 
   // Handle shape changes
   const handleShapeChange = useCallback((shapes: AnnotationShape[]) => {
@@ -191,7 +224,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     } catch (error) {
       console.error('Fullscreen toggle error:', error);
     }
-  }, []);
+  }, [setIsFullscreen]);
 
   // Handle settings change
   const handleSettingsChange = useCallback((key: string, value: any) => {
@@ -201,7 +234,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     if (videoElement && key === 'playbackRate') {
       videoElement.playbackRate = value;
     }
-  }, [videoElement]);
+  }, [videoElement, setVideoSettings]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -396,10 +429,10 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
         fullWidth
       >
         <DialogTitle>Video Player Settings</DialogTitle>
-        <DialogContent>
+ <DialogContent>
           <Grid container spacing={3}>
             {/* Video Quality */}
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth>
                 <InputLabel>Video Quality</InputLabel>
                 <Select
@@ -416,7 +449,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
             </Grid>
             
             {/* Playback Speed */}
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth>
                 <InputLabel>Playback Speed</InputLabel>
                 <Select
@@ -435,18 +468,18 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               </FormControl>
             </Grid>
             
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Divider />
             </Grid>
             
             {/* Annotation Settings */}
-            <Grid item xs={12}>
+            <Grid size={{ xs: 12 }}>
               <Typography variant="h6" gutterBottom>
                 Annotation Display
               </Typography>
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -458,7 +491,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -470,7 +503,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -482,7 +515,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               />
             </Grid>
             
-            <Grid item xs={12} sm={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -536,6 +569,15 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [enhancedMode, setEnhancedMode] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Missing state variables
+  const [videoSettings, setVideoSettings] = useState({
+    quality: '720p',
+    playbackRate: 1.0,
+    showAnnotations: true,
+    showConfidence: true,
+    autoPlay: false,
+    enableTooltips: true,
+  });
 
   // VRU color mapping - moved before usage to fix dependency order
   const getVRUColor = useCallback((vruType: VRUType): string => {
@@ -547,6 +589,72 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
       scooter_rider: '#ff5722',
     };
     return colors[vruType as keyof typeof colors] || '#607d8b';
+  }, []);
+
+  // Missing state variables for video errors
+  const [videoError, setVideoError] = useState<{ type: string; message: string } | null>(null);
+  const [videoLoadError, setVideoLoadError] = useState<boolean>(false);
+
+  // Video event handlers
+  const handleVideoRetry = useCallback(() => {
+    if (videoRef.current) {
+      setVideoError(null);
+      setVideoLoadError(false);
+      videoRef.current.load();
+    }
+  }, []);
+
+  const handleVideoPlay = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(error => {
+        console.error('Play failed:', error);
+        setVideoError({ type: 'playback', message: 'Failed to start video playback' });
+      });
+    }
+  }, []);
+
+  const handleVideoPause = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+  }, []);
+
+  const handleVideoError = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = e.currentTarget;
+    const error = video.error;
+    
+    if (error) {
+      let errorMessage = 'Unknown video error';
+      switch (error.code) {
+        case MediaError.MEDIA_ERR_ABORTED:
+          errorMessage = 'Video playback was aborted';
+          break;
+        case MediaError.MEDIA_ERR_NETWORK:
+          errorMessage = 'Network error occurred while loading video';
+          break;
+        case MediaError.MEDIA_ERR_DECODE:
+          errorMessage = 'Video decoding error';
+          break;
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          errorMessage = 'Video format not supported';
+          break;
+        default:
+          errorMessage = error.message || 'Unknown video error';
+      }
+      
+      setVideoError({ type: 'load', message: errorMessage });
+      setVideoLoadError(true);
+    }
+  }, []);
+
+  const handleVideoLoadStart = useCallback(() => {
+    setVideoError(null);
+    setVideoLoadError(false);
+  }, []);
+
+  const handleVideoCanPlay = useCallback(() => {
+    setVideoError(null);
+    setVideoLoadError(false);
   }, []);
 
   // Convert existing annotations to shapes
@@ -711,6 +819,11 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
               const video = e.currentTarget;
               onTimeUpdate?.(video.currentTime, Math.floor(video.currentTime * frameRate));
             }}
+            onError={handleVideoError}
+            onLoadStart={handleVideoLoadStart}
+            onCanPlay={handleVideoCanPlay}
+            onPlay={handleVideoPlay}
+            onPause={handleVideoPause}
           />
         </AnnotationProvider>
       ) : (
