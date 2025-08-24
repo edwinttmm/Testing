@@ -133,7 +133,8 @@ class DatabaseStartupManager:
             if not checks['tables_exist']:
                 # Full initialization needed
                 logger.info("Running full database initialization...")
-                success = self.db_manager.run_full_initialization()
+                # Use clean_slate=True to handle any existing conflicting objects
+                success = self.db_manager.run_full_initialization(clean_slate=True)
             else:
                 # Migration/update needed
                 logger.info("Running database migration/update...")

@@ -155,21 +155,140 @@ class DatabaseManager:
             self.failed_operations.add("extensions")
             return False
     
+    def cleanup_orphaned_indexes(self) -> bool:
+        """Clean up orphaned indexes that exist without their parent tables"""
+        try:
+            existing_tables = self.get_existing_tables()
+            logger.info(f"Found {len(existing_tables)} existing tables for cleanup check")
+            
+            # Define known table-index mappings from our models
+            table_index_mappings = {
+                'videos': [
+                    'idx_video_project_created', 'idx_video_project_status', 'idx_video_ground_truth_status',
+                    'idx_video_file_path', 'idx_video_duration_fps', 'idx_video_project_ground_truth',
+                    'idx_video_size_resolution'
+                ],
+                'ground_truth_objects': [
+                    'idx_gt_video_timestamp', 'idx_gt_video_class', 'idx_gt_timestamp_class',
+                    'idx_gt_video_frame', 'idx_gt_video_confidence', 'idx_gt_validated_class',
+                    'idx_gt_spatial_bounds', 'idx_gt_video_validated_timestamp'
+                ],
+                'detection_events': [
+                    'idx_detection_session_timestamp', 'idx_detection_session_validation',
+                    'idx_detection_timestamp_confidence', 'idx_detection_frame_class',
+                    'idx_detection_bbox_area', 'idx_detection_session_frame',
+                    'idx_detection_class_confidence', 'idx_detection_vru_validation',
+                    'idx_detection_processing_time', 'idx_detection_model_version',
+                    'idx_detection_spatial_center', 'idx_detection_session_class_timestamp',
+                    'idx_detection_confidence_validation_timestamp'
+                ],
+                'annotations': [
+                    'idx_annotation_video_frame', 'idx_annotation_video_timestamp',
+                    'idx_annotation_video_validated', 'idx_annotation_detection_id',
+                    'idx_annotation_vru_validated', 'idx_annotation_video_vru_frame',
+                    'idx_annotation_annotator_validated', 'idx_annotation_temporal_range',
+                    'idx_annotation_video_annotator_created', 'idx_annotation_vru_timestamp_validated',
+                    'idx_annotation_difficulty_analysis', 'idx_annotation_video_temporal_coverage'
+                ],
+                'test_sessions': [
+                    'idx_testsession_project_status', 'idx_testsession_project_created'
+                ],
+                'video_project_links': [
+                    'idx_video_project_unique', 'idx_video_project_intelligent',
+                    'idx_video_project_created', 'idx_video_assignment_confidence'
+                ],
+                'detection_comparisons': [
+                    'idx_comparison_session_match', 'idx_comparison_iou_temporal',
+                    'idx_comparison_session_ground_truth', 'idx_comparison_session_detection',
+                    'idx_comparison_match_iou', 'idx_comparison_temporal_distance'
+                ],
+                'audit_logs': [
+                    'idx_audit_user_event', 'idx_audit_created_event',
+                    'idx_audit_ip_event_time', 'idx_audit_user_time_range',
+                    'idx_audit_event_data_analysis'
+                ]
+            }
+            
+            orphaned_indexes = []
+            cleaned_count = 0
+            
+            with self.engine.connect() as conn:
+                for table_name, indexes in table_index_mappings.items():
+                    if table_name not in existing_tables:
+                        # Table doesn't exist, check for orphaned indexes
+                        for index_name in indexes:
+                            try:
+                                # Try to drop the index if it exists
+                                if self.is_postgresql:
+                                    drop_sql = f"DROP INDEX IF EXISTS {index_name}"
+                                else:
+                                    drop_sql = f"DROP INDEX IF EXISTS {index_name}"
+                                
+                                if self.dry_run:
+                                    logger.info(f"[DRY RUN] Would drop orphaned index: {index_name}")
+                                else:
+                                    conn.execute(text(drop_sql))
+                                    logger.info(f"🧹 Cleaned orphaned index: {index_name} (table {table_name} missing)")
+                                    cleaned_count += 1
+                                    
+                            except Exception as e:
+                                if "does not exist" not in str(e).lower():
+                                    logger.warning(f"Could not clean index {index_name}: {e}")
+                
+                if not self.dry_run:
+                    conn.commit()
+            
+            logger.info(f"✅ Cleaned {cleaned_count} orphaned indexes")
+            self.successful_operations.add("cleanup_orphaned_indexes")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to cleanup orphaned indexes: {e}")
+            self.failed_operations.add("cleanup_orphaned_indexes")
+            return False
+    
     def create_all_tables(self, force: bool = False) -> bool:
-        """Create all tables from models"""
+        """Create all tables from models with robust conflict handling"""
         try:
             existing_tables = self.get_existing_tables()
             logger.info(f"Found {len(existing_tables)} existing tables: {list(existing_tables)}")
             
-            if not force and existing_tables:
-                logger.info("Tables already exist, using checkfirst=True")
+            # Clean up orphaned indexes first to prevent conflicts
+            logger.info("🧹 Cleaning orphaned indexes before table creation...")
+            self.cleanup_orphaned_indexes()
             
-            # Create all tables
+            if not force and len(existing_tables) >= 11:
+                logger.info("All expected tables already exist, skipping creation")
+                return True
+            
+            # Create all tables with robust error handling
             if self.dry_run:
                 logger.info("[DRY RUN] Would create all tables from metadata")
             else:
                 logger.info("Creating tables from SQLAlchemy metadata...")
-                self.metadata.create_all(bind=self.engine, checkfirst=True)
+                
+                # Use transaction for atomicity
+                with self.engine.begin() as conn:
+                    try:
+                        # Create tables one by one for better error handling
+                        self.metadata.create_all(bind=conn, checkfirst=True)
+                        logger.info("✅ Tables created successfully")
+                    except Exception as table_error:
+                        # Try to handle specific table creation issues
+                        logger.warning(f"Standard table creation had issues: {table_error}")
+                        logger.info("Attempting individual table creation...")
+                        
+                        # Try creating tables individually
+                        for table_name, table in self.metadata.tables.items():
+                            try:
+                                table.create(bind=conn, checkfirst=True)
+                                logger.info(f"✅ Created table: {table_name}")
+                            except Exception as individual_error:
+                                if "already exists" in str(individual_error).lower():
+                                    logger.info(f"ℹ️  Table {table_name} already exists")
+                                else:
+                                    logger.error(f"❌ Failed to create table {table_name}: {individual_error}")
+                                    raise
             
             # Verify table creation
             new_tables = self.get_existing_tables()
@@ -178,7 +297,23 @@ class DatabaseManager:
             if created_tables:
                 logger.info(f"✅ Created {len(created_tables)} new tables: {list(created_tables)}")
             
-            logger.info(f"✅ Total tables in database: {len(new_tables)}")
+            total_tables = len(new_tables)
+            logger.info(f"✅ Total tables in database: {total_tables}")
+            
+            # Ensure we have all expected tables
+            expected_tables = {
+                'projects', 'videos', 'ground_truth_objects', 'detection_events', 
+                'test_sessions', 'annotations', 'annotation_sessions', 
+                'video_project_links', 'test_results', 'detection_comparisons', 'audit_logs'
+            }
+            
+            missing_tables = expected_tables - new_tables
+            if missing_tables:
+                logger.error(f"❌ Missing critical tables: {list(missing_tables)}")
+                self.failed_operations.add("create_tables")
+                return False
+            
+            logger.info(f"✅ All {len(expected_tables)} expected tables verified")
             self.successful_operations.add("create_tables")
             return True
             
@@ -438,17 +573,61 @@ class DatabaseManager:
             self.failed_operations.add("initial_data")
             return False
     
-    def run_full_initialization(self, force: bool = False) -> bool:
+    def drop_all_database_objects(self) -> bool:
+        """Drop all database objects for clean slate initialization"""
+        try:
+            logger.info("🧹 Dropping all database objects for clean initialization...")
+            
+            if self.dry_run:
+                logger.info("[DRY RUN] Would drop all database objects")
+                return True
+            
+            with self.engine.begin() as conn:
+                # Drop all tables and their indexes
+                logger.info("Dropping all tables and indexes...")
+                self.metadata.drop_all(bind=conn)
+                
+                # Additional cleanup for any remaining indexes
+                if self.is_postgresql:
+                    # Get all remaining indexes and drop them
+                    result = conn.execute(text("""
+                        SELECT indexname FROM pg_indexes 
+                        WHERE schemaname = 'public' 
+                        AND indexname LIKE 'idx_%'
+                    """))
+                    
+                    for (index_name,) in result:
+                        try:
+                            conn.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
+                            logger.info(f"🧹 Dropped remaining index: {index_name}")
+                        except Exception:
+                            pass  # Index might already be gone
+            
+            logger.info("✅ Database objects dropped successfully")
+            self.successful_operations.add("drop_all_objects")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to drop database objects: {e}")
+            self.failed_operations.add("drop_all_objects")
+            return False
+    
+    def run_full_initialization(self, force: bool = False, clean_slate: bool = False) -> bool:
         """Run complete database initialization process"""
         logger.info("🚀 Starting comprehensive database initialization...")
         
-        initialization_steps = [
+        initialization_steps = []
+        
+        if clean_slate:
+            initialization_steps.append(("Clean Slate Cleanup", self.drop_all_database_objects))
+        
+        initialization_steps.extend([
             ("Database Connection Test", self.test_connection),
             ("Database Extensions", self.create_database_extensions),
             ("Table Creation", lambda: self.create_all_tables(force=force)),
             ("Index Creation", self.create_critical_indexes),
             ("Initial Data", self.create_initial_data)
-        ]
+        ])
         
         failed_steps = []
         
@@ -550,6 +729,8 @@ def main():
                        help='Check database connectivity and health')
     parser.add_argument('--force', action='store_true',
                        help='Force operations even if tables exist')
+    parser.add_argument('--clean-slate', action='store_true',
+                       help='Drop all existing database objects before initialization')
     parser.add_argument('--dry-run', action='store_true',
                        help='Show what would be done without making changes')
     
@@ -587,7 +768,7 @@ def main():
         
         elif args.init:
             logger.info("🚀 Initializing database...")
-            success = db_manager.run_full_initialization(force=args.force)
+            success = db_manager.run_full_initialization(force=args.force, clean_slate=args.clean_slate)
             sys.exit(0 if success else 1)
         
         elif args.migrate:
