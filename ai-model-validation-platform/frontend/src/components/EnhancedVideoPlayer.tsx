@@ -437,12 +437,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     setIsDetectionRunning(true);
     setScreenshotCount(0);
     onDetectionStart?.();
-  }, [onDetectionStart]);
+  }, [onDetectionStart, setIsDetectionRunning, setScreenshotCount]);
 
   const handleDetectionStop = useCallback(() => {
     setIsDetectionRunning(false);
     onDetectionStop?.();
-  }, [onDetectionStop]);
+  }, [onDetectionStop, setIsDetectionRunning]);
 
   const handleScreenshot = useCallback(() => {
     const videoElement = videoRef.current;
@@ -464,7 +464,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         onScreenshot?.(currentFrame, currentTime);
       }
     }, 'image/jpeg', 0.9);
-  }, [currentFrame, currentTime, onScreenshot]);
+  }, [currentFrame, currentTime, onScreenshot, setScreenshotCount]);
 
   // Setup video event listeners
   // Add detection state effect

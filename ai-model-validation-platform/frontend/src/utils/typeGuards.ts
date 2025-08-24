@@ -341,88 +341,89 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
   }
   
   // ProjectId is required in the interface
-  const projectId = isString(data.projectId) ? data.projectId : '';
+  const projectId = (hasProperty(data, 'projectId') && isString(data.projectId)) ? data.projectId : '';
   
   try {
     const videoFile: VideoFile = {
       id: data.id,
       projectId: projectId,
-      filename: isString(data.filename) ? data.filename : `video_${data.id}.mp4`,
-      originalName: isString(data.originalName) ? data.originalName : 
-                   isString(data.original_name) ? data.original_name : data.id,
-      size: isNumber(data.size) ? data.size : 
-           isNumber(data.fileSize) ? data.fileSize :
-           isNumber(data.file_size) ? data.file_size : 0,
-      url: isString(data.url) ? data.url : '',
-      status: isString(data.status) && 
-             ['uploading', 'processing', 'completed', 'failed'].includes(data.status) 
+      filename: (hasProperty(data, 'filename') && isString(data.filename)) ? data.filename : `video_${data.id}.mp4`,
+      originalName: (hasProperty(data, 'originalName') && isString(data.originalName)) ? data.originalName : 
+                   (hasProperty(data, 'original_name') && isString(data.original_name)) ? data.original_name : data.id,
+      size: (hasProperty(data, 'size') && isNumber(data.size)) ? data.size : 
+           (hasProperty(data, 'fileSize') && isNumber(data.fileSize)) ? data.fileSize :
+           (hasProperty(data, 'file_size') && isNumber(data.file_size)) ? data.file_size : 0,
+      url: (hasProperty(data, 'url') && isString(data.url)) ? data.url : '',
+      status: (hasProperty(data, 'status') && isString(data.status) && 
+             ['uploading', 'processing', 'completed', 'failed'].includes(data.status)) 
              ? data.status as 'uploading' | 'processing' | 'completed' | 'failed'
              : 'uploading',
-      uploadedAt: isString(data.uploadedAt) ? data.uploadedAt : 
-                 isString(data.uploaded_at) ? data.uploaded_at : new Date().toISOString(),
+      uploadedAt: (hasProperty(data, 'uploadedAt') && isString(data.uploadedAt)) ? data.uploadedAt : 
+                 (hasProperty(data, 'uploaded_at') && isString(data.uploaded_at)) ? data.uploaded_at : new Date().toISOString(),
       
       // Optional properties - only set if they have valid values
-      name: isString(data.name) ? data.name : (isString(data.filename) ? data.filename : data.id)
+      name: (hasProperty(data, 'name') && isString(data.name)) ? data.name : 
+            (hasProperty(data, 'filename') && isString(data.filename)) ? data.filename : data.id
     };
 
     // Add optional properties only if they exist and are valid
-    if (isNumber(data.fileSize)) {
+    if (hasProperty(data, 'fileSize') && isNumber(data.fileSize)) {
       videoFile.fileSize = data.fileSize;
     }
-    if (isNumber(data.file_size)) {
+    if (hasProperty(data, 'file_size') && isNumber(data.file_size)) {
       videoFile.file_size = data.file_size;
     }
-    if (isNumber(data.duration)) {
+    if (hasProperty(data, 'duration') && isNumber(data.duration)) {
       videoFile.duration = data.duration;
     }
-    if (isString(data.createdAt)) {
+    if (hasProperty(data, 'createdAt') && isString(data.createdAt)) {
       videoFile.createdAt = data.createdAt;
     }
-    if (isString(data.created_at)) {
+    if (hasProperty(data, 'created_at') && isString(data.created_at)) {
       videoFile.created_at = data.created_at;
     }
-    if (isString(data.processing_status) && 
+    if (hasProperty(data, 'processing_status') && isString(data.processing_status) && 
         ['pending', 'processing', 'completed', 'failed'].includes(data.processing_status)) {
       videoFile.processing_status = data.processing_status as 'pending' | 'processing' | 'completed' | 'failed';
     }
-    if (isString(data.groundTruthStatus) && 
+    if (hasProperty(data, 'groundTruthStatus') && isString(data.groundTruthStatus) && 
         ['pending', 'processing', 'completed', 'failed'].includes(data.groundTruthStatus)) {
       videoFile.groundTruthStatus = data.groundTruthStatus as 'pending' | 'processing' | 'completed' | 'failed';
     }
-    if (data.groundTruthGenerated !== undefined) {
+    if (hasProperty(data, 'groundTruthGenerated') && data.groundTruthGenerated !== undefined) {
       videoFile.groundTruthGenerated = Boolean(data.groundTruthGenerated);
     }
-    if (data.ground_truth_generated !== undefined) {
+    if (hasProperty(data, 'ground_truth_generated') && data.ground_truth_generated !== undefined) {
       videoFile.ground_truth_generated = Boolean(data.ground_truth_generated);
     }
-    if (isNumber(data.detectionCount)) {
+    if (hasProperty(data, 'detectionCount') && isNumber(data.detectionCount)) {
       videoFile.detectionCount = data.detectionCount;
     }
-    if (isNumber(data.width)) {
+    if (hasProperty(data, 'width') && isNumber(data.width)) {
       videoFile.width = data.width;
     }
-    if (isNumber(data.height)) {
+    if (hasProperty(data, 'height') && isNumber(data.height)) {
       videoFile.height = data.height;
     }
-    if (isNumber(data.fps)) {
+    if (hasProperty(data, 'fps') && isNumber(data.fps)) {
       videoFile.fps = data.fps;
     }
-    if (isNumber(data.bitrate)) {
+    if (hasProperty(data, 'bitrate') && isNumber(data.bitrate)) {
       videoFile.bitrate = data.bitrate;
     }
-    if (isString(data.format)) {
+    if (hasProperty(data, 'format') && isString(data.format)) {
       videoFile.format = data.format;
     }
-    if (isString(data.codec)) {
+    if (hasProperty(data, 'codec') && isString(data.codec)) {
       videoFile.codec = data.codec;
     }
-    if (isString(data.thumbnailUrl)) {
+    if (hasProperty(data, 'thumbnailUrl') && isString(data.thumbnailUrl)) {
       videoFile.thumbnailUrl = data.thumbnailUrl;
     }
-    if (isObject(data.metadata)) {
+    if (hasProperty(data, 'metadata') && isObject(data.metadata)) {
       videoFile.metadata = data.metadata;
     }
-    if (isArray(data.annotations)) {
+    if (hasProperty(data, 'annotations') && isArray(data.annotations)) {
       videoFile.annotations = data.annotations as any;
     }
     
