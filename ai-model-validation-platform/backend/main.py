@@ -104,7 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     
     # Setup basic logging first
     try:
-        setup_logging()  # Use basic logging from config.py
+        setup_logging(settings)  # Use basic logging from config.py
         logger = logging.getLogger(__name__)
         logger.info(f"🚀 Starting {settings.app_name} v{settings.app_version}")
         logger.info(f"Environment: {settings.app_environment}")
