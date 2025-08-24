@@ -16,7 +16,7 @@ from functools import wraps
 from collections import defaultdict, deque
 
 from fastapi import FastAPI, Request, Response, HTTPException, status
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 import jwt
