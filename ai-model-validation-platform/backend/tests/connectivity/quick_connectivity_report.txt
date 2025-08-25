@@ -1,0 +1,39 @@
+============================================================
+AI MODEL VALIDATION PLATFORM - QUICK CONNECTIVITY TEST
+============================================================
+Test Time: 2025-08-24T23:20:19.980312
+
+LOCALHOST ENVIRONMENT:
+------------------------------
+Frontend TCP (3000): ✅ (2.46ms)
+Backend TCP (8000): ❌ (Nonems)
+Frontend Http: ✅ 200 (71.07ms)
+
+EXTERNAL ENVIRONMENT:
+------------------------------
+DNS Resolution: ✅ 155.138.239.131 (0.03ms)
+Frontend TCP (3000): ❌ (Nonems)
+Backend TCP (8000): ❌ (Nonems)
+PostgreSQL (5432): 🔒 Blocked
+Redis (6379): 🔒 Blocked
+
+SUMMARY:
+------------------------------
+Localhost Healthy: ❌
+External Healthy: ❌
+Security Issues: 0
+Connectivity Issues: 3
+
+ISSUES FOUND:
+  ❌ Localhost backend not accessible
+  ❌ External frontend not accessible
+  ❌ External backend not accessible
+
+RECOMMENDATIONS:
+  ❌ Fix localhost connectivity issues first
+  ❌ Fix external connectivity issues
+  🔒 Database security is properly configured
+
+============================================================
+End of Quick Connectivity Test Report
+============================================================

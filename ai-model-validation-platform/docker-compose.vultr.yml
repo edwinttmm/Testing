@@ -1,0 +1,401 @@
+version: '3.8'
+
+# Production Vultr Server Deployment Configuration
+# External IP: 155.138.239.131
+# This configuration is optimized for production deployment on Vultr with external access
+
+services:
+  # Nginx Reverse Proxy with SSL
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ai_validation_nginx
+    hostname: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./scripts/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./scripts/nginx/conf.d:/etc/nginx/conf.d
+      - ./scripts/ssl/certs:/etc/nginx/ssl
+      - ./logs/nginx:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - vru_validation_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+
+  # PostgreSQL Database - Production Configuration
+  postgres:
+    image: postgres:15
+    container_name: ai_validation_postgres
+    hostname: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vru_validation}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+      # Production performance settings
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: pg_stat_statements
+      POSTGRES_LOG_STATEMENT: all
+      POSTGRES_LOG_MIN_DURATION_STATEMENT: 1000
+    ports:
+      - "127.0.0.1:5432:5432"  # Only bind to localhost for security
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./logs/postgres:/var/log/postgresql
+    networks:
+      - vru_validation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vru_validation}"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    command: [
+      "postgres",
+      "-c", "max_connections=200",
+      "-c", "shared_buffers=512MB",
+      "-c", "effective_cache_size=1.5GB",
+      "-c", "maintenance_work_mem=128MB",
+      "-c", "checkpoint_completion_target=0.7",
+      "-c", "wal_buffers=16MB",
+      "-c", "default_statistics_target=100",
+      "-c", "random_page_cost=1.1",
+      "-c", "effective_io_concurrency=200",
+      "-c", "work_mem=8MB",
+      "-c", "min_wal_size=2GB",
+      "-c", "max_wal_size=8GB",
+      "-c", "log_destination=stderr,csvlog",
+      "-c", "logging_collector=on",
+      "-c", "log_directory=/var/log/postgresql",
+      "-c", "log_statement=all",
+      "-c", "log_min_duration_statement=1000"
+    ]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+  # Redis for caching and session management - Production
+  redis:
+    image: redis:7-alpine
+    container_name: ai_validation_redis
+    hostname: redis
+    ports:
+      - "127.0.0.1:6379:6379"  # Only bind to localhost for security
+    volumes:
+      - redis_data:/data
+      - ./logs/redis:/var/log/redis
+      - ./scripts/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - vru_validation_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    command: [
+      "redis-server", 
+      "/usr/local/etc/redis/redis.conf",
+      "--requirepass", "${REDIS_PASSWORD}",
+      "--appendonly", "yes",
+      "--appendfsync", "everysec",
+      "--maxmemory", "1gb",
+      "--maxmemory-policy", "allkeys-lru",
+      "--save", "900", "1",
+      "--save", "300", "10",
+      "--save", "60", "10000",
+      "--logfile", "/var/log/redis/redis.log"
+    ]
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # FastAPI Backend - Production Configuration
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: ai_validation_backend
+    hostname: backend
+    ports:
+      - "127.0.0.1:8000:8000"  # Only accessible via nginx proxy
+    environment:
+      # Security
+      - AIVALIDATION_SECRET_KEY=${AIVALIDATION_SECRET_KEY}
+      - AIVALIDATION_APP_ENVIRONMENT=production
+      # Database
+      - AIVALIDATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Redis
+      - AIVALIDATION_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      # API Configuration
+      - AIVALIDATION_API_PORT=8000
+      - AIVALIDATION_API_HOST=0.0.0.0
+      - AIVALIDATION_DOCKER_MODE=true
+      # Production settings
+      - UVICORN_WORKERS=4
+      - UVICORN_WORKER_TIMEOUT=300
+      - LOG_LEVEL=WARNING
+      - ENABLE_CORS=true
+      - ALLOWED_ORIGINS=https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}
+      # Performance
+      - WORKER_CONNECTIONS=1000
+      - MAX_REQUESTS=10000
+      - MAX_REQUESTS_JITTER=1000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vru_validation_network
+    volumes:
+      - ./backend:/app:ro  # Read-only for security
+      - ./models:/app/models:ro
+      - uploaded_videos:/app/uploads
+      - ./logs/backend:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '3.0'
+          memory: 3G
+        reservations:
+          cpus: '1.5'
+          memory: 1.5G
+
+  # React Frontend - Production Build
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: ai_validation_frontend
+    hostname: frontend
+    ports:
+      - "127.0.0.1:3000:80"  # Nginx serves static files on port 80
+    environment:
+      - REACT_APP_API_URL=https://${DOMAIN_NAME}/api
+      - REACT_APP_WS_URL=wss://${DOMAIN_NAME}/ws
+      - REACT_APP_SOCKETIO_URL=https://${DOMAIN_NAME}/socket.io
+      - REACT_APP_VIDEO_BASE_URL=https://${DOMAIN_NAME}/api
+      - REACT_APP_ENVIRONMENT=production
+      - REACT_APP_DEBUG=false
+      - REACT_APP_LOG_LEVEL=error
+      - NODE_ENV=production
+      - GENERATE_SOURCEMAP=false
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - vru_validation_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # CVAT for annotation - Production Configuration
+  cvat_db:
+    image: postgres:15
+    container_name: ai_validation_cvat_db
+    hostname: cvat_db
+    environment:
+      POSTGRES_DB: cvat
+      POSTGRES_USER: cvat_user
+      POSTGRES_PASSWORD: ${CVAT_POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - cvat_db:/var/lib/postgresql/data
+      - ./logs/cvat_db:/var/log/postgresql
+    networks:
+      - vru_validation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cvat_user -d cvat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  cvat:
+    image: openvino/cvat_server:v2.5.0
+    container_name: ai_validation_cvat
+    hostname: cvat
+    restart: unless-stopped
+    depends_on:
+      cvat_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      CVAT_REDIS_HOST: redis
+      CVAT_POSTGRES_HOST: cvat_db
+      CVAT_POSTGRES_USER: cvat_user
+      CVAT_POSTGRES_PASSWORD: ${CVAT_POSTGRES_PASSWORD}
+      CVAT_POSTGRES_DB: cvat
+      DJANGO_MODWSGI_EXTRA_ARGS: ""
+      ALLOWED_HOSTS: "*"
+      CVAT_HOST: ${DOMAIN_NAME}
+      CVAT_SHARE_URL: "Mounted from host directory"
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - vru_validation_network
+    volumes:
+      - cvat_data:/home/django/data
+      - cvat_keys:/home/django/keys
+      - cvat_logs:/home/django/logs
+      - uploaded_videos:/home/django/share
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+  # Monitoring and Logging with Prometheus & Grafana
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai_validation_prometheus
+    hostname: prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./scripts/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - vru_validation_network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ai_validation_grafana
+    hostname: grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./scripts/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./scripts/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=${DOMAIN_NAME}
+      - GF_SERVER_ROOT_URL=https://${DOMAIN_NAME}/grafana/
+    networks:
+      - vru_validation_network
+    restart: unless-stopped
+
+  # Log aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: ai_validation_loki
+    hostname: loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./scripts/monitoring/loki.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    networks:
+      - vru_validation_network
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  # Log shipping
+  promtail:
+    image: grafana/promtail:latest
+    container_name: ai_validation_promtail
+    hostname: promtail
+    volumes:
+      - ./logs:/var/log/host
+      - ./scripts/monitoring/promtail.yml:/etc/promtail/config.yml
+      - /var/log:/var/log/system
+    networks:
+      - vru_validation_network
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploaded_videos:
+  cvat_db:
+  cvat_data:
+  cvat_keys:
+  cvat_logs:
+  nginx_cache:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+networks:
+  vru_validation_network:
+    driver: bridge
+    name: vru_validation_network_prod
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.driver.mtu: "1500"

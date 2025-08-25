@@ -1795,8 +1795,43 @@ async def get_dashboard_stats(
 # Health check endpoints
 @app.get("/health")
 async def health_check():
-    """Basic health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    """Enhanced health check endpoint for Docker container"""
+    try:
+        from health_check import comprehensive_health_check
+        health_data = comprehensive_health_check()
+        
+        # Return appropriate HTTP status based on health
+        if health_data["status"] == "unhealthy":
+            return JSONResponse(
+                status_code=503,
+                content=health_data
+            )
+        elif health_data["status"] == "degraded":
+            return JSONResponse(
+                status_code=200,
+                content=health_data
+            )
+        else:
+            return JSONResponse(
+                status_code=200,
+                content=health_data
+            )
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "message": "Health check system failure",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+
+@app.get("/health/simple")
+async def simple_health_check():
+    """Simple health check that just returns OK - for basic Docker health checks"""
+    return {"status": "ok", "message": "Service is running", "timestamp": datetime.utcnow().isoformat()}
 
 @app.get("/health/database")
 async def database_health_check():

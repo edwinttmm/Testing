@@ -1,0 +1,14 @@
+# Grafana Dashboard Provisioning Configuration
+# AI Model Validation Platform Monitoring
+
+apiVersion: 1
+
+providers:
+  - name: 'default'
+    orgId: 1
+    folder: 'AI Validation Platform'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/grafana/provisioning/dashboards/definitions
