@@ -13,6 +13,10 @@ import {
 import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
+import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
+
+// Apply runtime overrides immediately
+applyRuntimeConfigOverrides();
 
 interface RetryConfig {
   maxRetries: number;
@@ -39,7 +43,10 @@ class EnhancedApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://155.138.239.131:8000';
+    // Apply runtime configuration overrides first
+    applyRuntimeConfigOverrides();
+    this.baseURL = getConfigValue('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+    console.log('🔧 Enhanced API Service using baseURL:', this.baseURL);
     this.pendingRequests = new Map();
     this.requestMetrics = new Map();
     

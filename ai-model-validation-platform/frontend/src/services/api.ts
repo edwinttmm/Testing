@@ -1,5 +1,9 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { AppError } from '../utils/errorTypes';
+import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
+
+// Apply runtime overrides immediately
+applyRuntimeConfigOverrides();
 import {
   Project,
   ProjectCreate,
@@ -45,20 +49,23 @@ class ApiService {
   private api: AxiosInstance;
 
   constructor() {
-    // Get API configuration from environment config manager
+    // Apply runtime configuration overrides first
+    applyRuntimeConfigOverrides();
+    
+    // Get API configuration with runtime override support
+    const baseURL = getConfigValue('REACT_APP_API_URL', 'http://155.138.239.131:8000');
     const apiConfig = getServiceConfig('api');
     
-    if (isDebugEnabled()) {
-      console.log('🔧 API Service initializing with config:', {
-        url: apiConfig.url,
-        timeout: apiConfig.timeout,
-        retryAttempts: apiConfig.retryAttempts,
-        retryDelay: apiConfig.retryDelay
-      });
-    }
+    console.log('🔧 API Service initializing with config:', {
+      baseURL,
+      configUrl: apiConfig.url,
+      timeout: apiConfig.timeout,
+      retryAttempts: apiConfig.retryAttempts,
+      retryDelay: apiConfig.retryDelay
+    });
 
     this.api = axios.create({
-      baseURL: apiConfig.url || 'http://155.138.239.131:8000',
+      baseURL: baseURL,
       timeout: apiConfig.timeout || 30000,
       headers: {
         'Content-Type': 'application/json',
