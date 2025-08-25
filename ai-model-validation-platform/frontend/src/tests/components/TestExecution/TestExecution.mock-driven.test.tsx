@@ -112,7 +112,7 @@ describe('TestExecution Component - London School TDD', () => {
       // Verify Socket.IO client initialization interaction
       await waitFor(() => {
         expect(mockIo).toHaveBeenCalledWith(
-          expect.stringContaining('ws://localhost:8000'),
+          expect.stringContaining('ws://155.138.239.131:8000'),
           expect.objectContaining({
             auth: {
               token: null // No token in localStorage during test

@@ -2,6 +2,10 @@ import React from 'react';
 import { io, Socket } from 'socket.io-client';
 import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
 import { isValidWebSocketData, isConnectionStatus, isObject, isString, safeGet } from '../utils/typeGuards';
+import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
+
+// Apply runtime overrides immediately
+applyRuntimeConfigOverrides();
 
 export interface WebSocketMessage<T = unknown> {
   type: string;
@@ -42,10 +46,16 @@ class WebSocketService {
   private lastError: Error | null = null;
 
   constructor(options: WebSocketServiceOptions = {}) {
-    // Dynamic WebSocket URL detection with fallback
+    // Dynamic WebSocket URL detection with runtime override support
     const getWebSocketUrl = () => {
-      if (options.url || process.env.REACT_APP_WS_URL) {
-        return options.url || process.env.REACT_APP_WS_URL;
+      if (options.url) {
+        return options.url;
+      }
+      
+      // Use runtime-aware config getter
+      const configUrl = getConfigValue('REACT_APP_WS_URL', '');
+      if (configUrl) {
+        return configUrl;
       }
       
       const hostname = window.location.hostname;

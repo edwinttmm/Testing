@@ -22,7 +22,7 @@ describe('End-to-End Detection Workflow', () => {
     originalName: 'test-video.mp4',
     fileSize: 1024000,
     status: 'completed',
-    url: 'http://localhost:8000/uploads/test-video.mp4',
+    url: 'http://155.138.239.131:8000/uploads/test-video.mp4',
     projectId: mockProject.id
   };
 

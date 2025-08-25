@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test Page</title>
+    <script src="/config.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { margin: 5px; padding: 10px 15px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>API Configuration Test</h1>
+    
+    <div id="config-status" class="test-result info">
+        <strong>Runtime Configuration:</strong><br>
+        <div id="config-details"></div>
+    </div>
+    
+    <button onclick="testHealthEndpoint()">Test Health Endpoint</button>
+    <button onclick="testProjectsEndpoint()">Test Projects Endpoint</button>
+    <button onclick="clearResults()">Clear Results</button>
+    
+    <div id="results"></div>
+
+    <script>
+        // Display current configuration
+        function displayConfig() {
+            const configDetails = document.getElementById('config-details');
+            if (window.RUNTIME_CONFIG) {
+                configDetails.innerHTML = Object.entries(window.RUNTIME_CONFIG)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join('<br>');
+            } else {
+                configDetails.innerHTML = 'No runtime config found!';
+            }
+        }
+
+        // Test health endpoint
+        async function testHealthEndpoint() {
+            const resultsDiv = document.getElementById('results');
+            const apiUrl = window.RUNTIME_CONFIG?.REACT_APP_API_URL || 'http://155.138.239.131:8000';
+            
+            try {
+                addResult('Testing health endpoint...', 'info');
+                const response = await fetch(`${apiUrl}/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addResult(`✅ Health check successful! Status: ${data.status}`, 'success');
+                    addResult(`Response: ${JSON.stringify(data, null, 2)}`, 'info');
+                } else {
+                    addResult(`❌ Health check failed: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Health check error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test projects endpoint
+        async function testProjectsEndpoint() {
+            const resultsDiv = document.getElementById('results');
+            const apiUrl = window.RUNTIME_CONFIG?.REACT_APP_API_URL || 'http://155.138.239.131:8000';
+            
+            try {
+                addResult('Testing projects endpoint...', 'info');
+                const response = await fetch(`${apiUrl}/api/projects`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ Projects endpoint successful! Found ${data.length} projects`, 'success');
+                    addResult(`First project: ${JSON.stringify(data[0] || 'No projects', null, 2)}`, 'info');
+                } else {
+                    addResult(`❌ Projects endpoint failed: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Projects endpoint error: ${error.message}`, 'error');
+            }
+        }
+
+        function addResult(message, type) {
+            const resultsDiv = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            resultsDiv.appendChild(div);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        // Initialize
+        displayConfig();
+        
+        // Auto-test on load
+        setTimeout(() => {
+            testHealthEndpoint();
+        }, 1000);
+    </script>
+</body>
+</html>

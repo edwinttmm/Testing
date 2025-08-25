@@ -14,7 +14,7 @@ describe('API Integration - Detection System', () => {
     post: jest.fn(),
     put: jest.fn(),
     delete: jest.fn(),
-    defaults: { baseURL: 'http://localhost:8000', timeout: 30000 },
+    defaults: { baseURL: 'http://155.138.239.131:8000', timeout: 30000 },
     interceptors: {
       request: { use: jest.fn() },
       response: { use: jest.fn() }
@@ -184,8 +184,8 @@ describe('API Integration - Detection System', () => {
       );
 
       // Check URL enhancement
-      expect(result[0].url).toBe('http://localhost:8000/uploads/test-video-1.mp4');
-      expect(result[1].url).toBe('http://localhost:8000/uploads/test-video-2.mp4');
+      expect(result[0].url).toBe('http://155.138.239.131:8000/uploads/test-video-1.mp4');
+      expect(result[1].url).toBe('http://155.138.239.131:8000/uploads/test-video-2.mp4');
       
       // Check status mapping
       expect(result[0].status).toBe('completed');

@@ -1,7 +1,13 @@
 /**
  * Application Configuration
  * Centralized configuration management with environment-specific settings
+ * Enhanced with runtime configuration override support
  */
+
+import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
+
+// Apply runtime overrides immediately
+applyRuntimeConfigOverrides();
 
 export interface AppConfig {
   // API Configuration
@@ -61,10 +67,12 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
   const isDevelopment = env === 'development';
   const isProduction = env === 'production';
   
-  // Determine API base URL
+  // Determine API base URL with runtime override support
   const getApiBaseUrl = (): string => {
-    if (process.env.REACT_APP_API_URL) {
-      return process.env.REACT_APP_API_URL;
+    // Use the runtime-aware config getter
+    const configUrl = getConfigValue('REACT_APP_API_URL', '');
+    if (configUrl) {
+      return configUrl;
     }
     
     // Auto-detect based on current hostname in browser
@@ -84,10 +92,12 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
     return 'http://155.138.239.131:8000';
   };
   
-  // Determine WebSocket URL
+  // Determine WebSocket URL with runtime override support
   const getWebSocketUrl = (): string => {
-    if (process.env.REACT_APP_WS_URL) {
-      return process.env.REACT_APP_WS_URL;
+    // Use the runtime-aware config getter
+    const configUrl = getConfigValue('REACT_APP_WS_URL', '');
+    if (configUrl) {
+      return configUrl;
     }
     
     const apiUrl = getApiBaseUrl();
