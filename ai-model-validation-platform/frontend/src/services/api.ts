@@ -1,9 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { AppError } from '../utils/errorTypes';
+import { AppError, ErrorFactory } from '../utils/errorTypes';
 import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
-
-// Apply runtime overrides immediately
-applyRuntimeConfigOverrides();
 import {
   Project,
   ProjectCreate,
@@ -40,10 +37,12 @@ import {
   safeParams,
   safeExtractErrorData
 } from '../utils/typeGuards';
-import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
+
+// Apply runtime overrides immediately
+applyRuntimeConfigOverrides();
 
 class ApiService {
   private api: AxiosInstance;

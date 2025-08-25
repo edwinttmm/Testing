@@ -31,6 +31,9 @@ structlog==23.2.0
 python-socketio==5.11.0
 python-engineio>=4.8.0
 
+# Caching and Session Management
+redis==5.0.1
+
 # Basic image processing (fallback)
 pillow>=10.0.0
 numpy>=1.24.0
