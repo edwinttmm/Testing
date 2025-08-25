@@ -30,7 +30,7 @@ RUN pip config set global.trusted-host "pypi.org files.pythonhosted.org pypi.pyt
 RUN pip install --upgrade pip setuptools wheel
 
 # Copy requirements first for better Docker layer caching
-COPY requirements-minimal.txt requirements-docker-minimal.txt ./
+COPY backend/requirements-minimal.txt backend/requirements-docker-minimal.txt ./
 
 # Install basic requirements with extended timeout
 RUN pip install --no-cache-dir \
@@ -49,7 +49,7 @@ RUN pip install --no-cache-dir \
     -r requirements-docker-minimal.txt
 
 # Copy application code
-COPY . .
+COPY backend/ .
 
 # Install additional system tools for health checks and orchestration
 RUN apt-get update && apt-get install -y \

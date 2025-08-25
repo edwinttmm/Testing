@@ -53,7 +53,9 @@ services:
 
   # FastAPI Backend
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: ai_validation_backend
     hostname: backend
     ports:
