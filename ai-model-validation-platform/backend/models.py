@@ -248,7 +248,7 @@ class VideoProjectLink(Base):
     __table_args__ = (
         Index('idx_video_project_unique', 'video_id', 'project_id', unique=True),
         Index('idx_video_project_intelligent', 'intelligent_match', 'confidence_score'),  # AI matching
-        Index('idx_video_project_created', 'project_id', 'created_at'),  # Temporal assignment tracking
+        Index('idx_video_project_link_created', 'project_id', 'created_at'),  # Temporal assignment tracking
         Index('idx_video_assignment_confidence', 'confidence_score'),  # Confidence analysis
     )
 
