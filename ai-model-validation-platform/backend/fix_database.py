@@ -62,7 +62,8 @@ def drop_all_objects():
             # Also drop any leftover indexes that might exist
             try:
                 conn.execute(text("DROP INDEX IF EXISTS idx_video_project_created CASCADE"))
-                print("  ✅ Dropped leftover index: idx_video_project_created")
+                conn.execute(text("DROP INDEX IF EXISTS idx_video_project_link_created CASCADE"))
+                print("  ✅ Dropped leftover indexes: idx_video_project_created, idx_video_project_link_created")
             except:
                 pass
             

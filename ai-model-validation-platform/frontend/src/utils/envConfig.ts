@@ -137,17 +137,17 @@ class EnvironmentConfigManager {
         return `${protocol}//${hostname}:8000`;
       }
       
-      // Handle local development
+      // Handle local development - Updated to use external IP
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:8000';
+        return 'http://155.138.239.131:8000';
       }
       
       // Generic fallback
       return `${protocol}//${hostname}:8000`;
     }
     
-    // Server-side rendering fallback
-    return 'http://localhost:8000';
+    // Server-side rendering fallback - Updated to use external IP
+    return 'http://155.138.239.131:8000';
   }
   
   private getDefaultWsUrl(): string {

@@ -51,9 +51,9 @@ class WebSocketService {
       const hostname = window.location.hostname;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       
-      // Development environment (localhost)
+      // Development environment (localhost) - Updated to use external IP
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'ws://localhost:8000';
+        return 'ws://155.138.239.131:8000';
       }
       
       // Handle production server - configurable via environment

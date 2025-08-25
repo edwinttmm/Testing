@@ -195,7 +195,7 @@ class DatabaseManager:
                 ],
                 'video_project_links': [
                     'idx_video_project_unique', 'idx_video_project_intelligent',
-                    'idx_video_project_created', 'idx_video_assignment_confidence'
+                    'idx_video_project_link_created', 'idx_video_assignment_confidence'
                 ],
                 'detection_comparisons': [
                     'idx_comparison_session_match', 'idx_comparison_iou_temporal',
