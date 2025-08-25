@@ -538,8 +538,8 @@ class DatabaseManager:
                     name="Central Store",
                     description="Central repository for uploaded videos awaiting project assignment",
                     camera_model="Various",
-                    camera_view="Mixed",
-                    signal_type="Mixed",
+                    camera_view="Multi-angle",  # Valid enum value for mixed content
+                    signal_type="Network Packet",  # Valid enum value for network-based mixed signals
                     status="Active"
                 )
                 db.add(central_project)

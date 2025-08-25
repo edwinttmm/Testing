@@ -36,6 +36,7 @@ import {
 import { VideoFile, GroundTruthAnnotation, VRUType } from '../../services/types';
 import { AnnotationShape, Point } from './types';
 import { AnnotationProvider, useAnnotation } from './AnnotationManager';
+import { fixVideoUrl } from '../../utils/videoUrlFixer';
 import EnhancedAnnotationCanvas from './EnhancedAnnotationCanvas';
 import AnnotationToolbar from './AnnotationToolbar';
 import KeyboardShortcuts from './KeyboardShortcuts';
@@ -813,7 +814,7 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
           {/* Hidden video element for playback control */}
           <video
             ref={videoRef}
-            src={video.url}
+            src={fixVideoUrl(video.url, video.filename, video.id)}
             style={{ display: 'none' }}
             onTimeUpdate={(e) => {
               const video = e.currentTarget;

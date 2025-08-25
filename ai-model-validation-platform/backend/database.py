@@ -11,12 +11,18 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///./test_database.db"
-)
-
+# Enhanced database configuration with connectivity helper
+try:
+    from database_connectivity_helper import get_enhanced_database_url
+    DATABASE_URL = get_enhanced_database_url()
+    logger.info(f"Using enhanced database URL: {DATABASE_URL.replace('password', '***')}")
+except ImportError:
+    # Fallback to original logic if helper is not available
+    DATABASE_URL = os.getenv(
+        "DATABASE_URL",
+        os.getenv("AIVALIDATION_DATABASE_URL", "sqlite:///./test_database.db")
+    )
+    logger.info("Using fallback database configuration")
 
 # Validate database URL
 if not DATABASE_URL:
@@ -30,7 +36,7 @@ if DATABASE_URL.startswith("sqlite"):
         connect_args={"check_same_thread": False}
     )
 else:
-    # FIXED: Increased connection pool for concurrent load testing
+    # Enhanced connection pool with better error handling for Docker networking
     engine = create_engine(
         DATABASE_URL,
         poolclass=QueuePool,
@@ -41,9 +47,13 @@ else:
         pool_pre_ping=True,  # Verify connections before use
         echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",
         connect_args={
-            "connect_timeout": 60,
+            "connect_timeout": 60,  # Extended connection timeout for Docker networking
             "sslmode": os.getenv("DATABASE_SSLMODE", "prefer"),
-            "application_name": "AI_Model_Validation_Platform"
+            "application_name": "AI_Model_Validation_Platform",
+            # Additional connection parameters for reliability
+            "keepalives_idle": "600",  # Keep connections alive for 10 minutes
+            "keepalives_interval": "30",  # Send keepalive every 30 seconds  
+            "keepalives_count": "3",  # Allow 3 missed keepalives before considering connection dead
         }
     )
 

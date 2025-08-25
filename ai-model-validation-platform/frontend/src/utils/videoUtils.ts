@@ -208,17 +208,24 @@ class VideoUtilsManager {
       console.log('🔧 VideoUtils generateVideoUrl - video object:', video);
     }
     
-    // If video already has a valid URL, use it (relative URLs need baseUrl prefix)
+    // If video already has a URL, check if it needs fixing
     if (video.url) {
-      if (this.isValidUrl(video.url)) {
+      const videoConfig = getServiceConfig('video');
+      
+      // Fix localhost URLs that should use the correct backend URL
+      if (video.url.includes('localhost:8000')) {
+        videoUrl = video.url.replace('http://localhost:8000', videoConfig.baseUrl || '');
+        if (isDebugEnabled()) {
+          console.log('🔧 VideoUtils fixed localhost URL:', video.url, '-> Fixed URL:', videoUrl);
+        }
+      } else if (this.isValidUrl(video.url)) {
         videoUrl = video.url;
         if (isDebugEnabled()) {
           console.log('🔧 VideoUtils using complete URL:', videoUrl);
         }
       } else if (video.url.startsWith('/')) {
         // Handle relative URLs from backend
-        const videoConfig = getServiceConfig('video');
-        videoUrl = `${videoConfig.baseUrl}${video.url}`;
+        videoUrl = `${videoConfig.baseUrl || ''}${video.url}`;
         if (isDebugEnabled()) {
           console.log('🔧 VideoUtils using backend URL:', video.url, '-> Full URL:', videoUrl);
         }
@@ -238,11 +245,11 @@ class VideoUtilsManager {
       
       if (thumbnail) {
         // Generate thumbnail URL
-        videoUrl = `${videoConfig.baseUrl}/thumbnails/${filename}.jpg`;
+        videoUrl = `${videoConfig.baseUrl || ''}/thumbnails/${filename}.jpg`;
       } else {
         // Generate video URL with quality suffix if needed
         const qualitySuffix = quality !== 'medium' ? `_${quality}` : '';
-        videoUrl = `${videoConfig.baseUrl}/uploads/${filename}${qualitySuffix}`;
+        videoUrl = `${videoConfig.baseUrl || ''}/uploads/${filename}${qualitySuffix}`;
       }
     }
     
@@ -356,12 +363,12 @@ class VideoUtilsManager {
         if (isDebugEnabled()) {
           console.log('🔧 VideoUtils config baseUrl:', videoConfig.baseUrl);
         }
-        return `${videoConfig.baseUrl}/uploads/${video.filename}`;
+        return `${videoConfig.baseUrl || ''}/uploads/${video.filename}`;
       },
       // Direct ID access
       () => {
         const videoConfig = getServiceConfig('video');
-        return `${videoConfig.baseUrl}/uploads/${video.id}`;
+        return `${videoConfig.baseUrl || ''}/uploads/${video.id}`;
       }
     ];
     
@@ -457,7 +464,7 @@ class VideoUtilsManager {
     const videoConfig = getServiceConfig('video');
     const filename = video.filename || video.id;
     
-    return `${videoConfig.baseUrl}/posters/${filename}.jpg`;
+    return `${videoConfig.baseUrl || ''}/posters/${filename}.jpg`;
   }
   
   /**

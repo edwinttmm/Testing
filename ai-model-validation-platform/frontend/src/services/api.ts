@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { AppError, ErrorFactory } from '../utils/errorTypes';
 import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
+import { fixVideoObjectUrl } from '../utils/videoUrlFixer';
 import {
   Project,
   ProjectCreate,
@@ -323,47 +324,24 @@ class ApiService {
     }
     
     const videoObj = { ...convertedVideo };
-    console.log('🚨 enhanceVideoData called for video:', { 
-      id: videoObj.id, 
-      filename: videoObj.filename, 
-      originalUrl: videoObj.url
-    });
-    
-    if (videoObj.filename || videoObj.id) {
-      const videoConfig = getServiceConfig('video');
-      
-      console.log('🚨 enhanceVideoData - Video config baseUrl:', videoConfig.baseUrl);
-      console.log('🚨 enhanceVideoData - Original video URL:', videoObj.url);
-      console.log('🚨 enhanceVideoData - Video filename:', videoObj.filename);
-      console.log('🚨 enhanceVideoData - Video ID:', videoObj.id);
-      
-      // Convert relative URLs to absolute URLs
-      if (isString(videoObj.url) && videoObj.url.startsWith('/')) {
-        console.log('🚨 enhanceVideoData - Converting relative URL to absolute');
-        const videoConfig = getServiceConfig('video');
-        videoObj.url = `${videoConfig.baseUrl}${videoObj.url}`;
-        console.log('🚨 enhanceVideoData - Enhanced video URL:', videoObj.url, 'from relative path');
-      } else if (!videoObj.url || videoObj.url === '') {
-        console.log('🚨 enhanceVideoData - URL missing or empty, constructing from filename');
-        // If URL is missing or empty, try to construct from backend base URL and filename
-        if (isString(videoObj.filename) && videoObj.filename.trim()) {
-          const videoConfig = getServiceConfig('video');
-          videoObj.url = `${videoConfig.baseUrl}/uploads/${videoObj.filename}`;
-          console.log('🚨 enhanceVideoData - Constructed video URL from filename:', videoObj.url);
-        } else {
-          console.warn('🚨 enhanceVideoData - Video object is missing both URL and filename. ID:', videoObj.id);
-          videoObj.url = '';
-        }
-      } else {
-        console.log('🚨 enhanceVideoData - Video URL already absolute:', videoObj.url);
-      }
+    if (isDebugEnabled()) {
+      console.log('🚨 enhanceVideoData called for video:', { 
+        id: videoObj.id, 
+        filename: videoObj.filename, 
+        originalUrl: videoObj.url
+      });
     }
     
-    console.log('🚨 enhanceVideoData - Final enhanced video:', { 
-      id: videoObj.id, 
-      filename: videoObj.filename, 
-      finalUrl: videoObj.url
-    });
+    // Use the video URL fixer utility to ensure proper URL construction
+    fixVideoObjectUrl(videoObj, { debug: isDebugEnabled() });
+    
+    if (isDebugEnabled()) {
+      console.log('🚨 enhanceVideoData - Final enhanced video:', { 
+        id: videoObj.id, 
+        filename: videoObj.filename, 
+        finalUrl: videoObj.url
+      });
+    }
     
     return videoObj;
   }

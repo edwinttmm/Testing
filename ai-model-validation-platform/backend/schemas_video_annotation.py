@@ -67,18 +67,22 @@ class BoundingBox(BaseModel):
 
 class AnnotationCreate(BaseModel):
     """Schema for creating new annotations"""
-    detection_id: Optional[str] = Field(None, description="Detection ID for tracking")
-    frame_number: int = Field(..., ge=0, description="Frame number in video")
+    video_id: str = Field(alias="videoId", description="Video ID - REQUIRED for validation")
+    detection_id: Optional[str] = Field(None, alias="detectionId", description="Detection ID for tracking")
+    frame_number: int = Field(..., ge=0, alias="frameNumber", description="Frame number in video")
     timestamp: float = Field(..., ge=0, description="Timestamp in seconds")
-    end_timestamp: Optional[float] = Field(None, ge=0, description="End timestamp for temporal annotations")
-    vru_type: VRUTypeEnum = Field(..., description="Type of vulnerable road user")
-    bounding_box: BoundingBox = Field(..., description="Bounding box coordinates")
+    end_timestamp: Optional[float] = Field(None, ge=0, alias="endTimestamp", description="End timestamp for temporal annotations")
+    vru_type: VRUTypeEnum = Field(..., alias="vruType", description="Type of vulnerable road user")
+    bounding_box: BoundingBox = Field(..., alias="boundingBox", description="Bounding box coordinates")
     occluded: bool = Field(False, description="Whether object is occluded")
     truncated: bool = Field(False, description="Whether object is truncated")
     difficult: bool = Field(False, description="Whether detection is difficult")
     notes: Optional[str] = Field(None, max_length=1000, description="Additional notes")
     annotator: Optional[str] = Field(None, description="Annotator identifier")
     validated: bool = Field(False, description="Whether annotation is validated")
+    
+    class Config:
+        populate_by_name = True
 
     @validator('end_timestamp')
     def validate_end_timestamp(cls, v, values):
