@@ -43,6 +43,7 @@ import {
   getVideoErrorMessage,
   isVideoReady,
 } from '../utils/videoUtils';
+import { fixVideoUrl } from '../utils/videoUrlFixer';
 
 interface EnhancedVideoPlayerProps {
   video: VideoFile;
@@ -130,11 +131,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       setError(null);
       setBuffering(true);
 
-      // Use only the video.url prop - no fallback to filename
-      if (!video.url) {
+      // Use the video URL, ensuring it's properly formatted
+      const videoUrl = fixVideoUrl(video.url, video.filename, video.id, { debug: true });
+      if (!videoUrl) {
         throw new Error('Video URL is not available');
       }
-      await setVideoSource(videoElement, video.url);
+      await setVideoSource(videoElement, videoUrl);
       
       setLoading(false);
       setBuffering(false);
@@ -151,7 +153,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       setBuffering(false);
       setIsPlaying(false);
     }
-  }, [video.url]);
+  }, [video.url, video.filename, video.id]);
 
   // Define handleVideoError after initializeVideo to avoid circular dependency
   const handleVideoError = useCallback((err: Error, type: PlaybackError['type'] = 'unknown') => {
@@ -684,7 +686,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
               <strong>File:</strong> {video.filename || video.name || 'Unknown'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              <strong>Source:</strong> {video.url}
+              <strong>Source:</strong> {fixVideoUrl(video.url, video.filename, video.id)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               <strong>Status:</strong> {video.status || 'Unknown'}

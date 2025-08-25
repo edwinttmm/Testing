@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import { VideoFile, GroundTruthAnnotation } from '../services/types';
+import { fixVideoUrl } from '../utils/videoUrlFixer';
 
 interface VideoAnnotationPlayerProps {
   video: VideoFile;
@@ -64,7 +65,7 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         borderRadius: 1
       }}>
         <video
-          src={video.url}
+          src={fixVideoUrl(video.url, video.filename, video.id)}
           controls
           style={{ maxWidth: '100%', maxHeight: '100%' }}
           onTimeUpdate={(e) => {

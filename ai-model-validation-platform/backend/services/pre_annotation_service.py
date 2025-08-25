@@ -176,6 +176,7 @@ class PreAnnotationService:
                         
                         # Create annotation
                         annotation_data = AnnotationCreate(
+                            video_id=video_id,  # CRITICAL: Include video_id field
                             frame_number=frame_number,
                             timestamp=timestamp,
                             vru_type=vru_type,
@@ -273,6 +274,7 @@ class PreAnnotationService:
             )
             
             annotation_data = AnnotationCreate(
+                video_id=video_id,  # CRITICAL: Include video_id field
                 frame_number=frame_number,
                 timestamp=timestamp,
                 vru_type=VRUTypeEnum.PEDESTRIAN,

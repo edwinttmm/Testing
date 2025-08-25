@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { VideoFile, GroundTruthAnnotation } from '../services/types';
 import VideoPlaybackManager, { VideoPlaybackState } from '../utils/videoPlaybackManager';
+import { fixVideoUrl } from '../utils/videoUrlFixer';
 
 interface AccessibleVideoPlayerProps {
   video: VideoFile;
@@ -126,11 +127,12 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
 
   // Load video when URL changes
   useEffect(() => {
-    if (!video.url || !playbackManager.current) return;
+    const videoUrl = fixVideoUrl(video.url, video.filename, video.id);
+    if (!videoUrl || !playbackManager.current) return;
 
     const loadVideo = async () => {
       try {
-        await playbackManager.current!.loadVideo(video.url!);
+        await playbackManager.current!.loadVideo(videoUrl);
         announce(`Video loaded: ${video.filename || video.name}`);
         
         // Update video dimensions
@@ -147,7 +149,7 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
     };
 
     loadVideo();
-  }, [video.url, video.filename, video.name]);
+  }, [video.url, video.filename, video.id, video.name]);
 
   // Accessibility announcements
   const announce = (message: string) => {
@@ -332,7 +334,10 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
                 <Button 
                   color="inherit" 
                   size="small" 
-                  onClick={() => playbackManager.current?.loadVideo(video.url!)}
+                  onClick={() => {
+                    const videoUrl = fixVideoUrl(video.url, video.filename, video.id);
+                    if (videoUrl) playbackManager.current?.loadVideo(videoUrl);
+                  }}
                   startIcon={<Refresh />}
                   aria-label="Retry loading video"
                 >
