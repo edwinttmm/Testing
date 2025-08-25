@@ -73,9 +73,9 @@ services:
       - AIVALIDATION_API_PORT=8000
       - AIVALIDATION_API_HOST=0.0.0.0
       - AIVALIDATION_APP_ENVIRONMENT=${APP_ENV:-development}
-      # CORS Configuration for External IP Access
-      - AIVALIDATION_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000
-      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000
+      # CORS Configuration for External IP Access (JSON format required)
+      - AIVALIDATION_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://155.138.239.131:3000"]
+      - ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://155.138.239.131:3000"]
       # Legacy support
       - API_PORT=8000
       # Docker configuration
