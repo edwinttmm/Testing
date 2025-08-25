@@ -1,0 +1,68 @@
+{
+  "timestamp": "2025-08-24T23:20:19.980312",
+  "localhost": {
+    "frontend_tcp": {
+      "host": "127.0.0.1",
+      "port": 3000,
+      "success": true,
+      "connection_time": 2.46,
+      "error": null
+    },
+    "backend_tcp": {
+      "host": "127.0.0.1",
+      "port": 8000,
+      "success": false,
+      "connection_time": null,
+      "error": "[Errno 111] Connection refused"
+    },
+    "frontend_http": {
+      "url": "http://127.0.0.1:3000/",
+      "success": true,
+      "status_code": 200,
+      "response_time": 71.07,
+      "error": null
+    }
+  },
+  "external": {
+    "dns_resolution": {
+      "hostname": "155.138.239.131",
+      "success": true,
+      "ip_address": "155.138.239.131",
+      "resolution_time": 0.03,
+      "error": null
+    },
+    "frontend_tcp": {
+      "host": "155.138.239.131",
+      "port": 3000,
+      "success": false,
+      "connection_time": null,
+      "error": "timed out"
+    },
+    "backend_tcp": {
+      "host": "155.138.239.131",
+      "port": 8000,
+      "success": false,
+      "connection_time": null,
+      "error": "timed out"
+    },
+    "database_security": {
+      "postgres_5432_blocked": true,
+      "redis_6379_blocked": true
+    }
+  },
+  "summary": {
+    "localhost_healthy": false,
+    "external_healthy": false,
+    "security_issues": [],
+    "connectivity_issues": [
+      "Localhost backend not accessible",
+      "External frontend not accessible",
+      "External backend not accessible"
+    ],
+    "recommendations": [
+      "\u274c Fix localhost connectivity issues first",
+      "\u274c Fix external connectivity issues",
+      "\ud83d\udd12 Database security is properly configured"
+    ]
+  }
+}

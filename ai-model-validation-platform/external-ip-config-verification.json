@@ -1,0 +1,160 @@
+{
+  "external_ip": "155.138.239.131",
+  "timestamp": "/home/user/Testing/ai-model-validation-platform",
+  "files_checked": [
+    {
+      "file": "backend/.env",
+      "exists": true,
+      "issues": [],
+      "cors_check": {
+        "file": "backend/.env",
+        "has_external_ip_config": true,
+        "has_localhost_config": true,
+        "cors_configs_found": 3,
+        "issues": [],
+        "configs": [
+          "CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "AIVALIDATION_CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "ALLOWED_ORIGINS.*155\\.138\\.239\\.131"
+        ]
+      }
+    },
+    {
+      "file": "backend/.env.production",
+      "exists": true,
+      "issues": [],
+      "cors_check": {
+        "file": "backend/.env.production",
+        "has_external_ip_config": true,
+        "has_localhost_config": true,
+        "cors_configs_found": 3,
+        "issues": [],
+        "configs": [
+          "CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "AIVALIDATION_CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "ALLOWED_ORIGINS.*155\\.138\\.239\\.131"
+        ]
+      }
+    },
+    {
+      "file": "frontend/.env",
+      "exists": true,
+      "issues": [],
+      "cors_check": {
+        "file": "frontend/.env",
+        "has_external_ip_config": true,
+        "has_localhost_config": false,
+        "cors_configs_found": 0,
+        "issues": [
+          "No CORS configuration found for 155.138.239.131"
+        ],
+        "configs": []
+      },
+      "api_check": {
+        "file": "frontend/.env",
+        "has_external_ip_urls": true,
+        "has_localhost_urls": false,
+        "urls_found": 4,
+        "issues": [],
+        "urls": [
+          "REACT_APP_API_URL=http://155.138.239.131",
+          "REACT_APP_WS_URL=ws://155.138.239.131",
+          "REACT_APP_SOCKETIO_URL=http://155.138.239.131",
+          "REACT_APP_VIDEO_BASE_URL=http://155.138.239.131"
+        ]
+      }
+    },
+    {
+      "file": "frontend/.env.production",
+      "exists": true,
+      "issues": [],
+      "cors_check": {
+        "file": "frontend/.env.production",
+        "has_external_ip_config": true,
+        "has_localhost_config": false,
+        "cors_configs_found": 0,
+        "issues": [
+          "No CORS configuration found for 155.138.239.131"
+        ],
+        "configs": []
+      },
+      "api_check": {
+        "file": "frontend/.env.production",
+        "has_external_ip_urls": true,
+        "has_localhost_urls": false,
+        "urls_found": 4,
+        "issues": [],
+        "urls": [
+          "REACT_APP_API_URL=http://155.138.239.131",
+          "REACT_APP_WS_URL=ws://155.138.239.131",
+          "REACT_APP_SOCKETIO_URL=http://155.138.239.131",
+          "REACT_APP_VIDEO_BASE_URL=http://155.138.239.131"
+        ]
+      }
+    },
+    {
+      "file": ".env.production",
+      "exists": true,
+      "issues": [],
+      "cors_check": {
+        "file": ".env.production",
+        "has_external_ip_config": true,
+        "has_localhost_config": true,
+        "cors_configs_found": 3,
+        "issues": [],
+        "configs": [
+          "CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "AIVALIDATION_CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "ALLOWED_ORIGINS.*155\\.138\\.239\\.131"
+        ]
+      }
+    },
+    {
+      "file": "docker-compose.yml",
+      "exists": true,
+      "issues": [],
+      "cors_check": {
+        "file": "docker-compose.yml",
+        "has_external_ip_config": true,
+        "has_localhost_config": true,
+        "cors_configs_found": 3,
+        "issues": [],
+        "configs": [
+          "CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "AIVALIDATION_CORS_ORIGINS.*155\\.138\\.239\\.131",
+          "ALLOWED_ORIGINS.*155\\.138\\.239\\.131"
+        ]
+      },
+      "api_check": {
+        "file": "docker-compose.yml",
+        "has_external_ip_urls": true,
+        "has_localhost_urls": true,
+        "urls_found": 4,
+        "issues": [],
+        "urls": [
+          "REACT_APP_API_URL=http://155.138.239.131",
+          "REACT_APP_WS_URL=ws://155.138.239.131",
+          "REACT_APP_SOCKETIO_URL=http://155.138.239.131",
+          "REACT_APP_VIDEO_BASE_URL=http://155.138.239.131"
+        ]
+      }
+    }
+  ],
+  "issues_found": [
+    "No CORS configuration found for 155.138.239.131",
+    "No CORS configuration found for 155.138.239.131"
+  ],
+  "recommendations": [
+    "Ensure all .env files include CORS origins for 155.138.239.131",
+    "Update API URLs to use external IP address",
+    "Verify Docker Compose binds to 0.0.0.0 for external access",
+    "Test CORS headers with external IP origins",
+    "Check firewall settings on server"
+  ],
+  "docker_compose": {
+    "has_external_ip_in_environment": true,
+    "has_cors_origins": true,
+    "binds_to_all_interfaces": true,
+    "issues": []
+  }
+}

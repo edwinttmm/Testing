@@ -51,6 +51,18 @@ RUN pip install --no-cache-dir \
 # Copy application code
 COPY . .
 
+# Install additional system tools for health checks and orchestration
+RUN apt-get update && apt-get install -y \
+    netcat-traditional \
+    curl \
+    postgresql-client \
+    redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and set up orchestration scripts
+COPY scripts/wait-for-services.sh /app/scripts/wait-for-services.sh
+RUN chmod +x /app/scripts/wait-for-services.sh
+
 # Install ML dependencies with extended timeout and better error handling
 ENV PIP_TRUSTED_HOST="pypi.org pypi.python.org files.pythonhosted.org download.pytorch.org"
 ENV PIP_DEFAULT_TIMEOUT=600
@@ -75,4 +87,5 @@ RUN python auto_install_ml.py || \
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:socketio_app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command with health check
+CMD ["/app/scripts/wait-for-services.sh", "uvicorn", "main:socketio_app", "--host", "0.0.0.0", "--port", "8000"]

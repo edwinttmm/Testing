@@ -1,0 +1,248 @@
+# Promtail Configuration for AI Model Validation Platform
+# Log shipping configuration for Vultr production deployment
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Docker container logs
+  - job_name: docker-containers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker-logs
+          __path__: /var/log/host/**/*.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(?P<level>\w+)\s+(?P<message>.*)'
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # Application logs
+  - job_name: ai-validation-backend
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: backend
+          service: ai-validation
+          component: backend
+          __path__: /var/log/host/backend/*.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(?P<milliseconds>\d{3}) - (?P<level>\w+) - (?P<logger>[\w\.]+) - (?P<message>.*)'
+      - labels:
+          level:
+          logger:
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+      - output:
+          source: message
+
+  - job_name: ai-validation-frontend
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: frontend
+          service: ai-validation
+          component: frontend
+          __path__: /var/log/host/frontend/*.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z) (?P<level>\w+) (?P<message>.*)'
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # Database logs
+  - job_name: postgres
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: postgres
+          service: ai-validation
+          component: database
+          __path__: /var/log/host/postgres/*.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) \[(?P<pid>\d+)\] (?P<level>\w+): (?P<message>.*)'
+      - labels:
+          level:
+          pid:
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05.000 MST'
+
+  - job_name: redis
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: redis
+          service: ai-validation
+          component: cache
+          __path__: /var/log/host/redis/*.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<pid>\d+):(?P<role>\w) (?P<timestamp>\d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2}\.\d{3}) (?P<level>[*#-]) (?P<message>.*)'
+      - labels:
+          level:
+          role:
+          pid:
+      - timestamp:
+          source: timestamp
+          format: '02 Jan 2006 15:04:05.000'
+
+  # Nginx access logs
+  - job_name: nginx-access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx-access
+          service: ai-validation
+          component: proxy
+          __path__: /var/log/host/nginx/access.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<remote_addr>[\d\.]+) - (?P<remote_user>\S+) \[(?P<timestamp>[^\]]+)\] "(?P<method>\w+) (?P<path>[^"]*) (?P<protocol>[^"]*)" (?P<status>\d+) (?P<bytes_sent>\d+) "(?P<referer>[^"]*)" "(?P<user_agent>[^"]*)" "(?P<forwarded_for>[^"]*)" rt=(?P<request_time>[\d\.]+) uct="(?P<upstream_connect_time>[\d\.-]*)" uht="(?P<upstream_header_time>[\d\.-]*)" urt="(?P<upstream_response_time>[\d\.-]*)"'
+      - labels:
+          method:
+          status:
+          remote_addr:
+      - timestamp:
+          source: timestamp
+          format: '02/Jan/2006:15:04:05 -0700'
+
+  # Nginx error logs
+  - job_name: nginx-error
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx-error
+          service: ai-validation
+          component: proxy
+          __path__: /var/log/host/nginx/error.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\] (?P<pid>\d+)#(?P<tid>\d+): (?P<message>.*)'
+      - labels:
+          level:
+          pid:
+      - timestamp:
+          source: timestamp
+          format: '2006/01/02 15:04:05'
+
+  # System logs
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          service: system
+          __path__: /var/log/system/syslog
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\w{3} \d{1,2} \d{2}:\d{2}:\d{2}) (?P<hostname>\S+) (?P<process>\S+)(?:\[(?P<pid>\d+)\])?: (?P<message>.*)'
+      - labels:
+          hostname:
+          process:
+          pid:
+      - timestamp:
+          source: timestamp
+          format: 'Jan 2 15:04:05'
+
+  # Security logs
+  - job_name: auth-log
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: auth
+          service: system
+          component: security
+          __path__: /var/log/system/auth.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\w{3} \d{1,2} \d{2}:\d{2}:\d{2}) (?P<hostname>\S+) (?P<process>\S+)(?:\[(?P<pid>\d+)\])?: (?P<message>.*)'
+      - labels:
+          hostname:
+          process:
+          pid:
+      - timestamp:
+          source: timestamp
+          format: 'Jan 2 15:04:05'
+
+  # CVAT logs
+  - job_name: cvat
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: cvat
+          service: ai-validation
+          component: annotation
+          __path__: /var/log/host/cvat/*.log
+    pipeline_stages:
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(?P<milliseconds>\d{3}) (?P<level>\w+) (?P<logger>[\w\.]+) (?P<message>.*)'
+      - labels:
+          level:
+          logger:
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+
+  # Custom application metrics logs
+  - job_name: ai-validation-metrics
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: metrics
+          service: ai-validation
+          component: monitoring
+          __path__: /var/log/host/backend/metrics.log
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            message: message
+            metric_name: metric_name
+            metric_value: metric_value
+            labels: labels
+      - labels:
+          level:
+          metric_name:
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+
+# Global configuration
+global:
+  scrape_timeout: 10s
+
+# Limits configuration
+limits_config:
+  readline_rate: 10000
+  readline_burst: 20000
