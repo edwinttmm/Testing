@@ -58,7 +58,7 @@ export function fixVideoUrl(
   
   // Fix localhost URLs
   if (url.includes('localhost:8000')) {
-    const fixedUrl = url.replace('http://localhost:8000', videoConfig.baseUrl || '');
+    const fixedUrl = url.replace('http://localhost:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000');
     if (debug) {
       console.log('🔧 fixVideoUrl fixed localhost:', url, '->', fixedUrl);
     }

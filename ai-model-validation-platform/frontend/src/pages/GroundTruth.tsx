@@ -1531,13 +1531,15 @@ const GroundTruth: React.FC = () => {
                       </Tooltip>
                     )}
                     <Tooltip title="Process Video">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleProcessVideo(video)}
-                        disabled={video.status !== 'completed' || isDetectionRunning}
-                      >
-                        <PlayArrow />
-                      </IconButton>
+                      <span> {/* Span wrapper needed for disabled button tooltips */}
+                        <IconButton
+                          size="small"
+                          onClick={() => handleProcessVideo(video)}
+                          disabled={video.status !== 'completed' || isDetectionRunning}
+                        >
+                          <PlayArrow />
+                        </IconButton>
+                      </span>
                     </Tooltip>
                     <Tooltip title="View Details">
                       <IconButton 

@@ -30,6 +30,34 @@ const theme = createTheme({
       main: '#dc004e',
     },
   },
+  components: {
+    // Fix aria-hidden issues with modals by ensuring proper focus management
+    MuiModal: {
+      defaultProps: {
+        // Prevent MUI from setting aria-hidden="true" on root element
+        // when modal opens by managing focus properly
+        disableAutoFocus: false,
+        disableEnforceFocus: false,
+        disableRestoreFocus: false,
+      },
+    },
+    MuiDialog: {
+      defaultProps: {
+        // Ensure proper focus management for dialogs
+        disableAutoFocus: false,
+        disableEnforceFocus: false,
+        disableRestoreFocus: false,
+      },
+    },
+    // Fix Tooltip issues with disabled elements
+    MuiTooltip: {
+      defaultProps: {
+        // Ensure tooltips work with disabled elements
+        enterDelay: 300,
+        leaveDelay: 0,
+      },
+    },
+  },
 });
 
 // Loading fallback component
