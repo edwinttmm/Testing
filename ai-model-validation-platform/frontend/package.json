@@ -66,6 +66,10 @@
     "sparc:tdd": "npm run test:coverage && npm run build",
     "gpu:detect": "node -e \"console.log(require('./src/utils/gpu-detection.js').detectGPU())\" || echo 'CPU-only mode'",
     "postinstall": "npm run gpu:detect",
+    "validate:quick": "./tests/validation/test-runner.sh --quick",
+    "validate:full": "./tests/validation/test-runner.sh --full",
+    "validate:coverage": "./tests/validation/test-runner.sh --full --coverage",
+    "validate:deploy": "./tests/validation/test-runner.sh --full --coverage",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

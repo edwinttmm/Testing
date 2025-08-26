@@ -87,6 +87,7 @@ from services.project_management_service import ProjectManager as ProjectManagem
 from services.validation_analysis_service import ValidationWorkflow as ValidationAnalysisService
 from services.progress_tracker import progress_tracker
 from services.video_validation_service import video_validation_service
+from services.url_fix_service import url_fix_service
 # ID Generation Service - multiple classes available, importing the main one
 try:
     from services.id_generation_service import IDGenerator as IDGenerationService
@@ -2553,6 +2554,184 @@ except ImportError as e:
     logger.warning(f"Detection pipeline patch not applied: {e}")
 except Exception as e:
     logger.error(f"Error applying detection pipeline patch: {e}")
+
+# URL Fix endpoints
+@app.post("/api/videos/fix-urls")
+async def fix_video_urls(
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Fix localhost URLs in database records to production URLs.
+    
+    This endpoint:
+    1. Scans database for localhost URLs
+    2. Updates URLs from http://localhost:8000 to http://155.138.239.131:8000
+    3. Creates backup for rollback capability
+    4. Invalidates relevant caches
+    5. Returns count of updated records
+    """
+    try:
+        logger.info("🔧 URL fix operation initiated")
+        
+        # First scan to see what needs to be fixed
+        scan_results = await url_fix_service.scan_database_for_localhost_urls(db)
+        
+        if scan_results['total_records'] == 0:
+            logger.info("✅ No localhost URLs found in database")
+            return {
+                "status": "no_changes_needed",
+                "message": "No localhost URLs found in database",
+                "scan_results": scan_results,
+                "updated_count": 0
+            }
+        
+        logger.info(f"📊 Found {scan_results['total_records']} records with localhost URLs")
+        
+        # Perform the URL fixes
+        operation_results = await url_fix_service.fix_urls_bulk(
+            db, 
+            progress_callback=None  # Could integrate WebSocket progress here
+        )
+        
+        # Validate the fixes were applied correctly
+        validation_results = await url_fix_service.validate_url_fixes(db)
+        
+        response_data = {
+            "status": "success" if operation_results.get('status') == 'success' else "error",
+            "message": f"Updated {operation_results['total_updated']} records successfully",
+            "updated_count": operation_results['total_updated'],
+            "scan_results": scan_results,
+            "operation_results": operation_results,
+            "validation_results": validation_results,
+            "backup_file": operation_results.get('backup_file'),
+            "old_base_url": url_fix_service.old_base_url,
+            "new_base_url": url_fix_service.new_base_url
+        }
+        
+        logger.info(f"✅ URL fix completed: {operation_results['total_updated']} records updated")
+        
+        # Emit WebSocket notification if available
+        try:
+            if 'sio' in globals():
+                await sio.emit('url_fix_completed', {
+                    'updated_count': operation_results['total_updated'],
+                    'backup_file': operation_results.get('backup_file'),
+                    'timestamp': datetime.now().isoformat()
+                })
+        except Exception as e:
+            logger.warning(f"WebSocket notification failed: {e}")
+        
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"❌ URL fix operation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "URL fix operation failed",
+                "message": str(e),
+                "old_base_url": url_fix_service.old_base_url,
+                "new_base_url": url_fix_service.new_base_url
+            }
+        )
+
+@app.get("/api/videos/fix-urls/scan")
+async def scan_for_localhost_urls(db: Session = Depends(get_db)):
+    """
+    Scan database for localhost URLs without making changes.
+    
+    Returns:
+        Summary of records that would be affected by URL fix operation
+    """
+    try:
+        logger.info("🔍 Scanning database for localhost URLs")
+        
+        scan_results = await url_fix_service.scan_database_for_localhost_urls(db)
+        
+        return {
+            "status": "scan_complete",
+            "total_records_found": scan_results['total_records'],
+            "affected_tables": scan_results['affected_tables'],
+            "scan_timestamp": scan_results['scan_timestamp'],
+            "old_base_url": scan_results['old_base_url'],
+            "new_base_url": scan_results['new_base_url'],
+            "recommendation": "fix_needed" if scan_results['total_records'] > 0 else "no_action_needed",
+            "raw_scan_summary": scan_results.get('raw_scan_summary', {})
+        }
+        
+    except Exception as e:
+        logger.error(f"Database scan failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Database scan failed",
+                "message": str(e)
+            }
+        )
+
+@app.get("/api/videos/fix-urls/status")
+async def get_url_fix_status():
+    """
+    Get current URL fix operation status and summary.
+    
+    Returns:
+        Current status of URL fix requirements
+    """
+    try:
+        summary = await url_fix_service.get_fix_summary()
+        
+        return {
+            "status": "operational",
+            "summary": summary,
+            "endpoints": {
+                "scan": "/api/videos/fix-urls/scan",
+                "fix": "/api/videos/fix-urls",
+                "validate": "/api/videos/fix-urls/validate"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get URL fix status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to get status",
+                "message": str(e)
+            }
+        )
+
+@app.post("/api/videos/fix-urls/validate")
+async def validate_url_fixes(db: Session = Depends(get_db)):
+    """
+    Validate that URL fixes were applied correctly.
+    
+    Returns:
+        Validation results showing any remaining localhost URLs
+    """
+    try:
+        logger.info("🔍 Validating URL fixes")
+        
+        validation_results = await url_fix_service.validate_url_fixes(db)
+        
+        return {
+            "status": "validation_complete",
+            "validation_passed": validation_results['validation_passed'],
+            "remaining_localhost_urls": validation_results['remaining_localhost_urls'],
+            "total_remaining": validation_results['total_remaining'],
+            "validation_timestamp": validation_results['validation_timestamp'],
+            "message": "All URLs fixed successfully" if validation_results['validation_passed'] else f"{validation_results['total_remaining']} URLs still need fixing"
+        }
+        
+    except Exception as e:
+        logger.error(f"URL validation failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "URL validation failed", 
+                "message": str(e)
+            }
+        )
 
 @app.on_event("startup")
 async def startup_event():

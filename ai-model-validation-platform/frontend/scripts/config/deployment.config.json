@@ -1,0 +1,252 @@
+{
+  "deployment": {
+    "version": "1.0.0",
+    "name": "AI Model Validation Platform",
+    "environment": "production",
+    "timestamp": "auto-generated",
+    "coordinator": {
+      "hooks": {
+        "enabled": true,
+        "command": "npx claude-flow@alpha hooks",
+        "timeout": 30000
+      },
+      "memory": {
+        "enabled": true,
+        "sessionId": "deployment-session",
+        "exportMetrics": true
+      }
+    }
+  },
+  
+  "database": {
+    "migration": {
+      "enabled": true,
+      "script": "./scripts/database/migrate.sh",
+      "backupEnabled": true,
+      "rollbackSupported": true,
+      "timeout": 300,
+      "retryAttempts": 2
+    },
+    "validation": {
+      "enabled": true,
+      "checkConnectivity": true,
+      "validateSchema": true,
+      "testQueries": [
+        "SELECT 1",
+        "SELECT COUNT(*) FROM videos"
+      ]
+    }
+  },
+  
+  "frontend": {
+    "cache": {
+      "clearScript": "./scripts/frontend/clear-cache.sh",
+      "clearNpm": true,
+      "clearYarn": true,
+      "clearNodeModules": true,
+      "clearBuild": true,
+      "clearCoverage": true
+    },
+    "build": {
+      "script": "./scripts/frontend/build.sh",
+      "environment": "production",
+      "optimization": {
+        "sourceMaps": false,
+        "inlineRuntime": false,
+        "codesplitting": true,
+        "treeShaking": true,
+        "minification": true
+      },
+      "analysis": {
+        "bundleAnalyzer": false,
+        "performanceHints": true,
+        "sizeLimit": "10MB"
+      },
+      "timeout": 600,
+      "retryAttempts": 1
+    },
+    "validation": {
+      "postBuild": true,
+      "checkBuildDirectory": true,
+      "validateAssets": true,
+      "performanceCheck": true
+    }
+  },
+  
+  "validation": {
+    "script": "./scripts/validation/validate.sh",
+    "categories": [
+      "build",
+      "url-fixes",
+      "components",
+      "services",
+      "typescript",
+      "tests",
+      "performance",
+      "security",
+      "configuration",
+      "integration"
+    ],
+    "criticalTests": [
+      "Build directory exists",
+      "Index.html exists", 
+      "JavaScript bundles exist"
+    ],
+    "thresholds": {
+      "successRate": 90,
+      "criticalFailures": 0,
+      "buildSizeMax": "50MB",
+      "performanceScore": 70
+    }
+  },
+  
+  "rollback": {
+    "script": "./scripts/rollback/rollback.sh",
+    "autoBackup": true,
+    "backupRetention": 7,
+    "confirmationRequired": true,
+    "verification": {
+      "enabled": true,
+      "checkBuild": true,
+      "checkDependencies": true,
+      "checkDatabase": true
+    }
+  },
+  
+  "logging": {
+    "directory": "./logs",
+    "level": "info",
+    "retention": 30,
+    "formats": {
+      "console": "colored",
+      "file": "json"
+    },
+    "hooks": {
+      "preTask": true,
+      "postTask": true,
+      "notify": true,
+      "postEdit": true
+    }
+  },
+  
+  "monitoring": {
+    "enabled": true,
+    "metrics": {
+      "deploymentDuration": true,
+      "buildSize": true,
+      "testResults": true,
+      "errorRates": true
+    },
+    "alerts": {
+      "onFailure": true,
+      "onWarning": false,
+      "onSuccess": false
+    },
+    "reporting": {
+      "markdown": true,
+      "json": true,
+      "summary": true
+    }
+  },
+  
+  "security": {
+    "validation": {
+      "npmAudit": true,
+      "sourceMapCheck": true,
+      "sensitiveDataCheck": true,
+      "dependencyCheck": true
+    },
+    "audit": {
+      "level": "high",
+      "fix": false,
+      "exitOnFailure": false
+    }
+  },
+  
+  "performance": {
+    "optimization": {
+      "enabled": true,
+      "parallelTasks": true,
+      "caching": true,
+      "compression": true
+    },
+    "thresholds": {
+      "buildTime": 600,
+      "bundleSize": 52428800,
+      "chunkSize": 1048576
+    },
+    "monitoring": {
+      "memoryUsage": true,
+      "diskUsage": true,
+      "cpuUsage": true
+    }
+  },
+  
+  "urls": {
+    "fixes": {
+      "enabled": true,
+      "localhostPort": 8000,
+      "validateUrls": true,
+      "cacheUrls": true,
+      "optimizePaths": true
+    },
+    "validation": {
+      "checkAccessibility": true,
+      "validateFormats": true,
+      "testConnections": false
+    }
+  },
+  
+  "environment": {
+    "variables": {
+      "NODE_ENV": "production",
+      "GENERATE_SOURCEMAP": "false",
+      "INLINE_RUNTIME_CHUNK": "false",
+      "BUILD_PATH": "./build",
+      "NODE_OPTIONS": "--max-old-space-size=8192",
+      "CI": "false"
+    },
+    "validation": {
+      "required": ["NODE_ENV"],
+      "optional": ["REACT_APP_API_URL", "REACT_APP_WS_URL"]
+    }
+  },
+  
+  "hooks": {
+    "preDeployment": [
+      {
+        "type": "pre-task",
+        "description": "deployment-validation",
+        "timeout": 30
+      }
+    ],
+    "postDatabase": [
+      {
+        "type": "notify", 
+        "description": "database-migration-completed",
+        "timeout": 10
+      }
+    ],
+    "postBuild": [
+      {
+        "type": "post-edit",
+        "description": "frontend-build-completed",
+        "timeout": 10
+      }
+    ],
+    "postValidation": [
+      {
+        "type": "notify",
+        "description": "validation-completed",
+        "timeout": 10
+      }
+    ],
+    "postDeployment": [
+      {
+        "type": "post-task",
+        "description": "deployment-completed",
+        "timeout": 30
+      }
+    ]
+  }
+}

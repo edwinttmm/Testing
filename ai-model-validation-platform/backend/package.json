@@ -1,0 +1,42 @@
+{
+  "name": "ai-model-validation-backend",
+  "version": "1.0.0",
+  "description": "Backend API for AI Model Validation Platform with database migration capabilities",
+  "main": "main.py",
+  "scripts": {
+    "start": "python main.py",
+    "migrate": "node scripts/migration-cli.js",
+    "migrate:status": "node scripts/migration-cli.js status",
+    "migrate:analyze": "node scripts/migration-cli.js analyze", 
+    "migrate:dry-run": "node scripts/migration-cli.js dry-run",
+    "migrate:execute": "node scripts/migration-cli.js execute",
+    "migrate:validate": "node scripts/migration-cli.js validate",
+    "migrate:rollback": "node scripts/migration-cli.js rollback",
+    "migrate:history": "node scripts/migration-cli.js history",
+    "migrate:backup": "node scripts/migration-cli.js backup",
+    "migrate:help": "node scripts/migration-cli.js help",
+    "test": "python -m pytest tests/",
+    "test:migration": "python -m pytest tests/ -k migration"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "sqlite": "^4.2.1",
+    "readline": "^1.3.0"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "supertest": "^6.3.3"
+  },
+  "keywords": [
+    "ai",
+    "model",
+    "validation",
+    "database",
+    "migration",
+    "url",
+    "localhost"
+  ],
+  "author": "Backend Development Team",
+  "license": "MIT"
+}

@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { AppError, ErrorFactory } from '../utils/errorTypes';
-import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
+import { getConfigValueSync, waitForConfig, configurationManager, isConfigInitialized } from '../utils/configurationManager';
 import { fixVideoObjectUrl } from '../utils/videoUrlFixer';
 import {
   Project,
@@ -42,18 +42,16 @@ import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 
-// Apply runtime overrides immediately
-applyRuntimeConfigOverrides();
+// Configuration is now handled automatically by configurationManager
 
 class ApiService {
   private api: AxiosInstance;
 
   constructor() {
-    // Apply runtime configuration overrides first
-    applyRuntimeConfigOverrides();
-    
-    // Get API configuration with runtime override support
-    const baseURL = getConfigValue('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+    // Get API configuration with proper initialization check
+    const baseURL = isConfigInitialized() 
+      ? getConfigValueSync('REACT_APP_API_URL', 'http://155.138.239.131:8000')
+      : 'http://155.138.239.131:8000';
     const apiConfig = getServiceConfig('api');
     
     console.log('🔧 API Service initializing with config:', {
@@ -427,6 +425,8 @@ class ApiService {
     apiCache.invalidatePattern('/api/videos');
     apiCache.invalidatePattern('/api/projects');
     apiCache.invalidatePattern('/api/ground-truth/videos');
+    // Clear video enhancement cache as well
+    this.videoEnhancementCache.clear();
   }
   
   /**
@@ -434,6 +434,64 @@ class ApiService {
    */
   async testConnectivity() {
     return envConfig.testApiConnectivity();
+  }
+
+  /**
+   * Get video enhancement cache statistics
+   */
+  getVideoEnhancementStats() {
+    return this.videoEnhancementCache.getStats();
+  }
+
+  /**
+   * Clear specific video from enhancement cache
+   */
+  clearVideoEnhancement(videoId: string) {
+    this.videoEnhancementCache.delete(videoId);
+  }
+
+  /**
+   * Batch enhance multiple videos efficiently with deduplication
+   */
+  private batchEnhanceVideos(videos: unknown[]): VideoFile[] {
+    if (!videos || videos.length === 0) {
+      return [];
+    }
+
+    const startTime = performance.now();
+    const results: VideoFile[] = [];
+    const processedIds = new Set<string>();
+
+    for (const video of videos) {
+      try {
+        const convertedVideo = convertToVideoFile(video);
+        if (!convertedVideo || !convertedVideo.id) {
+          continue; // Skip invalid videos
+        }
+
+        // Skip duplicates within the same batch
+        if (processedIds.has(convertedVideo.id)) {
+          if (isDebugEnabled()) {
+            console.log('⚠️ Skipping duplicate video in batch:', convertedVideo.id);
+          }
+          continue;
+        }
+        processedIds.add(convertedVideo.id);
+
+        const enhanced = this.enhanceVideoData(video);
+        results.push(enhanced);
+      } catch (error) {
+        console.error('❌ Error in batch video enhancement:', error);
+        // Continue processing other videos
+      }
+    }
+
+    const endTime = performance.now();
+    if (isDebugEnabled()) {
+      console.log(`⚡ Batch enhanced ${results.length} videos in ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return results;
   }
 
   // Project CRUD
@@ -969,8 +1027,8 @@ class ApiService {
   // Video Library and Ground Truth Integration
   async getAvailableGroundTruthVideos(): Promise<VideoFile[]> {
     const response = await this.cachedRequest<VideoFile[]>('GET', '/api/ground-truth/videos/available');
-    // Enhance video data with proper URLs and status mapping
-    return response.map(video => this.enhanceVideoData(video));
+    // Enhance video data with proper URLs and status mapping - optimized batch processing
+    return this.batchEnhanceVideos(response);
   }
 
   async linkVideosToProject(projectId: string, videoIds: string[]): Promise<VideoAssignment[]> {
@@ -986,8 +1044,8 @@ class ApiService {
 
   async getLinkedVideos(projectId: string): Promise<VideoFile[]> {
     const response = await this.cachedRequest<VideoFile[]>('GET', `/api/projects/${projectId}/videos/linked`);
-    // Enhance video data with proper URLs and status mapping
-    return response.map(video => this.enhanceVideoData(video));
+    // Enhance video data with proper URLs and status mapping - optimized batch processing
+    return this.batchEnhanceVideos(response);
   }
 
   async unlinkVideoFromProject(projectId: string, videoId: string): Promise<void> {
