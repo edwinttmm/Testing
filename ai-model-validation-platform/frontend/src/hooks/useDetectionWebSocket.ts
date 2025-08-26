@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { GroundTruthAnnotation } from '../services/types';
-import { getConfigValue, waitForConfig, isConfigReady } from '../utils/configOverride';
+import { getConfigValueSync, waitForConfig, isConfigInitialized } from '../utils/configurationManager';
 
 // WebSocket functionality re-enabled for real-time detection updates
 export interface DetectionUpdate {
@@ -35,7 +35,7 @@ interface ConnectionState {
 
 // Re-enabled WebSocket detection hook with robust connection management
 export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}) => {
-  const [configReady, setConfigReady] = useState(isConfigReady());
+  const [configReady, setConfigReady] = useState(isConfigInitialized());
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
   
   // Load URL from configuration
@@ -44,13 +44,13 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
       try {
         if (!configReady) {
           console.log('⏳ useDetectionWebSocket waiting for configuration...');
-          await waitForConfig(10000);
+          await waitForConfig();
           setConfigReady(true);
         }
         
         // Get WebSocket URL from configuration or fallback
-        const wsBaseUrl = getConfigValue('REACT_APP_WS_URL', '') ||
-                         getConfigValue('REACT_APP_SOCKETIO_URL', '') ||
+        const wsBaseUrl = getConfigValueSync('REACT_APP_WS_URL', '') ||
+                         getConfigValueSync('REACT_APP_SOCKETIO_URL', '') ||
                          'ws://155.138.239.131:8001';
         
         // Convert HTTP URLs to WebSocket URLs and add detection path

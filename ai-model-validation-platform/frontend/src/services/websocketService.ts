@@ -2,10 +2,7 @@ import React from 'react';
 import { io, Socket } from 'socket.io-client';
 import { logWebSocketError, safeConsoleError, safeConsoleWarn } from '../utils/safeErrorLogger';
 import { isValidWebSocketData, isConnectionStatus, isObject, isString, safeGet } from '../utils/typeGuards';
-import { getConfigValue, applyRuntimeConfigOverrides, waitForConfig, isConfigReady } from '../utils/configOverride';
-
-// Apply runtime overrides immediately
-applyRuntimeConfigOverrides();
+import { getConfigValueSync, waitForConfig, isConfigInitialized } from '../utils/configurationManager';
 
 export interface WebSocketMessage<T = unknown> {
   type: string;
@@ -67,7 +64,7 @@ class WebSocketService {
       isStable: false
     };
 
-    this.configReady = isConfigReady();
+    this.configReady = isConfigInitialized();
 
     // Initialize URL asynchronously
     this.initializeUrl().then(() => {
@@ -87,7 +84,7 @@ class WebSocketService {
       // Wait for configuration to be ready
       if (!this.configReady) {
         console.log('⏳ WebSocketService waiting for runtime configuration...');
-        await waitForConfig(10000);
+        await waitForConfig();
         this.configReady = true;
       }
 
@@ -98,8 +95,8 @@ class WebSocketService {
         }
         
         // Use runtime-aware config getter - prioritize Socket.IO URL
-        const configUrl = getConfigValue('REACT_APP_SOCKETIO_URL', '') ||
-                          getConfigValue('REACT_APP_WS_URL', '');
+        const configUrl = getConfigValueSync('REACT_APP_SOCKETIO_URL', '') ||
+                          getConfigValueSync('REACT_APP_WS_URL', '');
         if (configUrl) {
           console.log('🔧 Using configured WebSocket URL:', configUrl);
           return configUrl;
