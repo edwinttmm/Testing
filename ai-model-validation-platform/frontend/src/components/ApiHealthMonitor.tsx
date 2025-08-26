@@ -317,7 +317,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
 
           <Grid container spacing={2}>
             {/* Primary API Status */}
-            <Grid item xs={12} md={6} component="div">
+            <Grid size={{ xs: 12, md: 6 }} component="div">
               <Card variant="outlined">
                 <CardHeader 
                   title="Primary API"
@@ -368,7 +368,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
             </Grid>
 
             {/* Fallback APIs Status */}
-            <Grid item xs={12} md={6} component="div">
+            <Grid size={{ xs: 12, md: 6 }} component="div">
               <Card variant="outlined">
                 <CardHeader 
                   title="Fallback APIs"

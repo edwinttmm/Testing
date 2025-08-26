@@ -295,7 +295,8 @@ class SmartApiService {
           this.updateCircuitBreaker(fallbackUrl, false);
           
           if (isDebugEnabled()) {
-            console.warn(`🔄 Fallback failed (${fallbackUrl}):`, error.message);
+            const errorMessage = (error instanceof Error) ? error.message : String(error);
+            console.warn(`🔄 Fallback failed (${fallbackUrl}):`, errorMessage);
           }
         }
       }
@@ -378,6 +379,9 @@ class SmartApiService {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+    
+    // This should never be reached, but TypeScript requires a return
+    throw new Error('All retry attempts failed');
   }
   
   private tryOfflineMode<T>(url: string): T | null {
@@ -407,21 +411,31 @@ class SmartApiService {
       const status = error.response?.status || 0;
       const message = this.getErrorMessage(error);
       
-      return {
+      const appError: AppError = {
         name: 'ApiError',
         message,
         status,
-        code: error.code,
         details: error.response?.data as Record<string, unknown>
       };
+      
+      // Only add code if it exists
+      if (error.code !== undefined) {
+        appError.code = error.code;
+      }
+      
+      return appError;
     }
     
-    return {
+    const networkError: AppError = {
       name: 'NetworkError',
       message: error.message || 'Network connectivity failed',
-      status: 0,
-      code: 'NETWORK_ERROR'
+      status: 0
     };
+    
+    // Add code property
+    networkError.code = 'NETWORK_ERROR';
+    
+    return networkError;
   }
   
   private getErrorMessage(error: AxiosError): string {

@@ -43,7 +43,6 @@ import {
   Lock,
   LockOpen,
   ColorLens,
-  CropFree,
 } from '@mui/icons-material';
 import { useAnnotation } from './AnnotationManager';
 import { DrawingTool, AnnotationStyle, BrushSettings } from './types';

@@ -16,7 +16,6 @@ import {
   Switch,
   FormControlLabel,
   Divider,
-  Grid,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -615,7 +614,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     ]);
 
     return cleanupListeners;
-  }, [frameRate, onTimeUpdate, handleVideoError]);
+  }, [frameRate, onTimeUpdate, handleVideoError, autoScreenshot, handleDetectionStop, handleScreenshot, isDetectionRunning]);
 
   // Initialize video when component mounts or video changes
   useEffect(() => {

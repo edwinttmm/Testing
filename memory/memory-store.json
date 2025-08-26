@@ -17,6 +17,12 @@
       "value": "DETECTION CONVERSION FIX IMPLEMENTED:\n\nCHANGES MADE:\n1. Fixed hasDetectionProperties() in typeGuards.ts:\n   - Now validates actual YOLO detection object properties\n   - Checks for confidence, bounding box, and class information\n   - Removed incorrect nested container validation\n   \n2. Added mapYoloClassToVRUType() function:\n   - Maps 'person', 'children' -> 'pedestrian' \n   - Maps 'bicycle' -> 'cyclist'\n   - Handles other VRU class variations\n   \n3. Updated detectionService.ts:\n   - Added import for new class mapping function\n   - Enhanced debug logging to show filtering results\n   - Applied class mapping in convertDetectionsToAnnotations()\n   - Fixed both vruType and boundingBox.label fields\n\nEXPECTED RESULT:\n- Backend detection objects with 'person' class will now pass filtering\n- Class names properly mapped to VRU types\n- 2 detections should convert to 2 annotations\n- Console will show detailed filtering debug info\n\nTEST REQUIRED:\nUpload video with children/person detections and verify:\n1. Filtering no longer drops valid detections\n2. Class mapping converts 'person' to 'pedestrian'\n3. Annotations display correctly in UI",
       "namespace": "default",
       "timestamp": 1756187849997
+    },
+    {
+      "key": "grid-fix-completed",
+      "value": "Fixed MUI Grid2 TypeScript errors in ApiHealthMonitor.tsx: Removed 'item' prop and replaced xs/md props with size={{ xs: 12, md: 6 }} at lines 320 and 371. Component now uses proper Grid2 API compatible with Material-UI v6.",
+      "namespace": "default",
+      "timestamp": 1756230324251
     }
   ]
 }

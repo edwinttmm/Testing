@@ -20,9 +20,7 @@ import {
   Skeleton,
   SkeletonProps,
   CircularProgress,
-  CircularProgressProps,
   Box,
-  BoxProps,
 } from '@mui/material';
 
 /**

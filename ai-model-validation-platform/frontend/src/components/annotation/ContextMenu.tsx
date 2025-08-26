@@ -327,7 +327,6 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
 
     // Visibility and locking
     if (targetShape || hasSelection) {
-      const shape = targetShape || selectedShapes[0];
       const allVisible = (targetShape ? [targetShape] : selectedShapes).every(s => s.visible !== false);
       const allLocked = (targetShape ? [targetShape] : selectedShapes).every(s => s.locked);
 

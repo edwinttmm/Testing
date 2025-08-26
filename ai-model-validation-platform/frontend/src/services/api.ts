@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { AppError, ErrorFactory } from '../utils/errorTypes';
-import { getConfigValueSync, waitForConfig, configurationManager, isConfigInitialized } from '../utils/configurationManager';
+import { getConfigValueSync, isConfigInitialized } from '../utils/configurationManager';
 import { fixVideoObjectUrl } from '../utils/videoUrlFixer';
 import {
   Project,
@@ -30,11 +30,8 @@ import {
   isAxiosError,
   parseErrorResponse,
   safeGet,
-  safeSpread,
   hasResponseData,
   convertToVideoFile,
-  safeConvertArray,
-  isApiErrorResponse,
   safeParams,
   safeExtractErrorData
 } from '../utils/typeGuards';
@@ -47,7 +44,6 @@ import { videoEnhancementCache } from '../utils/videoEnhancementCache';
 
 class ApiService {
   private api: AxiosInstance;
-  private videoEnhancementCache = videoEnhancementCache;
 
   constructor() {
     // Get API configuration with proper initialization check
