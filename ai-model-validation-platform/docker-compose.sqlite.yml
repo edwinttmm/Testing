@@ -14,9 +14,9 @@ services:
       - AIVALIDATION_DATABASE_MAX_OVERFLOW=0
     volumes:
       # Mount the working SQLite database for persistence across container restarts
-      - ./backend/dev_database.db:/app/dev_database.db:rw
-      # Mount backup databases for safety
-      - ./backend/dev_database.db.backup_20250826_193443:/app/dev_database.db.backup:ro
+      - ${PWD}/backend/dev_database.db:/app/dev_database.db:rw
+      # Mount the entire backend directory to ensure all dependencies are available
+      - ${PWD}/backend:/app:rw
     depends_on:
       # Remove PostgreSQL dependency for SQLite mode
       redis:
