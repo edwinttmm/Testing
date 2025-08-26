@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Browser Config Test</title>
+    <!-- Load runtime config first -->
+    <script src="../public/config.js"></script>
+</head>
+<body>
+    <h1>Browser Configuration Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        function log(message) {
+            console.log(message);
+            document.getElementById('results').innerHTML += '<p>' + message + '</p>';
+        }
+        
+        // Test 1: Check if runtime config is loaded
+        log('=== Runtime Config Test ===');
+        log('window.RUNTIME_CONFIG exists: ' + (!!window.RUNTIME_CONFIG));
+        log('RUNTIME_CONFIG content: ' + JSON.stringify(window.RUNTIME_CONFIG, null, 2));
+        
+        // Test 2: Check process.env
+        log('\n=== Process.env Test ===');
+        log('process exists: ' + (typeof process !== 'undefined'));
+        if (typeof process !== 'undefined') {
+            log('process.env.REACT_APP_API_URL: ' + process.env.REACT_APP_API_URL);
+            log('process.env.REACT_APP_WS_URL: ' + process.env.REACT_APP_WS_URL);
+            log('process.env.REACT_APP_SOCKETIO_URL: ' + process.env.REACT_APP_SOCKETIO_URL);
+        }
+        
+        // Test 3: Simulate API service initialization
+        log('\n=== API Service Simulation ===');
+        function getConfigValue(key, fallback) {
+            // Check runtime config first (from window.RUNTIME_CONFIG)
+            if (typeof window !== 'undefined' && window.RUNTIME_CONFIG) {
+                const runtimeValue = window.RUNTIME_CONFIG[key];
+                if (runtimeValue) {
+                    log('🔧 Using runtime config for ' + key + ': ' + runtimeValue);
+                    return runtimeValue;
+                }
+            }
+            
+            // Check environment variables
+            const envValue = process.env[key];
+            if (envValue) {
+                log('🔧 Using environment config for ' + key + ': ' + envValue);
+                return envValue;
+            }
+            
+            // Use fallback
+            log('🔧 Using fallback config for ' + key + ': ' + fallback);
+            return fallback;
+        }
+        
+        const baseURL = getConfigValue('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+        log('Final API URL would be: ' + baseURL);
+        
+        // Test 4: Test actual API call
+        log('\n=== API Call Test ===');
+        const testUrl = baseURL + '/health';
+        log('Testing API call to: ' + testUrl);
+        
+        fetch(testUrl)
+            .then(response => {
+                log('✅ API call successful: ' + response.status + ' ' + response.statusText);
+            })
+            .catch(error => {
+                log('❌ API call failed: ' + error.message);
+            });
+    </script>
+</body>
+</html>

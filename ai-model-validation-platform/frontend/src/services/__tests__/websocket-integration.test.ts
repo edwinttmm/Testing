@@ -5,7 +5,7 @@
 import { io, Socket } from 'socket.io-client';
 
 // Test configuration
-const TEST_SERVER_URL = process.env.REACT_APP_WS_URL || 'http://localhost:8001';
+const TEST_SERVER_URL = process.env.REACT_APP_WS_URL || 'http://155.138.239.131:8001';
 const TIMEOUT = 5000; // 5 seconds timeout for connection tests
 
 describe('WebSocket Integration - Real Connection Tests', () => {
