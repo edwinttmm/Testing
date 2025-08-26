@@ -4,10 +4,7 @@
  * Enhanced with runtime configuration override support
  */
 
-import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
-
-// Apply runtime overrides immediately
-applyRuntimeConfigOverrides();
+import { configurationManager, getConfigValueSync } from '../utils/configurationManager';
 
 export interface AppConfig {
   // API Configuration
@@ -69,8 +66,8 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
   
   // Determine API base URL with runtime override support
   const getApiBaseUrl = (): string => {
-    // Use the runtime-aware config getter
-    const configUrl = getConfigValue('REACT_APP_API_URL', '');
+    // Use the configuration manager for runtime-aware config
+    const configUrl = getConfigValueSync('REACT_APP_API_URL', '');
     if (configUrl) {
       return configUrl;
     }
@@ -94,8 +91,8 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
   
   // Determine WebSocket URL with runtime override support
   const getWebSocketUrl = (): string => {
-    // Use the runtime-aware config getter
-    const configUrl = getConfigValue('REACT_APP_WS_URL', '');
+    // Use the configuration manager for runtime-aware config
+    const configUrl = getConfigValueSync('REACT_APP_WS_URL', '');
     if (configUrl) {
       return configUrl;
     }

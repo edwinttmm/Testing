@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
+import { waitForConfig, isConfigReady } from '../utils/configOverride';
 
 interface UseWebSocketOptions {
   url?: string;
@@ -20,14 +21,29 @@ interface UseWebSocketReturn {
   disconnect: () => void;
   emit: (event: string, data?: unknown) => void;
   on: <T = unknown>(event: string, callback: (data: T) => void) => () => void;
+  configReady: boolean;
 }
 
 // WebSocket connection pool to prevent multiple connections to the same URL
 const socketPool = new Map<string, Socket>();
 
 export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketReturn => {
-  // Get WebSocket configuration from environment config
-  const socketConfig = getServiceConfig('socketio');
+  const [configLoaded, setConfigLoaded] = useState(isConfigReady());
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectCountRef = useRef(0);
+  const listenersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
+  const scheduleReconnectRef = useRef<(() => void) | null>(null);
+  
+  // Wait for configuration to load before getting socket config
+  const [socketConfig, setSocketConfig] = useState(() => {
+    if (isConfigReady()) {
+      return getServiceConfig('socketio');
+    }
+    return { url: '', retryAttempts: 5, retryDelay: 1000, timeout: 20000 };
+  });
   
   const {
     url = socketConfig.url,
@@ -39,22 +55,15 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     autoConnect = true,
   } = options;
   
-  if (isDebugEnabled()) {
+  if (isDebugEnabled() && configLoaded && url) {
     console.log('🔌 WebSocket initializing with config:', {
       url,
       reconnectAttempts,
       reconnectDelay,
-      autoConnect
+      autoConnect,
+      configLoaded
     });
   }
-
-  const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectCountRef = useRef(0);
-  const listenersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
-  const scheduleReconnectRef = useRef<(() => void) | null>(null);
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -63,9 +72,60 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, []);
 
+  // Load configuration asynchronously
+  useEffect(() => {
+    if (!configLoaded) {
+      if (isDebugEnabled()) {
+        console.log('⏳ WebSocket waiting for runtime configuration to load...');
+      }
+      
+      waitForConfig(10000)
+        .then(() => {
+          setConfigLoaded(true);
+          const newConfig = getServiceConfig('socketio');
+          setSocketConfig(newConfig);
+          if (isDebugEnabled()) {
+            console.log('🔧 WebSocket configuration loaded:', newConfig);
+          }
+        })
+        .catch(err => {
+          console.error('❌ Failed to load WebSocket configuration:', err);
+          setError(new Error('Configuration loading failed'));
+          // Use fallback configuration with correct production URL
+          const fallbackConfig = {
+            url: 'http://155.138.239.131:8001',
+            retryAttempts: 5,
+            retryDelay: 1000,
+            timeout: 20000
+          };
+          setSocketConfig(fallbackConfig);
+          setConfigLoaded(true);
+          if (isDebugEnabled()) {
+            console.log('🔧 Using fallback WebSocket configuration:', fallbackConfig);
+          }
+        });
+    }
+  }, [configLoaded]);
+
   // Define connect function first, before scheduleReconnect
   const connect = useCallback(() => {
+    if (!configLoaded) {
+      if (isDebugEnabled()) {
+        console.log('⏳ WebSocket connect() called but configuration not ready yet');
+      }
+      return;
+    }
+
+    if (!url) {
+      console.warn('⚠️ WebSocket cannot connect: no URL configured');
+      setError(new Error('No WebSocket URL configured'));
+      return;
+    }
+
     if (socketRef.current?.connected) {
+      if (isDebugEnabled()) {
+        console.log('ℹ️ WebSocket already connected');
+      }
       return;
     }
 
@@ -98,7 +158,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         clearReconnectTimeout();
         
         if (isDebugEnabled()) {
-          console.log('✅ WebSocket connected successfully');
+          console.log('✅ WebSocket connected successfully to', url);
         }
         
         onConnect?.();
@@ -108,7 +168,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setIsConnected(false);
         
         if (isDebugEnabled()) {
-          console.warn(`🔌 WebSocket disconnected: ${reason}`);
+          console.warn(`🔌 WebSocket disconnected from ${url}: ${reason}`);
         }
         
         onDisconnect?.();
@@ -127,7 +187,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setError(error);
         
         if (isDebugEnabled()) {
-          console.error('❌ WebSocket connection error:', err.message);
+          console.error('❌ WebSocket connection error to', url, ':', err.message);
         }
         
         onError?.(error);
@@ -147,7 +207,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       setError(error);
       onError?.(error);
     }
-  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout, socketConfig.timeout]);
+  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout, socketConfig.timeout, configLoaded]);
 
   // Now define scheduleReconnect with connect in scope
   const scheduleReconnect = useCallback(() => {
@@ -195,10 +255,10 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       const message = `Cannot emit event '${event}': WebSocket not connected`;
       console.warn(message);
       if (isDebugEnabled()) {
-        console.warn('📡 WebSocket emit failed - not connected');
+        console.warn('📡 WebSocket emit failed - not connected to', url);
       }
     }
-  }, []);
+  }, [url]);
 
   const on = useCallback(<T = unknown>(event: string, callback: (data: T) => void) => {
     // Track listeners for cleanup and reconnection
@@ -223,9 +283,6 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         if (callbacks.size === 0) {
           listenersRef.current.delete(event);
         }
-        if (callbacks.size === 0) {
-          listenersRef.current.delete(event);
-        }
       }
       
       if (socketRef.current) {
@@ -234,9 +291,12 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     };
   }, []);
 
-  // Auto-connect on mount if enabled
+  // Auto-connect on mount if enabled and configuration is loaded
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && configLoaded && url) {
+      if (isDebugEnabled()) {
+        console.log('🚀 WebSocket auto-connecting with loaded configuration to', url);
+      }
       connect();
     }
 
@@ -255,7 +315,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         socketPool.delete(url || '');
       }
     };
-  }, [autoConnect, connect, disconnect, clearReconnectTimeout, url]);
+  }, [autoConnect, configLoaded, url, connect, disconnect, clearReconnectTimeout]);
 
   return {
     socket: socketRef.current,
@@ -265,6 +325,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     disconnect,
     emit,
     on,
+    configReady: configLoaded,
   };
 };
 

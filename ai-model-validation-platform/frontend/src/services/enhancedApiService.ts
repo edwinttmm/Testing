@@ -13,10 +13,7 @@ import {
 import { ErrorFactory } from '../utils/errorTypes';
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
-import { getConfigValue, applyRuntimeConfigOverrides } from '../utils/configOverride';
-
-// Apply runtime overrides immediately
-applyRuntimeConfigOverrides();
+import { configurationManager, getConfigValueSync } from '../utils/configurationManager';
 
 interface RetryConfig {
   maxRetries: number;
@@ -43,9 +40,8 @@ class EnhancedApiService {
   private baseURL: string;
 
   constructor() {
-    // Apply runtime configuration overrides first
-    applyRuntimeConfigOverrides();
-    this.baseURL = getConfigValue('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+    // Use configuration manager for runtime-aware config
+    this.baseURL = getConfigValueSync('REACT_APP_API_URL', 'http://155.138.239.131:8000');
     console.log('🔧 Enhanced API Service using baseURL:', this.baseURL);
     this.pendingRequests = new Map();
     this.requestMetrics = new Map();
@@ -66,7 +62,17 @@ class EnhancedApiService {
     });
 
     this.setupInterceptors();
-    this.setupHealthCheck();
+    
+    // Wait for configuration to be ready before starting health checks
+    configurationManager.onReady(() => {
+      // Update baseURL with final configuration
+      this.baseURL = getConfigValueSync('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+      this.api.defaults.baseURL = this.baseURL;
+      console.log('🔧 Enhanced API Service updated baseURL after config ready:', this.baseURL);
+      
+      this.setupHealthCheck();
+    });
+    
     this.setupNetworkListeners();
   }
 

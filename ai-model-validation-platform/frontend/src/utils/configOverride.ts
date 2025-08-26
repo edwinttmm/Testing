@@ -1,65 +1,45 @@
 /**
- * Configuration Override System
- * This ensures runtime configuration takes precedence over compile-time settings
+ * Configuration Override System (DEPRECATED)
+ * 
+ * This file is deprecated in favor of configurationManager.ts
+ * These functions are kept for backward compatibility but redirect to the new system
+ * 
+ * @deprecated Use configurationManager.ts instead
  */
 
-export interface RuntimeConfig {
-  REACT_APP_API_URL: string;
-  REACT_APP_WS_URL: string;
-  REACT_APP_SOCKETIO_URL: string;
-  REACT_APP_VIDEO_BASE_URL: string;
-  REACT_APP_ENVIRONMENT?: string;
-}
+import { 
+  getConfigValueSync, 
+  getFullConfigSync, 
+  configurationManager,
+  RuntimeConfig 
+} from './configurationManager';
 
 /**
  * Get configuration value with runtime override support
+ * @deprecated Use getConfigValueSync from configurationManager instead
  */
 export function getConfigValue(key: keyof RuntimeConfig, fallback: string): string {
-  // Check runtime config first (from window.RUNTIME_CONFIG)
-  if (typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG) {
-    const runtimeValue = (window as any).RUNTIME_CONFIG[key];
-    if (runtimeValue) {
-      console.log(`🔧 Using runtime config for ${key}:`, runtimeValue);
-      return runtimeValue;
-    }
-  }
-  
-  // Check environment variables
-  const envValue = process.env[key];
-  if (envValue) {
-    console.log(`🔧 Using environment config for ${key}:`, envValue);
-    return envValue;
-  }
-  
-  // Use fallback
-  console.log(`🔧 Using fallback config for ${key}:`, fallback);
-  return fallback;
+  console.warn(`⚠️ getConfigValue is deprecated, use getConfigValueSync from configurationManager`);
+  return getConfigValueSync(key, fallback as any);
 }
 
 /**
  * Force override process.env with runtime config
+ * @deprecated Configuration is now handled automatically by configurationManager
  */
 export function applyRuntimeConfigOverrides(): void {
-  if (typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG) {
-    const runtimeConfig = (window as any).RUNTIME_CONFIG;
-    console.log('🔧 Applying runtime configuration overrides:', runtimeConfig);
-    
-    // Override process.env
-    Object.keys(runtimeConfig).forEach(key => {
-      process.env[key] = runtimeConfig[key];
-    });
-  }
+  console.warn(`⚠️ applyRuntimeConfigOverrides is deprecated, configuration is handled automatically`);
+  // No-op - configuration manager handles this automatically
 }
 
 /**
  * Get all configuration with overrides applied
+ * @deprecated Use getFullConfigSync from configurationManager instead
  */
 export function getFullConfig(): RuntimeConfig {
-  return {
-    REACT_APP_API_URL: getConfigValue('REACT_APP_API_URL', 'http://155.138.239.131:8000'),
-    REACT_APP_WS_URL: getConfigValue('REACT_APP_WS_URL', 'ws://155.138.239.131:8000'),
-    REACT_APP_SOCKETIO_URL: getConfigValue('REACT_APP_SOCKETIO_URL', 'http://155.138.239.131:8001'),
-    REACT_APP_VIDEO_BASE_URL: getConfigValue('REACT_APP_VIDEO_BASE_URL', 'http://155.138.239.131:8000'),
-    REACT_APP_ENVIRONMENT: getConfigValue('REACT_APP_ENVIRONMENT', 'production')
-  };
+  console.warn(`⚠️ getFullConfig is deprecated, use getFullConfigSync from configurationManager`);
+  return getFullConfigSync();
 }
+
+// Re-export types for backward compatibility
+export type { RuntimeConfig } from './configurationManager';

@@ -699,12 +699,22 @@ class ApiService {
   }
 
   async createAnnotation(videoId: string, annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>): Promise<GroundTruthAnnotation> {
+    // Ensure pure JSON serialization for bounding_box - strip any TypeScript class methods
+    const pureBoundingBox = JSON.parse(JSON.stringify({
+      x: Number(annotation.boundingBox.x) || 0,
+      y: Number(annotation.boundingBox.y) || 0,
+      width: Number(annotation.boundingBox.width) || 50,
+      height: Number(annotation.boundingBox.height) || 100,
+      label: String(annotation.boundingBox.label || annotation.vruType || 'unknown'),
+      confidence: Number(annotation.boundingBox.confidence) || 1.0
+    }));
+
     const result = await this.cachedRequest<GroundTruthAnnotation>('POST', `/api/videos/${videoId}/annotations`, {
       detection_id: annotation.detectionId,
       frame_number: annotation.frameNumber,
       timestamp: annotation.timestamp,
       vru_type: annotation.vruType,
-      bounding_box: annotation.boundingBox,
+      bounding_box: pureBoundingBox,
       occluded: annotation.occluded,
       truncated: annotation.truncated,
       difficult: annotation.difficult,
@@ -718,12 +728,22 @@ class ApiService {
   }
 
   async updateAnnotation(annotationId: string, updates: Partial<GroundTruthAnnotation>): Promise<GroundTruthAnnotation> {
+    // Ensure pure JSON serialization for bounding_box if it exists
+    const pureBoundingBox = updates.boundingBox ? JSON.parse(JSON.stringify({
+      x: Number(updates.boundingBox.x) || 0,
+      y: Number(updates.boundingBox.y) || 0,
+      width: Number(updates.boundingBox.width) || 50,
+      height: Number(updates.boundingBox.height) || 100,
+      label: String(updates.boundingBox.label || updates.vruType || 'unknown'),
+      confidence: Number(updates.boundingBox.confidence) || 1.0
+    })) : undefined;
+
     const result = await this.cachedRequest<GroundTruthAnnotation>('PUT', `/api/annotations/${annotationId}`, {
       detection_id: updates.detectionId,
       frame_number: updates.frameNumber,
       timestamp: updates.timestamp,
       vru_type: updates.vruType,
-      bounding_box: updates.boundingBox,
+      bounding_box: pureBoundingBox,
       occluded: updates.occluded,
       truncated: updates.truncated,
       difficult: updates.difficult,

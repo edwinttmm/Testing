@@ -1525,7 +1525,7 @@ async def create_video_annotation(
             timestamp=annotation.timestamp,
             end_timestamp=annotation.end_timestamp,
             vru_type=annotation.vru_type.value if hasattr(annotation.vru_type, 'value') else annotation.vru_type,
-            bounding_box=annotation.bounding_box,
+            bounding_box=annotation.bounding_box.model_dump() if hasattr(annotation.bounding_box, 'model_dump') else (annotation.bounding_box.dict() if hasattr(annotation.bounding_box, 'dict') else annotation.bounding_box),
             occluded=annotation.occluded,
             truncated=annotation.truncated,
             difficult=annotation.difficult,

@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { GroundTruthAnnotation } from '../services/types';
+import { getConfigValue, waitForConfig, isConfigReady } from '../utils/configOverride';
 
 // WebSocket functionality re-enabled for real-time detection updates
 export interface DetectionUpdate {
@@ -34,8 +35,55 @@ interface ConnectionState {
 
 // Re-enabled WebSocket detection hook with robust connection management
 export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}) => {
+  const [configReady, setConfigReady] = useState(isConfigReady());
+  const [resolvedUrl, setResolvedUrl] = useState<string>('');
+  
+  // Load URL from configuration
+  useEffect(() => {
+    const initializeUrl = async () => {
+      try {
+        if (!configReady) {
+          console.log('⏳ useDetectionWebSocket waiting for configuration...');
+          await waitForConfig(10000);
+          setConfigReady(true);
+        }
+        
+        // Get WebSocket URL from configuration or fallback
+        const wsBaseUrl = getConfigValue('REACT_APP_WS_URL', '') ||
+                         getConfigValue('REACT_APP_SOCKETIO_URL', '') ||
+                         'ws://155.138.239.131:8001';
+        
+        // Convert HTTP URLs to WebSocket URLs and add detection path
+        let detectionUrl = wsBaseUrl;
+        if (detectionUrl.startsWith('http://')) {
+          detectionUrl = detectionUrl.replace('http://', 'ws://');
+        } else if (detectionUrl.startsWith('https://')) {
+          detectionUrl = detectionUrl.replace('https://', 'wss://');
+        }
+        
+        // Ensure it ends with detection WebSocket path
+        if (!detectionUrl.includes('/ws/detection')) {
+          detectionUrl = detectionUrl.replace(/\/+$/, '') + '/ws/detection';
+        }
+        
+        setResolvedUrl(detectionUrl);
+        console.log('🔧 Detection WebSocket URL resolved to:', detectionUrl);
+        
+      } catch (error) {
+        console.error('❌ Failed to resolve detection WebSocket URL:', error);
+        // Use fallback
+        const fallbackUrl = 'ws://155.138.239.131:8001/ws/detection';
+        setResolvedUrl(fallbackUrl);
+        setConfigReady(true);
+        console.log('🔧 Using fallback detection WebSocket URL:', fallbackUrl);
+      }
+    };
+    
+    initializeUrl();
+  }, [configReady]);
+  
   const {
-    url = `ws://155.138.239.131:8001/ws/detection`,
+    url = resolvedUrl,
     autoReconnect = true,
     reconnectDelay = 3000,
     maxReconnectAttempts = 5,
@@ -62,13 +110,18 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
   // Connect to WebSocket
   const connect = useCallback(() => {
     if (!enabled) {
-      console.log('ℹ️ WebSocket disabled via options');
+      console.log('ℹ️ Detection WebSocket disabled via options');
+      return;
+    }
+
+    if (!configReady || !url) {
+      console.log('⏳ Detection WebSocket waiting for URL configuration...');
       return;
     }
 
     if (websocketRef.current?.readyState === WebSocket.CONNECTING || 
         websocketRef.current?.readyState === WebSocket.OPEN) {
-      console.log('ℹ️ WebSocket already connected or connecting');
+      console.log('ℹ️ Detection WebSocket already connected or connecting');
       return;
     }
 
@@ -164,7 +217,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         lastError: error instanceof Error ? error.message : 'Unknown error'
       }));
     }
-  }, [url, enabled, autoReconnect, reconnectDelay, maxReconnectAttempts, fallbackPollingInterval, onUpdate, onConnect, onDisconnect, onError, onFallback]);
+  }, [url, enabled, autoReconnect, reconnectDelay, maxReconnectAttempts, fallbackPollingInterval, onUpdate, onConnect, onDisconnect, onError, onFallback, configReady]);
 
   // Disconnect WebSocket
   const disconnect = useCallback(() => {
@@ -219,17 +272,17 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
     };
   }, [connectionState]);
 
-  // Auto-connect on mount if enabled
+  // Auto-connect on mount if enabled and URL is resolved
   useEffect(() => {
-    if (enabled) {
-      console.log('🚀 Detection WebSocket system initialized');
+    if (enabled && configReady && url) {
+      console.log('🚀 Detection WebSocket system initialized with URL:', url);
       connect();
     }
 
     return () => {
       disconnect();
     };
-  }, [enabled, connect, disconnect]);
+  }, [enabled, configReady, url, connect, disconnect]);
 
   // Return WebSocket interface
   return {
@@ -240,6 +293,8 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
     connectionStatus: getConnectionStatus(),
     fallbackActive: connectionState.fallbackActive,
     reconnectAttempts: connectionState.reconnectAttempts,
-    lastError: connectionState.lastError
+    lastError: connectionState.lastError,
+    configReady,
+    resolvedUrl: url
   };
 };

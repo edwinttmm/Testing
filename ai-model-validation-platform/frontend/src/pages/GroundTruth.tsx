@@ -648,27 +648,23 @@ const GroundTruth: React.FC = () => {
     if (!selectedVideo) return;
 
     const detectionId = generateDetectionId(vruType, currentFrame);
+    // Ensure pure JSON serialization for boundingBox
+    const pureBoundingBox = {
+      x: Number(boundingBox?.x) || 100,
+      y: Number(boundingBox?.y) || 100,
+      width: Number(boundingBox?.width) || 50,
+      height: Number(boundingBox?.height) || 100,
+      label: String(vruType),
+      confidence: Number(boundingBox?.confidence) || 1.0
+    };
+
     const annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
       videoId: selectedVideo.id,
       detectionId,
       frameNumber: currentFrame,
       timestamp: currentTime,
       vruType,
-      boundingBox: boundingBox ? { 
-        x: boundingBox.x || 100,
-        y: boundingBox.y || 100,
-        width: boundingBox.width || 50,
-        height: boundingBox.height || 100,
-        label: vruType, 
-        confidence: 1.0 
-      } : { 
-        x: 100, 
-        y: 100, 
-        width: 50, 
-        height: 100, 
-        label: vruType, 
-        confidence: 1.0 
-      },
+      boundingBox: pureBoundingBox,
       occluded: false,
       truncated: false,
       difficult: false,
