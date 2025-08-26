@@ -221,11 +221,72 @@ export function safeGet<T>(obj: unknown, path: string, defaultValue?: T): T | un
 }
 
 /**
- * Type guard for detection properties
+ * Type guard for detection properties - validates individual detection object
+ * Checks for actual YOLO detection properties instead of nested containers
  */
 export function hasDetectionProperties(obj: unknown): boolean {
+  if (!isObject(obj)) return false;
+  
+  // Check for YOLO detection object properties
+  const hasValidDetectionStructure = (
+    // Must have confidence score
+    ('confidence' in obj || 'conf' in obj || 'score' in obj) &&
+    // Must have bounding box data (various formats)
+    ('bbox' in obj || 'boundingBox' in obj || 'box' in obj || 
+     ('x' in obj && 'y' in obj && 'width' in obj && 'height' in obj) ||
+     ('x1' in obj && 'y1' in obj && 'x2' in obj && 'y2' in obj)) &&
+    // Must have class information
+    ('class' in obj || 'label' in obj || 'category' in obj || 'name' in obj || 'class_id' in obj)
+  );
+  
+  return hasValidDetectionStructure;
+}
+
+/**
+ * Type guard for detection response containers (legacy - kept for backward compatibility)
+ */
+export function hasDetectionContainer(obj: unknown): boolean {
   return isObject(obj) && 
     ('detections' in obj || 'detection_results' in obj || 'annotations' in obj);
+}
+
+/**
+ * Map YOLO class names to VRU types
+ * Handles common class name variations from different models
+ */
+export function mapYoloClassToVRUType(className: string): string {
+  const classMap: Record<string, string> = {
+    // COCO/YOLO standard classes
+    'person': 'pedestrian',
+    'people': 'pedestrian', 
+    'human': 'pedestrian',
+    'pedestrian': 'pedestrian',
+    'child': 'pedestrian',
+    'children': 'pedestrian',
+    
+    // Bicycle/Cyclist classes
+    'bicycle': 'cyclist',
+    'bike': 'cyclist',
+    'cyclist': 'cyclist',
+    'bicyclist': 'cyclist',
+    
+    // Motorcycle classes  
+    'motorcycle': 'motorcyclist',
+    'motorbike': 'motorcyclist',
+    'motorcyclist': 'motorcyclist',
+    
+    // Scooter classes
+    'scooter': 'scooter_rider',
+    'scooter_rider': 'scooter_rider',
+    'e_scooter': 'scooter_rider',
+    
+    // Wheelchair classes
+    'wheelchair': 'wheelchair_user',
+    'wheelchair_user': 'wheelchair_user'
+  };
+  
+  const lowerClassName = className.toLowerCase();
+  return classMap[lowerClassName] || 'pedestrian'; // Default to pedestrian
 }
 
 /**

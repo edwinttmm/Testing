@@ -1,7 +1,7 @@
 import { GroundTruthAnnotation, Detection, DetectionUpdate, VRUType } from './types';
 import { apiService } from './api';
 import { isDebugEnabled } from '../utils/envConfig';
-import { isObject, isArray, isString, isNumber, safeGet, hasDetectionProperties } from '../utils/typeGuards';
+import { isObject, isArray, isString, isNumber, safeGet, hasDetectionProperties, mapYoloClassToVRUType } from '../utils/typeGuards';
 
 export interface DetectionConfig {
   confidenceThreshold: number;
@@ -149,9 +149,18 @@ class DetectionService {
         throw new Error('Invalid detection response format');
       }
       
-      // Type-safe detection conversion
+      // Type-safe detection conversion with improved filtering
       const validDetections = isArray(detections) ? 
         detections.filter(hasDetectionProperties) : [];
+      
+      if (isDebugEnabled()) {
+        console.log('🔍 Detection filtering results:', {
+          totalDetections: detections.length,
+          validDetections: validDetections.length,
+          filteredOut: detections.length - validDetections.length,
+          sampleDetection: detections[0]
+        });
+      }
       
       // Convert backend detections to annotations
       const annotations = this.convertDetectionsToAnnotations(videoId, validDetections);
@@ -286,13 +295,17 @@ class DetectionService {
         detectionId: safeGet(det, 'detectionId', '') as string,
         frameNumber: safeGet(det, 'frame', safeGet(det, 'frameNumber', 0)) as number,
         timestamp: safeGet(det, 'timestamp', 0) as number,
-        vruType: safeGet(det, 'vruType', 'pedestrian') as VRUType,
+        vruType: mapYoloClassToVRUType(
+          safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person'))) as string
+        ) as VRUType,
         boundingBox: {
           x: safeGet(det, 'x', safeGet(det, 'bbox.x', 0)) as number,
           y: safeGet(det, 'y', safeGet(det, 'bbox.y', 0)) as number,
           width: safeGet(det, 'width', safeGet(det, 'bbox.width', 100)) as number,
           height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)) as number,
-          label: safeGet(det, 'label', 'pedestrian') as string,
+          label: mapYoloClassToVRUType(
+            safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person'))) as string
+          ),
           confidence: safeGet(det, 'confidence', 0.5) as number
         },
         occluded: safeGet(det, 'occluded', false) as boolean,

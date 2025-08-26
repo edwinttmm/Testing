@@ -1,0 +1,22 @@
+{
+  "default": [
+    {
+      "key": "swarm/detection/findings/analysis",
+      "value": "Root cause identified: hasDetectionProperties function incorrectly filters individual detection objects. It looks for nested containers ('detections', 'detection_results', 'annotations') but YOLO backend returns individual detection objects directly. This causes valid detections to be filtered out before conversion.",
+      "namespace": "default",
+      "timestamp": 1756187477892
+    },
+    {
+      "key": "swarm/detection/findings/complete-analysis",
+      "value": "DETECTION CONVERSION BUG ANALYSIS:\n\nPROBLEM: Backend returns 2 detections but converts to 0 annotations\n\nROOT CAUSE: hasDetectionProperties() function in typeGuards.ts (line 226) incorrectly filters detection objects. It expects individual detections to contain nested properties ['detections', 'detection_results', 'annotations'] but YOLO backend returns individual detection objects directly.\n\nFLOW:\n1. Backend returns DetectionPipelineResult with detections array\n2. Line 154 in detectionService.ts filters with hasDetectionProperties()\n3. Individual detection objects get filtered out because they don't have nested containers\n4. Empty array passed to convertDetectionsToAnnotations()\n5. Result: 0 annotations despite 2 valid detections from backend\n\nEVIDENCE:\n- DetectionPipelineResult type shows detections: Array<Record<string, number | string | boolean>>\n- Console shows 'Backend: {detections: Array(2), total_detections: 2}'\n- Console shows 'Converted detections to annotations: 0 annotations'\n- hasDetectionProperties looks for wrong structure\n\nCLASS MAPPING ISSUE:\n- Video contains 'person' class (children)\n- targetClasses: Array(3) may not include proper mapping\n- Need to verify YOLO class names vs frontend expectations\n\nFIX REQUIRED:\nReplace hasDetectionProperties with proper detection object validation that checks for actual detection properties (confidence, bbox, class, etc.) rather than nested containers.",
+      "namespace": "default",
+      "timestamp": 1756187570456
+    },
+    {
+      "key": "swarm/detection/findings/fix-complete",
+      "value": "DETECTION CONVERSION FIX IMPLEMENTED:\n\nCHANGES MADE:\n1. Fixed hasDetectionProperties() in typeGuards.ts:\n   - Now validates actual YOLO detection object properties\n   - Checks for confidence, bounding box, and class information\n   - Removed incorrect nested container validation\n   \n2. Added mapYoloClassToVRUType() function:\n   - Maps 'person', 'children' -> 'pedestrian' \n   - Maps 'bicycle' -> 'cyclist'\n   - Handles other VRU class variations\n   \n3. Updated detectionService.ts:\n   - Added import for new class mapping function\n   - Enhanced debug logging to show filtering results\n   - Applied class mapping in convertDetectionsToAnnotations()\n   - Fixed both vruType and boundingBox.label fields\n\nEXPECTED RESULT:\n- Backend detection objects with 'person' class will now pass filtering\n- Class names properly mapped to VRU types\n- 2 detections should convert to 2 annotations\n- Console will show detailed filtering debug info\n\nTEST REQUIRED:\nUpload video with children/person detections and verify:\n1. Filtering no longer drops valid detections\n2. Class mapping converts 'person' to 'pedestrian'\n3. Annotations display correctly in UI",
+      "namespace": "default",
+      "timestamp": 1756187849997
+    }
+  ]
+}

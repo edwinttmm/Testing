@@ -214,7 +214,7 @@ class VideoUtilsManager {
       
       // Fix localhost URLs that should use the correct backend URL
       if (video.url.includes('localhost:8000')) {
-        videoUrl = video.url.replace('http://localhost:8000', videoConfig.baseUrl || '');
+        videoUrl = video.url.replace('http://localhost:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000');
         if (isDebugEnabled()) {
           console.log('🔧 VideoUtils fixed localhost URL:', video.url, '-> Fixed URL:', videoUrl);
         }
