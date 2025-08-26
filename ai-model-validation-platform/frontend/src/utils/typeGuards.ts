@@ -225,19 +225,33 @@ export function safeGet<T>(obj: unknown, path: string, defaultValue?: T): T | un
  * Checks for actual YOLO detection properties instead of nested containers
  */
 export function hasDetectionProperties(obj: unknown): boolean {
-  if (!isObject(obj)) return false;
+  if (!isObject(obj)) {
+    console.log('🔍 hasDetectionProperties: not an object', obj);
+    return false;
+  }
   
-  // Check for YOLO detection object properties
-  const hasValidDetectionStructure = (
-    // Must have confidence score
-    ('confidence' in obj || 'conf' in obj || 'score' in obj) &&
-    // Must have bounding box data (various formats)
-    ('bbox' in obj || 'boundingBox' in obj || 'box' in obj || 
+  // Debug: show object keys
+  const keys = Object.keys(obj);
+  console.log('🔍 hasDetectionProperties checking object with keys:', keys);
+  
+  // Check for YOLO detection object properties - be more permissive
+  const hasConfidence = 'confidence' in obj || 'conf' in obj || 'score' in obj;
+  const hasBoundingBox = 'bbox' in obj || 'boundingBox' in obj || 'box' in obj || 
      ('x' in obj && 'y' in obj && 'width' in obj && 'height' in obj) ||
-     ('x1' in obj && 'y1' in obj && 'x2' in obj && 'y2' in obj)) &&
-    // Must have class information
-    ('class' in obj || 'label' in obj || 'category' in obj || 'name' in obj || 'class_id' in obj)
-  );
+     ('x1' in obj && 'y1' in obj && 'x2' in obj && 'y2' in obj);
+  const hasClass = 'class' in obj || 'label' in obj || 'category' in obj || 'name' in obj || 'class_id' in obj;
+  
+  console.log('🔍 hasDetectionProperties checks:', {
+    hasConfidence,
+    hasBoundingBox,
+    hasClass,
+    objectKeys: keys
+  });
+  
+  // Be more permissive - accept if it has at least confidence OR bounding box OR class
+  const hasValidDetectionStructure = hasConfidence || hasBoundingBox || hasClass;
+  
+  console.log('🔍 hasDetectionProperties result:', hasValidDetectionStructure, 'for object:', obj);
   
   return hasValidDetectionStructure;
 }

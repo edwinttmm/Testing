@@ -158,7 +158,8 @@ class DetectionService {
           totalDetections: detections.length,
           validDetections: validDetections.length,
           filteredOut: detections.length - validDetections.length,
-          sampleDetection: detections[0]
+          sampleDetection: detections[0],
+          allDetections: detections.slice(0, 3) // Show first 3 detections for debugging
         });
       }
       

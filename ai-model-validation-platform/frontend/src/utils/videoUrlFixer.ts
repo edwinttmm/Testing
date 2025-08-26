@@ -56,9 +56,13 @@ export function fixVideoUrl(
     }
   }
   
-  // Fix localhost URLs
-  if (url.includes('localhost:8000')) {
-    const fixedUrl = url.replace('http://localhost:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000');
+  // Fix localhost URLs - handle all localhost variations
+  if (url.includes('localhost:8000') || url.includes('localhost') || url.includes('127.0.0.1')) {
+    const fixedUrl = url
+      .replace('http://localhost:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000')
+      .replace('http://localhost', videoConfig.baseUrl || 'http://155.138.239.131:8000')
+      .replace('http://127.0.0.1:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000')
+      .replace('http://127.0.0.1', videoConfig.baseUrl || 'http://155.138.239.131:8000');
     if (debug) {
       console.log('🔧 fixVideoUrl fixed localhost:', url, '->', fixedUrl);
     }
