@@ -63,9 +63,9 @@ services:
     environment:
       # Security
       - AIVALIDATION_SECRET_KEY=${AIVALIDATION_SECRET_KEY:-GENERATE_SECURE_KEY_FOR_PRODUCTION}
-      # Database
-      - AIVALIDATION_DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-secure_password_change_me}@postgres:5432/${POSTGRES_DB:-vru_validation}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-secure_password_change_me}@postgres:5432/${POSTGRES_DB:-vru_validation}
+      # Database - Use SQLite for development with working data
+      - AIVALIDATION_DATABASE_URL=sqlite:///./dev_database.db
+      - DATABASE_URL=sqlite:///./dev_database.db
       # Redis
       - AIVALIDATION_REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@redis:6379
       - REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@redis:6379
@@ -81,8 +81,6 @@ services:
       # Docker configuration
       - AIVALIDATION_DOCKER_MODE=true
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -91,6 +89,8 @@ services:
       - ./backend:/app
       - ./models:/app/models
       - uploaded_videos:/app/uploads
+      # Mount the working SQLite database for persistence
+      - ./backend/dev_database.db:/app/dev_database.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -100,7 +100,7 @@ services:
     restart: unless-stopped
     command: [
       "sh", "-c",
-      "echo 'Waiting for database...' && sleep 10 && python -c 'import database; print(\"Database connection test passed\")' && uvicorn main:socketio_app --host 0.0.0.0 --port 8000 --reload"
+      "echo 'Using SQLite database: dev_database.db' && python -c 'import database; print(\"Database connection test passed\")' && uvicorn main:socketio_app --host 0.0.0.0 --port 8000 --reload"
     ]
 
   # React Frontend
