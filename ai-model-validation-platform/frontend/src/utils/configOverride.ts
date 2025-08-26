@@ -11,6 +11,8 @@ import {
   getConfigValueSync, 
   getFullConfigSync, 
   configurationManager,
+  waitForConfig as waitForConfigManager,
+  isConfigInitialized,
   RuntimeConfig 
 } from './configurationManager';
 
@@ -20,7 +22,8 @@ import {
  */
 export function getConfigValue(key: keyof RuntimeConfig, fallback: string): string {
   console.warn(`⚠️ getConfigValue is deprecated, use getConfigValueSync from configurationManager`);
-  return getConfigValueSync(key, fallback as any);
+  const result = getConfigValueSync(key, fallback as RuntimeConfig[keyof RuntimeConfig]);
+  return result || fallback;
 }
 
 /**
@@ -39,6 +42,24 @@ export function applyRuntimeConfigOverrides(): void {
 export function getFullConfig(): RuntimeConfig {
   console.warn(`⚠️ getFullConfig is deprecated, use getFullConfigSync from configurationManager`);
   return getFullConfigSync();
+}
+
+/**
+ * Wait for configuration to be ready
+ * @deprecated Use waitForConfig from configurationManager instead
+ */
+export function waitForConfig(): Promise<void> {
+  console.warn(`⚠️ waitForConfig is deprecated, use waitForConfig from configurationManager`);
+  return waitForConfigManager();
+}
+
+/**
+ * Check if configuration is ready
+ * @deprecated Use isConfigInitialized from configurationManager instead
+ */
+export function isConfigReady(): boolean {
+  console.warn(`⚠️ isConfigReady is deprecated, use isConfigInitialized from configurationManager`);
+  return isConfigInitialized();
 }
 
 // Re-export types for backward compatibility

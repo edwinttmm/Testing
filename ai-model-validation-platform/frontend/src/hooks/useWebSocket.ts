@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
-import { waitForConfig, isConfigReady } from '../utils/configOverride';
+import { waitForConfig, isConfigInitialized } from '../utils/configurationManager';
 
 interface UseWebSocketOptions {
   url?: string;
@@ -28,7 +28,7 @@ interface UseWebSocketReturn {
 const socketPool = new Map<string, Socket>();
 
 export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketReturn => {
-  const [configLoaded, setConfigLoaded] = useState(isConfigReady());
+  const [configLoaded, setConfigLoaded] = useState(isConfigInitialized());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -39,7 +39,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   
   // Wait for configuration to load before getting socket config
   const [socketConfig, setSocketConfig] = useState(() => {
-    if (isConfigReady()) {
+    if (isConfigInitialized()) {
       return getServiceConfig('socketio');
     }
     return { url: '', retryAttempts: 5, retryDelay: 1000, timeout: 20000 };
@@ -79,7 +79,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         console.log('⏳ WebSocket waiting for runtime configuration to load...');
       }
       
-      waitForConfig(10000)
+      waitForConfig()
         .then(() => {
           setConfigLoaded(true);
           const newConfig = getServiceConfig('socketio');
@@ -88,7 +88,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
             console.log('🔧 WebSocket configuration loaded:', newConfig);
           }
         })
-        .catch(err => {
+        .catch((err: unknown) => {
           console.error('❌ Failed to load WebSocket configuration:', err);
           setError(new Error('Configuration loading failed'));
           // Use fallback configuration with correct production URL
