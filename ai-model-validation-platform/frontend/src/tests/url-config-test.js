@@ -2,7 +2,8 @@
 // This tests if all URLs are correctly configured to use 155.138.239.131
 
 // Simulate window.RUNTIME_CONFIG loading
-window.RUNTIME_CONFIG = {
+global.window = global.window || {};
+global.window.RUNTIME_CONFIG = {
   REACT_APP_API_URL: 'http://155.138.239.131:8000',
   REACT_APP_WS_URL: 'ws://155.138.239.131:8000',
   REACT_APP_SOCKETIO_URL: 'http://155.138.239.131:8001',
@@ -11,27 +12,26 @@ window.RUNTIME_CONFIG = {
 };
 
 // Override process.env
-process.env = { ...process.env, ...window.RUNTIME_CONFIG };
+process.env = { ...process.env, ...global.window.RUNTIME_CONFIG };
 
 // Import configuration functions
-const { getConfigValue, getFullConfig, applyRuntimeConfigOverrides } = require('../utils/configOverride');
+const { getConfigValueSync, getFullConfigSync } = require('../utils/configurationManager');
 const { getServiceConfig } = require('../utils/envConfig');
 
 console.log('🧪 Testing URL Configuration...\n');
 
-// Apply overrides
-applyRuntimeConfigOverrides();
+// Configuration handled automatically by configurationManager
 
 // Test individual config values
 console.log('📋 Individual Config Values:');
-console.log('API_URL:', getConfigValue('REACT_APP_API_URL', 'fallback'));
-console.log('WS_URL:', getConfigValue('REACT_APP_WS_URL', 'fallback'));
-console.log('SOCKETIO_URL:', getConfigValue('REACT_APP_SOCKETIO_URL', 'fallback'));
-console.log('VIDEO_BASE_URL:', getConfigValue('REACT_APP_VIDEO_BASE_URL', 'fallback'));
+console.log('API_URL:', getConfigValueSync('REACT_APP_API_URL', 'fallback'));
+console.log('WS_URL:', getConfigValueSync('REACT_APP_WS_URL', 'fallback'));
+console.log('SOCKETIO_URL:', getConfigValueSync('REACT_APP_SOCKETIO_URL', 'fallback'));
+console.log('VIDEO_BASE_URL:', getConfigValueSync('REACT_APP_VIDEO_BASE_URL', 'fallback'));
 
 // Test full config
 console.log('\n📋 Full Config:');
-const fullConfig = getFullConfig();
+const fullConfig = getFullConfigSync();
 console.log(JSON.stringify(fullConfig, null, 2));
 
 // Test service configs
@@ -59,7 +59,7 @@ const hasLocalhost = Object.values(fullConfig).some(val =>
 
 console.log('\n✅ URL Configuration Test Results:');
 console.log('- All URLs use 155.138.239.131:', !hasLocalhost);
-console.log('- Runtime config loaded:', !!window.RUNTIME_CONFIG);
+console.log('- Runtime config loaded:', !!global.window.RUNTIME_CONFIG);
 console.log('- Process.env updated:', process.env.REACT_APP_API_URL === 'http://155.138.239.131:8000');
 
 if (hasLocalhost) {

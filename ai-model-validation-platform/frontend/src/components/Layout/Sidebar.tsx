@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Drawer,
   List,
@@ -25,19 +24,31 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
 
+// Create icon elements outside of component for better performance
+const DashboardIcon = React.createElement(Dashboard);
+const FolderOpenIcon = React.createElement(FolderOpen);
+const VideoLibraryIcon = React.createElement(VideoLibrary);
+const PlayArrowIcon = React.createElement(PlayArrow);
+const PlayCircleIcon = React.createElement(PlayCircle);
+const AssessmentIcon = React.createElement(Assessment);
+const DatasetIcon = React.createElement(Dataset);
+const SecurityIcon = React.createElement(Security);
+const SettingsIcon = React.createElement(Settings);
+const VideoLibraryPrimaryIcon = React.createElement(VideoLibrary, { color: 'primary' });
+
 const menuItems = [
-  { text: 'Dashboard', icon: <Dashboard />, path: '/' },
-  { text: 'Projects', icon: <FolderOpen />, path: '/projects' },
-  { text: 'Ground Truth', icon: <VideoLibrary />, path: '/ground-truth' },
-  { text: 'Test Execution', icon: <PlayArrow />, path: '/test-execution' },
-  { text: 'Enhanced Test', icon: <PlayCircle />, path: '/enhanced-test-execution' },
-  { text: 'Results', icon: <Assessment />, path: '/results' },
-  { text: 'Datasets', icon: <Dataset />, path: '/datasets' },
-  { text: 'Audit Logs', icon: <Security />, path: '/audit-logs' },
-  { text: 'Settings', icon: <Settings />, path: '/settings' },
+  { text: 'Dashboard', icon: DashboardIcon, path: '/' },
+  { text: 'Projects', icon: FolderOpenIcon, path: '/projects' },
+  { text: 'Ground Truth', icon: VideoLibraryIcon, path: '/ground-truth' },
+  { text: 'Test Execution', icon: PlayArrowIcon, path: '/test-execution' },
+  { text: 'Enhanced Test', icon: PlayCircleIcon, path: '/enhanced-test-execution' },
+  { text: 'Results', icon: AssessmentIcon, path: '/results' },
+  { text: 'Datasets', icon: DatasetIcon, path: '/datasets' },
+  { text: 'Audit Logs', icon: SecurityIcon, path: '/audit-logs' },
+  { text: 'Settings', icon: SettingsIcon, path: '/settings' },
 ];
 
-const Sidebar: React.FC = () => {
+const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -55,7 +66,7 @@ const Sidebar: React.FC = () => {
     >
       <Toolbar>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <VideoLibrary color="primary" />
+          {VideoLibraryPrimaryIcon}
           <Typography variant="h6" noWrap component="div">
             VRU Validation
           </Typography>

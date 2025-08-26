@@ -206,7 +206,7 @@ export class ApiConfigValidator {
     }
     
     if (failedTests.some(t => t.test === 'Process.env Override')) {
-      console.log('🔧 Check timing of applyRuntimeConfigOverrides() call');
+      console.log('🔧 Configuration is now handled automatically by configurationManager');
     }
     
     if (failedTests.some(t => t.test === 'API Service Configuration')) {

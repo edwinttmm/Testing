@@ -117,32 +117,48 @@ class ConfigurationManager {
   }
 
   /**
-   * Wait for runtime configuration to be available
+   * Wait for runtime configuration to be available with error handling
    */
   private waitForRuntimeConfig(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      const maxWaitTime = 5000; // 5 seconds max wait
-      const checkInterval = 50; // Check every 50ms
+    return new Promise<void>((resolve, reject) => {
+      const maxWaitTime = 3000; // Reduced to 3 seconds to prevent long delays
+      const checkInterval = 100; // Increased interval to reduce CPU usage
       let elapsed = 0;
+      let timeoutId: NodeJS.Timeout | null = null;
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      };
 
       const checkForRuntimeConfig = () => {
-        // Check if runtime config is available
-        if (typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG) {
-          console.log('🔧 Runtime config found:', (window as any).RUNTIME_CONFIG);
-          this.state.runtimeConfigLoaded = true;
-          resolve();
-          return;
+        try {
+          // Check if runtime config is available
+          if (typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG) {
+            console.log('🔧 Runtime config found:', (window as any).RUNTIME_CONFIG);
+            this.state.runtimeConfigLoaded = true;
+            cleanup();
+            resolve();
+            return;
+          }
+
+          elapsed += checkInterval;
+
+          if (elapsed >= maxWaitTime) {
+            console.log('⚡ Runtime config not found within timeout, using environment config (this is normal)');
+            cleanup();
+            resolve();
+            return;
+          }
+
+          timeoutId = setTimeout(checkForRuntimeConfig, checkInterval);
+        } catch (error) {
+          console.warn('⚠️ Error checking for runtime config:', error);
+          cleanup();
+          resolve(); // Don't fail initialization due to runtime config check
         }
-
-        elapsed += checkInterval;
-
-        if (elapsed >= maxWaitTime) {
-          console.warn('⚠️ Runtime config not found within timeout, proceeding with environment config');
-          resolve();
-          return;
-        }
-
-        setTimeout(checkForRuntimeConfig, checkInterval);
       };
 
       checkForRuntimeConfig();

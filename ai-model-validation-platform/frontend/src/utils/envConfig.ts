@@ -127,26 +127,7 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultApiUrl(): string {
-    // Smart default based on current location
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const protocol = window.location.protocol;
-      
-      // Handle production server - configurable via environment
-      if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
-        return `${protocol}//${hostname}:8000`;
-      }
-      
-      // Handle local development - Updated to use external IP
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://155.138.239.131:8000';
-      }
-      
-      // Generic fallback
-      return `${protocol}//${hostname}:8000`;
-    }
-    
-    // Server-side rendering fallback - Updated to use external IP
+    // Consistent API URL for all environments to avoid localhost:8000 vs 155.138.239.131:8000 conflicts
     return 'http://155.138.239.131:8000';
   }
   
@@ -157,26 +138,7 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultSocketioUrl(): string {
-    // Socket.IO should use the same server as API but on port 8001
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const protocol = window.location.protocol;
-      
-      // Handle production server
-      if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
-        return `${protocol}//${hostname}:8001`;
-      }
-      
-      // Handle local development - use external IP for Socket.IO
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://155.138.239.131:8001';
-      }
-      
-      // Generic fallback
-      return `${protocol}//${hostname}:8001`;
-    }
-    
-    // Server-side rendering fallback
+    // Consistent Socket.IO URL for all environments
     return 'http://155.138.239.131:8001';
   }
   
