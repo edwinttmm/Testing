@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application configuration settings with environment variable support"""
     
     # Database settings
-    database_url: str = os.getenv('AIVALIDATION_DATABASE_URL', os.getenv('DATABASE_URL', 'sqlite:///./app.db'))
+    database_url: str = os.getenv('AIVALIDATION_DATABASE_URL', os.getenv('DATABASE_URL', 'sqlite:///./dev_database.db'))
     test_database_url: str = os.getenv('AIVALIDATION_TEST_DATABASE_URL', 'sqlite:///./test.db')
     database_pool_size: int = int(os.getenv('AIVALIDATION_DATABASE_POOL_SIZE', '10'))
     database_max_overflow: int = int(os.getenv('AIVALIDATION_DATABASE_MAX_OVERFLOW', '20'))

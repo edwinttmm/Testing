@@ -13,16 +13,22 @@ logger = logging.getLogger(__name__)
 
 # Enhanced database configuration with connectivity helper
 try:
-    from database_connectivity_helper import get_enhanced_database_url
-    DATABASE_URL = get_enhanced_database_url()
-    logger.info(f"Using enhanced database URL: {DATABASE_URL.replace('password', '***')}")
+    from config import settings
+    DATABASE_URL = settings.database_url
+    logger.info(f"Using configured database URL: {DATABASE_URL}")
 except ImportError:
-    # Fallback to original logic if helper is not available
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL",
-        os.getenv("AIVALIDATION_DATABASE_URL", "sqlite:///./test_database.db")
-    )
-    logger.info("Using fallback database configuration")
+    # Enhanced database configuration with connectivity helper
+    try:
+        from database_connectivity_helper import get_enhanced_database_url
+        DATABASE_URL = get_enhanced_database_url()
+        logger.info(f"Using enhanced database URL: {DATABASE_URL.replace('password', '***')}")
+    except ImportError:
+        # Fallback to original logic if helper is not available
+        DATABASE_URL = os.getenv(
+            "DATABASE_URL",
+            os.getenv("AIVALIDATION_DATABASE_URL", "sqlite:///./test_database.db")
+        )
+        logger.info("Using fallback database configuration")
 
 # Validate database URL
 if not DATABASE_URL:
