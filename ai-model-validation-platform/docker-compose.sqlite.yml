@@ -24,8 +24,8 @@ services:
     command: [
       "sh", "-c",
       "echo 'Docker SQLite Integration: Using dev_database.db (704KB, 6 projects, 1 video, 1 annotation)' && 
-       echo 'Database file permissions:' && ls -la /app/dev_database.db &&
-       python -c 'import sqlite3; conn = sqlite3.connect(\"/app/dev_database.db\"); print(f\"Tables: {[r[0] for r in conn.execute(\"SELECT name FROM sqlite_master WHERE type=\\\"table\\\"\").fetchall()]}\"); conn.close()' &&
+       echo 'Database file permissions:' && ls -la /app/ &&
+       python -c 'import sqlite3; conn = sqlite3.connect(\"/app/dev_database.db\"); tables = [r[0] for r in conn.execute(\"SELECT name FROM sqlite_master WHERE type=\\\"table\\\"\").fetchall()]; print(\"Tables:\", tables); conn.close()' &&
        python -c 'import database; print(\"✅ Database connection test passed\")' && 
        uvicorn main:socketio_app --host 0.0.0.0 --port 8000 --reload"
     ]
