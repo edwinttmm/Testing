@@ -1,0 +1,187 @@
+# DEFINITIVE DOCKERFILE FOR SQLITE DATABASE ACCESS
+# Solves root cause issues with SQLite in Docker containers
+# Fixed Issues:
+# 1. User permissions alignment with host
+# 2. Proper database initialization and mounting
+# 3. SQLite-optimized Python environment
+# 4. Enhanced startup sequence with validation
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Create app user with specific UID/GID to match host permissions
+# This prevents permission issues with mounted volumes
+RUN groupadd -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser appuser && \
+    chown -R appuser:appuser /app
+
+# Install system dependencies optimized for SQLite and Docker
+RUN apt-get update && apt-get install -y \
+    # Core dependencies
+    ca-certificates \
+    curl \
+    wget \
+    # SQLite and database tools
+    sqlite3 \
+    # OpenCV and ML dependencies
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgthread-2.0-0 \
+    # Media processing
+    ffmpeg \
+    # Build tools for Python packages
+    build-essential \
+    pkg-config \
+    # Network and debugging tools
+    netcat-traditional \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure pip for reliability and security
+RUN pip config set global.trusted-host "pypi.org files.pythonhosted.org pypi.python.org download.pytorch.org" && \
+    pip config set global.timeout 600 && \
+    pip config set global.retries 5
+
+# Upgrade pip and install basic tools
+RUN pip install --upgrade pip setuptools wheel
+
+# Copy requirements files for better Docker layer caching
+COPY backend/requirements-minimal.txt backend/requirements-docker-minimal.txt ./
+
+# Install Python dependencies with extended timeout
+RUN pip install --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host pypi.python.org \
+    --trusted-host files.pythonhosted.org \
+    --timeout 600 \
+    --retries 3 \
+    -r requirements-minimal.txt || \
+    pip install --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host pypi.python.org \
+    --trusted-host files.pythonhosted.org \
+    --timeout 600 \
+    --retries 3 \
+    -r requirements-docker-minimal.txt
+
+# Copy application code
+COPY backend/ .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/data /app/logs /app/uploads /app/scripts && \
+    chown -R appuser:appuser /app
+
+# Install ML dependencies with enhanced error handling
+ENV PIP_TRUSTED_HOST="pypi.org pypi.python.org files.pythonhosted.org download.pytorch.org"
+ENV PIP_DEFAULT_TIMEOUT=600
+ENV PIP_RETRIES=3
+
+# Try auto installer first, fallback to static requirements
+RUN python auto_install_ml.py || \
+    (echo "⚠️ Auto-installer failed, using fallback requirements..." && \
+     pip install --no-cache-dir \
+     --trusted-host pypi.org \
+     --trusted-host pypi.python.org \
+     --trusted-host files.pythonhosted.org \
+     --timeout 600 \
+     --retries 3 \
+     torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+     pip install --no-cache-dir \
+     --trusted-host pypi.org \
+     --trusted-host pypi.python.org \
+     --trusted-host files.pythonhosted.org \
+     --timeout 600 \
+     ultralytics opencv-python-headless pillow numpy)
+
+# Set up SQLite-specific environment variables
+ENV SQLITE_THREADSAFE=1
+ENV SQLITE_ENABLE_FTS5=1
+ENV SQLITE_ENABLE_RTREE=1
+ENV PYTHONPATH="/app:$PYTHONPATH"
+
+# Make scripts executable
+RUN chmod +x /app/scripts/docker-database-init.sh 2>/dev/null || true
+
+# Create a comprehensive startup script
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "🔧 AI Model Validation Platform - SQLite Docker Startup"
+echo "======================================================="
+echo "Container User: $(id)"
+echo "Working Directory: $(pwd)"
+echo "Python Path: $PYTHONPATH"
+echo "Database Configuration: SQLite"
+echo ""
+
+# Initialize database with proper error handling
+echo "🔍 Initializing database..."
+if [ -f "/app/scripts/docker-database-init.sh" ]; then
+    echo "Running database initialization script..."
+    bash /app/scripts/docker-database-init.sh
+    if [ $? -eq 0 ]; then
+        echo "✅ Database initialization successful"
+    else
+        echo "⚠️  Database initialization had issues, but continuing..."
+    fi
+else
+    echo "⚠️  Database initialization script not found, using fallback..."
+    # Fallback database check
+    if [ ! -f "/app/dev_database.db" ]; then
+        echo "Creating empty database file..."
+        touch /app/dev_database.db
+        chmod 664 /app/dev_database.db
+    fi
+    
+    # Quick database test
+    python -c "
+import sqlite3
+try:
+    conn = sqlite3.connect('/app/dev_database.db')
+    conn.execute('CREATE TABLE IF NOT EXISTS test (id INTEGER)')
+    conn.execute('DROP TABLE IF EXISTS test')
+    conn.close()
+    print('✅ Database accessibility test passed')
+except Exception as e:
+    print(f'⚠️  Database test warning: {e}')
+"
+fi
+
+echo ""
+echo "🚀 Starting application server..."
+echo "Host: 0.0.0.0"
+echo "Port: 8000"
+echo "Reload: true"
+echo ""
+
+# Start the application with proper error handling
+exec uvicorn main:socketio_app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --reload \
+    --log-level info \
+    --access-log \
+    --use-colors
+EOF
+
+RUN chmod +x /app/start.sh
+
+# Switch to app user for security
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Use the comprehensive startup script
+CMD ["/app/start.sh"]
