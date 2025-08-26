@@ -79,12 +79,12 @@ const migrationState: MigrationState = {
 };
 
 export interface VideoUrlFixOptions {
-  forceAbsolute?: boolean | undefined;
-  debug?: boolean | undefined;
-  skipValidation?: boolean | undefined;
-  skipCache?: boolean | undefined;
-  skipDeduplication?: boolean | undefined;
-  forceDuringMigration?: boolean | undefined;
+  forceAbsolute?: boolean;
+  debug?: boolean;
+  skipValidation?: boolean;
+  skipCache?: boolean;
+  skipDeduplication?: boolean;
+  forceDuringMigration?: boolean;
 }
 
 // Performance optimization: Pre-compiled regex patterns
@@ -105,8 +105,8 @@ function checkMigrationState(): boolean {
   
   try {
     // Check for migration indicators
-    const config = getServiceConfig('database');
-    migrationState.isActive = config?.migrating === true || 
+    const config = getServiceConfig('api'); // Use 'api' config instead of non-existent 'database'
+    migrationState.isActive = (config as any)?.migrating === true || 
                               process.env.MIGRATION_ACTIVE === 'true' ||
                               document.cookie.includes('migration-active=true');
     migrationState.lastChecked = now;
@@ -131,8 +131,8 @@ function getCachedVideoBaseUrl(): string {
   
   try {
     // Try to get from service config
-    const videoConfig = getServiceConfig('video');
-    cachedVideoBaseUrl = videoConfig?.baseUrl ?? null;
+    const videoConfig = getServiceConfig('api'); // Use 'api' config instead of non-existent 'video'
+    cachedVideoBaseUrl = (videoConfig as any)?.baseUrl ?? null;
     
     // Fallback strategies
     if (!cachedVideoBaseUrl) {

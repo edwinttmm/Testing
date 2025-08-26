@@ -76,7 +76,7 @@ class VideoUrlFixerMonitor {
     
     this.monitoringInterval = setInterval(() => {
       this.performMonitoringCycle();
-    }, this.config.intervalMs);
+    }, this.config.intervalMs) as NodeJS.Timeout;
 
     // Initial monitoring cycle
     this.performMonitoringCycle();
