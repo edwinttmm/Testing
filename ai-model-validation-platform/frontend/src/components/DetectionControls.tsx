@@ -162,13 +162,23 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
 
         for (const detection of detectionResult.detections) {
           try {
+            // Ensure pure JSON serialization for boundingBox to avoid TypeScript class issues
+            const pureBoundingBox = {
+              x: Number(detection.boundingBox.x) || 0,
+              y: Number(detection.boundingBox.y) || 0,
+              width: Number(detection.boundingBox.width) || 50,
+              height: Number(detection.boundingBox.height) || 100,
+              label: String(detection.boundingBox.label || detection.vruType),
+              confidence: Number(detection.boundingBox.confidence) || 1.0
+            };
+
             const annotationPayload: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
               videoId: video.id,
               detectionId: detection.detectionId || generateDetectionId(detection.vruType as VRUType, detection.frameNumber),
               frameNumber: detection.frameNumber,
               timestamp: detection.timestamp,
               vruType: detection.vruType as VRUType,
-              boundingBox: detection.boundingBox,
+              boundingBox: pureBoundingBox,
               occluded: detection.occluded || false,
               truncated: detection.truncated || false,
               difficult: detection.difficult || false,
