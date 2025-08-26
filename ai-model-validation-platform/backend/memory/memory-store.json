@@ -1,0 +1,10 @@
+{
+  "default": [
+    {
+      "key": "current-validation-gaps",
+      "value": "CRITICAL FINDINGS: 1) BoundingBox model exists but no database constraints prevent malformed data 2) Annotation creation bypasses Pydantic validation in some paths 3) No middleware validation 4) Detection pipeline can store undefined/null bbox properties 5) Frontend crashes on boundingBox.x/y/width/height undefined",
+      "namespace": "default",
+      "timestamp": 1756240551756
+    }
+  ]
+}

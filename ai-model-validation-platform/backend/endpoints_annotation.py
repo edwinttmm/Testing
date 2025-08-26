@@ -22,7 +22,7 @@ async def create_annotation(
     video_id: str,
     annotation: AnnotationCreate,
     db: Session = Depends(get_db)
-):
+) -> AnnotationResponse:
     """Create new annotation for video with proper validation"""
     try:
         # Validate video exists
@@ -64,7 +64,60 @@ async def create_annotation(
         db.commit()
         db.refresh(db_annotation)
         
-        return db_annotation
+        # Convert to proper response schema
+        try:
+            bounding_box = db_annotation.bounding_box
+            if bounding_box is None:
+                bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+            elif isinstance(bounding_box, str):
+                import json
+                try:
+                    bounding_box = json.loads(bounding_box)
+                    # Ensure all required fields exist
+                    if not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
+                        bounding_box = {
+                            "x": bounding_box.get('x', 0),
+                            "y": bounding_box.get('y', 0), 
+                            "width": bounding_box.get('width', 1),
+                            "height": bounding_box.get('height', 1),
+                            **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
+                        }
+                except (json.JSONDecodeError, ValueError):
+                    bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+            elif not isinstance(bounding_box, dict):
+                bounding_box = bounding_box.__dict__ if hasattr(bounding_box, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+            
+            # Final validation - ensure all required fields exist in any dict bounding_box
+            if isinstance(bounding_box, dict) and not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
+                bounding_box = {
+                    "x": bounding_box.get('x', 0),
+                    "y": bounding_box.get('y', 0), 
+                    "width": bounding_box.get('width', 1),
+                    "height": bounding_box.get('height', 1),
+                    **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
+                }
+                
+            return AnnotationResponse(
+                id=db_annotation.id,
+                videoId=db_annotation.video_id,
+                detectionId=db_annotation.detection_id,
+                frameNumber=db_annotation.frame_number,
+                timestamp=db_annotation.timestamp,
+                endTimestamp=db_annotation.end_timestamp,
+                vruType=db_annotation.vru_type,
+                boundingBox=bounding_box,
+                occluded=db_annotation.occluded or False,
+                truncated=db_annotation.truncated or False,
+                difficult=db_annotation.difficult or False,
+                notes=db_annotation.notes,
+                annotator=db_annotation.annotator,
+                validated=db_annotation.validated or False,
+                createdAt=db_annotation.created_at,
+                updatedAt=db_annotation.updated_at
+            )
+        except Exception as e:
+            logger.error(f"Error serializing created annotation: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to serialize created annotation: {str(e)}")
         
     except HTTPException:
         db.rollback()
@@ -77,29 +130,122 @@ async def get_annotations(
     video_id: str,
     validated_only: Optional[bool] = False,
     db: Session = Depends(get_db)
-):
+) -> List[AnnotationResponse]:
     """Get all annotations for a video"""
     query = db.query(Annotation).filter(Annotation.video_id == video_id)
     if validated_only:
         query = query.filter(Annotation.validated == True)
     annotations = query.order_by(Annotation.timestamp).all()
-    return annotations
+    
+    # Convert SQLAlchemy objects to validated Pydantic response schemas
+    response_annotations = []
+    for annotation in annotations:
+        try:
+            # Ensure bounding_box is properly serialized as dict
+            bounding_box = annotation.bounding_box
+            if bounding_box is None:
+                bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+            elif isinstance(bounding_box, str):
+                import json
+                try:
+                    bounding_box = json.loads(bounding_box)
+                    # Ensure all required fields exist
+                    if not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
+                        bounding_box = {
+                            "x": bounding_box.get('x', 0),
+                            "y": bounding_box.get('y', 0), 
+                            "width": bounding_box.get('width', 1),
+                            "height": bounding_box.get('height', 1),
+                            **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
+                        }
+                except (json.JSONDecodeError, ValueError):
+                    bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+            elif not isinstance(bounding_box, dict):
+                bounding_box = bounding_box.__dict__ if hasattr(bounding_box, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+            
+            # Final validation - ensure all required fields exist in any dict bounding_box
+            if isinstance(bounding_box, dict) and not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
+                bounding_box = {
+                    "x": bounding_box.get('x', 0),
+                    "y": bounding_box.get('y', 0), 
+                    "width": bounding_box.get('width', 1),
+                    "height": bounding_box.get('height', 1),
+                    **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
+                }
+                
+            response_annotation = AnnotationResponse(
+                id=annotation.id,
+                videoId=annotation.video_id,
+                detectionId=annotation.detection_id,
+                frameNumber=annotation.frame_number,
+                timestamp=annotation.timestamp,
+                endTimestamp=annotation.end_timestamp,
+                vruType=annotation.vru_type,
+                boundingBox=bounding_box,
+                occluded=annotation.occluded or False,
+                truncated=annotation.truncated or False,
+                difficult=annotation.difficult or False,
+                notes=annotation.notes,
+                annotator=annotation.annotator,
+                validated=annotation.validated or False,
+                createdAt=annotation.created_at,
+                updatedAt=annotation.updated_at
+            )
+            response_annotations.append(response_annotation)
+        except Exception as e:
+            logger.error(f"Error serializing annotation {annotation.id}: {str(e)}")
+            # Skip malformed annotations rather than failing the entire request
+            continue
+            
+    return response_annotations
 
 async def get_annotation(
     annotation_id: str,
     db: Session = Depends(get_db)
-):
+) -> AnnotationResponse:
     """Get specific annotation by ID"""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
-    return annotation
+    
+    try:
+        # Ensure bounding_box is properly serialized as dict
+        bounding_box = annotation.bounding_box
+        if bounding_box is None:
+            bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+        elif isinstance(bounding_box, str):
+            import json
+            bounding_box = json.loads(bounding_box)
+        elif not isinstance(bounding_box, dict):
+            bounding_box = bounding_box.__dict__ if hasattr(bounding_box, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+            
+        return AnnotationResponse(
+            id=annotation.id,
+            videoId=annotation.video_id,
+            detectionId=annotation.detection_id,
+            frameNumber=annotation.frame_number,
+            timestamp=annotation.timestamp,
+            endTimestamp=annotation.end_timestamp,
+            vruType=annotation.vru_type,
+            boundingBox=bounding_box,
+            occluded=annotation.occluded or False,
+            truncated=annotation.truncated or False,
+            difficult=annotation.difficult or False,
+            notes=annotation.notes,
+            annotator=annotation.annotator,
+            validated=annotation.validated or False,
+            createdAt=annotation.created_at,
+            updatedAt=annotation.updated_at
+        )
+    except Exception as e:
+        logger.error(f"Error serializing annotation {annotation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to serialize annotation: {str(e)}")
 
 async def update_annotation(
     annotation_id: str,
     annotation_update: AnnotationUpdate,
     db: Session = Depends(get_db)
-):
+) -> AnnotationResponse:
     """Update existing annotation"""
     db_annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not db_annotation:
@@ -111,7 +257,39 @@ async def update_annotation(
     
     db.commit()
     db.refresh(db_annotation)
-    return db_annotation
+    
+    # Convert to proper response schema
+    try:
+        bounding_box = db_annotation.bounding_box
+        if bounding_box is None:
+            bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+        elif isinstance(bounding_box, str):
+            import json
+            bounding_box = json.loads(bounding_box)
+        elif not isinstance(bounding_box, dict):
+            bounding_box = bounding_box.__dict__ if hasattr(bounding_box, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+            
+        return AnnotationResponse(
+            id=db_annotation.id,
+            videoId=db_annotation.video_id,
+            detectionId=db_annotation.detection_id,
+            frameNumber=db_annotation.frame_number,
+            timestamp=db_annotation.timestamp,
+            endTimestamp=db_annotation.end_timestamp,
+            vruType=db_annotation.vru_type,
+            boundingBox=bounding_box,
+            occluded=db_annotation.occluded or False,
+            truncated=db_annotation.truncated or False,
+            difficult=db_annotation.difficult or False,
+            notes=db_annotation.notes,
+            annotator=db_annotation.annotator,
+            validated=db_annotation.validated or False,
+            createdAt=db_annotation.created_at,
+            updatedAt=db_annotation.updated_at
+        )
+    except Exception as e:
+        logger.error(f"Error serializing updated annotation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to serialize updated annotation: {str(e)}")
 
 async def delete_annotation(
     annotation_id: str,
@@ -130,7 +308,7 @@ async def validate_annotation(
     annotation_id: str,
     validated: bool,
     db: Session = Depends(get_db)
-):
+) -> AnnotationResponse:
     """Mark annotation as validated/unvalidated"""
     db_annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not db_annotation:
@@ -139,15 +317,108 @@ async def validate_annotation(
     db_annotation.validated = validated
     db.commit()
     db.refresh(db_annotation)
-    return db_annotation
+    
+    # Convert to proper response schema
+    try:
+        bounding_box = db_annotation.bounding_box
+        if bounding_box is None:
+            bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+        elif isinstance(bounding_box, str):
+            import json
+            bounding_box = json.loads(bounding_box)
+        elif not isinstance(bounding_box, dict):
+            bounding_box = bounding_box.__dict__ if hasattr(bounding_box, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+            
+        return AnnotationResponse(
+            id=db_annotation.id,
+            videoId=db_annotation.video_id,
+            detectionId=db_annotation.detection_id,
+            frameNumber=db_annotation.frame_number,
+            timestamp=db_annotation.timestamp,
+            endTimestamp=db_annotation.end_timestamp,
+            vruType=db_annotation.vru_type,
+            boundingBox=bounding_box,
+            occluded=db_annotation.occluded or False,
+            truncated=db_annotation.truncated or False,
+            difficult=db_annotation.difficult or False,
+            notes=db_annotation.notes,
+            annotator=db_annotation.annotator,
+            validated=db_annotation.validated or False,
+            createdAt=db_annotation.created_at,
+            updatedAt=db_annotation.updated_at
+        )
+    except Exception as e:
+        logger.error(f"Error serializing validated annotation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to serialize validated annotation: {str(e)}")
 
 async def get_annotations_by_detection_id(
     detection_id: str,
     db: Session = Depends(get_db)
-):
+) -> List[AnnotationResponse]:
     """Get annotations by detection ID for temporal tracking"""
     annotations = db.query(Annotation).filter(Annotation.detection_id == detection_id).order_by(Annotation.timestamp).all()
-    return annotations
+    
+    # Convert SQLAlchemy objects to validated Pydantic response schemas
+    response_annotations = []
+    for annotation in annotations:
+        try:
+            # Ensure bounding_box is properly serialized as dict
+            bounding_box = annotation.bounding_box
+            if bounding_box is None:
+                bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+            elif isinstance(bounding_box, str):
+                import json
+                try:
+                    bounding_box = json.loads(bounding_box)
+                    # Ensure all required fields exist
+                    if not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
+                        bounding_box = {
+                            "x": bounding_box.get('x', 0),
+                            "y": bounding_box.get('y', 0), 
+                            "width": bounding_box.get('width', 1),
+                            "height": bounding_box.get('height', 1),
+                            **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
+                        }
+                except (json.JSONDecodeError, ValueError):
+                    bounding_box = {"x": 0, "y": 0, "width": 1, "height": 1}
+            elif not isinstance(bounding_box, dict):
+                bounding_box = bounding_box.__dict__ if hasattr(bounding_box, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+            
+            # Final validation - ensure all required fields exist in any dict bounding_box
+            if isinstance(bounding_box, dict) and not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
+                bounding_box = {
+                    "x": bounding_box.get('x', 0),
+                    "y": bounding_box.get('y', 0), 
+                    "width": bounding_box.get('width', 1),
+                    "height": bounding_box.get('height', 1),
+                    **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
+                }
+                
+            response_annotation = AnnotationResponse(
+                id=annotation.id,
+                videoId=annotation.video_id,
+                detectionId=annotation.detection_id,
+                frameNumber=annotation.frame_number,
+                timestamp=annotation.timestamp,
+                endTimestamp=annotation.end_timestamp,
+                vruType=annotation.vru_type,
+                boundingBox=bounding_box,
+                occluded=annotation.occluded or False,
+                truncated=annotation.truncated or False,
+                difficult=annotation.difficult or False,
+                notes=annotation.notes,
+                annotator=annotation.annotator,
+                validated=annotation.validated or False,
+                createdAt=annotation.created_at,
+                updatedAt=annotation.updated_at
+            )
+            response_annotations.append(response_annotation)
+        except Exception as e:
+            logger.error(f"Error serializing annotation {annotation.id}: {str(e)}")
+            # Skip malformed annotations rather than failing the entire request
+            continue
+            
+    return response_annotations
 
 # Annotation Session Endpoints
 

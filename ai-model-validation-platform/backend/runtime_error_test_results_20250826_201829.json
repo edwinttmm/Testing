@@ -1,0 +1,35 @@
+{
+  "timestamp": "2025-08-26T20:18:29.905291",
+  "tests": {
+    "projects_500_error": {
+      "test": "Projects API should not return 500",
+      "status_code": 200,
+      "success": true,
+      "expected": "Not 500",
+      "actual": 200,
+      "project_count": 6
+    },
+    "annotation_structure": {
+      "test": "Annotations should have proper structure",
+      "success": false,
+      "error": "0"
+    },
+    "ground_truth_available": {
+      "test": "Ground truth videos endpoint should work",
+      "status_code": 200,
+      "success": true,
+      "video_count": 1
+    },
+    "video_upload": {
+      "test": "Video upload endpoint should be accessible",
+      "status_code": 405,
+      "success": true
+    }
+  },
+  "summary": {
+    "successful_tests": 3,
+    "total_tests": 4,
+    "success_rate": 0.75,
+    "overall_success": false
+  }
+}

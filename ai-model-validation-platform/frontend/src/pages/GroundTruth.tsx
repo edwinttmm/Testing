@@ -209,33 +209,69 @@ const GroundTruth: React.FC = () => {
 
   // Convert existing annotations to shapes for enhanced mode
   const convertAnnotationsToShapes = useCallback((annotations: GroundTruthAnnotation[]): AnnotationShape[] => {
+    console.debug('Converting annotations to shapes:', annotations?.length || 0, 'annotations');
+    
+    if (!annotations || !Array.isArray(annotations)) {
+      console.warn('Invalid annotations data:', annotations);
+      return [];
+    }
+    
     return annotations
-      .filter(annotation => annotation?.boundingBox && 
-                            typeof annotation.boundingBox.x === 'number' && 
-                            typeof annotation.boundingBox.y === 'number' && 
-                            typeof annotation.boundingBox.width === 'number' && 
-                            typeof annotation.boundingBox.height === 'number')
-      .map(annotation => ({
-        id: annotation.id,
-        type: 'rectangle' as const,
-        points: [
-          { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
-          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
-          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
-          { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
-        ],
-      boundingBox: annotation.boundingBox,
-      style: {
-        strokeColor: getVRUColor(annotation.vruType),
-        fillColor: `${getVRUColor(annotation.vruType)}20`,
-        strokeWidth: selectedAnnotation?.id === annotation.id ? 3 : 2,
-        fillOpacity: 0.2,
-      },
-      label: annotation.vruType,
-      confidence: annotation.boundingBox?.confidence || 1.0,
-      visible: true,
-      selected: selectedAnnotation?.id === annotation.id,
-    }));
+      .filter(annotation => {
+        // Comprehensive validation with debug logging
+        if (!annotation) {
+          console.debug('Skipping null annotation');
+          return false;
+        }
+        if (!annotation.boundingBox) {
+          console.debug('Skipping annotation with no boundingBox:', annotation.id);
+          return false;
+        }
+        const bbox = annotation.boundingBox;
+        if (typeof bbox.x !== 'number' || 
+            typeof bbox.y !== 'number' || 
+            typeof bbox.width !== 'number' || 
+            typeof bbox.height !== 'number') {
+          console.debug('Skipping annotation with invalid boundingBox properties:', {
+            id: annotation.id,
+            x: typeof bbox.x, 
+            y: typeof bbox.y, 
+            width: typeof bbox.width, 
+            height: typeof bbox.height,
+            bbox
+          });
+          return false;
+        }
+        return true;
+      })
+      .map(annotation => {
+        // Additional safety checks within map
+        const bbox = annotation.boundingBox!; // We know it exists from filter
+        const safeConfidence = typeof bbox.confidence === 'number' && 
+                              !isNaN(bbox.confidence) ? bbox.confidence : 1.0;
+        
+        return {
+          id: annotation.id,
+          type: 'rectangle' as const,
+          points: [
+            { x: bbox.x, y: bbox.y },
+            { x: bbox.x + bbox.width, y: bbox.y },
+            { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
+            { x: bbox.x, y: bbox.y + bbox.height },
+          ],
+          boundingBox: bbox,
+          style: {
+            strokeColor: getVRUColor(annotation.vruType),
+            fillColor: `${getVRUColor(annotation.vruType)}20`,
+            strokeWidth: selectedAnnotation?.id === annotation.id ? 3 : 2,
+            fillOpacity: 0.2,
+          },
+          label: annotation.vruType,
+          confidence: safeConfidence,
+          visible: true,
+          selected: selectedAnnotation?.id === annotation.id,
+        };
+      });
   }, [selectedAnnotation?.id, getVRUColor]);
   
   // Convert shapes back to ground truth annotations
@@ -295,21 +331,45 @@ const GroundTruth: React.FC = () => {
       // Get existing detections first
       const existingDetections = await getVideoDetections(video.id);
       if (existingDetections.length > 0) {
-        const annotations = existingDetections.map((det: any) => ({
-          id: det.id || `det-${Date.now()}-${Math.random()}`,
-          videoId: video.id,
-          detectionId: det.detection_id || det.detectionId || `DET_${Date.now()}`,
-          frameNumber: det.frame_number || det.frameNumber || 0,
-          timestamp: det.timestamp || 0,
-          vruType: det.vru_type || det.vruType || 'pedestrian',
-          boundingBox: det.bounding_box || det.boundingBox || { x: 0, y: 0, width: 50, height: 100, confidence: 0.5, label: 'pedestrian' },
-          occluded: det.occluded || false,
-          truncated: det.truncated || false,
-          difficult: det.difficult || false,
-          validated: det.validated || false,
-          createdAt: det.created_at || det.createdAt || new Date().toISOString(),
-          updatedAt: det.updated_at || det.updatedAt || new Date().toISOString()
-        }));
+        const annotations = existingDetections
+          .filter(det => {
+            // Filter out completely invalid detections
+            if (!det) return false;
+            const bbox = det.bounding_box || det.boundingBox;
+            if (!bbox) {
+              console.debug('Skipping detection without boundingBox:', det);
+              return false;
+            }
+            return true;
+          })
+          .map((det: any) => {
+            // Defensive mapping with proper boundingBox validation
+            const rawBbox = det.bounding_box || det.boundingBox;
+            const safeBbox = {
+              x: typeof rawBbox?.x === 'number' ? rawBbox.x : 0,
+              y: typeof rawBbox?.y === 'number' ? rawBbox.y : 0,
+              width: typeof rawBbox?.width === 'number' && rawBbox.width > 0 ? rawBbox.width : 50,
+              height: typeof rawBbox?.height === 'number' && rawBbox.height > 0 ? rawBbox.height : 100,
+              confidence: typeof rawBbox?.confidence === 'number' && !isNaN(rawBbox.confidence) ? rawBbox.confidence : 0.5,
+              label: rawBbox?.label || det.vru_type || det.vruType || 'pedestrian'
+            };
+            
+            return {
+              id: det.id || `det-${Date.now()}-${Math.random()}`,
+              videoId: video.id,
+              detectionId: det.detection_id || det.detectionId || `DET_${Date.now()}`,
+              frameNumber: det.frame_number || det.frameNumber || 0,
+              timestamp: det.timestamp || 0,
+              vruType: det.vru_type || det.vruType || 'pedestrian',
+              boundingBox: safeBbox,
+              occluded: det.occluded || false,
+              truncated: det.truncated || false,
+              difficult: det.difficult || false,
+              validated: det.validated || false,
+              createdAt: det.created_at || det.createdAt || new Date().toISOString(),
+              updatedAt: det.updated_at || det.updatedAt || new Date().toISOString()
+            };
+          });
         setAnnotations(annotations);
         setDetectionResults(annotations);
         setSuccessMessage(`Loaded ${annotations.length} existing detections for video`);
@@ -929,10 +989,10 @@ const GroundTruth: React.FC = () => {
       const newShape = createAnnotationShape(
         'rectangle',
         [
-          { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
-          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
-          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
-          { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
+          { x: annotation.boundingBox!.x, y: annotation.boundingBox!.y },
+          { x: annotation.boundingBox!.x + annotation.boundingBox!.width, y: annotation.boundingBox!.y },
+          { x: annotation.boundingBox!.x + annotation.boundingBox!.width, y: annotation.boundingBox!.y + annotation.boundingBox!.height },
+          { x: annotation.boundingBox!.x, y: annotation.boundingBox!.y + annotation.boundingBox!.height },
         ],
         {
           strokeColor: getVRUColor(annotation.vruType),
@@ -941,7 +1001,7 @@ const GroundTruth: React.FC = () => {
       );
       newShape.id = newAnnotation.id;
       newShape.label = annotation.vruType;
-      newShape.confidence = annotation.boundingBox.confidence;
+      newShape.confidence = typeof annotation.boundingBox!.confidence === 'number' && !isNaN(annotation.boundingBox!.confidence) ? annotation.boundingBox!.confidence : 1.0;
       
       setAnnotationShapes(prev => [...prev, newShape]);
       setSuccessMessage(`Created ${annotation.vruType} annotation`);
@@ -1067,19 +1127,29 @@ const GroundTruth: React.FC = () => {
         } else {
           // Try to import as regular annotation format
           if (Array.isArray(data)) {
-            const shapes = data.map((item: any) => createAnnotationShape(
-              item.type || 'rectangle',
-              item.points || [
-                { x: item.x || 0, y: item.y || 0 },
-                { x: (item.x || 0) + (item.width || 50), y: item.y || 0 },
-                { x: (item.x || 0) + (item.width || 50), y: (item.y || 0) + (item.height || 50) },
-                { x: item.x || 0, y: (item.y || 0) + (item.height || 50) },
-              ],
-              {
-                strokeColor: getVRUColor(item.label || 'pedestrian'),
-                fillColor: `${getVRUColor(item.label || 'pedestrian')}20`,
-              }
-            ));
+            const shapes = data
+              .filter((item: any) => {
+                // Validate import data structure
+                if (!item) return false;
+                if (item.points) return true; // Has explicit points
+                // Check if it has valid x,y,width,height properties
+                return typeof item.x === 'number' && 
+                       typeof item.y === 'number' && 
+                       (typeof item.width === 'number' || typeof item.height === 'number');
+              })
+              .map((item: any) => createAnnotationShape(
+                item.type || 'rectangle',
+                item.points || [
+                  { x: Number(item.x) || 0, y: Number(item.y) || 0 },
+                  { x: (Number(item.x) || 0) + (Number(item.width) || 50), y: Number(item.y) || 0 },
+                  { x: (Number(item.x) || 0) + (Number(item.width) || 50), y: (Number(item.y) || 0) + (Number(item.height) || 50) },
+                  { x: Number(item.x) || 0, y: (Number(item.y) || 0) + (Number(item.height) || 50) },
+                ],
+                {
+                  strokeColor: getVRUColor(item.label || 'pedestrian'),
+                  fillColor: `${getVRUColor(item.label || 'pedestrian')}20`,
+                }
+              ));
             
             setAnnotationShapes(prev => [...prev, ...shapes]);
             setSuccessMessage(`Imported ${shapes.length} annotations`);
@@ -1781,16 +1851,44 @@ const GroundTruth: React.FC = () => {
                     </Typography>
                     <DetectionResultsPanel
                       detections={detectionResults
-                        .filter(annotation => annotation?.boundingBox)
-                        .map(annotation => ({
-                          id: annotation.id,
-                          timestamp: annotation.timestamp,
-                          frameNumber: annotation.frameNumber,
-                          confidence: annotation.boundingBox?.confidence || 1.0,
-                          classLabel: annotation.vruType,
-                          vruType: annotation.vruType,
-                          boundingBox: annotation.boundingBox,
-                      }))}
+                        .filter(annotation => {
+                          // Strict validation for DetectionResultsPanel
+                          if (!annotation) {
+                            console.debug('Filtering out null annotation for DetectionResultsPanel');
+                            return false;
+                          }
+                          if (!annotation.boundingBox) {
+                            console.debug('Filtering out annotation without boundingBox:', annotation.id);
+                            return false;
+                          }
+                          const bbox = annotation.boundingBox;
+                          if (typeof bbox.x !== 'number' || 
+                              typeof bbox.y !== 'number' || 
+                              typeof bbox.width !== 'number' || 
+                              typeof bbox.height !== 'number') {
+                            console.debug('Filtering out annotation with invalid boundingBox for DetectionResultsPanel:', {
+                              id: annotation.id,
+                              boundingBox: bbox
+                            });
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map(annotation => {
+                          const bbox = annotation.boundingBox!; // We know it exists from filter
+                          const safeConfidence = typeof bbox.confidence === 'number' && 
+                                                !isNaN(bbox.confidence) ? bbox.confidence : 1.0;
+                          
+                          return {
+                            id: annotation.id,
+                            timestamp: annotation.timestamp,
+                            frameNumber: annotation.frameNumber,
+                            confidence: safeConfidence,
+                            classLabel: annotation.vruType,
+                            vruType: annotation.vruType,
+                            boundingBox: bbox,
+                          };
+                        })}
                       onDetectionSelect={(detection) => {
                         const annotation = annotations.find(a => a.id === detection.id);
                         if (annotation) {
