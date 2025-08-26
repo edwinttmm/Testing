@@ -28,7 +28,7 @@ export function fixVideoUrl(
   options: VideoUrlFixOptions = {}
 ): string {
   const { forceAbsolute = false, debug = false } = options;
-  const videoConfig = getServiceConfig('video');
+  const videoConfig = getServiceConfig('video') || { baseUrl: 'http://155.138.239.131:8000' };
   
   if (debug) {
     console.log('🔧 fixVideoUrl called with:', { url, filename, id, baseUrl: videoConfig.baseUrl });
@@ -56,17 +56,48 @@ export function fixVideoUrl(
     }
   }
   
-  // Fix localhost URLs - handle all localhost variations
-  if (url.includes('localhost:8000') || url.includes('localhost') || url.includes('127.0.0.1')) {
-    const fixedUrl = url
-      .replace('http://localhost:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000')
-      .replace('http://localhost', videoConfig.baseUrl || 'http://155.138.239.131:8000')
-      .replace('http://127.0.0.1:8000', videoConfig.baseUrl || 'http://155.138.239.131:8000')
-      .replace('http://127.0.0.1', videoConfig.baseUrl || 'http://155.138.239.131:8000');
-    if (debug) {
-      console.log('🔧 fixVideoUrl fixed localhost:', url, '->', fixedUrl);
+  // Fix localhost URLs using proper URL parsing to prevent recursive :8000 appending
+  if (url.includes('localhost') || url.includes('127.0.0.1')) {
+    try {
+      const urlObj = new URL(url);
+      const targetBaseUrl = videoConfig.baseUrl || 'http://155.138.239.131:8000';
+      const targetUrlObj = new URL(targetBaseUrl);
+      
+      // Only replace if it's actually localhost/127.0.0.1 to avoid recursive fixes
+      if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+        // Preserve the path and query parameters, replace only the origin
+        const fixedUrl = `${targetUrlObj.protocol}//${targetUrlObj.host}${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+        if (debug) {
+          console.log('🔧 fixVideoUrl fixed localhost with URL parsing:', url, '->', fixedUrl);
+        }
+        return fixedUrl;
+      }
+    } catch (urlError) {
+      // Fallback to string replacement for malformed URLs, but with protection
+      const targetBase = videoConfig.baseUrl || 'http://155.138.239.131:8000';
+      
+      // Handle already corrupted URLs with multiple :8000 patterns
+      if (url.includes(':8000:8000')) {
+        // Remove all extra :8000 patterns and reconstruct properly
+        const pathPart = url.split('/').slice(3).join('/'); // Get everything after domain
+        const fixedUrl = `${targetBase}/${pathPart}`;
+        if (debug) {
+          console.log('🔧 fixVideoUrl fixed corrupted URL:', url, '->', fixedUrl);
+        }
+        return fixedUrl;
+      }
+      
+      // Prevent recursive :8000 appending by checking if target is already present
+      if (!url.includes('155.138.239.131')) {
+        const fixedUrl = url
+          .replace(/^http:\/\/localhost(:\d+)?/, targetBase)
+          .replace(/^http:\/\/127\.0\.0\.1(:\d+)?/, targetBase);
+        if (debug) {
+          console.log('🔧 fixVideoUrl fixed localhost with fallback:', url, '->', fixedUrl);
+        }
+        return fixedUrl;
+      }
     }
-    return fixedUrl;
   }
   
   // Convert relative URLs to absolute
@@ -150,7 +181,7 @@ export function isVideoUrlValid(url: string): boolean {
  * Get the proper video base URL for the current environment
  */
 export function getVideoBaseUrl(): string {
-  const videoConfig = getServiceConfig('video');
+  const videoConfig = getServiceConfig('video') || { baseUrl: '' };
   return videoConfig.baseUrl || '';
 }
 

@@ -290,23 +290,42 @@ class DetectionService {
         det = {}; // Use empty object as fallback
       }
       
-      return {
-        id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`) as string,
-        videoId,
-        detectionId: safeGet(det, 'detectionId', '') as string,
-        frameNumber: safeGet(det, 'frame', safeGet(det, 'frameNumber', 0)) as number,
-        timestamp: safeGet(det, 'timestamp', 0) as number,
-        vruType: mapYoloClassToVRUType(
-          safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person'))) as string
-        ) as VRUType,
-        boundingBox: {
+      // Handle backend response format with class_name and bbox array
+      const className = safeGet(det, 'class_name', safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person')))) as string;
+      const bboxArray = safeGet(det, 'bbox', []) as number[];
+      
+      // Parse bbox array [x, y, width, height] or fallback to object properties
+      let bbox = { x: 0, y: 0, width: 100, height: 100 };
+      if (Array.isArray(bboxArray) && bboxArray.length >= 4) {
+        bbox = {
+          x: bboxArray[0],
+          y: bboxArray[1], 
+          width: bboxArray[2] - bboxArray[0], // Convert from x2 to width if needed
+          height: bboxArray[3] - bboxArray[1] // Convert from y2 to height if needed
+        };
+      } else {
+        // Fallback to object properties
+        bbox = {
           x: safeGet(det, 'x', safeGet(det, 'bbox.x', 0)) as number,
           y: safeGet(det, 'y', safeGet(det, 'bbox.y', 0)) as number,
           width: safeGet(det, 'width', safeGet(det, 'bbox.width', 100)) as number,
-          height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)) as number,
-          label: mapYoloClassToVRUType(
-            safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person'))) as string
-          ),
+          height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)) as number
+        };
+      }
+      
+      return {
+        id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`) as string,
+        videoId,
+        detectionId: safeGet(det, 'detectionId', safeGet(det, 'id', '')) as string,
+        frameNumber: safeGet(det, 'frame_number', safeGet(det, 'frame', safeGet(det, 'frameNumber', 0))) as number,
+        timestamp: safeGet(det, 'timestamp', 0) as number,
+        vruType: mapYoloClassToVRUType(className) as VRUType,
+        boundingBox: {
+          x: bbox.x,
+          y: bbox.y,
+          width: bbox.width,
+          height: bbox.height,
+          label: mapYoloClassToVRUType(className),
           confidence: safeGet(det, 'confidence', 0.5) as number
         },
         occluded: safeGet(det, 'occluded', false) as boolean,

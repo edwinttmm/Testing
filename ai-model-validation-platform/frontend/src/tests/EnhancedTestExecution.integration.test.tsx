@@ -61,7 +61,7 @@ const mockVideos = [
     id: 'video1',
     filename: 'test_video_1.mp4',
     name: 'Test Video 1',
-    url: 'http://localhost:8001/uploads/test_video_1.mp4',
+    url: 'http://155.138.239.131:8001/uploads/test_video_1.mp4',
     duration: 30,
     status: 'processed'
   },
@@ -69,7 +69,7 @@ const mockVideos = [
     id: 'video2',
     filename: 'test_video_2.mp4',
     name: 'Test Video 2',
-    url: 'http://localhost:8001/uploads/test_video_2.mp4',
+    url: 'http://155.138.239.131:8001/uploads/test_video_2.mp4',
     duration: 45,
     status: 'processed'
   },
@@ -77,7 +77,7 @@ const mockVideos = [
     id: 'video3',
     filename: 'test_video_3.mp4',
     name: 'Test Video 3',
-    url: 'http://localhost:8001/uploads/test_video_3.mp4',
+    url: 'http://155.138.239.131:8001/uploads/test_video_3.mp4',
     duration: 60,
     status: 'processed'
   }
@@ -245,7 +245,7 @@ describe('VideoAnnotationPlayer Enhanced Features', () => {
     id: 'test-video',
     filename: 'test.mp4',
     name: 'Test Video',
-    url: 'http://localhost:8001/uploads/test.mp4',
+    url: 'http://155.138.239.131:8001/uploads/test.mp4',
     duration: 30,
     status: 'processed'
   };
@@ -334,7 +334,7 @@ describe('SequentialVideoManager Features', () => {
       id: 'video1',
       filename: 'test1.mp4',
       name: 'Test Video 1',
-      url: 'http://localhost:8001/uploads/test1.mp4',
+      url: 'http://155.138.239.131:8001/uploads/test1.mp4',
       duration: 30,
       status: 'processed'
     },
@@ -342,7 +342,7 @@ describe('SequentialVideoManager Features', () => {
       id: 'video2',
       filename: 'test2.mp4',
       name: 'Test Video 2',
-      url: 'http://localhost:8001/uploads/test2.mp4',
+      url: 'http://155.138.239.131:8001/uploads/test2.mp4',
       duration: 45,
       status: 'processed'
     }
@@ -503,7 +503,7 @@ describe('Enhanced Test Execution Performance', () => {
       id: `video${i}`,
       filename: `test_video_${i}.mp4`,
       name: `Test Video ${i}`,
-      url: `http://localhost:8001/uploads/test_video_${i}.mp4`,
+      url: `http://155.138.239.131:8001/uploads/test_video_${i}.mp4`,
       duration: 30 + i,
       status: 'processed'
     }));

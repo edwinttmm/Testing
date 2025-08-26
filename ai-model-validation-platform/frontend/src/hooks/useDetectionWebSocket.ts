@@ -35,7 +35,7 @@ interface ConnectionState {
 // Re-enabled WebSocket detection hook with robust connection management
 export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}) => {
   const {
-    url = `ws://${window.location.hostname}:8001/ws/detection`,
+    url = `ws://155.138.239.131:8001/ws/detection`,
     autoReconnect = true,
     reconnectDelay = 3000,
     maxReconnectAttempts = 5,

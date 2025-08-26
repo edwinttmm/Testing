@@ -182,7 +182,7 @@ const EnhancedTestExecution = () => {
     setConnectionStatus(prev => ({ ...prev, websocket: 'checking' }));
     
     try {
-      const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
+      const wsUrl = process.env.REACT_APP_WS_URL || 'ws://155.138.239.131:8001';
       const testWs = new WebSocket(`${wsUrl}/ws/test`);
       
       testWs.onopen = () => {
@@ -363,7 +363,7 @@ const EnhancedTestExecution = () => {
       setTestResults([]);
       
       // Initialize WebSocket connection for real-time updates
-      const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
+      const wsUrl = process.env.REACT_APP_WS_URL || 'ws://155.138.239.131:8001';
       wsRef.current = new WebSocket(`${wsUrl}/ws/test/${currentSession.id}`);
       
       wsRef.current.onmessage = (event) => {

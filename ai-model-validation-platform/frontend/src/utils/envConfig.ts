@@ -157,9 +157,27 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultSocketioUrl(): string {
-    const apiUrl = this.getDefaultApiUrl();
-    // Use the same IP but different port for Socket.IO
-    return apiUrl.replace(':8000', ':8001').replace('155.138.239.131:8000', '155.138.239.131:8001');
+    // Socket.IO should use the same server as API but on port 8001
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol;
+      
+      // Handle production server
+      if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
+        return `${protocol}//${hostname}:8001`;
+      }
+      
+      // Handle local development - use external IP for Socket.IO
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://155.138.239.131:8001';
+      }
+      
+      // Generic fallback
+      return `${protocol}//${hostname}:8001`;
+    }
+    
+    // Server-side rendering fallback
+    return 'http://155.138.239.131:8001';
   }
   
   private getDefaultVideoBaseUrl(): string {

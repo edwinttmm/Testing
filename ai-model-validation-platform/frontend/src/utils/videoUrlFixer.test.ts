@@ -7,9 +7,16 @@ import { getServiceConfig } from './envConfig';
 
 // Mock the environment config
 jest.mock('./envConfig', () => ({
-  getServiceConfig: jest.fn(() => ({
-    baseUrl: 'http://155.138.239.131:8000'
-  }))
+  getServiceConfig: jest.fn((service) => {
+    if (service === 'video') {
+      return {
+        baseUrl: 'http://155.138.239.131:8000',
+        maxSizeMB: 100,
+        supportedFormats: ['mp4', 'avi', 'mov', 'mkv']
+      };
+    }
+    return {};
+  })
 }));
 
 describe('Video URL Fixer', () => {
@@ -54,6 +61,52 @@ describe('Video URL Fixer', () => {
     it('should force absolute URLs when requested', () => {
       const result = fixVideoUrl('uploads/test.mp4', '', '', { forceAbsolute: true });
       expect(result).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+    });
+
+    it('should prevent recursive :8000 appending', () => {
+      // Test the exact problem scenario
+      const originalUrl = 'http://localhost:8000/uploads/video.mp4';
+      const firstFix = fixVideoUrl(originalUrl);
+      expect(firstFix).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+      
+      // This should NOT append another :8000
+      const secondFix = fixVideoUrl(firstFix);
+      expect(secondFix).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+      
+      // Third fix should still be stable
+      const thirdFix = fixVideoUrl(secondFix);
+      expect(thirdFix).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    });
+
+    it('should handle malformed localhost URLs without corruption', () => {
+      const malformedUrl = 'http://localhost:8000:8000/uploads/video.mp4';
+      const result = fixVideoUrl(malformedUrl);
+      // Should not create more port corruption
+      expect(result).not.toContain(':8000:8000:8000');
+      expect(result).not.toContain(':8000:8000');
+      expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    });
+
+    it('should preserve path and query parameters when fixing URLs', () => {
+      const urlWithQuery = 'http://localhost:8000/uploads/video.mp4?v=1&t=30';
+      const result = fixVideoUrl(urlWithQuery);
+      expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4?v=1&t=30');
+    });
+
+    it('should handle localhost without port correctly', () => {
+      const localhostNoPort = 'http://localhost/uploads/video.mp4';
+      const result = fixVideoUrl(localhostNoPort);
+      expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    });
+
+    it('should handle 127.0.0.1 URLs correctly', () => {
+      const loopbackUrl = 'http://127.0.0.1:8000/uploads/video.mp4';
+      const result = fixVideoUrl(loopbackUrl);
+      expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+      
+      // Should not corrupt on second fix
+      const secondFix = fixVideoUrl(result);
+      expect(secondFix).toBe('http://155.138.239.131:8000/uploads/video.mp4');
     });
   });
 
