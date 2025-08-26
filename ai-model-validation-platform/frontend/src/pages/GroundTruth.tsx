@@ -209,15 +209,21 @@ const GroundTruth: React.FC = () => {
 
   // Convert existing annotations to shapes for enhanced mode
   const convertAnnotationsToShapes = useCallback((annotations: GroundTruthAnnotation[]): AnnotationShape[] => {
-    return annotations.map(annotation => ({
-      id: annotation.id,
-      type: 'rectangle' as const,
-      points: [
-        { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
-        { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
-        { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
-        { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
-      ],
+    return annotations
+      .filter(annotation => annotation?.boundingBox && 
+                            typeof annotation.boundingBox.x === 'number' && 
+                            typeof annotation.boundingBox.y === 'number' && 
+                            typeof annotation.boundingBox.width === 'number' && 
+                            typeof annotation.boundingBox.height === 'number')
+      .map(annotation => ({
+        id: annotation.id,
+        type: 'rectangle' as const,
+        points: [
+          { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
+          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
+          { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
+          { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
+        ],
       boundingBox: annotation.boundingBox,
       style: {
         strokeColor: getVRUColor(annotation.vruType),
@@ -226,7 +232,7 @@ const GroundTruth: React.FC = () => {
         fillOpacity: 0.2,
       },
       label: annotation.vruType,
-      confidence: annotation.boundingBox.confidence,
+      confidence: annotation.boundingBox?.confidence || 1.0,
       visible: true,
       selected: selectedAnnotation?.id === annotation.id,
     }));
@@ -913,7 +919,7 @@ const GroundTruth: React.FC = () => {
 
   // Enhanced annotation handlers
   const handleEnhancedAnnotationCreate = useCallback(async (annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (!selectedVideo) return;
+    if (!selectedVideo || !annotation.boundingBox) return;
 
     try {
       const newAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
@@ -1774,14 +1780,16 @@ const GroundTruth: React.FC = () => {
                       Detection Results
                     </Typography>
                     <DetectionResultsPanel
-                      detections={detectionResults.map(annotation => ({
-                        id: annotation.id,
-                        timestamp: annotation.timestamp,
-                        frameNumber: annotation.frameNumber,
-                        confidence: annotation.boundingBox.confidence || 1.0,
-                        classLabel: annotation.vruType,
-                        vruType: annotation.vruType,
-                        boundingBox: annotation.boundingBox,
+                      detections={detectionResults
+                        .filter(annotation => annotation?.boundingBox)
+                        .map(annotation => ({
+                          id: annotation.id,
+                          timestamp: annotation.timestamp,
+                          frameNumber: annotation.frameNumber,
+                          confidence: annotation.boundingBox?.confidence || 1.0,
+                          classLabel: annotation.vruType,
+                          vruType: annotation.vruType,
+                          boundingBox: annotation.boundingBox,
                       }))}
                       onDetectionSelect={(detection) => {
                         const annotation = annotations.find(a => a.id === detection.id);
