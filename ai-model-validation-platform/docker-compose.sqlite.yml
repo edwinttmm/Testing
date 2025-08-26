@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Docker Compose configuration for SQLite development with working database
 # This configuration uses the existing dev_database.db with all working data
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.sqlite.yml up
@@ -40,11 +38,11 @@ services:
 # Override the postgres service to prevent it from starting
   postgres:
     # Disable PostgreSQL service by overriding with a minimal placeholder
-    image: hello-world
-    command: ["echo", "PostgreSQL disabled for SQLite mode"]
+    image: alpine:latest
+    command: ["/bin/sh", "-c", "echo 'PostgreSQL disabled for SQLite mode' && sleep infinity"]
     depends_on: []
     healthcheck:
-      test: ["CMD", "echo", "postgres disabled"]
+      test: ["CMD", "/bin/sh", "-c", "echo postgres disabled"]
       interval: 5s
       timeout: 1s
       retries: 1
@@ -52,11 +50,11 @@ services:
 
   # CVAT database - also disable for development
   cvat_db:
-    image: hello-world  
-    command: ["echo", "CVAT DB disabled for SQLite development mode"]
+    image: alpine:latest
+    command: ["/bin/sh", "-c", "echo 'CVAT DB disabled for SQLite development mode' && sleep infinity"]
     depends_on: []
     healthcheck:
-      test: ["CMD", "echo", "cvat_db disabled"]
+      test: ["CMD", "/bin/sh", "-c", "echo cvat_db disabled"]
       interval: 5s
       timeout: 1s
       retries: 1
