@@ -1,19 +1,20 @@
 from fastapi import HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from database import get_db
+import logging
+from datetime import datetime
+import uuid
 
-# Import models from separate annotation models file
-import sys
-import os
-sys.path.append(os.path.dirname(__file__))
-from models import Annotation, AnnotationSession, VideoProjectLink, TestResult, DetectionComparison
+from database import get_db
+from models import Annotation, AnnotationSession, VideoProjectLink, TestResult, DetectionComparison, Video
 from schemas_annotation import (
     AnnotationCreate, AnnotationUpdate, AnnotationResponse,
     AnnotationSessionCreate, AnnotationSessionResponse,
     VideoProjectLinkCreate, VideoProjectLinkResponse,
     AnnotationExportRequest, TestResultResponse, DetectionComparisonResponse
 )
+
+logger = logging.getLogger(__name__)
 
 # Annotation CRUD Endpoints
 
@@ -22,26 +23,55 @@ async def create_annotation(
     annotation: AnnotationCreate,
     db: Session = Depends(get_db)
 ):
-    """Create new annotation for video"""
-    db_annotation = Annotation(
-        video_id=video_id,
-        detection_id=annotation.detection_id,
-        frame_number=annotation.frame_number,
-        timestamp=annotation.timestamp,
-        end_timestamp=annotation.end_timestamp,
-        vru_type=annotation.vru_type,
-        bounding_box=annotation.bounding_box,
-        occluded=annotation.occluded,
-        truncated=annotation.truncated,
-        difficult=annotation.difficult,
-        notes=annotation.notes,
-        annotator=annotation.annotator,
-        validated=annotation.validated
-    )
-    db.add(db_annotation)
-    db.commit()
-    db.refresh(db_annotation)
-    return db_annotation
+    """Create new annotation for video with proper validation"""
+    try:
+        # Validate video exists
+        from models import Video
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail=f"Video with id {video_id} not found")
+        
+        # Ensure videoId is properly set (Pydantic validation requirement)
+        if hasattr(annotation, 'video_id') and annotation.video_id != video_id:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"videoId in body ({annotation.video_id}) does not match URL parameter ({video_id})"
+            )
+        
+        # Create annotation with proper enum handling
+        import uuid
+        from datetime import datetime
+        
+        db_annotation = Annotation(
+            id=str(uuid.uuid4()),
+            video_id=video_id,
+            detection_id=annotation.detection_id,
+            frame_number=annotation.frame_number,
+            timestamp=annotation.timestamp,
+            end_timestamp=annotation.end_timestamp,
+            vru_type=annotation.vru_type.value if hasattr(annotation.vru_type, 'value') else annotation.vru_type,
+            bounding_box=annotation.bounding_box if isinstance(annotation.bounding_box, dict) else annotation.bounding_box.dict(),
+            occluded=annotation.occluded,
+            truncated=annotation.truncated,
+            difficult=annotation.difficult,
+            notes=annotation.notes,
+            annotator=annotation.annotator,
+            validated=annotation.validated,
+            created_at=datetime.utcnow()
+        )
+        
+        db.add(db_annotation)
+        db.commit()
+        db.refresh(db_annotation)
+        
+        return db_annotation
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create annotation: {str(e)}")
 
 async def get_annotations(
     video_id: str,

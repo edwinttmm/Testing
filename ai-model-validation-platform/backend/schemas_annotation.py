@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
@@ -7,17 +7,28 @@ class VRUTypeEnum(str, Enum):
     PEDESTRIAN = "pedestrian"
     CYCLIST = "cyclist"  
     MOTORCYCLIST = "motorcyclist"
-    WHEELCHAIR_USER = "wheelchair_user"
-    SCOOTER_RIDER = "scooter_rider"
+    WHEELCHAIR = "wheelchair"
+    SCOOTER = "scooter"
+    ANIMAL = "animal"
+    OTHER = "other"
+
+class BoundingBox(BaseModel):
+    """Bounding box coordinates with validation"""
+    x: float = Field(..., ge=0, description="X coordinate (top-left)")
+    y: float = Field(..., ge=0, description="Y coordinate (top-left)")
+    width: float = Field(..., gt=0, description="Width of bounding box")
+    height: float = Field(..., gt=0, description="Height of bounding box")
+    confidence: Optional[float] = Field(None, ge=0, le=1, description="Detection confidence")
+    label: Optional[str] = Field(None, description="Object label")
 
 class AnnotationCreate(BaseModel):
-    video_id: str = Field(alias="videoId")
+    video_id: Optional[str] = Field(None, alias="videoId", description="Video ID - will be set from URL parameter")
     detection_id: Optional[str] = Field(None, alias="detectionId")
-    frame_number: int = Field(alias="frameNumber")
-    timestamp: float
-    end_timestamp: Optional[float] = Field(None, alias="endTimestamp")
-    vru_type: VRUTypeEnum = Field(alias="vruType")
-    bounding_box: Dict[str, Any] = Field(alias="boundingBox")
+    frame_number: int = Field(..., ge=0, alias="frameNumber")
+    timestamp: float = Field(..., ge=0)
+    end_timestamp: Optional[float] = Field(None, ge=0, alias="endTimestamp")
+    vru_type: VRUTypeEnum = Field(..., alias="vruType")
+    bounding_box: BoundingBox = Field(..., alias="boundingBox")
     occluded: bool = False
     truncated: bool = False
     difficult: bool = False
@@ -27,14 +38,22 @@ class AnnotationCreate(BaseModel):
     
     class Config:
         populate_by_name = True
+        
+    def dict(self, **kwargs):
+        """Override dict method to ensure proper serialization"""
+        data = super().dict(**kwargs)
+        # Convert bounding_box to dict if it's a Pydantic model
+        if 'bounding_box' in data and hasattr(data['bounding_box'], 'dict'):
+            data['bounding_box'] = data['bounding_box'].dict()
+        return data
 
 class AnnotationUpdate(BaseModel):
     detection_id: Optional[str] = Field(None, alias="detectionId")
-    frame_number: Optional[int] = Field(None, alias="frameNumber")
-    timestamp: Optional[float] = None
-    end_timestamp: Optional[float] = Field(None, alias="endTimestamp")
+    frame_number: Optional[int] = Field(None, ge=0, alias="frameNumber")
+    timestamp: Optional[float] = Field(None, ge=0)
+    end_timestamp: Optional[float] = Field(None, ge=0, alias="endTimestamp")
     vru_type: Optional[VRUTypeEnum] = Field(None, alias="vruType")
-    bounding_box: Optional[Dict[str, Any]] = Field(None, alias="boundingBox")
+    bounding_box: Optional[BoundingBox] = Field(None, alias="boundingBox")
     occluded: Optional[bool] = None
     truncated: Optional[bool] = None
     difficult: Optional[bool] = None

@@ -2460,7 +2460,19 @@ except ImportError as e:
 from api_video_annotation import router as annotation_router
 from api_documentation import router as docs_router
 
-app.include_router(annotation_router)
+# Include FIXED annotation endpoints FIRST (higher priority)
+try:
+    from api_annotation_fix import annotation_fix_router
+    app.include_router(annotation_fix_router)
+    logger.info("Fixed annotation API routes registered with priority")
+except ImportError as e:
+    logger.warning(f"Fixed annotation routes not found: {e}")
+    # Only include old annotation router if fixed one failed to load
+    app.include_router(annotation_router)
+else:
+    # Don't include the old annotation router if fixed one is loaded
+    logger.info("Skipping old annotation router - using fixed version")
+
 app.include_router(docs_router)
 logger.info("Additional API routes registered")
 
@@ -2531,6 +2543,17 @@ async def add_process_time_header(request, call_next):
     return response
 
 # Enhanced startup and shutdown events
+
+# Network Connectivity Fixes - Apply direct patch
+try:
+    from detection_pipeline_patch import patch_detection_pipeline_endpoint
+    patch_detection_pipeline_endpoint(app)
+    logger.info("✅ Detection pipeline patch applied successfully")
+except ImportError as e:
+    logger.warning(f"Detection pipeline patch not applied: {e}")
+except Exception as e:
+    logger.error(f"Error applying detection pipeline patch: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup with enhanced database management"""
