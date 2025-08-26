@@ -158,7 +158,8 @@ class EnvironmentConfigManager {
   
   private getDefaultSocketioUrl(): string {
     const apiUrl = this.getDefaultApiUrl();
-    return apiUrl.replace(':8000', ':8001');
+    // Use the same IP but different port for Socket.IO
+    return apiUrl.replace(':8000', ':8001').replace('155.138.239.131:8000', '155.138.239.131:8001');
   }
   
   private getDefaultVideoBaseUrl(): string {
