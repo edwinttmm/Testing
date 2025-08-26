@@ -41,11 +41,13 @@ import {
 import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
+import { videoEnhancementCache } from '../utils/videoEnhancementCache';
 
 // Configuration is now handled automatically by configurationManager
 
 class ApiService {
   private api: AxiosInstance;
+  private videoEnhancementCache = videoEnhancementCache;
 
   constructor() {
     // Get API configuration with proper initialization check
@@ -426,7 +428,7 @@ class ApiService {
     apiCache.invalidatePattern('/api/projects');
     apiCache.invalidatePattern('/api/ground-truth/videos');
     // Clear video enhancement cache as well
-    this.videoEnhancementCache.clear();
+    videoEnhancementCache.clear();
   }
   
   /**
@@ -440,14 +442,14 @@ class ApiService {
    * Get video enhancement cache statistics
    */
   getVideoEnhancementStats() {
-    return this.videoEnhancementCache.getStats();
+    return videoEnhancementCache.getStats();
   }
 
   /**
    * Clear specific video from enhancement cache
    */
   clearVideoEnhancement(videoId: string) {
-    this.videoEnhancementCache.delete(videoId);
+    videoEnhancementCache.delete(videoId);
   }
 
   /**

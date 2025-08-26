@@ -38,14 +38,14 @@ interface ApiHealthStatus {
   overall: 'healthy' | 'degraded' | 'offline';
   primary: {
     available: boolean;
-    latency?: number;
-    error?: string;
+    latency?: number | undefined;
+    error?: string | undefined;
   };
   fallbacks: Array<{
     url: string;
     available: boolean;
-    latency?: number;
-    error?: string;
+    latency?: number | undefined;
+    error?: string | undefined;
   }>;
   lastChecked: Date;
   isOnline: boolean;
@@ -75,8 +75,8 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
       const config = envConfig.getConfig();
       
       // Test primary API
-      let primaryLatency: number | undefined;
-      let primaryError: string | undefined;
+      let primaryLatency: number | undefined = undefined;
+      let primaryError: string | undefined = undefined;
       let primaryAvailable = false;
       
       try {
@@ -94,8 +94,8 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
       const fallbackUrls = ['http://localhost:8000', 'http://127.0.0.1:8000'];
       
       for (const url of fallbackUrls) {
-        let fallbackLatency: number | undefined;
-        let fallbackError: string | undefined;
+        let fallbackLatency: number | undefined = undefined;
+        let fallbackError: string | undefined = undefined;
         let fallbackAvailable = false;
         
         try {
@@ -317,7 +317,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
 
           <Grid container spacing={2}>
             {/* Primary API Status */}
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6} component="div">
               <Card variant="outlined">
                 <CardHeader 
                   title="Primary API"
@@ -368,7 +368,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
             </Grid>
 
             {/* Fallback APIs Status */}
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={6} component="div">
               <Card variant="outlined">
                 <CardHeader 
                   title="Fallback APIs"

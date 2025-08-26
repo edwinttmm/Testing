@@ -44,10 +44,10 @@ interface RequestOptions {
 }
 
 class SmartApiService {
-  private primaryApi: AxiosInstance;
-  private fallbackApis: AxiosInstance[];
-  private config: SmartApiConfig;
-  private connectivityStatus: ConnectivityStatus;
+  private primaryApi!: AxiosInstance;
+  private fallbackApis: AxiosInstance[] = [];
+  private config!: SmartApiConfig;
+  private connectivityStatus!: ConnectivityStatus;
   private circuitBreaker: Map<string, { failures: number; nextTry: number }> = new Map();
   
   constructor() {
@@ -222,7 +222,7 @@ class SmartApiService {
   
   private isCircuitBreakerOpen(baseUrl: string): boolean {
     const state = this.circuitBreaker.get(baseUrl);
-    return state && state.failures >= 5 && Date.now() < state.nextTry;
+    return Boolean(state && state.failures >= 5 && Date.now() < state.nextTry);
   }
   
   async request<T>(
@@ -242,7 +242,7 @@ class SmartApiService {
       }
     }
     
-    let lastError: Error;
+    let lastError: Error | undefined;
     
     // Try primary API first
     if (this.connectivityStatus.primaryAvailable && !this.isCircuitBreakerOpen(this.config.primaryBaseUrl)) {
@@ -257,11 +257,11 @@ class SmartApiService {
         
         return response;
       } catch (error) {
-        lastError = error;
+        lastError = error as Error;
         this.updateCircuitBreaker(this.config.primaryBaseUrl, false);
         
         if (isDebugEnabled()) {
-          console.warn(`🔄 Primary API failed, trying fallbacks:`, error.message);
+          console.warn(`🔄 Primary API failed, trying fallbacks:`, (error as Error).message);
         }
       }
     }
@@ -291,7 +291,7 @@ class SmartApiService {
           
           return response;
         } catch (error) {
-          lastError = error;
+          lastError = error as Error;
           this.updateCircuitBreaker(fallbackUrl, false);
           
           if (isDebugEnabled()) {
@@ -311,7 +311,7 @@ class SmartApiService {
     }
     
     // All options exhausted
-    const finalError = this.handleFinalError(lastError || new Error('All API endpoints failed'));
+    const finalError = this.handleFinalError(lastError ?? new Error('All API endpoints failed'));
     
     // Report the error
     errorReporting.reportApiError(
@@ -320,9 +320,8 @@ class SmartApiService {
       {
         url,
         method,
-        primaryAvailable: this.connectivityStatus.primaryAvailable,
-        fallbacksAvailable: this.connectivityStatus.fallbacksAvailable,
-        isOnline: this.connectivityStatus.isOnline
+        status: finalError.status || 0,
+        statusText: finalError.message
       }
     );
     
@@ -413,7 +412,7 @@ class SmartApiService {
         message,
         status,
         code: error.code,
-        details: error.response?.data
+        details: error.response?.data as Record<string, unknown>
       };
     }
     

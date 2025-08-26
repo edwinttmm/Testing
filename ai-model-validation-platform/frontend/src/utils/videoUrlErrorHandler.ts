@@ -37,7 +37,7 @@ class VideoUrlErrorHandler {
   recordError(error: Omit<VideoUrlError, 'timestamp'>, videoId?: string): void {
     const fullError: VideoUrlError = {
       ...error,
-      videoId,
+      videoId: videoId ?? undefined,
       timestamp: Date.now()
     };
     
@@ -89,7 +89,7 @@ class VideoUrlErrorHandler {
             createdAt: video.createdAt || new Date().toISOString(),
             // Add other required VideoFile properties with defaults
             uploadedAt: video.uploadedAt || new Date().toISOString(),
-            processingStatus: video.processingStatus || 'unknown',
+            processing_status: video.processing_status || 'unknown',
             groundTruthGenerated: video.groundTruthGenerated || false,
             detectionCount: video.detectionCount || 0
           };
@@ -121,7 +121,7 @@ class VideoUrlErrorHandler {
             fileSize: video.fileSize || 0,
             createdAt: video.createdAt || new Date().toISOString(),
             uploadedAt: video.uploadedAt || new Date().toISOString(),
-            processingStatus: video.processingStatus || 'unknown',
+            processing_status: video.processing_status || 'unknown',
             groundTruthGenerated: video.groundTruthGenerated || false,
             detectionCount: video.detectionCount || 0
           };
@@ -276,7 +276,7 @@ export function safeEnhanceVideo(
     }
     
     const videoError: Omit<VideoUrlError, 'timestamp'> = {
-      originalUrl,
+      originalUrl: originalUrl ?? undefined,
       errorType,
       message,
       recoverable: errorType !== 'PARSE_ERROR'
