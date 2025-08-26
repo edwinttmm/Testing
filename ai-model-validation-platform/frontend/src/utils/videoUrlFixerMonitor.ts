@@ -375,7 +375,10 @@ class VideoUrlFixerMonitor {
   exportData(): {
     config: MonitorConfig;
     alerts: PerformanceAlert[];
-    historicalMetrics: typeof this.historicalMetrics;
+    historicalMetrics: Array<{
+      timestamp: Date;
+      metrics: ReturnType<typeof getPerformanceMetrics>;
+    }>;
     exportTimestamp: Date;
   } {
     return {

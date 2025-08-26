@@ -1,4 +1,4 @@
-import { GroundTruthAnnotation, Detection, DetectionUpdate, VRUType } from './types';
+import { GroundTruthAnnotation, DetectionUpdate, VRUType } from './types';
 import { apiService } from './api';
 import { isDebugEnabled } from '../utils/envConfig';
 import { isObject, isArray, isString, isNumber, safeGet, hasDetectionProperties, mapYoloClassToVRUType } from '../utils/typeGuards';

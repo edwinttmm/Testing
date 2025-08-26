@@ -20,7 +20,7 @@ import {
   PanTool,
 } from '@mui/icons-material';
 import { useAnnotation } from './AnnotationManager';
-import { Point, Size, ZoomPanState } from './types';
+import { Point, Size } from './types';
 
 interface ZoomPanControlsProps {
   containerRef?: React.RefObject<HTMLElement>;

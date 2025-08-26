@@ -910,28 +910,28 @@ export async function initializeWithHooks(): Promise<void> {
 }
 
 /**
- * Notify hooks about performance events
+ * Notify hooks about performance events - currently unused but available for future features
  */
-async function notifyHooks(event: string, data: any): Promise<void> {
-  try {
-    if (typeof window !== 'undefined' && (window as any).claudeFlow?.hooks) {
-      const hooks = (window as any).claudeFlow.hooks;
-      await hooks.notify({
-        component: 'videoUrlFixer',
-        action: event,
-        data,
-        timestamp: new Date().toISOString()
-      });
-    }
-  } catch (error) {
-    // Silently fail - hooks are optional
-  }
-}
+// async function notifyHooks(event: string, data: any): Promise<void> {
+//   try {
+//     if (typeof window !== 'undefined' && (window as any).claudeFlow?.hooks) {
+//       const hooks = (window as any).claudeFlow.hooks;
+//       await hooks.notify({
+//         component: 'videoUrlFixer',
+//         action: event,
+//         data,
+//         timestamp: new Date().toISOString()
+//       });
+//     }
+//   } catch (error) {
+//     // Silently fail - hooks are optional
+//   }
+// }
 
 /**
  * Enhanced export with all optimization features
  */
-export default {
+const videoUrlFixerDefault = {
   // Core functions
   fixVideoUrl,
   fixVideoObjectUrl,
@@ -957,6 +957,8 @@ export default {
   // Initialization
   initializeWithHooks
 };
+
+export default videoUrlFixerDefault;
 
 // Auto-initialize if in browser environment
 if (typeof window !== 'undefined') {

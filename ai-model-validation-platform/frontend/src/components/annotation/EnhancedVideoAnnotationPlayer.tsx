@@ -23,9 +23,6 @@ import {
   FormControl,
   InputLabel,
   Divider,
-  ListItemText,
-  List,
-  ListItem,
 } from '@mui/material';
 import {
   Help,
@@ -225,7 +222,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     } catch (error) {
       console.error('Fullscreen toggle error:', error);
     }
-  }, [setIsFullscreen]);
+  }, []);
 
   // Handle settings change
   const handleSettingsChange = useCallback((key: string, value: any) => {
@@ -235,7 +232,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     if (videoElement && key === 'playbackRate') {
       videoElement.playbackRate = value;
     }
-  }, [videoElement, setVideoSettings]);
+  }, [videoElement]);
 
   // Listen for fullscreen changes
   useEffect(() => {
@@ -571,7 +568,7 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
   const [enhancedMode, setEnhancedMode] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Missing state variables
-  const [videoSettings, setVideoSettings] = useState({
+  const [videoSettings] = useState({
     quality: '720p',
     playbackRate: 1.0,
     showAnnotations: true,
@@ -774,11 +771,7 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
     setEnhancedMode(!enhancedMode);
   }, [enhancedMode]);
 
-  // Error handling
-  const handleError = useCallback((error: string) => {
-    setError(error);
-    setTimeout(() => setError(null), 5000);
-  }, []);
+  // Error handling removed - unused
 
   return (
     <Box sx={{ height: '100%' }}>

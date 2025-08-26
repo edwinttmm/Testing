@@ -3,7 +3,6 @@ import {
   AnnotationState,
   AnnotationShape,
   AnnotationAction,
-  DrawingTool,
   Point,
   Rectangle,
   CanvasTransform,

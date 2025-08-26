@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  CardActions,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -27,7 +26,6 @@ import {
   Tooltip,
   Stack,
   Divider,
-  Badge,
 } from '@mui/material';
 import { FixedGrid } from '../components/ui/FixedUIComponents';
 import {
@@ -38,7 +36,6 @@ import {
   Stop as StopIcon,
   Assessment as ReportIcon,
   VideoLibrary as VideoIcon,
-  Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Info as InfoIcon,
@@ -46,10 +43,7 @@ import {
   Sync as SyncIcon,
   SkipNext as SkipNextIcon,
   SkipPrevious as SkipPreviousIcon,
-  Shuffle as ShuffleIcon,
-  Loop as LoopIcon,
   Speed as SpeedIcon,
-  Timeline as TimelineIcon,
   Wifi as WifiIcon,
   WifiOff as WifiOffIcon,
 } from '@mui/icons-material';
@@ -138,7 +132,6 @@ const EnhancedTestExecution = () => {
 
   // UI states
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('info');
@@ -209,22 +202,7 @@ const EnhancedTestExecution = () => {
     await Promise.all([checkAPIConnection(), checkWebSocketConnection()]);
   }, [checkAPIConnection, checkWebSocketConnection]);
 
-  // Sequential playback logic
-  const initializeSequentialPlayback = useCallback(() => {
-    if (selectedVideos.length === 0) return;
-
-    const orderedVideos = testConfig.randomOrder 
-      ? [...selectedVideos].sort(() => Math.random() - 0.5)
-      : selectedVideos;
-
-    setPlaybackState({
-      currentVideoIndex: 0,
-      playingVideo: orderedVideos[0],
-      isSequentialMode: true,
-      totalProgress: 0,
-      videoProgress: {},
-    });
-  }, [selectedVideos, testConfig.randomOrder]);
+  // Sequential playback logic - removed unused function
 
   const advanceToNextVideo = useCallback(() => {
     setPlaybackState(prev => {
@@ -299,8 +277,7 @@ const EnhancedTestExecution = () => {
       const response = await apiService.get<TestSession[]>('/api/sessions');
       setSessions(response);
     } catch (err: any) {
-      setError(err.message || 'Failed to load sessions');
-      showSnackbar('Failed to load sessions', 'error');
+      showSnackbar(err.message || 'Failed to load sessions', 'error');
     } finally {
       setLoading(false);
     }
@@ -332,8 +309,7 @@ const EnhancedTestExecution = () => {
       setSessionDialogOpen(false);
       showSnackbar('Session created successfully', 'success');
     } catch (err: any) {
-      setError(err.message || 'Failed to create session');
-      showSnackbar('Failed to create session', 'error');
+      showSnackbar(err.message || 'Failed to create session', 'error');
     } finally {
       setLoading(false);
     }
@@ -444,8 +420,7 @@ const EnhancedTestExecution = () => {
           setSelectedProject(response[0]);
         }
       } catch (err: any) {
-        setError(err.message || 'Failed to load projects');
-        showSnackbar('Failed to load projects', 'error');
+        showSnackbar(err.message || 'Failed to load projects', 'error');
       } finally {
         setLoading(false);
       }

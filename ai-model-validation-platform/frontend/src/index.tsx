@@ -4,7 +4,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
-import { configurationManager, waitForConfig } from './utils/configurationManager';
+import { waitForConfig } from './utils/configurationManager';
 
 // Initialize configuration manager FIRST
 console.log('🔧 Starting configuration initialization...');

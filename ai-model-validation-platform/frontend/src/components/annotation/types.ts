@@ -6,6 +6,12 @@ export interface Point {
   y: number;
 }
 
+export interface BrushPoint extends Point {
+  pressure?: number;
+  size?: number;
+  timestamp?: number;
+}
+
 export interface Size {
   width: number;
   height: number;

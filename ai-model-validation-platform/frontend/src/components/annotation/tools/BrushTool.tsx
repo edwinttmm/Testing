@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Point, AnnotationShape, BrushStroke } from '../types';
+import { Point, BrushPoint, AnnotationShape } from '../types';
 import { useAnnotation } from '../AnnotationManager';
 
 interface BrushToolProps {
@@ -10,7 +10,7 @@ interface BrushToolProps {
 // Hook that provides brush tool functionality
 export const useBrushTool = (props: BrushToolProps) => {
   const { state, actions } = useAnnotation();
-  const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
+  const [currentStroke, setCurrentStroke] = useState<BrushPoint[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushPreview, setBrushPreview] = useState<Point | null>(null);
 
@@ -65,14 +65,12 @@ export const useBrushTool = (props: BrushToolProps) => {
   const startStroke = useCallback((point: Point, pressure: number = 1) => {
     if (!props.enabled) return;
 
-    const strokePoint = {
+    setCurrentStroke([{
       ...point,
       pressure,
       size: getBrushSize(pressure),
       timestamp: Date.now(),
-    };
-
-    setCurrentStroke([strokePoint]);
+    }]);
     setIsDrawing(true);
     lastPointRef.current = point;
     strokeStartTimeRef.current = Date.now();
@@ -82,13 +80,6 @@ export const useBrushTool = (props: BrushToolProps) => {
   // Add point to current stroke with interpolation for smooth lines
   const addPoint = useCallback((point: Point, pressure: number = 1) => {
     if (!isDrawing || !lastPointRef.current) return;
-
-    const strokePoint = {
-      ...point,
-      pressure,
-      size: getBrushSize(pressure),
-      timestamp: Date.now(),
-    };
 
     // Interpolate points for smoother strokes
     const interpolatedPoints = interpolatePoints(lastPointRef.current, point, 2);

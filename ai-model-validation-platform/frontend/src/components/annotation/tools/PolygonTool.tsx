@@ -53,13 +53,7 @@ export const usePolygonTool = (props: PolygonToolProps) => {
   const completePolygon = useCallback(() => {
     if (currentPoints.length < MIN_POINTS) return;
 
-    // Calculate bounding box
-    const xs = currentPoints.map(p => p.x);
-    const ys = currentPoints.map(p => p.y);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    const maxX = Math.max(...xs);
-    const maxY = Math.max(...ys);
+    // Calculate bounding box - removed unused variables
 
     const shapeId = actions.createPolygon(currentPoints, {
       strokeColor: state.settings.defaultStyle.strokeColor,

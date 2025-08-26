@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { Box } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useAnnotation } from './AnnotationManager';
-import { AnnotationShape, Point, Rectangle, ResizeHandle, SelectionBox } from './types';
+import { AnnotationShape, Point, ResizeHandle, SelectionBox } from './types';
 
 const CanvasContainer = styled(Box)({
   position: 'relative',
@@ -228,7 +228,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       }
       
       case 'point': {
-        const id = actions.createPoint(point);
+        actions.createPoint(point);
         onCanvasClick?.(point, mouseEvent);
         break;
       }
@@ -241,7 +241,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     }
   }, [
     disabled, getMousePos, resizeHandles, actions, state.activeToolId, state.selectedShapeIds,
-    hitTest, onShapeClick, onCanvasClick, isDrawing
+    hitTest, onShapeClick, onCanvasClick, isDrawing, state.canvasTransform, isPanning, lastPanPoint
   ]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
@@ -364,7 +364,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     }
   }, [
     disabled, getMousePos, activeResizeHandle, dragStart, actions, selectionBox.visible,
-    state.selectedShapeIds, state.activeToolId, isDrawing
+    state.selectedShapeIds, state.activeToolId, isDrawing, isPanning, lastPanPoint, state.canvasTransform
   ]);
 
   const handleMouseUp = useCallback((event: React.MouseEvent) => {
@@ -460,7 +460,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     setDragStart(null);
   }, [
     disabled, getMousePos, activeResizeHandle, selectionBox, state.shapes, state.activeToolId,
-    actions, isDrawing, currentPath, dragStart
+    actions, isDrawing, currentPath, dragStart, isPanning
   ]);
 
   // Double-click handler for polygon completion

@@ -37,9 +37,13 @@ class VideoUrlErrorHandler {
   recordError(error: Omit<VideoUrlError, 'timestamp'>, videoId?: string): void {
     const fullError: VideoUrlError = {
       ...error,
-      videoId: videoId ?? undefined,
       timestamp: Date.now()
     };
+    
+    // Only add videoId if it's defined
+    if (videoId !== undefined) {
+      fullError.videoId = videoId;
+    }
     
     this.errors.push(fullError);
     
@@ -61,7 +65,7 @@ class VideoUrlErrorHandler {
    * Attempt to recover from a video URL error
    */
   attemptRecovery(
-    video: Partial<VideoFile>,
+    video: Partial<VideoFile> & { projectId?: string; size?: number; status?: string },
     error: VideoUrlError,
     options: ErrorRecoveryOptions = {}
   ): VideoFile | null {
@@ -82,14 +86,17 @@ class VideoUrlErrorHandler {
         if (fallbackUrl) {
           const recoveredVideo: VideoFile = {
             id: video.id || 'unknown',
+            projectId: video.projectId || 'unknown',
             filename: video.filename,
             url: fallbackUrl,
             originalName: video.originalName || video.filename,
+            size: video.size || video.fileSize || 0,
             fileSize: video.fileSize || 0,
             createdAt: video.createdAt || new Date().toISOString(),
             // Add other required VideoFile properties with defaults
             uploadedAt: video.uploadedAt || new Date().toISOString(),
-            processing_status: video.processing_status || 'unknown',
+            status: (video.status as 'uploading' | 'processing' | 'completed' | 'failed') || 'completed',
+            processing_status: video.processing_status || 'pending',
             groundTruthGenerated: video.groundTruthGenerated || false,
             detectionCount: video.detectionCount || 0
           };
@@ -115,13 +122,16 @@ class VideoUrlErrorHandler {
         if (fallbackUrl) {
           const recoveredVideo: VideoFile = {
             id: video.id,
+            projectId: video.projectId || 'unknown',
             filename: video.filename || video.id,
             url: fallbackUrl,
             originalName: video.originalName || video.filename || video.id,
+            size: video.size || video.fileSize || 0,
             fileSize: video.fileSize || 0,
             createdAt: video.createdAt || new Date().toISOString(),
             uploadedAt: video.uploadedAt || new Date().toISOString(),
-            processing_status: video.processing_status || 'unknown',
+            status: (video.status as 'uploading' | 'processing' | 'completed' | 'failed') || 'completed',
+            processing_status: video.processing_status || 'pending',
             groundTruthGenerated: video.groundTruthGenerated || false,
             detectionCount: video.detectionCount || 0
           };
@@ -209,14 +219,14 @@ class VideoUrlErrorHandler {
   private getMostProblematicVideos(): Array<{ videoId: string; errorCount: number }> {
     const videoErrors = new Map<string, number>();
     
-    for (const [key, count] of this.errorCounts) {
+    Array.from(this.errorCounts.entries()).forEach(([key, count]) => {
       if (key.includes(':')) {
         const videoId = key.split(':')[1];
         if (videoId && videoId !== 'unknown') {
           videoErrors.set(videoId, (videoErrors.get(videoId) || 0) + count);
         }
       }
-    }
+    });
     
     return Array.from(videoErrors.entries())
       .map(([videoId, errorCount]) => ({ videoId, errorCount }))
@@ -276,7 +286,7 @@ export function safeEnhanceVideo(
     }
     
     const videoError: Omit<VideoUrlError, 'timestamp'> = {
-      originalUrl: originalUrl ?? undefined,
+      originalUrl: originalUrl,
       errorType,
       message,
       recoverable: errorType !== 'PARSE_ERROR'

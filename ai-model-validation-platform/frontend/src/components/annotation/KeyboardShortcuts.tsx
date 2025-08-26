@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -39,8 +39,8 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
   const { state, actions } = useAnnotation();
   const pressedKeysRef = useRef(new Set<string>());
 
-  // Define all keyboard shortcuts
-  const shortcuts: KeyboardShortcut[] = [
+  // Define all keyboard shortcuts - memoized to prevent re-creation
+  const shortcuts: KeyboardShortcut[] = useMemo(() => [
     // Tool Selection
     { key: 'v', description: 'Select Tool', action: () => { actions.setActiveTool('select'); onToolChange?.('select'); } },
     { key: 'r', description: 'Rectangle Tool', action: () => { actions.setActiveTool('rectangle'); onToolChange?.('rectangle'); } },
@@ -192,7 +192,7 @@ const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
     { key: '?', shiftKey: true, description: 'Show Shortcuts Help', action: () => {
       // This would be handled by parent component
     }},
-  ];
+  ], [actions, onFrameNavigate, onPlayPause, onToolChange, state.canvasTransform, state.settings, state.shapes]);
 
   // Check if key combination matches shortcut
   const matchesShortcut = useCallback((event: KeyboardEvent, shortcut: KeyboardShortcut): boolean => {

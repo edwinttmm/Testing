@@ -268,7 +268,6 @@ const GroundTruth: React.FC = () => {
   // Bulk video operations state
   const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
   const [bulkOperationMode, setBulkOperationMode] = useState(false);
-  const [processingQueue, setProcessingQueue] = useState<VideoFile[]>([]);
   const [batchProcessingStatus, setBatchProcessingStatus] = useState<{
     isRunning: boolean;
     processed: number;
@@ -359,7 +358,6 @@ const GroundTruth: React.FC = () => {
     }
 
     setBatchProcessingStatus({ isRunning: true, processed: 0, total: selectedVideos.length });
-    setProcessingQueue(selectedVideos);
 
     try {
       let processed = 0;
@@ -374,7 +372,6 @@ const GroundTruth: React.FC = () => {
       setError(`Batch processing failed: ${getErrorMessage(error)}`);
     } finally {
       setBatchProcessingStatus({ isRunning: false, processed: 0, total: 0 });
-      setProcessingQueue([]);
       setSelectedVideoIds(new Set());
     }
   }, [videos, selectedVideoIds, handleProcessVideo]);

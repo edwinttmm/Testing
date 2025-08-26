@@ -20,9 +20,6 @@ import {
   Edit,
   Delete,
   DriveFileMove,
-  ContentCopy,
-  Visibility,
-  VisibilityOff,
 } from '@mui/icons-material';
 import { useAnnotation } from './AnnotationManager';
 import { AnnotationAction, AnnotationShape } from './types';
