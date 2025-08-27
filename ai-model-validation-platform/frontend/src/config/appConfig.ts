@@ -81,6 +81,11 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
         return 'http://155.138.239.131:8000';
       }
       
+      // Production server IP
+      if (hostname === '155.138.239.131') {
+        return 'http://155.138.239.131:8000';
+      }
+      
       // Production defaults
       return `${protocol}//${hostname}:8000`;
     }

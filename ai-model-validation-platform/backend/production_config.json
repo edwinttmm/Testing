@@ -1,0 +1,66 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8001,
+    "workers": 4,
+    "log_level": "info",
+    "access_log": true,
+    "ssl_enabled": false,
+    "max_request_size": 104857600
+  },
+  "ml_engine": {
+    "model_path": "/app/models/yolo11l.pt",
+    "device": "auto",
+    "batch_size": 8,
+    "max_fps": null,
+    "enable_tracking": true,
+    "confidence_thresholds": {
+      "pedestrian": 0.25,
+      "cyclist": 0.3,
+      "motorcyclist": 0.35,
+      "vehicle": 0.4
+    },
+    "cache_results": true,
+    "max_cache_size": 10000
+  },
+  "database": {
+    "url": "postgresql://vru_user:secure_password@localhost:5432/vru_platform",
+    "pool_size": 20,
+    "max_overflow": 40,
+    "pool_timeout": 30,
+    "pool_recycle": 3600,
+    "echo": false
+  },
+  "security": {
+    "cors_origins": [
+      "http://155.138.239.131",
+      "http://localhost:3000"
+    ],
+    "api_key_required": false,
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 100,
+      "burst_size": 20
+    }
+  },
+  "monitoring": {
+    "metrics_enabled": true,
+    "health_check_interval": 30,
+    "performance_logging": true,
+    "log_file": "/app/logs/ml_inference.log",
+    "log_rotation": "midnight",
+    "log_retention_days": 30
+  },
+  "storage": {
+    "video_upload_path": "/app/data/uploads",
+    "model_cache_path": "/app/data/models",
+    "temp_processing_path": "/app/data/temp",
+    "max_video_size": 524288000,
+    "allowed_video_formats": [
+      ".mp4",
+      ".avi",
+      ".mov",
+      ".mkv"
+    ]
+  }
+}

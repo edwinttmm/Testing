@@ -1,0 +1,97 @@
+# VRU ML Engine Production Configuration
+
+# Model Configuration
+models:
+  detection:
+    yolo:
+      model_path: "/app/models/yolov8n.pt"
+      confidence_threshold: 0.5
+      iou_threshold: 0.4
+      max_detections: 100
+      classes: [0, 1, 2]  # person, bicycle, car
+      device: "cuda:0"  # or "cpu"
+      
+  classification:
+    vru_classifier:
+      model_path: "/app/models/vru_classifier.pt"
+      confidence_threshold: 0.7
+      input_size: [224, 224]
+      device: "cuda:0"
+
+# Processing Configuration
+processing:
+  batch_size: 8
+  max_workers: 4
+  queue_size: 100
+  timeout: 30
+  memory_limit: "2GB"
+  
+  # Video processing
+  video:
+    max_fps: 30
+    frame_skip: 1
+    max_duration: 300  # seconds
+    supported_formats: ["mp4", "avi", "mov", "mkv"]
+    
+  # Image processing
+  image:
+    max_size: [1920, 1080]
+    supported_formats: ["jpg", "jpeg", "png", "bmp"]
+
+# Cache Configuration
+cache:
+  enabled: true
+  ttl: 3600  # seconds
+  max_size: 1000
+  
+  # Model cache
+  model_cache:
+    enabled: true
+    preload_models: true
+    
+  # Result cache
+  result_cache:
+    enabled: true
+    max_entries: 10000
+
+# Performance Optimization
+performance:
+  # GPU optimization
+  gpu:
+    memory_fraction: 0.8
+    allow_growth: true
+    
+  # CPU optimization
+  cpu:
+    threads: 4
+    use_multiprocessing: true
+    
+  # Memory optimization
+  memory:
+    batch_size_auto_tune: true
+    garbage_collection: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "json"
+  metrics: true
+  performance: true
+
+# Health Check Configuration
+health:
+  check_interval: 30
+  model_warmup: true
+  memory_threshold: 0.9
+  gpu_threshold: 0.9
+
+# Security Configuration
+security:
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+  
+  input_validation:
+    enabled: true
+    max_file_size: "100MB"
+    scan_uploads: true

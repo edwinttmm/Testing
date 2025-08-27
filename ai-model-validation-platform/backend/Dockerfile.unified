@@ -1,0 +1,215 @@
+# =====================================================
+# AI Model Validation Platform - Unified Backend Dockerfile
+# Multi-stage build with development and production targets
+# =====================================================
+
+ARG PYTHON_VERSION=3.11
+ARG ENVIRONMENT=production
+ARG BUILD_VERSION=latest
+
+# =====================================================
+# BASE STAGE - Common dependencies and setup
+# =====================================================
+FROM python:${PYTHON_VERSION}-slim as base
+
+LABEL maintainer="AI Validation Platform Team"
+LABEL version="${BUILD_VERSION}"
+LABEL environment="${ENVIRONMENT}"
+
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=600 \
+    PIP_RETRIES=3
+
+# Install system dependencies with security updates
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Core system packages
+    ca-certificates \
+    curl \
+    wget \
+    git \
+    # OpenCV dependencies
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgthread-2.0-0 \
+    # Media processing
+    ffmpeg \
+    # Build tools
+    build-essential \
+    pkg-config \
+    # USB/Hardware support (LabJack)
+    libusb-1.0-0-dev \
+    libudev-dev \
+    # Health check and database tools
+    netcat-traditional \
+    postgresql-client \
+    redis-tools \
+    # SSL/TLS support
+    libssl-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
+
+# Configure pip for reliability and security
+RUN pip install --upgrade pip setuptools wheel && \
+    pip config set global.trusted-host "pypi.org files.pythonhosted.org pypi.python.org download.pytorch.org" && \
+    pip config set global.timeout 600 && \
+    pip config set global.retries 5
+
+# =====================================================
+# DEPENDENCIES STAGE - Install Python packages
+# =====================================================
+FROM base as dependencies
+
+# Copy requirements files
+COPY backend/requirements*.txt ./
+
+# Install base dependencies
+RUN pip install --no-cache-dir -r requirements-minimal.txt || \
+    pip install --no-cache-dir -r requirements-docker-minimal.txt
+
+# Install ML dependencies with CPU-only PyTorch for production
+RUN pip install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+    ultralytics opencv-python-headless pillow numpy scipy matplotlib
+
+# Install additional requirements if available
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+
+# =====================================================
+# DEVELOPMENT STAGE - For development environment
+# =====================================================
+FROM dependencies as development
+
+ENV ENVIRONMENT=development
+ENV AIVALIDATION_APP_ENVIRONMENT=development
+
+# Install development dependencies
+RUN pip install --no-cache-dir \
+    pytest pytest-asyncio pytest-mock \
+    pytest-cov pytest-xdist \
+    black isort mypy \
+    pre-commit \
+    watchdog[watchmedo]
+
+# Copy application code
+COPY backend/ .
+
+# Create necessary directories
+RUN mkdir -p logs uploads models debug_frames screenshots exports/annotations && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Development command with auto-reload
+CMD ["uvicorn", "main:socketio_app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# =====================================================
+# PRODUCTION STAGE - Optimized for production
+# =====================================================
+FROM dependencies as production
+
+ENV ENVIRONMENT=production
+ENV AIVALIDATION_APP_ENVIRONMENT=production
+
+# Copy application code
+COPY backend/ .
+
+# Copy and set up orchestration scripts
+COPY scripts/wait-for-services.sh /app/scripts/wait-for-services.sh
+RUN chmod +x /app/scripts/wait-for-services.sh
+
+# Install ML dependencies with auto-installer fallback
+RUN python -c "import sys; print(f'Python version: {sys.version}')" && \
+    (python auto_install_ml.py || echo "Auto-installer not available, using pre-installed packages")
+
+# Create necessary directories and set permissions
+RUN mkdir -p logs uploads models debug_frames screenshots exports/annotations && \
+    chmod 755 logs uploads models debug_frames screenshots exports/annotations && \
+    chown -R appuser:appuser /app
+
+# Health check script
+COPY --chown=appuser:appuser <<'EOF' /app/health_check.sh
+#!/bin/bash
+set -e
+# Check if the service is responding
+curl -f http://localhost:8000/health || exit 1
+# Check database connection
+python -c "
+try:
+    import database
+    print('Database connection: OK')
+except Exception as e:
+    print(f'Database connection failed: {e}')
+    exit(1)
+" || exit 1
+echo "Health check passed"
+EOF
+
+RUN chmod +x /app/health_check.sh
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD /app/health_check.sh
+
+# Production command with proper process management
+CMD ["/app/scripts/wait-for-services.sh", "uvicorn", "main:socketio_app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker"]
+
+# =====================================================
+# TESTING STAGE - For running tests
+# =====================================================
+FROM development as testing
+
+ENV ENVIRONMENT=testing
+ENV AIVALIDATION_APP_ENVIRONMENT=testing
+
+# Install additional testing dependencies
+RUN pip install --no-cache-dir \
+    pytest-benchmark \
+    pytest-mock \
+    pytest-asyncio \
+    pytest-timeout \
+    coverage[toml] \
+    factory-boy \
+    httpx
+
+# Copy test files
+COPY backend/tests/ ./tests/
+COPY backend/conftest.py ./
+
+# Test command
+CMD ["python", "-m", "pytest", "-v", "--cov=.", "--cov-report=xml", "--cov-report=html"]
+
+# =====================================================
+# MIGRATION STAGE - For database migrations
+# =====================================================
+FROM production as migration
+
+ENV ENVIRONMENT=migration
+
+# Install migration tools
+RUN pip install --no-cache-dir alembic
+
+# Migration command
+CMD ["python", "-c", "import alembic.config; alembic.command.upgrade(alembic.config.Config('alembic.ini'), 'head')"]

@@ -1,0 +1,214 @@
+# VRU AI Model Validation Platform - Unified Docker Compose Configuration
+# Supports all environments with proper 155.138.239.131 external access
+
+services:
+  # Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: vru_redis
+    hostname: redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vru_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    command: redis-server --requirepass ${VRU_REDIS_PASSWORD:-secure_redis_password} --appendonly yes
+    profiles: ["development", "staging", "production"]
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: vru_backend
+    hostname: backend
+    ports:
+      - "0.0.0.0:8000:8000"
+    environment:
+      # Load from .env.unified
+      - VRU_ENVIRONMENT=${VRU_ENVIRONMENT:-development}
+      - VRU_DEBUG=${VRU_DEBUG:-true}
+      - VRU_EXTERNAL_IP=${VRU_EXTERNAL_IP:-155.138.239.131}
+      - VRU_API_HOST=0.0.0.0
+      - VRU_API_PORT=8000
+      # Database Configuration
+      - VRU_DATABASE_TYPE=${VRU_DATABASE_TYPE:-sqlite}
+      - VRU_DATABASE_URL=${VRU_DATABASE_URL:-sqlite:///./dev_database.db}
+      - DATABASE_URL=${VRU_DATABASE_URL:-sqlite:///./dev_database.db}
+      - AIVALIDATION_DATABASE_URL=${VRU_DATABASE_URL:-sqlite:///./dev_database.db}
+      # Redis Configuration
+      - VRU_REDIS_URL=redis://:${VRU_REDIS_PASSWORD:-secure_redis_password}@redis:6379
+      - REDIS_URL=redis://:${VRU_REDIS_PASSWORD:-secure_redis_password}@redis:6379
+      # Security
+      - VRU_SECRET_KEY=${VRU_SECRET_KEY:-dev-secret-key-change-in-production}
+      - AIVALIDATION_SECRET_KEY=${VRU_SECRET_KEY:-dev-secret-key-change-in-production}
+      # CORS with External IP
+      - VRU_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000,https://155.138.239.131:3000
+      - AIVALIDATION_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - vru_network
+    volumes:
+      # Database file mounting (for SQLite)
+      - ./backend/dev_database.db:/app/dev_database.db:rw
+      # Models directory
+      - ./models:/app/models:ro
+      # Upload directory
+      - uploaded_videos:/app/uploads
+      # Source code (development only)
+      - ./backend:/app:${MOUNT_SOURCE:-ro}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    profiles: ["development", "staging", "production"]
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vru_frontend
+    hostname: frontend
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://155.138.239.131:8000
+      - REACT_APP_WS_URL=ws://155.138.239.131:8000
+      - REACT_APP_SOCKETIO_URL=http://155.138.239.131:8001
+      - REACT_APP_VIDEO_BASE_URL=http://155.138.239.131:8000
+      - REACT_APP_ENVIRONMENT=${VRU_ENVIRONMENT:-development}
+      - REACT_APP_DEBUG=${VRU_DEBUG:-true}
+      - NODE_ENV=${NODE_ENV:-development}
+      - GENERATE_SOURCEMAP=${GENERATE_SOURCEMAP:-true}
+      - CI=false
+      - DOCKER=true
+      - NODE_OPTIONS=--max_old_space_size=4096
+      - HOST=0.0.0.0
+      - PORT=3000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - vru_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    profiles: ["development", "staging", "production"]
+
+  # PostgreSQL Database (for staging/production)
+  postgres:
+    image: postgres:15-alpine
+    container_name: vru_postgres
+    hostname: postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      - POSTGRES_DB=${VRU_DATABASE_NAME:-vru_validation}
+      - POSTGRES_USER=${VRU_DATABASE_USER:-vru_user}
+      - POSTGRES_PASSWORD=${VRU_DATABASE_PASSWORD:-vru_password}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/schema:/docker-entrypoint-initdb.d
+    networks:
+      - vru_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VRU_DATABASE_USER:-vru_user} -d ${VRU_DATABASE_NAME:-vru_validation}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    profiles: ["staging", "production", "postgresql"]
+
+  # CVAT for annotation (optional)
+  cvat:
+    image: cvat/server:v2.7.0
+    container_name: vru_cvat
+    hostname: cvat
+    ports:
+      - "0.0.0.0:8080:8080"
+    environment:
+      - CVAT_REDIS_HOST=redis
+      - CVAT_REDIS_PASSWORD=${VRU_REDIS_PASSWORD:-secure_redis_password}
+      - CVAT_POSTGRES_HOST=postgres
+      - CVAT_POSTGRES_DB=${VRU_DATABASE_NAME:-vru_validation}
+      - CVAT_POSTGRES_USER=${VRU_DATABASE_USER:-vru_user}
+      - CVAT_POSTGRES_PASSWORD=${VRU_DATABASE_PASSWORD:-vru_password}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - vru_network
+    volumes:
+      - cvat_data:/home/django/data
+      - cvat_keys:/home/django/keys
+      - cvat_logs:/home/django/logs
+      - uploaded_videos:/home/django/share
+    restart: unless-stopped
+    profiles: ["cvat", "production"]
+
+  # Nginx Reverse Proxy (for production)
+  nginx:
+    image: nginx:alpine
+    container_name: vru_nginx
+    hostname: nginx
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - vru_network
+    restart: unless-stopped
+    profiles: ["nginx", "production"]
+
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  uploaded_videos:
+    driver: local
+  cvat_data:
+    driver: local
+  cvat_keys:
+    driver: local
+  cvat_logs:
+    driver: local
+
+networks:
+  vru_network:
+    driver: bridge
+    name: vru_network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1

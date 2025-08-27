@@ -7,28 +7,47 @@ import os
 import logging
 from dotenv import load_dotenv
 
-load_dotenv()
-
-logger = logging.getLogger(__name__)
-
-# Enhanced database configuration with connectivity helper
+# Import unified database system
 try:
-    from config import settings
-    DATABASE_URL = settings.database_url
-    logger.info(f"Using configured database URL: {DATABASE_URL}")
+    from unified_database import get_database_manager, get_database_health as unified_get_health
+    USE_UNIFIED_DATABASE = True
+    logger = logging.getLogger(__name__)
+    logger.info("Using Unified Database Architecture")
 except ImportError:
-    # Enhanced database configuration with connectivity helper
+    USE_UNIFIED_DATABASE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Unified database not available, falling back to legacy system")
+    load_dotenv()
+
+# Initialize DATABASE_URL for legacy compatibility
+DATABASE_URL = None
+
+# Legacy database configuration (fallback)
+if not USE_UNIFIED_DATABASE:
     try:
-        from database_connectivity_helper import get_enhanced_database_url
-        DATABASE_URL = get_enhanced_database_url()
-        logger.info(f"Using enhanced database URL: {DATABASE_URL.replace('password', '***')}")
+        from config import settings
+        DATABASE_URL = settings.database_url
+        logger.info(f"Using configured database URL: {DATABASE_URL}")
     except ImportError:
-        # Fallback to original logic if helper is not available
-        DATABASE_URL = os.getenv(
-            "DATABASE_URL",
-            os.getenv("AIVALIDATION_DATABASE_URL", "sqlite:///./test_database.db")
-        )
+        try:
+            from database_connectivity_helper import get_enhanced_database_url
+            DATABASE_URL = get_enhanced_database_url()
+            logger.info(f"Using enhanced database URL: {DATABASE_URL.replace('password', '***')}")
+        except ImportError:
+            DATABASE_URL = os.getenv(
+                "DATABASE_URL",
+                os.getenv("AIVALIDATION_DATABASE_URL", "sqlite:///./test_database.db")
+            )
         logger.info("Using fallback database configuration")
+else:
+    # Use unified database settings for legacy compatibility
+    try:
+        db_manager = get_database_manager()
+        DATABASE_URL = db_manager.settings.database_url
+        logger.info(f"Using unified database URL: {DATABASE_URL}")
+    except Exception as e:
+        DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test_database.db")
+        logger.warning(f"Failed to get unified database URL, using fallback: {e}")
 
 # Validate database URL
 if not DATABASE_URL:
@@ -69,6 +88,17 @@ Base = declarative_base()
 
 def get_db():
     """Database dependency with enhanced error handling and connection management"""
+    # Use unified database system if available
+    if USE_UNIFIED_DATABASE:
+        try:
+            db_manager = get_database_manager()
+            with db_manager.get_session() as session:
+                yield session
+            return
+        except Exception as e:
+            logger.error(f"Unified database error, falling back to legacy: {str(e)}")
+    
+    # Legacy database system (fallback)
     db = SessionLocal()
     try:
         # Test connection health before yielding

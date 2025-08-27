@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     # Environment
     app_environment: str = os.getenv('AIVALIDATION_APP_ENVIRONMENT', os.getenv('APP_ENV', 'development'))
     
-    # CORS settings - Environment-based configuration
-    cors_origins: List[str] = os.getenv('AIVALIDATION_CORS_ORIGINS', os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000')).split(',')
+    # CORS settings - Environment-based configuration (includes production IP)
+    cors_origins: List[str] = os.getenv('AIVALIDATION_CORS_ORIGINS', os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000')).split(',')
     cors_credentials: bool = True
     cors_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     cors_headers: List[str] = ["*"]

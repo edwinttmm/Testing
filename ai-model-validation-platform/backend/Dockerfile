@@ -60,7 +60,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and set up orchestration scripts
-COPY scripts/wait-for-services.sh /app/scripts/wait-for-services.sh
+COPY ../scripts/wait-for-services.sh /app/scripts/wait-for-services.sh
 RUN chmod +x /app/scripts/wait-for-services.sh
 
 # Install ML dependencies with extended timeout and better error handling

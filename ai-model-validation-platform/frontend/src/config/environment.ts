@@ -43,10 +43,10 @@ class EnvironmentService {
       enablePerformanceMonitoring: process.env.REACT_APP_ENABLE_PERFORMANCE_MONITORING === 'true',
       maxVideoSizeMB: parseInt(process.env.REACT_APP_MAX_VIDEO_SIZE_MB || '100', 10),
       supportedVideoFormats: (process.env.REACT_APP_SUPPORTED_VIDEO_FORMATS || 'mp4,avi,mov,mkv').split(','),
-      apiTimeout: parseInt(process.env.REACT_APP_API_TIMEOUT || '30000', 10),
-      wsTimeout: parseInt(process.env.REACT_APP_WS_TIMEOUT || '20000', 10),
-      connectionRetryAttempts: parseInt(process.env.REACT_APP_CONNECTION_RETRY_ATTEMPTS || '5', 10),
-      connectionRetryDelay: parseInt(process.env.REACT_APP_CONNECTION_RETRY_DELAY || '1000', 10),
+      apiTimeout: parseInt(process.env.REACT_APP_API_TIMEOUT || '45000', 10),
+      wsTimeout: parseInt(process.env.REACT_APP_WS_TIMEOUT || '30000', 10),
+      connectionRetryAttempts: parseInt(process.env.REACT_APP_CONNECTION_RETRY_ATTEMPTS || '10', 10),
+      connectionRetryDelay: parseInt(process.env.REACT_APP_CONNECTION_RETRY_DELAY || '2000', 10),
     };
 
     // Environment-specific URLs with fallback logic
@@ -93,7 +93,7 @@ class EnvironmentService {
   private getApiPort(): number {
     const hostname = window.location.hostname;
     
-    // Production server - update with actual production URL when deployed
+    // Production server - explicit configuration for external IP
     if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
       return 8000;
     }
