@@ -27,9 +27,10 @@ RUN apk add --no-cache \
     g++ \
     && rm -rf /var/cache/apk/*
 
-# Create non-root user for security
-RUN addgroup -g 1000 appuser && \
-    adduser -u 1000 -G appuser -s /bin/sh -D appuser
+# Create non-root user for security (handle existing GID gracefully)
+RUN addgroup -g 1000 appuser 2>/dev/null || addgroup appuser && \
+    adduser -u 1000 -G appuser -s /bin/sh -D appuser 2>/dev/null || \
+    adduser -u 1001 -G appuser -s /bin/sh -D appuser
 
 # Configure npm for better reliability
 RUN npm config set strict-ssl false && \
