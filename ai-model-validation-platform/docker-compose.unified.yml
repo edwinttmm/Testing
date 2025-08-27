@@ -63,7 +63,7 @@ services:
       # Database file mounting (for SQLite)
       - ./backend/dev_database.db:/app/dev_database.db:rw
       # Models directory
-      - ./models:/app/models:ro
+      - ./models:/app/models:rw
       # Upload directory
       - uploaded_videos:/app/uploads
       # Source code (development only)

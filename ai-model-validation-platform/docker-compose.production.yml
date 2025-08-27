@@ -1,6 +1,6 @@
 # VRU AI Model Validation Platform - Production Deployment
 # Complete service orchestration for 155.138.239.131
-# Includes ML engine, camera integration, validation workflow, and monitoring
+# Root-based deployment with unified architecture
 
 name: vru-production-platform
 
@@ -16,7 +16,7 @@ services:
       - REDIS_PASSWORD=${VRU_REDIS_PASSWORD}
     volumes:
       - redis_prod_data:/data
-      - ./config/production/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./config/production/redis.conf:/usr/local/etc/redis/redis.conf:ro
     networks:
       - vru_prod_network
     healthcheck:
@@ -34,7 +34,7 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${VRU_REDIS_PASSWORD}
+    command: redis-server --requirepass ${VRU_REDIS_PASSWORD} --appendonly yes
 
   # PostgreSQL - Production database
   postgres:
@@ -44,19 +44,19 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     environment:
-      - POSTGRES_DB=${VRU_DATABASE_NAME:-vru_validation}
-      - POSTGRES_USER=${VRU_DATABASE_USER:-vru_user}
+      - POSTGRES_DB=${VRU_DATABASE_NAME:-vru_validation_prod}
+      - POSTGRES_USER=${VRU_DATABASE_USER:-vru_prod_user}
       - POSTGRES_PASSWORD=${VRU_DATABASE_PASSWORD}
       - PGDATA=/var/lib/postgresql/data/pgdata
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
-      - ./config/production/postgresql.conf:/etc/postgresql/postgresql.conf
-      - ./backend/database/schema:/docker-entrypoint-initdb.d
+      - ./config/production/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
       - vru_prod_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${VRU_DATABASE_USER:-vru_user} -d ${VRU_DATABASE_NAME:-vru_validation}"]
+      test: ["CMD-SHELL", "pg_isready -U ${VRU_DATABASE_USER:-vru_prod_user} -d ${VRU_DATABASE_NAME:-vru_validation_prod}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -74,13 +74,13 @@ services:
   # ML Inference Engine - Core AI processing
   ml_engine:
     build:
-      context: ../../
+      context: .
       dockerfile: backend/Dockerfile.unified
       target: production
       args:
-        - PYTHON_VERSION=3.11
-        - ENVIRONMENT=production
-        - BUILD_VERSION=latest
+        - INSTALL_ML=true
+        - OPTIMIZE_INFERENCE=true
+        - BUILD_VERSION=production
     container_name: vru_prod_ml_engine
     hostname: ml-engine
     ports:
@@ -89,16 +89,17 @@ services:
       - VRU_ENVIRONMENT=production
       - VRU_SERVICE_TYPE=ml_engine
       - VRU_ML_ENGINE_PORT=8001
-      - VRU_ML_WORKERS=4
-      - VRU_ML_BATCH_SIZE=8
+      - VRU_ML_WORKERS=${VRU_ML_WORKERS:-4}
+      - VRU_ML_BATCH_SIZE=${VRU_ML_BATCH_SIZE:-8}
       - VRU_ML_MODEL_PATH=/app/models
-      - VRU_DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      - VRU_DATABASE_URL=${VRU_DATABASE_URL}
       - VRU_REDIS_URL=redis://:${VRU_REDIS_PASSWORD}@redis:6379/1
       - CUDA_VISIBLE_DEVICES=${CUDA_DEVICES:-}
-      - PYTHONPATH=/app/src
+      - PYTHONPATH=/app
     volumes:
       - ./models:/app/models:ro
       - ml_cache:/app/cache
+      - uploaded_videos:/app/uploads
       - ./config/production/ml_config.yaml:/app/config/ml_config.yaml:ro
     networks:
       - vru_prod_network
@@ -126,13 +127,12 @@ services:
   # Camera Integration Service - Hardware interface
   camera_service:
     build:
-      context: ../../
+      context: .
       dockerfile: backend/Dockerfile.unified
       target: production
       args:
-        - PYTHON_VERSION=3.11
-        - ENVIRONMENT=production
-        - BUILD_VERSION=latest
+        - INSTALL_CAMERA_LIBS=true
+        - BUILD_VERSION=production
     container_name: vru_prod_camera_service
     hostname: camera-service
     ports:
@@ -141,7 +141,7 @@ services:
       - VRU_ENVIRONMENT=production
       - VRU_SERVICE_TYPE=camera_service
       - VRU_CAMERA_SERVICE_PORT=8002
-      - VRU_DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      - VRU_DATABASE_URL=${VRU_DATABASE_URL}
       - VRU_REDIS_URL=redis://:${VRU_REDIS_PASSWORD}@redis:6379/2
       - VRU_ML_ENGINE_URL=http://ml-engine:8001
     volumes:
@@ -149,10 +149,6 @@ services:
       - camera_data:/app/camera_data
     devices:
       - /dev/video0:/dev/video0
-      - /dev/video1:/dev/video1
-    privileged: false
-    cap_add:
-      - SYS_ADMIN
     networks:
       - vru_prod_network
     depends_on:
@@ -181,13 +177,11 @@ services:
   # Validation Workflow Engine - Orchestrates validation processes
   validation_engine:
     build:
-      context: ../../
+      context: .
       dockerfile: backend/Dockerfile.unified
       target: production
       args:
-        - PYTHON_VERSION=3.11
-        - ENVIRONMENT=production
-        - BUILD_VERSION=latest
+        - BUILD_VERSION=production
     container_name: vru_prod_validation_engine
     hostname: validation-engine
     ports:
@@ -196,7 +190,7 @@ services:
       - VRU_ENVIRONMENT=production
       - VRU_SERVICE_TYPE=validation_engine
       - VRU_VALIDATION_ENGINE_PORT=8003
-      - VRU_DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      - VRU_DATABASE_URL=${VRU_DATABASE_URL}
       - VRU_REDIS_URL=redis://:${VRU_REDIS_PASSWORD}@redis:6379/3
       - VRU_ML_ENGINE_URL=http://ml-engine:8001
       - VRU_CAMERA_SERVICE_URL=http://camera-service:8002
@@ -232,13 +226,11 @@ services:
   # Main API Gateway - Routes requests to appropriate services
   api_gateway:
     build:
-      context: ../../
+      context: .
       dockerfile: backend/Dockerfile.unified
       target: production
       args:
-        - PYTHON_VERSION=3.11
-        - ENVIRONMENT=production
-        - BUILD_VERSION=latest
+        - BUILD_VERSION=production
     container_name: vru_prod_api_gateway
     hostname: api-gateway
     ports:
@@ -247,16 +239,19 @@ services:
       - VRU_ENVIRONMENT=production
       - VRU_SERVICE_TYPE=api_gateway
       - VRU_API_PORT=8000
-      - VRU_DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      - VRU_API_HOST=0.0.0.0
+      - VRU_DATABASE_URL=${VRU_DATABASE_URL}
       - VRU_REDIS_URL=redis://:${VRU_REDIS_PASSWORD}@redis:6379/0
       - VRU_ML_ENGINE_URL=http://ml-engine:8001
       - VRU_CAMERA_SERVICE_URL=http://camera-service:8002
       - VRU_VALIDATION_ENGINE_URL=http://validation-engine:8003
       - VRU_SECRET_KEY=${VRU_SECRET_KEY}
-      - VRU_CORS_ORIGINS=http://155.138.239.131:3000,https://155.138.239.131:3000
-      - UVICORN_WORKERS=4
+      - VRU_CORS_ORIGINS=${VRU_CORS_ORIGINS}
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-4}
+      - UVICORN_WORKER_TIMEOUT=${UVICORN_WORKER_TIMEOUT:-300}
     volumes:
       - uploaded_videos:/app/uploads
+      - api_logs:/app/logs
     networks:
       - vru_prod_network
     depends_on:
@@ -289,9 +284,17 @@ services:
   # Frontend Application
   frontend:
     build:
-      context: ../../frontend
+      context: ./frontend
       dockerfile: Dockerfile.unified
       target: production
+      args:
+        - REACT_APP_API_URL=http://155.138.239.131:8000
+        - REACT_APP_WS_URL=ws://155.138.239.131:8000
+        - REACT_APP_ML_ENGINE_URL=http://155.138.239.131:8001
+        - REACT_APP_CAMERA_SERVICE_URL=http://155.138.239.131:8002
+        - REACT_APP_VALIDATION_ENGINE_URL=http://155.138.239.131:8003
+        - REACT_APP_VIDEO_BASE_URL=http://155.138.239.131:8000
+        - BUILD_VERSION=production
     container_name: vru_prod_frontend
     hostname: frontend
     ports:
@@ -303,6 +306,8 @@ services:
       - REACT_APP_ML_ENGINE_URL=http://155.138.239.131:8001
       - REACT_APP_CAMERA_SERVICE_URL=http://155.138.239.131:8002
       - REACT_APP_VALIDATION_ENGINE_URL=http://155.138.239.131:8003
+      - REACT_APP_VIDEO_BASE_URL=http://155.138.239.131:8000
+      - REACT_APP_ENVIRONMENT=production
       - GENERATE_SOURCEMAP=false
       - HOST=0.0.0.0
       - PORT=3000
@@ -312,7 +317,7 @@ services:
       api_gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -344,6 +349,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
+      - '--storage.tsdb.retention.time=30d'
     networks:
       - vru_prod_network
     restart: always
@@ -364,8 +370,10 @@ services:
     ports:
       - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_ANALYTICS_REPORTING_ENABLED=false
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/production/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -414,22 +422,64 @@ services:
 volumes:
   redis_prod_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/redis
   postgres_prod_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/postgres
   uploaded_videos:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/uploads
   camera_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/camera
   validation_results:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/validation_results
   ml_cache:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/ml_cache
+  api_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/logs
   prometheus_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/prometheus
   grafana_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/data/grafana
   nginx_logs:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/vru-platform/logs/nginx
 
 networks:
   vru_prod_network:

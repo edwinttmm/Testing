@@ -49,6 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # USB/Hardware support (LabJack)
     libusb-1.0-0-dev \
     libudev-dev \
+    # Video4Linux for camera support
+    v4l-utils \
+    libv4l-dev \
     # Health check and database tools
     netcat-traditional \
     postgresql-client \
@@ -85,7 +88,11 @@ RUN pip install --no-cache-dir -r requirements-minimal.txt || \
 RUN pip install --no-cache-dir \
     torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir \
-    ultralytics opencv-python-headless pillow numpy scipy matplotlib
+    ultralytics opencv-python-headless pillow numpy scipy matplotlib && \
+    pip install --no-cache-dir \
+    pyserial>=3.5 && \
+    pip install --no-cache-dir \
+    v4l2py || echo "v4l2py optional camera integration skipped"
 
 # Install additional requirements if available
 RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
