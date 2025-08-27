@@ -1,83 +1,52 @@
 """
-Test configuration for London School TDD
-Provides comprehensive mocks for all external dependencies
+VRU Platform Test Configuration
+===============================
+
+Pytest configuration and fixtures for VRU platform testing suite.
 """
+
 import pytest
-from unittest.mock import Mock, MagicMock
+import asyncio
 import sys
 import os
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
+# Configure asyncio for pytest
+pytest_plugins = ['pytest_asyncio']
 
-@pytest.fixture
-def mock_db_session():
-    """Mock database session for London School TDD"""
-    session = Mock()
-    session.query.return_value = Mock()
-    session.add = Mock()
-    session.commit = Mock()
-    session.rollback = Mock()
-    session.refresh = Mock()
-    session.close = Mock()
-    return session
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create event loop for session-scoped async tests"""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
-
-@pytest.fixture
-def mock_project_data():
-    """Mock project data for testing"""
+@pytest.fixture(scope="session")
+def test_config():
+    """Test configuration fixture"""
     return {
-        "name": "Test Project",
-        "description": "Test Description",
-        "camera_model": "Sony IMX390",
-        "camera_view": "Front-facing VRU",
-        "signal_type": "GPIO"
+        "test_timeout": 300,
+        "production_server": "155.138.239.131",
+        "production_port": 8000
     }
 
+def pytest_configure(config):
+    """Configure pytest settings"""
+    config.addinivalue_line("markers", "integration: Integration test marker")
+    config.addinivalue_line("markers", "performance: Performance test marker") 
+    config.addinivalue_line("markers", "production: Production test marker")
 
-@pytest.fixture
-def mock_video_data():
-    """Mock video data for testing"""
-    return {
-        "filename": "test_video.mp4",
-        "file_path": "/uploads/test_video.mp4",
-        "project_id": "project_123",
-        "file_size": 1024000,
-        "duration": 60.0
-    }
-
-
-@pytest.fixture
-def mock_file_system():
-    """Mock file system operations"""
-    mock_fs = Mock()
-    mock_fs.exists.return_value = True
-    mock_fs.makedirs = Mock()
-    mock_fs.remove = Mock()
-    return mock_fs
-
-
-@pytest.fixture
-def mock_external_api():
-    """Mock external API calls"""
-    mock_api = Mock()
-    mock_api.post.return_value = Mock(status_code=200, json=lambda: {"success": True})
-    mock_api.get.return_value = Mock(status_code=200, json=lambda: {"data": []})
-    return mock_api
-
-
-@pytest.fixture(autouse=True)
-def setup_test_environment():
-    """Automatically setup test environment for each test"""
-    # Set test mode
-    os.environ["TESTING"] = "true"
-    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-    
-    yield
-    
-    # Cleanup
-    if "TESTING" in os.environ:
-        del os.environ["TESTING"]
-    if "DATABASE_URL" in os.environ:
-        del os.environ["DATABASE_URL"]
+def pytest_collection_modifyitems(config, items):
+    """Modify collected test items"""
+    # Add markers based on test names
+    for item in items:
+        if "integration" in item.nodeid:
+            item.add_marker(pytest.mark.integration)
+        if "performance" in item.nodeid:
+            item.add_marker(pytest.mark.performance)
+        if "production" in item.nodeid:
+            item.add_marker(pytest.mark.production)

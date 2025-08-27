@@ -1,0 +1,88 @@
+version: '3.8'
+services:
+  ml-inference-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml-inference
+    ports:
+    - 8001:8001
+    environment:
+    - ENV=production
+    - DATABASE_URL=postgresql://vru_user:secure_password@postgres:5432/vru_platform
+    - REDIS_URL=redis://redis:6379/0
+    - LOG_LEVEL=info
+    volumes:
+    - /opt/vru-platform/data:/app/data
+    - /opt/vru-platform/logs:/app/logs
+    - /opt/vru-platform/models:/app/models
+    restart: unless-stopped
+    depends_on:
+    - postgres
+    - redis
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8001/api/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+  postgres:
+    image: postgres:15
+    environment:
+    - POSTGRES_DB=vru_platform
+    - POSTGRES_USER=vru_user
+    - POSTGRES_PASSWORD=secure_password
+    volumes:
+    - /opt/vru-platform/postgres-data:/var/lib/postgresql/data
+    - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+    - 5432:5432
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+  redis:
+    image: redis:7
+    command: redis-server --appendonly yes
+    volumes:
+    - /opt/vru-platform/redis-data:/data
+    ports:
+    - 6379:6379
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+  nginx:
+    image: nginx:alpine
+    ports:
+    - 80:80
+    - 443:443
+    volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    - ./nginx/ssl:/etc/nginx/ssl
+    - /opt/vru-platform/logs/nginx:/var/log/nginx
+    depends_on:
+    - ml-inference-api
+    restart: unless-stopped
+volumes:
+  postgres_data: null
+  redis_data: null
+  app_data: null
+networks:
+  vru_network:
+    driver: bridge

@@ -1,0 +1,152 @@
+# VRU Validation Engine Production Configuration
+
+# Validation Workflow Configuration
+workflows:
+  standard_validation:
+    name: "Standard VRU Validation"
+    description: "Standard validation workflow for VRU detection"
+    steps:
+      - video_preprocessing
+      - ml_detection
+      - result_validation
+      - quality_assessment
+      - report_generation
+    timeout: 300
+    retry_attempts: 2
+    
+  real_time_validation:
+    name: "Real-time VRU Validation"
+    description: "Real-time validation for live camera feeds"
+    steps:
+      - frame_capture
+      - ml_detection
+      - instant_validation
+    timeout: 5
+    retry_attempts: 1
+
+# Validation Rules
+validation_rules:
+  detection_accuracy:
+    min_confidence: 0.6
+    max_false_positives: 0.1
+    min_recall: 0.8
+    
+  video_quality:
+    min_resolution: [640, 480]
+    max_resolution: [1920, 1080]
+    min_fps: 10
+    max_fps: 60
+    min_duration: 1
+    max_duration: 300
+    
+  annotation_quality:
+    min_boxes_per_frame: 0
+    max_boxes_per_frame: 50
+    bbox_area_threshold: 100
+
+# Processing Configuration
+processing:
+  concurrent_validations: 5
+  queue_size: 100
+  worker_threads: 4
+  chunk_size: 10
+  
+  # Memory management
+  memory:
+    max_usage: "1GB"
+    cleanup_interval: 300
+    
+  # Storage
+  storage:
+    temp_dir: "/tmp/vru_validation"
+    result_retention_days: 30
+    max_result_size: "50MB"
+
+# Integration Configuration
+integrations:
+  ml_engine:
+    endpoint: "http://ml-engine:8001"
+    timeout: 30
+    retry_attempts: 3
+    
+  camera_service:
+    endpoint: "http://camera-service:8002"
+    timeout: 10
+    retry_attempts: 2
+    
+  database:
+    connection_pool_size: 10
+    query_timeout: 30
+
+# Quality Metrics
+quality_metrics:
+  accuracy_threshold: 0.85
+  precision_threshold: 0.80
+  recall_threshold: 0.75
+  f1_threshold: 0.77
+  
+  # Performance metrics
+  processing_time_threshold: 30  # seconds
+  memory_usage_threshold: 0.8
+  
+  # Data quality
+  completeness_threshold: 0.95
+  consistency_threshold: 0.90
+
+# Notification Configuration
+notifications:
+  validation_complete:
+    enabled: true
+    webhook_url: ""
+    
+  validation_failed:
+    enabled: true
+    webhook_url: ""
+    alert_threshold: 5  # consecutive failures
+    
+  quality_degradation:
+    enabled: true
+    webhook_url: ""
+    threshold: 0.1  # 10% degradation
+
+# Report Configuration
+reports:
+  formats: ["json", "pdf", "csv"]
+  include_metrics: true
+  include_visualizations: true
+  
+  # Export settings
+  export:
+    enabled: true
+    formats: ["json", "xml"]
+    compression: true
+
+# Security Configuration
+security:
+  validation_token_required: true
+  rate_limiting:
+    enabled: true
+    max_requests_per_minute: 50
+  
+  input_sanitization:
+    enabled: true
+    max_input_size: "10MB"
+
+# Monitoring Configuration
+monitoring:
+  metrics_enabled: true
+  health_check_interval: 15
+  performance_logging: true
+  
+  # Alerts
+  alerts:
+    queue_size_threshold: 80
+    processing_time_threshold: 60
+    error_rate_threshold: 0.05
+
+# Development/Testing Configuration
+development:
+  mock_ml_engine: false
+  test_data_path: "/app/test_data"
+  debug_mode: false
+  verbose_logging: false

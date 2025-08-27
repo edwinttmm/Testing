@@ -1,0 +1,70 @@
+# Multi-stage Dockerfile for VRU ML Inference Engine
+FROM python:3.11-slim as base
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libglu1-mesa \
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd --create-home --shell /bin/bash app
+USER app
+WORKDIR /app
+
+# Python dependencies stage
+FROM base as dependencies
+
+# Copy requirements
+COPY --chown=app:app requirements-ml.txt requirements.txt ./
+
+# Install Python dependencies
+RUN pip install --user --no-cache-dir -r requirements-ml.txt && \
+    pip install --user --no-cache-dir \
+        fastapi[all] \
+        uvicorn[standard] \
+        python-multipart \
+        psycopg2-binary \
+        redis
+
+# Production stage
+FROM base as production
+
+# Copy Python packages from dependencies stage
+COPY --from=dependencies /home/app/.local /home/app/.local
+
+# Copy application code
+COPY --chown=app:app src/ ./src/
+COPY --chown=app:app *.py ./
+COPY --chown=app:app models/ ./models/
+
+# Create required directories
+RUN mkdir -p data/uploads data/temp data/models logs
+
+# Set environment variables
+ENV PATH=/home/app/.local/bin:$PATH
+ENV PYTHONPATH=/app
+ENV ENV=production
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8001/api/health || exit 1
+
+# Expose port
+EXPOSE 8001
+
+# Start command
+CMD ["python", "-m", "uvicorn", "src.ml_api_endpoints:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8001", \
+     "--workers", "4", \
+     "--access-log", \
+     "--log-level", "info"]

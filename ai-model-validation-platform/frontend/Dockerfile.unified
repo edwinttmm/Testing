@@ -1,0 +1,233 @@
+# =====================================================
+# AI Model Validation Platform - Unified Frontend Dockerfile
+# Multi-stage build with development and production targets
+# =====================================================
+
+ARG NODE_VERSION=20
+ARG ENVIRONMENT=production
+ARG BUILD_VERSION=latest
+
+# =====================================================
+# BASE STAGE - Common Node.js setup
+# =====================================================
+FROM node:${NODE_VERSION}-alpine as base
+
+LABEL maintainer="AI Validation Platform Team"
+LABEL version="${BUILD_VERSION}"
+LABEL environment="${ENVIRONMENT}"
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache \
+    curl \
+    git \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1000 appuser && \
+    adduser -u 1000 -G appuser -s /bin/sh -D appuser
+
+# Configure npm for better reliability
+RUN npm config set strict-ssl false && \
+    npm config set registry https://registry.npmjs.org/ && \
+    npm config set fund false && \
+    npm config set audit false
+
+# =====================================================
+# DEPENDENCIES STAGE - Install packages
+# =====================================================
+FROM base as dependencies
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies with error recovery
+RUN set -x && \
+    npm cache clean --force && \
+    (npm ci --legacy-peer-deps --verbose || \
+     npm install --legacy-peer-deps --verbose || \
+     npm install --legacy-peer-deps --verbose --unsafe-perm || \
+     npm install --legacy-peer-deps --verbose --strict-ssl=false) && \
+    npm list --depth=0 || true
+
+# =====================================================
+# DEVELOPMENT STAGE - For development environment
+# =====================================================
+FROM dependencies as development
+
+ENV NODE_ENV=development
+ENV ENVIRONMENT=development
+ENV REACT_APP_ENVIRONMENT=development
+
+# Install development dependencies
+RUN npm install --only=dev --legacy-peer-deps || true
+
+# Copy source code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p logs coverage build && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 3000
+
+# Development command with hot reload
+CMD ["sh", "-c", "HOST=0.0.0.0 PORT=3000 npx craco start || (echo 'Craco failed, using react-scripts...' && HOST=0.0.0.0 PORT=3000 npx react-scripts start)"]
+
+# =====================================================
+# BUILD STAGE - Build the application
+# =====================================================
+FROM dependencies as build
+
+ENV NODE_ENV=production
+ENV ENVIRONMENT=production
+ENV REACT_APP_ENVIRONMENT=production
+ENV GENERATE_SOURCEMAP=false
+ENV CI=true
+
+# Set build-time environment variables
+ARG REACT_APP_API_URL=http://localhost:8000
+ARG REACT_APP_WS_URL=ws://localhost:8000
+ARG REACT_APP_SOCKETIO_URL=http://localhost:8001
+ARG REACT_APP_VIDEO_BASE_URL=http://localhost:8000
+
+ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+ENV REACT_APP_WS_URL=${REACT_APP_WS_URL}
+ENV REACT_APP_SOCKETIO_URL=${REACT_APP_SOCKETIO_URL}
+ENV REACT_APP_VIDEO_BASE_URL=${REACT_APP_VIDEO_BASE_URL}
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build && \
+    npm cache clean --force
+
+# =====================================================
+# PRODUCTION STAGE - Serve built application
+# =====================================================
+FROM nginx:alpine as production
+
+ENV ENVIRONMENT=production
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Copy built application
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Copy custom nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Create nginx user and set permissions
+RUN addgroup -g 1000 appuser && \
+    adduser -u 1000 -G appuser -s /bin/sh -D appuser && \
+    chown -R appuser:appuser /usr/share/nginx/html && \
+    chown -R appuser:appuser /var/cache/nginx && \
+    chown -R appuser:appuser /var/log/nginx && \
+    chown -R appuser:appuser /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
+    chown -R appuser:appuser /var/run/nginx.pid
+
+# Custom nginx configuration
+COPY --chown=appuser:appuser <<'EOF' /etc/nginx/conf.d/default.conf
+server {
+    listen 3000;
+    server_name localhost;
+    
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml application/rss+xml application/atom+xml image/svg+xml;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+    # Main location
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Static assets - long cache
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        root /usr/share/nginx/html;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # API proxy (optional)
+    location /api {
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Health check endpoint
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+
+# Health check script
+COPY --chown=appuser:appuser <<'EOF' /usr/local/bin/health_check.sh
+#!/bin/sh
+set -e
+curl -f http://localhost:3000/health || exit 1
+echo "Frontend health check passed"
+EOF
+
+RUN chmod +x /usr/local/bin/health_check.sh
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD /usr/local/bin/health_check.sh
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
+
+# =====================================================
+# TESTING STAGE - For running tests
+# =====================================================
+FROM dependencies as testing
+
+ENV NODE_ENV=test
+ENV ENVIRONMENT=testing
+ENV CI=true
+
+# Install test dependencies
+RUN npm install --only=dev --legacy-peer-deps || true
+
+# Copy source and test files
+COPY . .
+
+# Switch to non-root user
+USER appuser
+
+# Test command
+CMD ["npm", "test", "--", "--coverage", "--watchAll=false"]
