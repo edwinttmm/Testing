@@ -1,0 +1,72 @@
+{
+  "timestamp": "2025-08-27T08:17:13.288227+00:00",
+  "tests": {
+    "dependencies": {
+      "status": "passed",
+      "details": {
+        "torch": true,
+        "cv2": true,
+        "numpy": true,
+        "ultralytics": true
+      }
+    },
+    "yolo_models": {
+      "status": "passed",
+      "details": {
+        "available_models": [
+          {
+            "path": "/home/user/Testing/ai-model-validation-platform/backend/yolo11l.pt",
+            "name": "yolo11l.pt",
+            "size_mb": 49.0
+          },
+          {
+            "path": "/home/user/Testing/ai-model-validation-platform/backend/yolov8n.pt",
+            "name": "yolov8n.pt",
+            "size_mb": 6.2
+          }
+        ]
+      }
+    },
+    "ml_engine_init": {
+      "status": "passed",
+      "details": {
+        "basic_engine_available": false,
+        "enhanced_engine_available": true
+      }
+    },
+    "basic_inference": {
+      "status": "passed",
+      "details": {
+        "model_used": "yolov8n.pt",
+        "inference_time": 0.5374026298522949,
+        "detections_found": 0,
+        "detections": []
+      }
+    },
+    "video_processing": {
+      "status": "passed",
+      "details": {
+        "fps": 10.0,
+        "frame_count": 30,
+        "resolution": "320x240",
+        "frames_read": 30
+      }
+    },
+    "database": {
+      "status": "passed",
+      "details": {
+        "connection_status": "healthy",
+        "database_type": "sqlite",
+        "response_time": 0
+      }
+    }
+  },
+  "summary": {
+    "overall_status": "PASSED",
+    "total_tests": 6,
+    "passed_tests": 6,
+    "failed_tests": 0,
+    "skipped_tests": 0,
+    "success_rate": 100.0
+  }
+}

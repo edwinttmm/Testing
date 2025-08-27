@@ -1,0 +1,223 @@
+{
+  "test_start_time": "2025-08-27T08:25:16.139559+00:00",
+  "platform": "ai-model-validation-platform",
+  "tests": {
+    "test_file_structure": {
+      "name": "Project File Structure",
+      "status": "passed",
+      "found_files": {
+        "docker_compose": [
+          "/home/user/Testing/ai-model-validation-platform/backend/docker-compose.yml",
+          "/home/user/Testing/ai-model-validation-platform/docker-compose.unified.yml"
+        ],
+        "environment": [
+          "/home/user/Testing/ai-model-validation-platform/.env",
+          "/home/user/Testing/ai-model-validation-platform/backend/.env.production",
+          "/home/user/Testing/ai-model-validation-platform/.env.unified"
+        ],
+        "requirements": [
+          "/home/user/Testing/ai-model-validation-platform/backend/requirements.txt"
+        ],
+        "models": [
+          "/home/user/Testing/ai-model-validation-platform/backend/yolo11l.pt",
+          "/home/user/Testing/ai-model-validation-platform/backend/yolov8n.pt",
+          "/home/user/Testing/ai-model-validation-platform/yolov8n.pt",
+          "/home/user/Testing/ai-model-validation-platform/backend/yolo11l.pt"
+        ],
+        "main_app": [
+          "/home/user/Testing/ai-model-validation-platform/backend/main.py",
+          "/home/user/Testing/ai-model-validation-platform/backend/production_server.py"
+        ],
+        "database": [
+          "/home/user/Testing/ai-model-validation-platform/backend/database.py",
+          "/home/user/Testing/ai-model-validation-platform/backend/unified_database.py"
+        ],
+        "ml_engine": [
+          "/home/user/Testing/ai-model-validation-platform/backend/src/ml_inference_engine.py",
+          "/home/user/Testing/ai-model-validation-platform/backend/src/enhanced_ml_inference_engine.py"
+        ]
+      },
+      "missing_files": {
+        "docker_compose": [],
+        "environment": [],
+        "requirements": [],
+        "models": [],
+        "main_app": [],
+        "database": [],
+        "ml_engine": []
+      },
+      "completeness_score": 1.0,
+      "complete_categories": 7,
+      "total_categories": 7
+    },
+    "test_ml_models_availability": {
+      "name": "ML Models Availability",
+      "status": "passed",
+      "model_files": [
+        {
+          "name": "yolo11l.pt",
+          "path": "/home/user/Testing/ai-model-validation-platform/backend/yolo11l.pt",
+          "size_mb": 49.0
+        },
+        {
+          "name": "yolov8n.pt",
+          "path": "/home/user/Testing/ai-model-validation-platform/backend/yolov8n.pt",
+          "size_mb": 6.2
+        },
+        {
+          "name": "yolo11l.pt",
+          "path": "/home/user/Testing/ai-model-validation-platform/backend/yolo11l.pt",
+          "size_mb": 49.0
+        },
+        {
+          "name": "yolov8n.pt",
+          "path": "/home/user/Testing/ai-model-validation-platform/backend/yolov8n.pt",
+          "size_mb": 6.2
+        }
+      ],
+      "model_count": 4,
+      "inference_test_success": true,
+      "inference_time": 6.225262403488159
+    },
+    "test_database_functionality": {
+      "name": "Database Functionality",
+      "status": "passed",
+      "database_type": "unified",
+      "connection_health": {
+        "status": "healthy",
+        "database_type": "sqlite",
+        "database_url": "sqlite:///./dev_database.db",
+        "connection_test": "passed",
+        "timestamp": "2025-08-27T08:25:30.550920",
+        "sqlite_journal_mode": "wal",
+        "sqlite_cache_size": -64000,
+        "sqlite_synchronous": 1,
+        "sqlite_foreign_keys": 1
+      },
+      "database_available": true,
+      "connection_healthy": true
+    },
+    "test_server_functionality": {
+      "name": "Server Functionality",
+      "status": "passed",
+      "servers_tested": 2,
+      "accessible_servers": 1,
+      "server_results": {
+        "Development Server": {
+          "accessible": true,
+          "response_time": 0.012015104293823242,
+          "status_code": 200,
+          "health_data": {
+            "status": "healthy",
+            "message": "Server is running",
+            "timestamp": "2025-08-27T08:25:30.562159",
+            "external_ip": "155.138.239.131",
+            "cors_origins": [
+              "http://localhost:3000",
+              "http://127.0.0.1:3000",
+              "http://155.138.239.131:3000",
+              "https://155.138.239.131:3000",
+              "http://155.138.239.131",
+              "https://155.138.239.131"
+            ],
+            "uptime_seconds": 6896.652326
+          }
+        },
+        "Production Server": {
+          "accessible": false,
+          "response_time": 0.017547607421875,
+          "status_code": 404
+        }
+      }
+    },
+    "test_system_resources": {
+      "name": "System Resources",
+      "status": "partial",
+      "resources": {
+        "memory_gb": 7.8,
+        "memory_available_gb": 4.2,
+        "memory_usage_percent": 45.4,
+        "disk_total_gb": 3.9,
+        "disk_free_gb": 3.9,
+        "disk_usage_percent": 0.0,
+        "cpu_count": 2
+      },
+      "issues": [],
+      "warnings": [
+        "Low disk space: 5GB+ recommended for logs and temporary files"
+      ]
+    },
+    "test_dependencies_availability": {
+      "name": "Dependencies Availability",
+      "status": "passed",
+      "dependency_status": {
+        "core": {
+          "numpy": true,
+          "opencv-python": true,
+          "fastapi": true,
+          "uvicorn": true
+        },
+        "ml": {
+          "torch": true,
+          "ultralytics": true
+        },
+        "database": {
+          "sqlalchemy": true,
+          "sqlite3": true
+        },
+        "web": {
+          "requests": true,
+          "aiofiles": true
+        }
+      },
+      "availability_score": 1.0,
+      "available_dependencies": 10,
+      "total_dependencies": 10
+    },
+    "test_configuration_files": {
+      "name": "Configuration Files",
+      "status": "passed",
+      "found_configs": {
+        "environment": [
+          "/home/user/Testing/ai-model-validation-platform/.env",
+          "/home/user/Testing/ai-model-validation-platform/.env.production",
+          "/home/user/Testing/ai-model-validation-platform/.env.unified"
+        ],
+        "docker": [
+          "/home/user/Testing/ai-model-validation-platform/docker-compose.yml",
+          "/home/user/Testing/ai-model-validation-platform/docker-compose.unified.yml"
+        ],
+        "python": [
+          "/home/user/Testing/ai-model-validation-platform/backend/requirements.txt",
+          "/home/user/Testing/ai-model-validation-platform/backend/requirements-ml.txt"
+        ],
+        "application": [
+          "/home/user/Testing/ai-model-validation-platform/backend/config.py",
+          "/home/user/Testing/ai-model-validation-platform/backend/main.py",
+          "/home/user/Testing/ai-model-validation-platform/backend/production_server.py"
+        ]
+      },
+      "missing_configs": {
+        "environment": [],
+        "docker": [],
+        "python": [],
+        "application": []
+      },
+      "config_score": 10,
+      "total_configs": 10,
+      "completeness": 1.0
+    }
+  },
+  "summary": {
+    "total_tests": 7,
+    "status_counts": {
+      "passed": 6,
+      "partial": 1
+    },
+    "readiness_score": 96.0,
+    "readiness_level": "EXCELLENT",
+    "recommendation": "\ud83c\udf89 Platform is production-ready! Deploy with confidence."
+  },
+  "production_readiness_score": 96.0,
+  "test_end_time": "2025-08-27T08:25:32.600435+00:00"
+}

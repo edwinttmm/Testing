@@ -117,23 +117,23 @@ deploy_services() {
         
         # Load environment variables
         set -a
-        source config/production/.env.production
+        source .env.production
         set +a
         
         # Pull latest images
-        docker-compose -f config/production/docker-compose.production.yml pull
+        docker-compose -f docker-compose.production.yml pull
         
         # Stop existing services
-        docker-compose -f config/production/docker-compose.production.yml down --remove-orphans
+        docker-compose -f docker-compose.production.yml down --remove-orphans
         
         # Build and start services
-        docker-compose -f config/production/docker-compose.production.yml up --build -d
+        docker-compose -f docker-compose.production.yml up --build -d
         
         echo "⏳ Waiting for services to become healthy..."
         sleep 30
         
         # Check service health
-        docker-compose -f config/production/docker-compose.production.yml ps
+        docker-compose -f docker-compose.production.yml ps
 EOF
     
     echo "✅ Services deployed"

@@ -74,12 +74,13 @@ services:
   # ML Inference Engine - Core AI processing
   ml_engine:
     build:
-      context: ../..
+      context: ../../
       dockerfile: backend/Dockerfile.unified
       target: production
       args:
-        - INSTALL_ML=true
-        - OPTIMIZE_INFERENCE=true
+        - PYTHON_VERSION=3.11
+        - ENVIRONMENT=production
+        - BUILD_VERSION=latest
     container_name: vru_prod_ml_engine
     hostname: ml-engine
     ports:
@@ -125,11 +126,13 @@ services:
   # Camera Integration Service - Hardware interface
   camera_service:
     build:
-      context: ../..
+      context: ../../
       dockerfile: backend/Dockerfile.unified
       target: production
       args:
-        - INSTALL_CAMERA_LIBS=true
+        - PYTHON_VERSION=3.11
+        - ENVIRONMENT=production
+        - BUILD_VERSION=latest
     container_name: vru_prod_camera_service
     hostname: camera-service
     ports:
@@ -146,6 +149,10 @@ services:
       - camera_data:/app/camera_data
     devices:
       - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+    privileged: false
+    cap_add:
+      - SYS_ADMIN
     networks:
       - vru_prod_network
     depends_on:
@@ -174,9 +181,13 @@ services:
   # Validation Workflow Engine - Orchestrates validation processes
   validation_engine:
     build:
-      context: ../..
+      context: ../../
       dockerfile: backend/Dockerfile.unified
       target: production
+      args:
+        - PYTHON_VERSION=3.11
+        - ENVIRONMENT=production
+        - BUILD_VERSION=latest
     container_name: vru_prod_validation_engine
     hostname: validation-engine
     ports:
@@ -221,9 +232,13 @@ services:
   # Main API Gateway - Routes requests to appropriate services
   api_gateway:
     build:
-      context: ../..
+      context: ../../
       dockerfile: backend/Dockerfile.unified
       target: production
+      args:
+        - PYTHON_VERSION=3.11
+        - ENVIRONMENT=production
+        - BUILD_VERSION=latest
     container_name: vru_prod_api_gateway
     hostname: api-gateway
     ports:

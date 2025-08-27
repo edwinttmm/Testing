@@ -1,0 +1,154 @@
+{
+  "local_server": {
+    "timestamp": 1756282786.051233,
+    "base_url": "http://localhost:8000",
+    "tests": {
+      "health": {
+        "status": "passed",
+        "status_code": 200,
+        "response_time": 0.033629,
+        "health_data": {
+          "status": "healthy",
+          "message": "Server is running",
+          "timestamp": "2025-08-27T08:19:46.077817",
+          "external_ip": "155.138.239.131",
+          "cors_origins": [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://155.138.239.131:3000",
+            "https://155.138.239.131:3000",
+            "http://155.138.239.131",
+            "https://155.138.239.131"
+          ],
+          "uptime_seconds": 6552.167992
+        },
+        "database_status": "unknown"
+      },
+      "ml_engine_health": {
+        "status": "failed",
+        "error": "No ML health endpoints found",
+        "tried_endpoints": [
+          "/api/ml/health",
+          "/ml/health",
+          "/health/ml",
+          "/api/health/ml"
+        ]
+      },
+      "video_upload": {
+        "status": "failed",
+        "error": "No video upload endpoints found",
+        "tried_endpoints": [
+          "/api/videos/upload",
+          "/videos/upload",
+          "/upload/video",
+          "/api/upload"
+        ]
+      },
+      "image_detection": {
+        "status": "failed",
+        "error": "No image detection endpoints found",
+        "tried_endpoints": [
+          "/api/ml/detect",
+          "/ml/detect",
+          "/detect",
+          "/api/detect/image"
+        ]
+      },
+      "model_info": {
+        "status": "failed",
+        "error": "No model info endpoints found",
+        "tried_endpoints": [
+          "/api/ml/model/info",
+          "/ml/model/info",
+          "/model/info",
+          "/api/model/status"
+        ]
+      },
+      "api_docs": {
+        "status": "passed",
+        "available_docs": [
+          {
+            "endpoint": "/docs",
+            "status_code": 200
+          },
+          {
+            "endpoint": "/redoc",
+            "status_code": 200
+          }
+        ]
+      }
+    },
+    "summary": {
+      "total_tests": 6,
+      "passed_tests": 2,
+      "failed_tests": 4,
+      "crashed_tests": 0,
+      "success_rate": 33.33333333333333,
+      "overall_status": "PARTIAL"
+    }
+  },
+  "docker_server": {
+    "timestamp": 1756282787.0996792,
+    "base_url": "http://localhost:80",
+    "tests": {
+      "health": {
+        "status": "failed",
+        "status_code": 404,
+        "response_time": 0.011946,
+        "error": "Not found."
+      },
+      "ml_engine_health": {
+        "status": "failed",
+        "error": "No ML health endpoints found",
+        "tried_endpoints": [
+          "/api/ml/health",
+          "/ml/health",
+          "/health/ml",
+          "/api/health/ml"
+        ]
+      },
+      "video_upload": {
+        "status": "failed",
+        "error": "No video upload endpoints found",
+        "tried_endpoints": [
+          "/api/videos/upload",
+          "/videos/upload",
+          "/upload/video",
+          "/api/upload"
+        ]
+      },
+      "image_detection": {
+        "status": "failed",
+        "error": "No image detection endpoints found",
+        "tried_endpoints": [
+          "/api/ml/detect",
+          "/ml/detect",
+          "/detect",
+          "/api/detect/image"
+        ]
+      },
+      "model_info": {
+        "status": "failed",
+        "error": "No model info endpoints found",
+        "tried_endpoints": [
+          "/api/ml/model/info",
+          "/ml/model/info",
+          "/model/info",
+          "/api/model/status"
+        ]
+      },
+      "api_docs": {
+        "status": "failed",
+        "available_docs": []
+      }
+    },
+    "summary": {
+      "total_tests": 6,
+      "passed_tests": 0,
+      "failed_tests": 6,
+      "crashed_tests": 0,
+      "success_rate": 0.0,
+      "overall_status": "FAILED"
+    }
+  }
+}
