@@ -18,8 +18,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Grid,
-  LinearProgress
+  Grid
 } from '@mui/material';
 import {
   CheckCircle,
@@ -32,6 +31,7 @@ import {
   CloudOff
 } from '@mui/icons-material';
 import { smartApiService } from '../utils/smartApiService';
+import { TimerHandle, safeSetInterval, safeClearInterval } from '../utils/timerUtils';
 import { envConfig } from '../utils/envConfig';
 
 interface ApiHealthStatus {
@@ -65,14 +65,14 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
   const [healthStatus, setHealthStatus] = useState<ApiHealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [, setLastUpdate] = useState<Date | null>(null);
 
   const checkHealth = useCallback(async () => {
     try {
       setLoading(true);
       
       const connectivity = smartApiService.getConnectivityStatus();
-      const config = envConfig.getConfig();
+      envConfig.getConfig();
       
       // Test primary API
       let primaryLatency: number | undefined = undefined;
@@ -84,8 +84,8 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
         await smartApiService.get('/health', { skipFallback: true, skipCache: true });
         primaryLatency = Date.now() - startTime;
         primaryAvailable = true;
-      } catch (error: any) {
-        primaryError = error.message || 'Connection failed';
+      } catch (error: unknown) {
+        primaryError = (error as Error)?.message || 'Connection failed';
         primaryAvailable = false;
       }
       
@@ -111,8 +111,8 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
           } else {
             fallbackError = `HTTP ${response.status}`;
           }
-        } catch (error: any) {
-          fallbackError = error.message || 'Connection failed';
+        } catch (error: unknown) {
+          fallbackError = (error as Error)?.message || 'Connection failed';
         }
         
         fallbacks.push({
@@ -162,11 +162,11 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
   useEffect(() => {
     if (!autoRefresh) return;
     
-    const interval = setInterval(checkHealth, refreshInterval);
-    return () => clearInterval(interval);
+    const interval: TimerHandle = safeSetInterval(checkHealth, refreshInterval);
+    return () => safeClearInterval(interval);
   }, [autoRefresh, refreshInterval, checkHealth]);
 
-  const getStatusColor = (status: 'healthy' | 'degraded' | 'offline') => {
+  const getStatusColor = (status: 'healthy' | 'degraded' | 'offline'): import('../services/types').ChipColor => {
     switch (status) {
       case 'healthy':
         return 'success';
@@ -231,13 +231,13 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
         {getStatusIcon(healthStatus.overall)}
         <Chip
           label={healthStatus.overall.toUpperCase()}
-          color={getStatusColor(healthStatus.overall) as any}
+          color={getStatusColor(healthStatus.overall)}
           size="small"
         />
         {healthStatus.primary.available && healthStatus.primary.latency && (
           <Chip
             label={formatLatency(healthStatus.primary.latency)}
-            color={getLatencyColor(healthStatus.primary.latency) as any}
+            color={getLatencyColor(healthStatus.primary.latency) as 'success' | 'warning' | 'error'}
             size="small"
             variant="outlined"
           />
@@ -285,7 +285,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
               </Typography>
               <Chip
                 label={healthStatus.overall.toUpperCase()}
-                color={getStatusColor(healthStatus.overall) as any}
+                color={getStatusColor(healthStatus.overall)}
               />
             </Box>
           }
@@ -317,7 +317,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
 
           <Grid container spacing={2}>
             {/* Primary API Status */}
-            <Grid size={{ xs: 12, md: 6 }} component="div">
+            <Grid item xs={12} md={6}>
               <Card variant="outlined">
                 <CardHeader 
                   title="Primary API"
@@ -342,7 +342,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
                     {healthStatus.primary.latency && (
                       <ListItem>
                         <ListItemIcon>
-                          <Speed color={getLatencyColor(healthStatus.primary.latency) as any} />
+                          <Speed color={getLatencyColor(healthStatus.primary.latency) as 'success' | 'warning' | 'error'} />
                         </ListItemIcon>
                         <ListItemText
                           primary="Latency"
@@ -368,7 +368,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
             </Grid>
 
             {/* Fallback APIs Status */}
-            <Grid size={{ xs: 12, md: 6 }} component="div">
+            <Grid item xs={12} md={6}>
               <Card variant="outlined">
                 <CardHeader 
                   title="Fallback APIs"
@@ -393,7 +393,7 @@ export const ApiHealthMonitor: React.FC<ApiHealthMonitorProps> = ({
                           <Chip
                             label={formatLatency(fallback.latency)}
                             size="small"
-                            color={getLatencyColor(fallback.latency) as any}
+                            color={getLatencyColor(fallback.latency) as 'success' | 'warning' | 'error'}
                             variant="outlined"
                           />
                         )}

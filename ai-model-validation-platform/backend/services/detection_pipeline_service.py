@@ -418,7 +418,13 @@ class ScreenshotCapture:
     def __init__(self, screenshot_dir: str = "/app/screenshots"):
         self.screenshot_dir = Path(screenshot_dir)
         # Create parent directories if they don't exist
-        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            logger.warning(f"Permission denied creating screenshot directory: {self.screenshot_dir}")
+            # Use local directory instead
+            self.screenshot_dir = Path("./screenshots")
+            self.screenshot_dir.mkdir(parents=True, exist_ok=True)
     
     async def capture_detection(self, frame: np.ndarray, bounding_box: BoundingBox, 
                               detection_id: str) -> str:
@@ -581,6 +587,24 @@ class DetectionPipeline:
                     
                     # Store in database
                     db.add(detection_event)
+                    
+                    # Emit real-time WebSocket event if websocket service is available
+                    try:
+                        from services.websocket_service import realtime_service
+                        await realtime_service.notify_test_session_update(
+                            test_session_id=test_session_id,
+                            status="detection_processing",
+                            current_detections=frame_number,
+                            metrics={
+                                "detection_id": detection.detection_id,
+                                "class_label": detection.class_label,
+                                "confidence": detection.confidence,
+                                "frame_number": frame_number,
+                                "timestamp": synchronized_timestamp
+                            }
+                        )
+                    except Exception as ws_error:
+                        logger.warning(f"WebSocket emission failed: {ws_error}")
                     
                     yield detection_event
                 
@@ -947,18 +971,58 @@ class DetectionPipeline:
             ).first()
             
             if not test_session:
-                # Create new test session
-                test_session = TestSession(
-                    id=str(uuid.uuid4()),
-                    name=f"Detection Session - {time.strftime('%Y-%m-%d %H:%M')}",
-                    project_id="00000000-0000-0000-0000-000000000000",  # Default project
-                    video_id=video_id,
-                    status="running",
-                    started_at=datetime.utcnow()
-                )
-                db.add(test_session)
-                db.commit()
-                db.refresh(test_session)
+                # Create a standalone detection session for AI annotations
+                logger.info(f"🔄 No active test session found for video {video_id}. Creating standalone detection session.")
+                
+                # Import Video model to get video info
+                from models import Video
+                video_record = db.query(Video).filter(Video.id == video_id).first()
+                
+                if video_record:
+                    # Get or create default project for AI detections
+                    from models import Project
+                    default_project = db.query(Project).filter(Project.name == "AI Detection Project").first()
+                    
+                    if not default_project:
+                        default_project = Project(
+                            id=str(uuid.uuid4()),
+                            name="AI Detection Project",
+                            description="Default project for standalone AI detection sessions",
+                            camera_model="Generic Camera",  # Required field
+                            camera_view="Front-facing VRU",  # Required field
+                            lens_type="Standard",
+                            resolution="1080p",
+                            frame_rate=30.0,
+                            signal_type="GPIO",
+                            status="Active",
+                            owner_id="system",
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        db.add(default_project)
+                        db.commit()
+                        db.refresh(default_project)
+                        logger.info("✅ Created default AI detection project")
+                    
+                    # Create a standalone detection session
+                    video_name = getattr(video_record, 'filename', video_record.id[:8])  # Use filename or short ID
+                    test_session = TestSession(
+                        id=str(uuid.uuid4()),
+                        project_id=default_project.id,  # Link to default project
+                        video_id=video_id,
+                        name=f"AI Detection Session - {video_name}",
+                        status="completed",  # Mark as completed since we're just storing detections
+                        session_type="ai_detection",  # New session type for AI detections
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(test_session)
+                    db.commit()
+                    db.refresh(test_session)
+                    logger.info(f"✅ Created standalone detection session {test_session.id}")
+                else:
+                    logger.error(f"❌ Video {video_id} not found in database. Cannot create detection session.")
+                    return detections
             
             # Store each detection in database with complete data
             stored_detections = []

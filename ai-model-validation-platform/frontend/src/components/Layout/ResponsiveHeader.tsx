@@ -43,7 +43,7 @@ const ResponsiveHeader: React.FC<ResponsiveHeaderProps> = ({ onMobileMenuToggle 
     window.location.href = '/settings';
   };
 
-  const handleLogout = () => {
+  const _handleLogout = () => {
     handleClose();
     // No authentication - just close menu
   };

@@ -140,7 +140,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const handleChangeColor = useCallback(() => {
     const shapesToUpdate = targetShape ? [targetShape] : selectedShapes;
     const currentColor = shapesToUpdate[0]?.style?.strokeColor || '#3498db';
-    const newColor = prompt('Enter hex color:', currentColor);
+    const newColor = currentColor; // TODO: Replace with proper color picker dialog
     if (newColor && newColor !== currentColor) {
       shapesToUpdate.forEach(shape => {
         actions.updateShape(shape.id, {
@@ -154,7 +154,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   const handleChangeBrush = useCallback(() => {
     const shapesToUpdate = targetShape ? [targetShape] : selectedShapes;
     const currentWidth = shapesToUpdate[0]?.style?.strokeWidth || 2;
-    const newWidth = prompt('Enter stroke width (1-20):', currentWidth.toString());
+    const newWidth = currentWidth.toString(); // TODO: Replace with proper width selector dialog
     const width = parseInt(newWidth || '0', 10);
     if (width > 0 && width <= 20 && width !== currentWidth) {
       shapesToUpdate.forEach(shape => {
@@ -170,7 +170,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
     if (!targetShape) return;
 
     // Convert shape to different type
-    let newShape: Partial<AnnotationShape> = {
+    const newShape: Partial<AnnotationShape> = {
       type: newType,
     };
 

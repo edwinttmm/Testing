@@ -26,10 +26,10 @@ describe('ConfigurationManager', () => {
     await configurationManager.reinitialize();
     
     const config = configurationManager.getFullConfigSync();
-    expect(config.REACT_APP_API_URL).toBe('http://155.138.239.131:8000');
-    expect(config.REACT_APP_WS_URL).toBe('ws://155.138.239.131:8000');
-    expect(config.REACT_APP_SOCKETIO_URL).toBe('http://155.138.239.131:8001');
-    expect(config.REACT_APP_VIDEO_BASE_URL).toBe('http://155.138.239.131:8000');
+    expect(config.REACT_APP_API_URL).toBe('http://localhost:8000');
+    expect(config.REACT_APP_WS_URL).toBe('ws://localhost:8000');
+    expect(config.REACT_APP_SOCKETIO_URL).toBe('http://localhost:8001');
+    expect(config.REACT_APP_VIDEO_BASE_URL).toBe('http://localhost:8000');
   });
 
   test('should override with environment variables', async () => {
@@ -42,7 +42,7 @@ describe('ConfigurationManager', () => {
     expect(config.REACT_APP_API_URL).toBe('http://env-api:9000');
     expect(config.REACT_APP_WS_URL).toBe('ws://env-ws:9000');
     // Should still use defaults for others
-    expect(config.REACT_APP_SOCKETIO_URL).toBe('http://155.138.239.131:8001');
+    expect(config.REACT_APP_SOCKETIO_URL).toBe('http://localhost:8001');
   });
 
   test('should prioritize runtime config over environment variables', async () => {
@@ -85,8 +85,8 @@ describe('ConfigurationManager', () => {
     const config = configurationManager.getFullConfigSync();
     expect(config.REACT_APP_API_URL).toBe('http://runtime-api:7000'); // Runtime wins
     expect(config.REACT_APP_WS_URL).toBe('ws://env-ws:9000'); // Env wins over default
-    expect(config.REACT_APP_SOCKETIO_URL).toBe('http://155.138.239.131:8001'); // Default
-    expect(config.REACT_APP_VIDEO_BASE_URL).toBe('http://155.138.239.131:8000'); // Default
+    expect(config.REACT_APP_SOCKETIO_URL).toBe('http://localhost:8001'); // Default
+    expect(config.REACT_APP_VIDEO_BASE_URL).toBe('http://localhost:8000'); // Default
   });
 
   test('should handle getConfigValueSync correctly', async () => {
@@ -102,7 +102,7 @@ describe('ConfigurationManager', () => {
     expect(apiUrl).toBe('http://runtime-api:7000');
     
     const wsUrl = getConfigValueSync('REACT_APP_WS_URL', 'fallback-ws');
-    expect(wsUrl).toBe('ws://155.138.239.131:8000'); // Default, not fallback
+    expect(wsUrl).toBe('ws://localhost:8000'); // Default, not fallback
   });
 
   test('should indicate initialization status correctly', async () => {
@@ -120,7 +120,7 @@ describe('ConfigurationManager', () => {
     try {
       await configurationManager.reinitialize();
       const config = configurationManager.getFullConfigSync();
-      expect(config.REACT_APP_API_URL).toBe('http://155.138.239.131:8000');
+      expect(config.REACT_APP_API_URL).toBe('http://localhost:8000');
     } finally {
       (global as any).window = originalWindow;
     }

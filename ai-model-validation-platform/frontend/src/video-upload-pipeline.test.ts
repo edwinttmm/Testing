@@ -91,7 +91,10 @@ describe('Video Upload and Detection Pipeline Integration', () => {
 
       // Step 3: Run detection on processed video
       const mockDetectionResult = {
-        success: true,
+        videoId: uploadedVideo.id,
+        modelUsed: 'yolov8n',
+        totalDetections: 2,
+        confidenceDistribution: { 'high': 2, 'medium': 0, 'low': 0 },
         detections: [
           {
             id: 'det-1',
@@ -304,7 +307,10 @@ describe('Video Upload and Detection Pipeline Integration', () => {
 
       // Should be able to run detection on central video
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: uploadedVideo.id,
+        modelUsed: 'yolov8n',
+        totalDetections: 1,
+        confidenceDistribution: { 'high': 1, 'medium': 0, 'low': 0 },
         detections: [
           {
             id: 'central-det-1',
@@ -461,7 +467,10 @@ describe('Video Upload and Detection Pipeline Integration', () => {
         }));
 
         mockApiService.runDetectionPipeline.mockResolvedValue({
-          success: true,
+          videoId: videoId,
+          modelUsed: config.modelName,
+          totalDetections: expectedDetections.length,
+          confidenceDistribution: { 'high': expectedDetections.length, 'medium': 0, 'low': 0 },
           detections: expectedDetections,
           processingTime: config.modelName === 'yolov8n' ? 1000 : 
                          config.modelName === 'yolov8s' ? 2000 : 3000
@@ -502,7 +511,7 @@ describe('Video Upload and Detection Pipeline Integration', () => {
 
       // Mock preprocessing pipeline result
       const preprocessingResult = {
-        success: true,
+        videoId,
         detections: Array.from({ length: 50 }, (_, i) => ({
           id: `preprocessed-det-${i}`,
           detectionId: `preprocessed-det-${i}`,
@@ -513,12 +522,9 @@ describe('Video Upload and Detection Pipeline Integration', () => {
           confidence: 0.7 + Math.random() * 0.3
         })),
         processingTime: 8000, // Longer due to preprocessing
-        metadata: {
-          originalResolution: '3840x2160',
-          processedResolution: '1920x1080',
-          framesSampled: 100,
-          preprocessingTime: 3000
-        }
+        modelUsed: 'yolov8n',
+        totalDetections: 50,
+        confidenceDistribution: { '0.7-0.8': 25, '0.8-0.9': 15, '0.9-1.0': 10 }
       };
 
       mockApiService.runDetectionPipeline.mockResolvedValue(preprocessingResult);
@@ -561,9 +567,12 @@ describe('Video Upload and Detection Pipeline Integration', () => {
       );
 
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: videoId,
         detections: allDetections,
-        processingTime: 4500
+        processingTime: 4500,
+        modelUsed: 'yolov8n',
+        totalDetections: allDetections.length,
+        confidenceDistribution: { high: 15, medium: 10, low: 5 }
       });
 
       const result = await detectionService.runDetection(videoId, complexConfig);
@@ -622,7 +631,7 @@ describe('Video Upload and Detection Pipeline Integration', () => {
         };
 
         mockApiService.runDetectionPipeline.mockResolvedValue({
-          success: true,
+          videoId,
           detections: [
             {
               id: `perf-det-${config.name}`,
@@ -634,7 +643,10 @@ describe('Video Upload and Detection Pipeline Integration', () => {
               confidence: config.confidenceThreshold + 0.1
             }
           ],
-          processingTime: config.expectedProcessingTime
+          processingTime: config.expectedProcessingTime,
+          modelUsed: 'yolov8n',
+          totalDetections: 1,
+          confidenceDistribution: { '0.8-0.9': 1 }
         });
 
         const startTime = performance.now();
@@ -667,7 +679,7 @@ describe('Video Upload and Detection Pipeline Integration', () => {
         const videoId = `video-${quality.resolution}`;
         
         mockApiService.runDetectionPipeline.mockResolvedValue({
-          success: true,
+          videoId,
           detections: Array.from({ length: quality.expectedDetections }, (_, i) => ({
             id: `${quality.resolution}-det-${i}`,
             detectionId: `${quality.resolution}-det-${i}`,
@@ -683,7 +695,10 @@ describe('Video Upload and Detection Pipeline Integration', () => {
             height: 100 * (quality.height / 1080)
           })),
           processingTime: quality.resolution === '4K' ? 6000 : 
-                         quality.resolution === '1080p' ? 3000 : 1500
+                         quality.resolution === '1080p' ? 3000 : 1500,
+          modelUsed: 'yolov8n',
+          totalDetections: quality.expectedDetections,
+          confidenceDistribution: { '0.8-0.9': quality.expectedDetections }
         });
 
         const result = await detectionService.runDetection(videoId, mockDetectionConfig);
@@ -735,14 +750,16 @@ describe('Video Upload and Detection Pipeline Integration', () => {
         if (format.compatibility === 'low') {
           // Simulate processing difficulties with some formats
           mockApiService.runDetectionPipeline.mockResolvedValue({
-            success: true,
+            videoId,
             detections: [], // Fewer detections due to processing issues
             processingTime: format.processingTime,
-            warnings: [`Format ${format.container}/${format.codec} may have reduced accuracy`]
+            modelUsed: 'yolov8n',
+            totalDetections: 0,
+            confidenceDistribution: {}
           });
         } else {
           mockApiService.runDetectionPipeline.mockResolvedValue({
-            success: true,
+            videoId,
             detections: [
               {
                 id: `format-det-${format.container}`,
@@ -754,7 +771,10 @@ describe('Video Upload and Detection Pipeline Integration', () => {
                 confidence: format.compatibility === 'high' ? 0.85 : 0.75
               }
             ],
-            processingTime: format.processingTime
+            processingTime: format.processingTime,
+            modelUsed: 'yolov8n',
+            totalDetections: 1,
+            confidenceDistribution: { '0.7-0.9': 1 }
           });
         }
 

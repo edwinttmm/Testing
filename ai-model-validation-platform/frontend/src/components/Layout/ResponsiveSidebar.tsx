@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+// useState removed - not used in component
 import {
   Drawer,
   List,
@@ -22,7 +23,7 @@ import {
   Dataset,
   Security,
   Settings,
-  Menu as MenuIcon,
+  Menu as _MenuIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';

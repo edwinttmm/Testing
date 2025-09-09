@@ -33,8 +33,8 @@ interface EnhancedAnnotationCanvasProps {
   height: number;
   backgroundImage?: string;
   videoElement?: HTMLVideoElement;
-  onShapeClick?: (shape: AnnotationShape, event: MouseEvent) => void;
-  onCanvasClick?: (point: Point, event: MouseEvent) => void;
+  onShapeClick?: (shape: AnnotationShape, event: React.MouseEvent) => void;
+  onCanvasClick?: (point: Point, event: React.MouseEvent) => void;
   onShapeChange?: (shapes: AnnotationShape[]) => void;
   disabled?: boolean;
 }
@@ -42,11 +42,11 @@ interface EnhancedAnnotationCanvasProps {
 const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
   width,
   height,
-  backgroundImage,
+  backgroundImage: _backgroundImage,
   videoElement,
   onShapeClick,
   onCanvasClick,
-  onShapeChange,
+  onShapeChange: _onShapeChange,
   disabled = false,
 }) => {
   const { state, actions } = useAnnotation();
@@ -70,14 +70,16 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
 
   // Get mouse position relative to canvas
-  const getMousePos = useCallback((event: MouseEvent): Point => {
+  const getMousePos = useCallback((event: React.MouseEvent | MouseEvent): Point => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     
     const rect = canvas.getBoundingClientRect();
+    const clientX = 'clientX' in event ? event.clientX : (event as MouseEvent).clientX;
+    const clientY = 'clientY' in event ? event.clientY : (event as MouseEvent).clientY;
     const point = {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     };
     
     return actions.inverseTransformPoint(point);
@@ -196,7 +198,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
           if (!state.selectedShapeIds.includes(hitShape.id)) {
             actions.selectShapes([hitShape.id], mouseEvent.shiftKey);
           }
-          onShapeClick?.(hitShape, mouseEvent);
+          onShapeClick?.(hitShape, mouseEvent as unknown as React.MouseEvent);
           setDragStart(point);
         } else {
           if (!mouseEvent.shiftKey) {
@@ -229,7 +231,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       
       case 'point': {
         actions.createPoint(point);
-        onCanvasClick?.(point, mouseEvent);
+        onCanvasClick?.(point, mouseEvent as unknown as React.MouseEvent);
         break;
       }
       
@@ -241,7 +243,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     }
   }, [
     disabled, getMousePos, resizeHandles, actions, state.activeToolId, state.selectedShapeIds,
-    hitTest, onShapeClick, onCanvasClick, isDrawing, state.canvasTransform, isPanning, lastPanPoint
+    hitTest, onShapeClick, onCanvasClick, isDrawing, isPanning
   ]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
@@ -272,7 +274,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
         const delta = { x: point.x - dragStart.x, y: point.y - dragStart.y };
         
         // Calculate new bounding box based on handle
-        let newBbox = { ...shape.boundingBox };
+        const newBbox = { ...shape.boundingBox };
         
         switch (activeResizeHandle) {
           case 'nw':
@@ -464,7 +466,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
   ]);
 
   // Double-click handler for polygon completion
-  const handleDoubleClick = useCallback((event: React.MouseEvent) => {
+  const handleDoubleClick = useCallback((_event: React.MouseEvent) => {
     if (disabled) return;
     
     if (state.activeToolId === 'polygon' && isDrawing && currentPath.length > 2) {

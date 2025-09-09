@@ -3,27 +3,27 @@
 
 import type {
   Point,
-  Size,
-  Rectangle,
+  Size as _Size,
+  Rectangle as _Rectangle,
   AnnotationShape,
   AnnotationStyle,
-  DrawingTool,
-  AnnotationState,
-  CanvasTransform,
-  AnnotationSettings,
-  BrushSettings,
-  AnnotationAction,
-  KeyboardShortcut,
-  ContextMenuItem,
-  SelectionBox,
-  ResizeHandle,
-  AnnotationEvent,
-  ZoomPanState,
-  BrushStroke,
-  LabelStudioRegion,
-  LabelStudioTask,
+  DrawingTool as _DrawingTool,
+  AnnotationState as _AnnotationState,
+  CanvasTransform as _CanvasTransform,
+  AnnotationSettings as _AnnotationSettings,
+  BrushSettings as _BrushSettings,
+  AnnotationAction as _AnnotationAction,
+  KeyboardShortcut as _KeyboardShortcut,
+  ContextMenuItem as _ContextMenuItem,
+  SelectionBox as _SelectionBox,
+  ResizeHandle as _ResizeHandle,
+  AnnotationEvent as _AnnotationEvent,
+  ZoomPanState as _ZoomPanState,
+  BrushStroke as _BrushStroke,
+  LabelStudioRegion as _LabelStudioRegion,
+  LabelStudioTask as _LabelStudioTask,
   LabelStudioAnnotation,
-  EnhancedGroundTruthAnnotation,
+  EnhancedGroundTruthAnnotation as _EnhancedGroundTruthAnnotation,
 } from './types';
 
 // Core components
@@ -125,9 +125,9 @@ export const convertToLabelStudio = (shapes: AnnotationShape[]): LabelStudioAnno
 };
 
 export const convertFromLabelStudio = (annotation: LabelStudioAnnotation): AnnotationShape[] => {
-  return annotation.result.map((region: any) => {
+  return annotation.result.map((region: _LabelStudioRegion) => {
     // Type-safe value extraction
-    const value = region.value as any; // temporary for migration
+    const value = region.value as Record<string, unknown>;
     const x = typeof value.x === 'number' ? value.x : 0;
     const y = typeof value.y === 'number' ? value.y : 0;
     const width = typeof value.width === 'number' ? value.width : 100;
@@ -154,7 +154,7 @@ export const convertFromLabelStudio = (annotation: LabelStudioAnnotation): Annot
         strokeWidth: 2,
         fillOpacity: 0.2,
       },
-      label: value.rectanglelabels?.[0] || undefined,
+      label: Array.isArray(value.rectanglelabels) && value.rectanglelabels.length > 0 ? String(value.rectanglelabels[0]) : '',
       visible: true,
       selected: false,
     };

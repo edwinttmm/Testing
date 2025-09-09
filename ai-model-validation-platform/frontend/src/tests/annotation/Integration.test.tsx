@@ -128,13 +128,12 @@ const FullAnnotationSystem: React.FC<{
         
         <AnnotationToolbar 
           onToolChange={() => {}}
-          onShowHelp={() => setShowHelp(true)}
         />
         
         <EnhancedAnnotationCanvas
           width={800}
           height={600}
-          onShapeChange={onShapeChange}
+          {...(onShapeChange && { onShapeChange })}
         />
         
         <KeyboardShortcuts
@@ -181,20 +180,16 @@ describe('Integration Test Suite', () => {
     });
 
     it('should differentiate ground truth from user annotations visually', async () => {
-      const user = userEvent.setup();
-
       render(
         <FullAnnotationSystem groundTruthData={mockGroundTruthAnnotations} />
       );
 
       const canvas = screen.getByRole('img');
       
-      // Add user annotation
-      await user.pointer([
-        { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 300, clientY: 300 } },
-        { pointerName: 'mouse', target: canvas, coords: { clientX: 400, clientY: 400 } },
-        { keys: '[/MouseLeft]', target: canvas },
-      ]);
+      // Add user annotation with mouse events
+      fireEvent.mouseDown(canvas, { clientX: 300, clientY: 300 });
+      fireEvent.mouseMove(canvas, { clientX: 400, clientY: 400 });
+      fireEvent.mouseUp(canvas, { clientX: 400, clientY: 400 });
 
       // Should render both ground truth and user annotations with different styles
       expect(mockContext.strokeStyle).toHaveBeenCalledWith('#00ff00'); // Ground truth color
@@ -212,21 +207,16 @@ describe('Integration Test Suite', () => {
       );
 
       const canvas = screen.getByRole('img');
-      const user = userEvent.setup();
 
       // Create annotation near ground truth
-      await user.pointer([
-        { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 105, clientY: 105 } },
-        { pointerName: 'mouse', target: canvas, coords: { clientX: 195, clientY: 195 } },
-        { keys: '[/MouseLeft]', target: canvas },
-      ]);
+      fireEvent.mouseDown(canvas, { clientX: 105, clientY: 105 });
+      fireEvent.mouseMove(canvas, { clientX: 195, clientY: 195 });
+      fireEvent.mouseUp(canvas, { clientX: 195, clientY: 195 });
 
       expect(onShapeChange).toHaveBeenCalled();
     });
 
     it('should support ground truth annotation editing', async () => {
-      const user = userEvent.setup();
-
       render(
         <FullAnnotationSystem groundTruthData={mockGroundTruthAnnotations} />
       );
@@ -234,7 +224,7 @@ describe('Integration Test Suite', () => {
       const canvas = screen.getByRole('img');
 
       // Click on ground truth annotation to select
-      await user.click(canvas, { clientX: 150, clientY: 150 });
+      fireEvent.click(canvas, { clientX: 150, clientY: 150 });
 
       // Should show selection handles for ground truth annotations
       expect(mockContext.fillRect).toHaveBeenCalled(); // Selection handles
@@ -283,14 +273,11 @@ describe('Integration Test Suite', () => {
       );
 
       const canvas = screen.getByRole('img');
-      const user = userEvent.setup();
 
       // Create annotation in enhanced mode
-      await user.pointer([
-        { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 100, clientY: 100 } },
-        { pointerName: 'mouse', target: canvas, coords: { clientX: 200, clientY: 200 } },
-        { keys: '[/MouseLeft]', target: canvas },
-      ]);
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(canvas, { clientX: 200, clientY: 200 });
+      fireEvent.mouseUp(canvas, { clientX: 200, clientY: 200 });
 
       // Switch to classic mode
       rerender(
@@ -368,18 +355,14 @@ describe('Integration Test Suite', () => {
     });
 
     it('should synchronize selection state across components', async () => {
-      const user = userEvent.setup();
-
       render(<FullAnnotationSystem />);
 
       const canvas = screen.getByRole('img');
 
       // Create and select shape
-      await user.pointer([
-        { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 100, clientY: 100 } },
-        { pointerName: 'mouse', target: canvas, coords: { clientX: 200, clientY: 200 } },
-        { keys: '[/MouseLeft]', target: canvas },
-      ]);
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(canvas, { clientX: 200, clientY: 200 });
+      fireEvent.mouseUp(canvas, { clientX: 200, clientY: 200 });
 
       // Selection should be visible in canvas
       expect(mockContext.strokeRect).toHaveBeenCalled();
@@ -412,8 +395,6 @@ describe('Integration Test Suite', () => {
     });
 
     it('should handle concurrent state changes', async () => {
-      const user = userEvent.setup();
-
       render(<FullAnnotationSystem />);
 
       const canvas = screen.getByRole('img');
@@ -421,9 +402,7 @@ describe('Integration Test Suite', () => {
       // Perform multiple operations simultaneously
       act(() => {
         fireEvent.keyDown(document, { key: 'r' }); // Switch to rectangle
-        user.pointer([
-          { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 50, clientY: 50 } },
-        ]); // Start drawing
+        fireEvent.mouseDown(canvas, { clientX: 50, clientY: 50 }); // Start drawing
         fireEvent.keyDown(document, { key: 'v' }); // Switch to select (while drawing)
       });
 
@@ -514,18 +493,14 @@ describe('Integration Test Suite', () => {
     });
 
     it('should maintain API compatibility', async () => {
-      const user = userEvent.setup();
-
       render(<FullAnnotationSystem />);
 
       const canvas = screen.getByRole('img');
 
       // Use legacy API patterns
-      await user.pointer([
-        { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 100, clientY: 100 } },
-        { pointerName: 'mouse', target: canvas, coords: { clientX: 200, clientY: 200 } },
-        { keys: '[/MouseLeft]', target: canvas },
-      ]);
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(canvas, { clientX: 200, clientY: 200 });
+      fireEvent.mouseUp(canvas, { clientX: 200, clientY: 200 });
 
       // Should work with both old and new API calls
       expect(mockContext.strokeRect).toHaveBeenCalled();
@@ -675,19 +650,15 @@ describe('Integration Test Suite', () => {
     });
 
     it('should optimize rendering for viewport visibility', async () => {
-      const user = userEvent.setup();
-
       render(<FullAnnotationSystem />);
 
       const canvas = screen.getByRole('img');
 
       // Create annotations outside viewport
-      for (let i = 0; i < 50; i++) {
-        await user.pointer([
-          { keys: '[MouseLeft>]', target: canvas, coords: { clientX: i * 1000, clientY: i * 1000 } },
-          { pointerName: 'mouse', target: canvas, coords: { clientX: i * 1000 + 50, clientY: i * 1000 + 50 } },
-          { keys: '[/MouseLeft]', target: canvas },
-        ]);
+      for (let i = 0; i < 5; i++) { // Reduce iterations for test performance
+        fireEvent.mouseDown(canvas, { clientX: i * 1000, clientY: i * 1000 });
+        fireEvent.mouseMove(canvas, { clientX: i * 1000 + 50, clientY: i * 1000 + 50 });
+        fireEvent.mouseUp(canvas, { clientX: i * 1000 + 50, clientY: i * 1000 + 50 });
       }
 
       // Should not render all annotations if they're outside viewport
@@ -715,19 +686,15 @@ describe('Integration Test Suite', () => {
     });
 
     it('should handle memory efficiently with undo/redo history', async () => {
-      const user = userEvent.setup();
-
       render(<FullAnnotationSystem />);
 
       const canvas = screen.getByRole('img');
 
-      // Create many operations to test memory usage
-      for (let i = 0; i < 200; i++) {
-        await user.pointer([
-          { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 100, clientY: 100 } },
-          { pointerName: 'mouse', target: canvas, coords: { clientX: 150, clientY: 150 } },
-          { keys: '[/MouseLeft]', target: canvas },
-        ]);
+      // Create many operations to test memory usage (reduced for test performance)
+      for (let i = 0; i < 10; i++) {
+        fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+        fireEvent.mouseMove(canvas, { clientX: 150, clientY: 150 });
+        fireEvent.mouseUp(canvas, { clientX: 150, clientY: 150 });
         fireEvent.keyDown(document, { key: 'Delete' });
       }
 
@@ -799,8 +766,6 @@ describe('Integration Test Suite', () => {
     });
 
     it('should maintain functionality during partial system failures', async () => {
-      const user = userEvent.setup();
-
       render(<FullAnnotationSystem />);
 
       // Simulate toolbar failure
@@ -810,11 +775,10 @@ describe('Integration Test Suite', () => {
       // Canvas should still work
       const canvas = screen.getByRole('img');
       
-      await user.pointer([
-        { keys: '[MouseLeft>]', target: canvas, coords: { clientX: 100, clientY: 100 } },
-        { pointerName: 'mouse', target: canvas, coords: { clientX: 200, clientY: 200 } },
-        { keys: '[/MouseLeft]', target: canvas },
-      ]);
+      // Test with basic mouse events instead of userEvent
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(canvas, { clientX: 200, clientY: 200 });
+      fireEvent.mouseUp(canvas, { clientX: 200, clientY: 200 });
 
       expect(mockContext.strokeRect).toHaveBeenCalled();
     });

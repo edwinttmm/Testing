@@ -2,6 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 import { waitForConfig, isConfigInitialized } from '../utils/configurationManager';
+import logger from '../utils/safeErrorLogger';
+import { TimerHandle, safeSetTimeout, safeClearTimeout } from '../utils/timerUtils';
 
 interface UseWebSocketOptions {
   url?: string;
@@ -32,7 +34,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<TimerHandle | null>(null);
   const reconnectCountRef = useRef(0);
   const listenersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
   const scheduleReconnectRef = useRef<(() => void) | null>(null);
@@ -56,7 +58,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   } = options;
   
   if (isDebugEnabled() && configLoaded && url) {
-    console.log('🔌 WebSocket initializing with config:', {
+    logger.debug('🔌 WebSocket initializing with config:', {
       url,
       reconnectAttempts,
       reconnectDelay,
@@ -67,7 +69,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+      safeClearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
   }, []);
@@ -76,7 +78,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   useEffect(() => {
     if (!configLoaded) {
       if (isDebugEnabled()) {
-        console.log('⏳ WebSocket waiting for runtime configuration to load...');
+        logger.debug('⏳ WebSocket waiting for runtime configuration to load...');
       }
       
       waitForConfig()
@@ -85,15 +87,15 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
           const newConfig = getServiceConfig('socketio');
           setSocketConfig(newConfig);
           if (isDebugEnabled()) {
-            console.log('🔧 WebSocket configuration loaded:', newConfig);
+            logger.debug('🔧 WebSocket configuration loaded:', newConfig);
           }
         })
         .catch((err: unknown) => {
-          console.error('❌ Failed to load WebSocket configuration:', err);
+          logger.error('❌ Failed to load WebSocket configuration:', err);
           setError(new Error('Configuration loading failed'));
           // Use fallback configuration with correct production URL
           const fallbackConfig = {
-            url: 'http://155.138.239.131:8001',
+            url: 'http://localhost:8001',
             retryAttempts: 5,
             retryDelay: 1000,
             timeout: 20000
@@ -101,7 +103,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
           setSocketConfig(fallbackConfig);
           setConfigLoaded(true);
           if (isDebugEnabled()) {
-            console.log('🔧 Using fallback WebSocket configuration:', fallbackConfig);
+            logger.debug('🔧 Using fallback WebSocket configuration:', fallbackConfig);
           }
         });
     }
@@ -111,20 +113,20 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const connect = useCallback(() => {
     if (!configLoaded) {
       if (isDebugEnabled()) {
-        console.log('⏳ WebSocket connect() called but configuration not ready yet');
+        logger.debug('⏳ WebSocket connect() called but configuration not ready yet');
       }
       return;
     }
 
     if (!url) {
-      console.warn('⚠️ WebSocket cannot connect: no URL configured');
+      logger.warn('⚠️ WebSocket cannot connect: no URL configured');
       setError(new Error('No WebSocket URL configured'));
       return;
     }
 
     if (socketRef.current?.connected) {
       if (isDebugEnabled()) {
-        console.log('ℹ️ WebSocket already connected');
+        logger.debug('ℹ️ WebSocket already connected');
       }
       return;
     }
@@ -143,7 +145,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         });
         
         if (isDebugEnabled()) {
-          console.log(`🔌 Creating new Socket.IO connection to ${url}`);
+          logger.debug(`🔌 Creating new Socket.IO connection to ${url}`);
         }
         socketPool.set(url || '', socket);
       }
@@ -158,7 +160,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         clearReconnectTimeout();
         
         if (isDebugEnabled()) {
-          console.log('✅ WebSocket connected successfully to', url);
+          logger.debug('✅ WebSocket connected successfully to', url);
         }
         
         onConnect?.();
@@ -168,7 +170,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setIsConnected(false);
         
         if (isDebugEnabled()) {
-          console.warn(`🔌 WebSocket disconnected from ${url}: ${reason}`);
+          logger.warn(`🔌 WebSocket disconnected from ${url}: ${reason}`);
         }
         
         onDisconnect?.();
@@ -176,7 +178,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         // Auto-reconnect for certain disconnect reasons
         if (reason === 'io server disconnect' || reason === 'transport close') {
           if (isDebugEnabled()) {
-            console.log('🔄 Scheduling WebSocket reconnection...');
+            logger.debug('🔄 Scheduling WebSocket reconnection...');
           }
           scheduleReconnectRef.current?.();
         }
@@ -187,7 +189,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setError(error);
         
         if (isDebugEnabled()) {
-          console.error('❌ WebSocket connection error to', url, ':', err.message);
+          logger.error('❌ WebSocket connection error', { url, error: err.message });
         }
         
         onError?.(error);
@@ -217,7 +219,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     }
 
     clearReconnectTimeout();
-    reconnectTimeoutRef.current = setTimeout(() => {
+    reconnectTimeoutRef.current = safeSetTimeout(() => {
       reconnectCountRef.current++;
       connect();
     }, (reconnectDelay || 1000) * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
@@ -248,14 +250,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const emit = useCallback((event: string, data?: unknown) => {
     if (socketRef.current?.connected) {
       if (isDebugEnabled()) {
-        console.log(`📡 Emitting WebSocket event: ${event}`, data);
+        logger.debug(`📡 Emitting WebSocket event: ${event}`, data);
       }
       socketRef.current.emit(event, data);
     } else {
       const message = `Cannot emit event '${event}': WebSocket not connected`;
-      console.warn(message);
+      logger.warn(message);
       if (isDebugEnabled()) {
-        console.warn('📡 WebSocket emit failed - not connected to', url);
+        logger.warn('📡 WebSocket emit failed - not connected to', url);
       }
     }
   }, [url]);
@@ -295,7 +297,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   useEffect(() => {
     if (autoConnect && configLoaded && url) {
       if (isDebugEnabled()) {
-        console.log('🚀 WebSocket auto-connecting with loaded configuration to', url);
+        logger.debug('🚀 WebSocket auto-connecting with loaded configuration to', url);
       }
       connect();
     }
@@ -305,7 +307,6 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       
       // Only disconnect if we're the last component using this socket
       // In a real app, you'd want more sophisticated reference counting
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       const currentListeners = listenersRef.current;
       const currentListenerCount = Array.from(currentListeners.values())
         .reduce((total, set) => total + set.size, 0);

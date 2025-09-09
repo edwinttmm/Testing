@@ -4,12 +4,16 @@
  * Provides proper initialization guard and precedence handling
  */
 
+// Use the global interface from global.d.ts instead of declaring here
+
 export interface RuntimeConfig {
   REACT_APP_API_URL: string;
   REACT_APP_WS_URL: string;
   REACT_APP_SOCKETIO_URL: string;
   REACT_APP_VIDEO_BASE_URL: string;
   REACT_APP_ENVIRONMENT?: string;
+  // Add index signature for dynamic key access
+  [key: string]: string | undefined;
 }
 
 export interface ConfigState {
@@ -136,8 +140,8 @@ class ConfigurationManager {
       const checkForRuntimeConfig = () => {
         try {
           // Check if runtime config is available
-          if (typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG) {
-            console.log('🔧 Runtime config found:', (window as any).RUNTIME_CONFIG);
+          if (typeof window !== 'undefined' && window.RUNTIME_CONFIG) {
+            console.log('🔧 Runtime config found:', window.RUNTIME_CONFIG);
             this.state.runtimeConfigLoaded = true;
             cleanup();
             resolve();
@@ -178,10 +182,10 @@ class ConfigurationManager {
    */
   private createFinalConfiguration(): void {
     const defaults: RuntimeConfig = {
-      REACT_APP_API_URL: 'http://155.138.239.131:8000',
-      REACT_APP_WS_URL: 'ws://155.138.239.131:8000',
-      REACT_APP_SOCKETIO_URL: 'http://155.138.239.131:8001',
-      REACT_APP_VIDEO_BASE_URL: 'http://155.138.239.131:8000',
+      REACT_APP_API_URL: 'http://localhost:8000',
+      REACT_APP_WS_URL: 'ws://localhost:8000',
+      REACT_APP_SOCKETIO_URL: 'http://localhost:8001',
+      REACT_APP_VIDEO_BASE_URL: 'http://localhost:8000',
       REACT_APP_ENVIRONMENT: 'production'
     };
 
@@ -190,24 +194,28 @@ class ConfigurationManager {
 
     // Apply environment variables
     Object.keys(defaults).forEach(key => {
-      const envValue = process.env[key as keyof RuntimeConfig];
-      if (envValue) {
-        (finalConfig as any)[key] = envValue;
+      const envValue = process.env[key];
+      if (envValue && key in finalConfig) {
+        finalConfig[key] = envValue;
       }
     });
 
     // Apply runtime config overrides (highest precedence)
-    if (this.state.runtimeConfigLoaded && typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG) {
-      const runtimeConfig = (window as any).RUNTIME_CONFIG;
+    if (this.state.runtimeConfigLoaded && typeof window !== 'undefined' && window.RUNTIME_CONFIG) {
+      const runtimeConfig = window.RUNTIME_CONFIG;
       Object.keys(runtimeConfig).forEach(key => {
-        if (key in finalConfig) {
-          (finalConfig as any)[key] = runtimeConfig[key];
+        const value = (runtimeConfig as Record<string, string | undefined>)[key];
+        if (key in finalConfig && value !== undefined) {
+          finalConfig[key] = value;
         }
       });
 
       // Also update process.env to ensure compatibility
       Object.keys(runtimeConfig).forEach(key => {
-        process.env[key] = runtimeConfig[key];
+        const value = (runtimeConfig as Record<string, string | undefined>)[key];
+        if (value !== undefined) {
+          process.env[key] = value;
+        }
       });
     }
 
@@ -333,10 +341,10 @@ class ConfigurationManager {
 
   private getDefaultConfig(): RuntimeConfig {
     return {
-      REACT_APP_API_URL: 'http://155.138.239.131:8000',
-      REACT_APP_WS_URL: 'ws://155.138.239.131:8000',
-      REACT_APP_SOCKETIO_URL: 'http://155.138.239.131:8001',
-      REACT_APP_VIDEO_BASE_URL: 'http://155.138.239.131:8000',
+      REACT_APP_API_URL: 'http://localhost:8000',
+      REACT_APP_WS_URL: 'ws://localhost:8000',
+      REACT_APP_SOCKETIO_URL: 'http://localhost:8001',
+      REACT_APP_VIDEO_BASE_URL: 'http://localhost:8000',
       REACT_APP_ENVIRONMENT: 'production'
     };
   }

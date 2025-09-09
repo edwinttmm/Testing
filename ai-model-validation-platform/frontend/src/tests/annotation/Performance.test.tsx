@@ -14,9 +14,11 @@ import {
 
 describe('Performance Test Suite', () => {
   let testEnv: ReturnType<typeof setupTestEnvironment>;
+  let mockContext: any;
 
   beforeEach(() => {
     testEnv = setupTestEnvironment();
+    mockContext = getMockContext();
     jest.useFakeTimers();
   });
 
@@ -24,6 +26,9 @@ describe('Performance Test Suite', () => {
     testEnv.cleanup();
     jest.useRealTimers();
   });
+  
+  // Get mock context for assertions
+  const getMockContext = () => global.getMockCanvasContext?.() || testEnv.context;
 
   describe('Rendering Performance', () => {
     it('should render 1000 shapes within performance budget', async () => {
@@ -56,7 +61,7 @@ describe('Performance Test Suite', () => {
       ];
 
       const renderCount = jest.fn();
-      testEnv.context.strokeRect = jest.fn(renderCount);
+      mockContext.strokeRect = jest.fn(renderCount);
 
       render(
         <AnnotationProvider initialShapes={shapes}>
@@ -73,7 +78,6 @@ describe('Performance Test Suite', () => {
 
     it('should handle rapid zoom operations efficiently', async () => {
       const shapes = TestDataGenerator.generateShapes(100);
-      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
 
       render(
         <AnnotationProvider initialShapes={shapes}>
@@ -99,7 +103,7 @@ describe('Performance Test Suite', () => {
       const shapes = TestDataGenerator.generateShapes(50);
       let redrawCount = 0;
       
-      testEnv.context.clearRect = jest.fn(() => redrawCount++);
+      mockContext.clearRect = jest.fn(() => redrawCount++);
 
       render(
         <AnnotationProvider initialShapes={shapes}>
@@ -127,7 +131,6 @@ describe('Performance Test Suite', () => {
     });
 
     it('should maintain 60fps during continuous drawing', async () => {
-      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       let frameCount = 0;
       
       const originalRAF = global.requestAnimationFrame;
@@ -144,10 +147,11 @@ describe('Performance Test Suite', () => {
 
       const canvas = screen.getByRole('img');
 
-      // Simulate continuous drawing
+      // Simulate continuous drawing with RTL v13 compatible approach
       const startTime = performance.now();
       
-      await user.pointer({ keys: '[MouseLeft>]', target: canvas });
+      // Start drawing (mouse down)
+      fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
       
       for (let i = 0; i < 100; i++) {
         fireEvent.mouseMove(canvas, { clientX: 100 + i, clientY: 100 + i });
@@ -156,7 +160,8 @@ describe('Performance Test Suite', () => {
         });
       }
 
-      await user.pointer({ keys: '[/MouseLeft]', target: canvas });
+      // End drawing (mouse up)
+      fireEvent.mouseUp(canvas, { clientX: 200, clientY: 200 });
 
       const endTime = performance.now();
       const expectedFrames = Math.floor((endTime - startTime) / 16.67);
@@ -294,7 +299,6 @@ describe('Performance Test Suite', () => {
 
   describe('Interaction Performance', () => {
     it('should handle rapid mouse events without lag', async () => {
-      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       let eventCount = 0;
       
       const TestCanvas = () => {
@@ -371,8 +375,6 @@ describe('Performance Test Suite', () => {
     });
 
     it('should maintain responsiveness during bulk operations', async () => {
-      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-
       const TestComponent = () => {
         const [processing, setProcessing] = React.useState(false);
 
@@ -404,7 +406,8 @@ describe('Performance Test Suite', () => {
       const button = screen.getByText('Bulk Operation');
       const canvas = screen.getByRole('img');
 
-      await user.click(button);
+      // RTL v13 compatible click
+      await userEvent.click(button);
 
       // Should still be able to interact during processing
       fireEvent.mouseMove(canvas, { clientX: 100, clientY: 100 });
@@ -452,8 +455,6 @@ describe('Performance Test Suite', () => {
 
     it('should handle concurrent users efficiently', async () => {
       const simulateUser = async (userId: number) => {
-        const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-        
         const { unmount } = render(
           <div data-testid={`user-${userId}`}>
             <AnnotationProvider>
@@ -565,11 +566,12 @@ describe('Performance Test Suite', () => {
         deleteShader: jest.fn(),
       };
 
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = jest.fn((type: string) => {
         if (type === 'webgl' || type === 'webgl2') {
           return mockWebGL;
         }
-        return testEnv.context;
+        return mockContext;
       }) as any;
 
       const { unmount } = render(
@@ -587,7 +589,7 @@ describe('Performance Test Suite', () => {
 
     it('should handle memory pressure gracefully', () => {
       const originalRequestAnimationFrame = global.requestAnimationFrame;
-      let frameCallbacks: FrameRequestCallback[] = [];
+      const frameCallbacks: FrameRequestCallback[] = [];
 
       // Mock memory pressure scenario
       global.requestAnimationFrame = jest.fn((callback: FrameRequestCallback) => {

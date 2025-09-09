@@ -53,5 +53,21 @@ pandas==2.1.4
 # PostgreSQL Driver
 psycopg2-binary
 
+# Security & Validation Libraries (CRITICAL - required for fixes)
+bleach==6.1.0
+cryptography==41.0.7
+validators==0.22.0
+
 # Signal Acquisition Hardware (Optional - system will work without it)
 # labjack-ljm==1.21.0  # LabJack voltage signal acquisition - install manually if needed
+
+# System Environment and Configuration
+python-decouple==3.8  # For environment variable management
+click==8.1.7  # For CLI tools and scripts
+
+# Network and Serial Communication (for signal validation)
+pyserial==3.5  # For serial communication signals
+requests==2.31.0  # Enhanced HTTP client for network signals
+
+# Mock and Testing Support for Hardware Interfaces
+responses==0.24.1  # For mocking HTTP responses in tests

@@ -72,7 +72,7 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
   duration,
   onFrameChange,
   onAnnotationCreate,
-  onAnnotationUpdate,
+  // _onAnnotationUpdate removed - unused prop
   onAnnotationDelete,
   onPlay,
   onPause,
@@ -112,7 +112,7 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
     const rangeMap = new Map<string, { frames: number[]; vruType: VRUType }>();
     
     annotations.forEach(annotation => {
-      const detectionId = annotation.detectionId;
+      const detectionId = annotation.detectionId || '';
       if (!rangeMap.has(detectionId)) {
         rangeMap.set(detectionId, { frames: [], vruType: annotation.vruType });
       }
@@ -206,6 +206,7 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
         truncated: false,
         difficult: false,
         validated: false,
+        validationStatus: 'pending' as const,
       });
     }
   }, [selectedVRUType, frameToTimestamp, onAnnotationCreate]);

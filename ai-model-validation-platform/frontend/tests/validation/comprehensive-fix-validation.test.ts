@@ -64,7 +64,7 @@ describe('1. Database URL Validation', () => {
     const mockVideoData = {
       id: '123',
       name: 'test-video.mp4',
-      url: 'http://155.138.239.131:8000/uploads/test-video.mp4',
+      url: 'http://localhost:8000/uploads/test-video.mp4',
       filename: 'test-video.mp4'
     };
 
@@ -77,7 +77,7 @@ describe('1. Database URL Validation', () => {
     const videos = await apiService.getVideos();
 
     expect(videos).toHaveLength(1);
-    expect(videos[0].url).toBe('http://155.138.239.131:8000/uploads/test-video.mp4');
+    expect(videos[0].url).toBe('http://localhost:8000/uploads/test-video.mp4');
     expect(videos[0].url).not.toContain('localhost');
     expect(videos[0].url).not.toContain('127.0.0.1');
     expect(videos[0].url).not.toContain(':8000:8000');
@@ -88,19 +88,19 @@ describe('1. Database URL Validation', () => {
       {
         id: '1',
         name: 'video1.mp4',
-        url: 'http://155.138.239.131:8000/uploads/video1.mp4',
+        url: 'http://localhost:8000/uploads/video1.mp4',
         filename: 'video1.mp4'
       },
       {
         id: '2',
         name: 'video2.mp4',
-        url: 'http://155.138.239.131:8000/uploads/video2.mp4',
+        url: 'http://localhost:8000/uploads/video2.mp4',
         filename: 'video2.mp4'
       },
       {
         id: '3',
         name: 'video3.mp4',
-        url: 'http://155.138.239.131:8000/uploads/video3.mp4',
+        url: 'http://localhost:8000/uploads/video3.mp4',
         filename: 'video3.mp4'
       }
     ];
@@ -128,7 +128,7 @@ describe('1. Database URL Validation', () => {
       {
         id: '1',
         name: 'video1.mp4',
-        url: 'http://155.138.239.131:8000/uploads/video1.mp4', // Correct
+        url: 'http://localhost:8000/uploads/video1.mp4', // Correct
         filename: 'video1.mp4'
       },
       {
@@ -166,7 +166,7 @@ describe('1. Database URL Validation', () => {
 
 describe('2. Frontend URL Processing Validation', () => {
   test('should not process localhost URLs when backend provides correct URLs', () => {
-    const correctUrl = 'http://155.138.239.131:8000/uploads/video.mp4';
+    const correctUrl = 'http://localhost:8000/uploads/video.mp4';
     const result = fixVideoUrl(correctUrl);
     
     // URL should remain unchanged
@@ -177,7 +177,7 @@ describe('2. Frontend URL Processing Validation', () => {
     const localhostUrl = 'http://localhost:8000/uploads/video.mp4';
     const result = fixVideoUrl(localhostUrl);
     
-    expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(result).toBe('http://localhost:8000/uploads/video.mp4');
     expect(result).not.toContain('localhost');
   });
 
@@ -187,14 +187,14 @@ describe('2. Frontend URL Processing Validation', () => {
     
     // Apply fix multiple times
     url = fixVideoUrl(url);
-    expect(url).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(url).toBe('http://localhost:8000/uploads/video.mp4');
     
     url = fixVideoUrl(url);
-    expect(url).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(url).toBe('http://localhost:8000/uploads/video.mp4');
     expect(url).not.toContain(':8000:8000');
     
     url = fixVideoUrl(url);
-    expect(url).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(url).toBe('http://localhost:8000/uploads/video.mp4');
     expect(url).not.toContain(':8000:8000:8000');
   });
 
@@ -207,7 +207,7 @@ describe('2. Frontend URL Processing Validation', () => {
 
     corruptedUrls.forEach(corruptedUrl => {
       const result = fixVideoUrl(corruptedUrl);
-      expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+      expect(result).toBe('http://localhost:8000/uploads/video.mp4');
       expect(result).not.toContain(':8000:8000');
     });
   });
@@ -219,7 +219,7 @@ describe('2. Frontend URL Processing Validation', () => {
       url: i % 3 === 0 
         ? `http://localhost:8000/uploads/video-${i}.mp4`
         : i % 3 === 1
-        ? `http://155.138.239.131:8000/uploads/video-${i}.mp4`
+        ? `http://localhost:8000/uploads/video-${i}.mp4`
         : `/uploads/video-${i}.mp4`,
       filename: `video-${i}.mp4`
     }));
@@ -253,7 +253,7 @@ describe('3. Video Loading Performance Validation', () => {
     // Replace global performance
     (global as any).performance = mockPerformance;
 
-    const videoUrl = 'http://155.138.239.131:8000/uploads/test-video.mp4';
+    const videoUrl = 'http://localhost:8000/uploads/test-video.mp4';
     
     // Simulate video loading
     const startTime = performance.now();
@@ -277,9 +277,9 @@ describe('3. Video Loading Performance Validation', () => {
 
   test('should validate video URLs are accessible', async () => {
     const testUrls = [
-      'http://155.138.239.131:8000/uploads/video1.mp4',
-      'http://155.138.239.131:8000/uploads/video2.mp4',
-      'http://155.138.239.131:8000/uploads/video3.mp4'
+      'http://localhost:8000/uploads/video1.mp4',
+      'http://localhost:8000/uploads/video2.mp4',
+      'http://localhost:8000/uploads/video3.mp4'
     ];
 
     // Mock successful responses for all URLs
@@ -306,7 +306,7 @@ describe('3. Video Loading Performance Validation', () => {
   });
 
   test('should validate video streaming capabilities', async () => {
-    const streamingUrl = 'http://155.138.239.131:8000/uploads/stream-test.mp4';
+    const streamingUrl = 'http://localhost:8000/uploads/stream-test.mp4';
 
     // Mock streaming response with proper headers
     mockedAxios.get.mockResolvedValue({
@@ -333,7 +333,7 @@ describe('4. Console Error Elimination Validation', () => {
   test('should run without generating console errors', async () => {
     // Test various URL operations
     const testOperations = [
-      () => fixVideoUrl('http://155.138.239.131:8000/uploads/video.mp4'),
+      () => fixVideoUrl('http://localhost:8000/uploads/video.mp4'),
       () => fixVideoUrl(''),
       () => fixVideoUrl(undefined),
       () => getVideoBaseUrl(),
@@ -399,7 +399,7 @@ describe('5. End-to-End Application Workflow Validation', () => {
             {
               id: '1',
               name: 'test-video.mp4',
-              url: 'http://155.138.239.131:8000/uploads/test-video.mp4',
+              url: 'http://localhost:8000/uploads/test-video.mp4',
               filename: 'test-video.mp4'
             }
           ],
@@ -414,11 +414,11 @@ describe('5. End-to-End Application Workflow Validation', () => {
     // Step 1: Get videos
     const videos = await apiService.getVideos();
     expect(videos).toHaveLength(1);
-    expect(videos[0].url).toContain('155.138.239.131:8000');
+    expect(videos[0].url).toContain('localhost:8000');
 
     // Step 2: Fix URLs (should be no-op since they're already correct)
     fixMultipleVideoUrls(videos);
-    expect(videos[0].url).toContain('155.138.239.131:8000');
+    expect(videos[0].url).toContain('localhost:8000');
     expect(videos[0].url).not.toContain('localhost');
 
     // Step 3: Validate video accessibility
@@ -446,7 +446,7 @@ describe('5. End-to-End Application Workflow Validation', () => {
           {
             id: '1',
             name: 'test-video.mp4',
-            url: 'http://155.138.239.131:8000/uploads/test-video.mp4',
+            url: 'http://localhost:8000/uploads/test-video.mp4',
             filename: 'test-video.mp4'
           }
         ]
@@ -459,7 +459,7 @@ describe('5. End-to-End Application Workflow Validation', () => {
 
     expect(project.id).toBe('123');
     expect(project.videos).toHaveLength(1);
-    expect(project.videos[0].url).toContain('155.138.239.131:8000');
+    expect(project.videos[0].url).toContain('localhost:8000');
   });
 
   test('should validate detection workflow integrity', async () => {
@@ -517,7 +517,7 @@ describe('6. Environment Configuration Validation', () => {
     
     // In production, should use the correct server
     if (!baseUrl.includes('localhost')) {
-      expect(baseUrl).toContain('155.138.239.131');
+      expect(baseUrl).toContain('localhost');
     }
   });
 });
@@ -568,7 +568,7 @@ describe('7. Performance Regression Prevention', () => {
         {
           id: '1',
           name: 'test-video.mp4',
-          url: 'http://155.138.239.131:8000/uploads/test-video.mp4',
+          url: 'http://localhost:8000/uploads/test-video.mp4',
           filename: 'test-video.mp4'
         }
       ],

@@ -41,7 +41,7 @@ class EnhancedApiService {
 
   constructor() {
     // Use configuration manager for runtime-aware config
-    this.baseURL = getConfigValueSync('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+    this.baseURL = getConfigValueSync('REACT_APP_API_URL', 'http://localhost:8000');
     console.log('🔧 Enhanced API Service using baseURL:', this.baseURL);
     this.pendingRequests = new Map();
     this.requestMetrics = new Map();
@@ -66,7 +66,7 @@ class EnhancedApiService {
     // Wait for configuration to be ready before starting health checks
     configurationManager.onReady(() => {
       // Update baseURL with final configuration
-      this.baseURL = getConfigValueSync('REACT_APP_API_URL', 'http://155.138.239.131:8000');
+      this.baseURL = getConfigValueSync('REACT_APP_API_URL', 'http://localhost:8000');
       this.api.defaults.baseURL = this.baseURL;
       console.log('🔧 Enhanced API Service updated baseURL after config ready:', this.baseURL);
       
@@ -667,6 +667,35 @@ class EnhancedApiService {
   async patch<T = unknown>(url: string, data?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     return this.enhancedRequest<T>('PATCH', url, data, config);
   }
+
+  // LabJack Signal Validation endpoints
+  async checkLabJackStatus(): Promise<{connected: boolean, mock_mode?: boolean, voltage_threshold?: number, channels?: string[], sample_rate?: number, current_voltages?: Record<string, number>, error?: string}> {
+    return this.enhancedRequest<{connected: boolean, mock_mode?: boolean, voltage_threshold?: number, channels?: string[], sample_rate?: number, current_voltages?: Record<string, number>, error?: string}>('GET', '/api/signal-validation/labjack/status');
+  }
+
+  async initializeLabJack(config?: {voltage_threshold?: {lower: number, upper: number}, channels?: string[], sample_rate?: number}): Promise<{status: string, message: string, mock_mode?: boolean, error?: string}> {
+    return this.enhancedRequest<{status: string, message: string, mock_mode?: boolean, error?: string}>('POST', '/api/signal-validation/labjack/initialize', config || {});
+  }
+
+  async configureLabJack(config: {voltage_threshold?: number, channels?: string[], sample_rate?: number}): Promise<{status: string, message: string}> {
+    return this.enhancedRequest<{status: string, message: string}>('POST', '/api/signal-validation/labjack/configure', config);
+  }
+
+  async startSignalMonitoring(testSessionId: string = 'default-session'): Promise<{status: string, message: string, test_session_id?: string}> {
+    return this.enhancedRequest<{status: string, message: string, test_session_id?: string}>('POST', `/api/signal-validation/monitoring/start/${testSessionId}`, {});
+  }
+
+  async stopSignalMonitoring(): Promise<{status: string, message: string}> {
+    return this.enhancedRequest<{status: string, message: string}>('POST', '/api/signal-validation/monitoring/stop', {});
+  }
+
+  async getSignalStatistics(testSessionId: string): Promise<{total_signals: number, valid_signals: number, invalid_signals: number, average_delay: number, statistics: Record<string, unknown>}> {
+    return this.enhancedRequest<{total_signals: number, valid_signals: number, invalid_signals: number, average_delay: number, statistics: Record<string, unknown>}>('GET', `/api/signal-validation/statistics/${testSessionId}`);
+  }
+
+  async testSignalValidationConnection(): Promise<{status: string, components: Record<string, unknown>}> {
+    return this.enhancedRequest<{status: string, components: Record<string, unknown>}>('GET', '/api/signal-validation/test-connection');
+  }
 }
 
 // Create and export singleton instance
@@ -691,5 +720,12 @@ export const getTestResults = enhancedApiService.getTestResults.bind(enhancedApi
 export const getDashboardStats = enhancedApiService.getDashboardStats.bind(enhancedApiService);
 export const getChartData = enhancedApiService.getChartData.bind(enhancedApiService);
 export const healthCheck = enhancedApiService.healthCheck.bind(enhancedApiService);
+export const checkLabJackStatus = enhancedApiService.checkLabJackStatus.bind(enhancedApiService);
+export const initializeLabJack = enhancedApiService.initializeLabJack.bind(enhancedApiService);
+export const configureLabJack = enhancedApiService.configureLabJack.bind(enhancedApiService);
+export const startSignalMonitoring = enhancedApiService.startSignalMonitoring.bind(enhancedApiService);
+export const stopSignalMonitoring = enhancedApiService.stopSignalMonitoring.bind(enhancedApiService);
+export const getSignalStatistics = enhancedApiService.getSignalStatistics.bind(enhancedApiService);
+export const testSignalValidationConnection = enhancedApiService.testSignalValidationConnection.bind(enhancedApiService);
 
 export default enhancedApiService;

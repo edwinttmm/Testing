@@ -53,13 +53,15 @@ import {
   AnnotationSession,
   BoundingBox,
  
+  RawDetectionData,
+  ImportAnnotationItem,
 } from '../services/types';
 import { apiService, getVideoDetections } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import { detectionService, DetectionConfig } from '../services/detectionService';
 // Removed useDetectionWebSocket - using manual detection only
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
-import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
+import AnnotationTools, { AnnotationToolDefinition } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
 import DetectionResultsPanel from '../components/DetectionResultsPanel';
 import DetectionControls from '../components/DetectionControls';
@@ -165,7 +167,7 @@ const GroundTruth: React.FC = () => {
   const [viewDialog, setViewDialog] = useState(false);
   const [annotationMode, setAnnotationMode] = useState(false);
   const [showAnnotations, setShowAnnotations] = useState(true);
-  const [selectedTool, setSelectedTool] = useState<AnnotationTool>({
+  const [selectedTool, setSelectedTool] = useState<AnnotationToolDefinition>({
     id: 'default',
     name: 'Rectangle',
     type: 'rectangle',
@@ -293,6 +295,7 @@ const GroundTruth: React.FC = () => {
       truncated: false,
       difficult: false,
       validated: false,
+      validationStatus: 'pending' as const,
     }));
   }, [selectedVideo, currentFrame, currentTime]);
 
@@ -342,7 +345,7 @@ const GroundTruth: React.FC = () => {
             }
             return true;
           })
-          .map((det: any) => {
+          .map((det: RawDetectionData) => {
             // Defensive mapping with proper boundingBox validation
             const rawBbox = det.bounding_box || det.boundingBox;
             const safeBbox = {
@@ -365,6 +368,7 @@ const GroundTruth: React.FC = () => {
               occluded: det.occluded || false,
               truncated: det.truncated || false,
               difficult: det.difficult || false,
+              validationStatus: (det.validationStatus as 'pending' | 'validated' | 'rejected' | 'needs_review') || 'pending',
               validated: det.validated || false,
               createdAt: det.created_at || det.createdAt || new Date().toISOString(),
               updatedAt: det.updated_at || det.updatedAt || new Date().toISOString()
@@ -550,7 +554,7 @@ const GroundTruth: React.FC = () => {
       detectionIdManager.clear();
       annotationList.forEach(annotation => {
         createDetectionTracker(
-          annotation.detectionId,
+          annotation.detectionId || '',
           annotation.vruType,
           annotation.frameNumber,
           annotation.timestamp,
@@ -731,6 +735,7 @@ const GroundTruth: React.FC = () => {
       occluded: false,
       truncated: false,
       difficult: false,
+      validationStatus: 'pending',
       validated: false,
     };
 
@@ -741,7 +746,7 @@ const GroundTruth: React.FC = () => {
       
       // Add to detection tracker
       createDetectionTracker(
-        newAnnotation.detectionId,
+        newAnnotation.detectionId || '',
         newAnnotation.vruType,
         newAnnotation.frameNumber,
         newAnnotation.timestamp,
@@ -1128,7 +1133,7 @@ const GroundTruth: React.FC = () => {
           // Try to import as regular annotation format
           if (Array.isArray(data)) {
             const shapes = data
-              .filter((item: any) => {
+              .filter((item: ImportAnnotationItem) => {
                 // Validate import data structure
                 if (!item) return false;
                 if (item.points) return true; // Has explicit points
@@ -1137,8 +1142,8 @@ const GroundTruth: React.FC = () => {
                        typeof item.y === 'number' && 
                        (typeof item.width === 'number' || typeof item.height === 'number');
               })
-              .map((item: any) => createAnnotationShape(
-                item.type || 'rectangle',
+              .map((item: ImportAnnotationItem) => createAnnotationShape(
+                (item.type as 'rectangle' | 'polygon' | 'brush' | 'point') || 'rectangle',
                 item.points || [
                   { x: Number(item.x) || 0, y: Number(item.y) || 0 },
                   { x: (Number(item.x) || 0) + (Number(item.width) || 50), y: Number(item.y) || 0 },
@@ -1217,7 +1222,7 @@ const GroundTruth: React.FC = () => {
             Detection Configuration
           </Typography>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Model</InputLabel>
                 <Select
@@ -1231,7 +1236,7 @@ const GroundTruth: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Typography variant="caption" display="block">
                 Confidence: {detectionConfig.confidenceThreshold}
               </Typography>
@@ -1245,7 +1250,7 @@ const GroundTruth: React.FC = () => {
                 style={{ width: '100%' }}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Typography variant="caption" display="block">
                 NMS: {detectionConfig.nmsThreshold}
               </Typography>
@@ -1259,7 +1264,7 @@ const GroundTruth: React.FC = () => {
                 style={{ width: '100%' }}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Target Classes</InputLabel>
                 <Select
@@ -1376,7 +1381,7 @@ const GroundTruth: React.FC = () => {
 
       {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1392,7 +1397,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1408,7 +1413,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1424,7 +1429,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1536,7 +1541,7 @@ const GroundTruth: React.FC = () => {
                   primary={video.filename || video.name}
                   secondary={
                     <>
-                      Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
+                      Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt || new Date().toISOString()).toLocaleDateString()}
                       {video.projectId && (
                         <>
                           <br />
@@ -1778,7 +1783,7 @@ const GroundTruth: React.FC = () => {
               {selectedVideo && (
                 <AnnotationProvider>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, lg: 8 }}>
+                    <Grid item xs={12} lg={8}>
                       {!enhancedAnnotationMode && (
                         <>
                           {/* Detection Controls */}
@@ -1833,7 +1838,7 @@ const GroundTruth: React.FC = () => {
                         </>
                       )}
                     </Grid>
-                  <Grid size={{ xs: 12, lg: 4 }}>
+                  <Grid item xs={12} lg={4}>
                     <Typography variant="h6" gutterBottom>
                       Video Information
                     </Typography>
@@ -1936,7 +1941,7 @@ const GroundTruth: React.FC = () => {
 
             <TabPanel value={activeTab} index={1}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, lg: 8 }}>
+                <Grid item xs={12} lg={8}>
                   <AnnotationProvider>
                     {selectedVideo && !enhancedAnnotationMode && (
                       <VideoAnnotationPlayer
@@ -1969,14 +1974,14 @@ const GroundTruth: React.FC = () => {
                     )}
                   </AnnotationProvider>
                 </Grid>
-                <Grid size={{ xs: 12, lg: 4 }}>
+                <Grid item xs={12} lg={4}>
                   <AnnotationProvider>
                     <AnnotationTools
                       selectedAnnotation={selectedAnnotation}
                       onAnnotationUpdate={handleAnnotationUpdate}
                       onAnnotationDelete={handleAnnotationDelete}
                       onAnnotationValidate={handleAnnotationValidate}
-                      onToolSelect={setSelectedTool}
+                      onToolSelect={(tool) => setSelectedTool(tool)}
                       selectedTool={selectedTool}
                       onCreateAnnotation={handleAnnotationCreate}
                       annotationMode={annotationMode}

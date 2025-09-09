@@ -4,6 +4,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { MemoryRouter } from 'react-router';
 import '@testing-library/jest-dom';
 import { createTheme } from '@mui/material/styles';
+import GroundTruth from '../pages/GroundTruth';
 
 // Import theme configuration (since it's not exported from App.tsx)
 const theme = createTheme({
@@ -39,7 +40,6 @@ const theme = createTheme({
     },
   },
 });
-import GroundTruth from '../pages/GroundTruth';
 
 // Mock API service to prevent actual API calls during testing
 jest.mock('../services/api', () => ({

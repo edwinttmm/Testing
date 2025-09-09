@@ -29,7 +29,7 @@ class ApiCache {
     return `${method}:${url}:${paramStr}`;
   }
 
-  private isExpired(entry: CacheEntry<any>): boolean {
+  private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() > entry.expiresAt;
   }
 

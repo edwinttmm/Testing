@@ -151,7 +151,7 @@ describe('Comprehensive Workflow Tests', () => {
     });
 
     test('opens test session configuration dialog', async () => {
-      const user = userEvent.setup();
+      
       
       render(
         <MockTestWrapper>
@@ -160,7 +160,7 @@ describe('Comprehensive Workflow Tests', () => {
       );
 
       const newSessionButton = screen.getByText('New Test Session');
-      await user.click(newSessionButton);
+      await userEvent.click(newSessionButton);
 
       await waitFor(() => {
         expect(screen.getByText('Configure Test Session')).toBeInTheDocument();
@@ -201,7 +201,7 @@ describe('Comprehensive Workflow Tests', () => {
       name: 'test.mp4',
       originalName: 'test.mp4',
       status: 'completed',
-      url: 'http://155.138.239.131:8000/videos/test.mp4',
+      url: 'http://localhost:8000/videos/test.mp4',
       duration: 60,
       size: 1024000,
       projectId: 'test-project',
@@ -243,7 +243,7 @@ describe('Comprehensive Workflow Tests', () => {
     });
 
     test('handles keyboard navigation', async () => {
-      const user = userEvent.setup();
+      
 
       render(
         <MockTestWrapper>
@@ -259,10 +259,10 @@ describe('Comprehensive Workflow Tests', () => {
       const videoPlayer = screen.getByRole('region', { name: /video player/i });
       
       // Focus the video player
-      await user.click(videoPlayer);
+      await userEvent.click(videoPlayer);
       
       // Test spacebar for play/pause
-      await user.keyboard(' ');
+      await userEvent.keyboard(' ');
       // Verify play functionality was called (would need spy setup)
     });
 
@@ -338,7 +338,7 @@ describe('Comprehensive Workflow Tests', () => {
     });
 
     test('supports playback speed changes', async () => {
-      const user = userEvent.setup();
+      
 
       render(
         <MockTestWrapper>
@@ -350,9 +350,8 @@ describe('Comprehensive Workflow Tests', () => {
           />
         </MockTestWrapper>
       );
-
       const settingsButton = screen.getByLabelText(/video settings/i);
-      await user.click(settingsButton);
+      await userEvent.click(settingsButton);
 
       await waitFor(() => {
         expect(screen.getByText('Playback Speed')).toBeInTheDocument();
@@ -367,7 +366,7 @@ describe('Comprehensive Workflow Tests', () => {
       name: 'test.mp4',
       originalName: 'test.mp4',
       status: 'completed',
-      url: 'http://155.138.239.131:8000/videos/test.mp4',
+      url: 'http://localhost:8000/videos/test.mp4',
       duration: 60,
       size: 1024000,
       projectId: 'test-project',
@@ -408,7 +407,7 @@ describe('Comprehensive Workflow Tests', () => {
 
     test('handles annotation selection', async () => {
       const onAnnotationSelect = jest.fn();
-      const user = userEvent.setup();
+      
 
       render(
         <MockTestWrapper>
@@ -455,7 +454,7 @@ describe('Comprehensive Workflow Tests', () => {
 
   describe('Integration Tests', () => {
     test('complete workflow: project selection → video loading → playback', async () => {
-      const user = userEvent.setup();
+      
 
       render(
         <MockTestWrapper>
@@ -465,7 +464,7 @@ describe('Comprehensive Workflow Tests', () => {
 
       // Open new session dialog
       const newSessionButton = screen.getByText('New Test Session');
-      await user.click(newSessionButton);
+      await userEvent.click(newSessionButton);
 
       // Wait for dialog to open
       await waitFor(() => {

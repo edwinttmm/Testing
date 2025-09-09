@@ -14,6 +14,7 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { TypedErrorFactory } from '../types/error.types';
 
 interface ApiConnectionStatusProps {
   onRetry?: () => void;
@@ -25,7 +26,7 @@ const ApiConnectionStatus: React.FC<ApiConnectionStatusProps> = ({ onRetry }) =>
   const [showAlert, setShowAlert] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // Check API connectivity
+  // Check API connectivity (disabled for development - 503 errors are expected)
   const checkApiConnection = useCallback(async () => {
     try {
       await apiService.healthCheck();
@@ -34,9 +35,19 @@ const ApiConnectionStatus: React.FC<ApiConnectionStatusProps> = ({ onRetry }) =>
       if (showAlert) {
         setShowAlert(false);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const safeError = TypedErrorFactory.fromUnknown(error, 'API connection failed');
+      
+      // In development, 503 errors are expected (database/redis disabled)
+      if (process.env.NODE_ENV === 'development' && safeError.message.includes('temporarily unavailable')) {
+        setApiConnected(false);
+        setLastError('Health check: Database/Redis disabled in development mode');
+        // Don't show alert for expected development errors
+        return;
+      }
+      
       setApiConnected(false);
-      setLastError(error.message || 'API connection failed');
+      setLastError(safeError.message);
       setShowAlert(true);
     }
   }, [showAlert]);
@@ -57,11 +68,28 @@ const ApiConnectionStatus: React.FC<ApiConnectionStatusProps> = ({ onRetry }) =>
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial API check
-    checkApiConnection();
+    // Skip health check in development since 503 errors are expected
+    if (process.env.NODE_ENV === 'development') {
+      setApiConnected(false);
+      setLastError('Health check disabled in development mode');
+      return;
+    }
 
-    // Periodic API health checks
-    const healthCheckInterval = setInterval(checkApiConnection, 60000); // Every minute
+    // Initial API check (only in production)
+    checkApiConnection().catch(error => {
+      // The error is already handled within checkApiConnection, 
+      // but this catch is necessary to prevent unhandled promise rejection.
+      console.warn('Caught promise rejection from initial API check:', error);
+    });
+
+    // Periodic API health checks (only in production)
+    const healthCheckInterval = setInterval(() => {
+      checkApiConnection().catch(error => {
+        // The error is already handled within checkApiConnection, 
+        // but this catch is necessary to prevent unhandled promise rejection.
+        console.warn('Caught promise rejection from periodic API health check:', error);
+      });
+    }, 60000); // Every minute
 
     return () => {
       window.removeEventListener('online', handleOnline);

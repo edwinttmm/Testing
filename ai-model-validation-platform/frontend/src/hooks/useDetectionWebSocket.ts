@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { GroundTruthAnnotation } from '../services/types';
 import { getConfigValueSync, waitForConfig, isConfigInitialized } from '../utils/configurationManager';
+import { TimerHandle, safeSetTimeout, safeSetInterval, safeClearTimeout, safeClearInterval } from '../utils/timerUtils';
 
 // WebSocket functionality re-enabled for real-time detection updates
 export interface DetectionUpdate {
@@ -51,7 +52,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         // Get WebSocket URL from configuration or fallback
         const wsBaseUrl = getConfigValueSync('REACT_APP_WS_URL', '') ||
                          getConfigValueSync('REACT_APP_SOCKETIO_URL', '') ||
-                         'ws://155.138.239.131:8001';
+                         'ws://localhost:8001';
         
         // Convert HTTP URLs to WebSocket URLs and add detection path
         let detectionUrl = wsBaseUrl;
@@ -72,7 +73,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
       } catch (error) {
         console.error('❌ Failed to resolve detection WebSocket URL:', error);
         // Use fallback
-        const fallbackUrl = 'ws://155.138.239.131:8001/ws/detection';
+        const fallbackUrl = 'ws://localhost:8001/ws/detection';
         setResolvedUrl(fallbackUrl);
         setConfigReady(true);
         console.log('🔧 Using fallback detection WebSocket URL:', fallbackUrl);
@@ -104,8 +105,8 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
   });
 
   const websocketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const fallbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<TimerHandle | null>(null);
+  const fallbackIntervalRef = useRef<TimerHandle | null>(null);
 
   // Connect to WebSocket
   const connect = useCallback(() => {
@@ -143,7 +144,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         
         // Clear fallback polling if active
         if (fallbackIntervalRef.current) {
-          clearInterval(fallbackIntervalRef.current);
+          safeClearInterval(fallbackIntervalRef.current);
           fallbackIntervalRef.current = null;
         }
         
@@ -173,7 +174,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
               
               console.log(`🔄 Reconnecting in ${delay}ms (attempt ${prev.reconnectAttempts + 1}/${maxReconnectAttempts})`);
               
-              reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectTimeoutRef.current = safeSetTimeout(() => {
                 connect();
               }, delay);
               
@@ -191,7 +192,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
           setConnectionState(prev => ({ ...prev, fallbackActive: true }));
           onFallback?.('WebSocket connection failed, using HTTP polling');
           
-          fallbackIntervalRef.current = setInterval(() => {
+          fallbackIntervalRef.current = safeSetInterval(() => {
             // Trigger polling-based detection updates
             console.log('📡 HTTP polling fallback active');
           }, fallbackPollingInterval);
@@ -225,13 +226,13 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
     
     // Clear reconnection timeout
     if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+      safeClearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
     // Clear fallback polling
     if (fallbackIntervalRef.current) {
-      clearInterval(fallbackIntervalRef.current);
+      safeClearInterval(fallbackIntervalRef.current);
       fallbackIntervalRef.current = null;
     }
 

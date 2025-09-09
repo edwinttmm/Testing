@@ -17,7 +17,6 @@ import {
   Button,
   Alert,
   CircularProgress,
-  LinearProgress,
   Menu,
   MenuItem,
 } from '@mui/material';
@@ -31,13 +30,12 @@ import {
   SkipPrevious,
   Refresh,
   ErrorOutline,
-  Speed,
   Settings,
-  ClosedCaption,
 } from '@mui/icons-material';
 import { VideoFile, GroundTruthAnnotation } from '../services/types';
 import VideoPlaybackManager, { VideoPlaybackState } from '../utils/videoPlaybackManager';
 import { fixVideoUrl } from '../utils/videoUrlFixer';
+import { formatTime } from '../utils/videoUtils';
 
 interface AccessibleVideoPlayerProps {
   video: VideoFile;
@@ -67,7 +65,7 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const playbackManager = useRef<VideoPlaybackManager>(null);
+  const [playbackManager, setPlaybackManager] = useState<VideoPlaybackManager | null>(null);
   
   // State management
   const [playbackState, setPlaybackState] = useState<VideoPlaybackState>({
@@ -83,11 +81,11 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+  const [, setVideoSize] = useState({ width: 0, height: 0 });
   const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(null);
 
   // Accessibility state
-  const [focusedControl, setFocusedControl] = useState<string | null>(null);
+  const [, setFocusedControl] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<string>('');
 
   // Calculate current frame number
@@ -102,14 +100,18 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
   useEffect(() => {
     if (!videoRef.current) return;
 
-    playbackManager.current = new VideoPlaybackManager({
+    if (playbackManager) {
+      playbackManager.detachVideoElement();
+    }
+    const newManager = new VideoPlaybackManager({
       retryAttempts: maxRetries,
       enableAutoRetry: autoRetry,
     });
 
-    playbackManager.current.attachVideoElement(videoRef.current);
+    newManager.attachVideoElement(videoRef.current);
+    setPlaybackManager(newManager);
     
-    const unsubscribe = playbackManager.current.onStateChange((state) => {
+    const unsubscribe = newManager.onStateChange((state) => {
       setPlaybackState(state);
       
       // Call parent callback
@@ -121,18 +123,24 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
 
     return () => {
       unsubscribe();
-      playbackManager.current?.destroy();
+      playbackManager?.destroy();
     };
-  }, [maxRetries, autoRetry, frameRate, onTimeUpdate]);
+  }, [maxRetries, autoRetry, frameRate, onTimeUpdate, playbackManager]);
+
+  // Accessibility announcements (moved before use)
+  const announce = useCallback((message: string) => {
+    setAnnouncements(message);
+    setTimeout(() => setAnnouncements(''), 100);
+  }, []);
 
   // Load video when URL changes
   useEffect(() => {
     const videoUrl = fixVideoUrl(video.url, video.filename, video.id);
-    if (!videoUrl || !playbackManager.current) return;
+    if (!videoUrl || !playbackManager) return;
 
     const loadVideo = async () => {
       try {
-        await playbackManager.current!.loadVideo(videoUrl);
+        await playbackManager.loadVideo(videoUrl);
         announce(`Video loaded: ${video.filename || video.name}`);
         
         // Update video dimensions
@@ -149,19 +157,78 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
     };
 
     loadVideo();
-  }, [video.url, video.filename, video.id, video.name]);
+  }, [video.url, video.filename, video.id, video.name, playbackManager, announce]);
 
-  // Accessibility announcements
-  const announce = (message: string) => {
-    setAnnouncements(message);
-    setTimeout(() => setAnnouncements(''), 100);
-  };
+  // Control functions (defined before useCallback)
+  const togglePlayPause = useCallback(async () => {
+    if (!playbackManager) return;
+
+    if (playbackState.isPlaying) {
+      playbackManager.pause();
+      announce('Video paused');
+    } else {
+      const success = await playbackManager.play();
+      announce(success ? 'Video playing' : 'Failed to play video');
+    }
+  }, [playbackManager, playbackState.isPlaying, announce]);
+
+  // Format time utility function (moved before usage)
+
+  const seekTo = useCallback((time: number) => {
+    if (!playbackManager) return;
+    playbackManager.seek(time);
+    announce(`Seeked to ${formatTime(time)}`);
+  }, [playbackManager, announce]);
+
+  const seekRelative = useCallback((seconds: number) => {
+    const newTime = Math.max(0, Math.min(playbackState.duration, playbackState.currentTime + seconds));
+    seekTo(newTime);
+  }, [playbackState.duration, playbackState.currentTime, seekTo]);
+
+  const stepFrame = useCallback((direction: 'forward' | 'backward') => {
+    const frameTime = 1 / frameRate;
+    const offset = direction === 'forward' ? frameTime : -frameTime;
+    seekRelative(offset);
+    announce(`${direction === 'forward' ? 'Next' : 'Previous'} frame: ${currentFrame}`);
+  }, [frameRate, seekRelative, announce, currentFrame]);
+
+  const changeVolume = useCallback((delta: number) => {
+    const newVolume = Math.max(0, Math.min(1, volume + delta));
+    setVolume(newVolume);
+    playbackManager?.setVolume(newVolume);
+    announce(`Volume ${Math.round(newVolume * 100)}%`);
+  }, [volume, playbackManager, announce]);
+
+  const toggleMute = useCallback(() => {
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    playbackManager?.setVolume(newMuted ? 0 : volume);
+    announce(newMuted ? 'Muted' : 'Unmuted');
+  }, [isMuted, playbackManager, volume, announce]);
+
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        container.requestFullscreen();
+        announce('Entered fullscreen');
+      } else {
+        document.exitFullscreen();
+        announce('Exited fullscreen');
+      }
+    } catch (error) {
+      console.warn('Fullscreen toggle failed:', error);
+      announce('Fullscreen not supported');
+    }
+  }, [announce]);
 
   // Keyboard event handler
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (!playbackManager.current) return;
+    if (!playbackManager) return;
 
-    const { key, ctrlKey, altKey, shiftKey } = event;
+    const { key, shiftKey } = event;
     
     // Prevent default for handled keys
     const handledKeys = ['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 
@@ -221,82 +288,21 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
         
       case ',':
         if (playbackState.isPlaying) {
-          playbackManager.current.pause();
+          playbackManager.pause();
         }
         stepFrame('backward');
         break;
         
       case '.':
         if (playbackState.isPlaying) {
-          playbackManager.current.pause();
+          playbackManager.pause();
         }
         stepFrame('forward');
         break;
     }
-  }, [playbackState.isPlaying, playbackState.duration]);
+  }, [playbackManager, playbackState.isPlaying, playbackState.duration, togglePlayPause, stepFrame, seekRelative, seekTo, changeVolume, toggleMute, toggleFullscreen]);
 
-  // Control functions
-  const togglePlayPause = async () => {
-    if (!playbackManager.current) return;
-
-    if (playbackState.isPlaying) {
-      playbackManager.current.pause();
-      announce('Video paused');
-    } else {
-      const success = await playbackManager.current.play();
-      announce(success ? 'Video playing' : 'Failed to play video');
-    }
-  };
-
-  const seekTo = (time: number) => {
-    if (!playbackManager.current) return;
-    playbackManager.current.seek(time);
-    announce(`Seeked to ${formatTime(time)}`);
-  };
-
-  const seekRelative = (seconds: number) => {
-    const newTime = Math.max(0, Math.min(playbackState.duration, playbackState.currentTime + seconds));
-    seekTo(newTime);
-  };
-
-  const stepFrame = (direction: 'forward' | 'backward') => {
-    const frameTime = 1 / frameRate;
-    const offset = direction === 'forward' ? frameTime : -frameTime;
-    seekRelative(offset);
-    announce(`${direction === 'forward' ? 'Next' : 'Previous'} frame: ${currentFrame}`);
-  };
-
-  const changeVolume = (delta: number) => {
-    const newVolume = Math.max(0, Math.min(1, volume + delta));
-    setVolume(newVolume);
-    playbackManager.current?.setVolume(newVolume);
-    announce(`Volume ${Math.round(newVolume * 100)}%`);
-  };
-
-  const toggleMute = () => {
-    const newMuted = !isMuted;
-    setIsMuted(newMuted);
-    playbackManager.current?.setVolume(newMuted ? 0 : volume);
-    announce(newMuted ? 'Muted' : 'Unmuted');
-  };
-
-  const toggleFullscreen = () => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        container.requestFullscreen();
-        announce('Entered fullscreen');
-      } else {
-        document.exitFullscreen();
-        announce('Exited fullscreen');
-      }
-    } catch (error) {
-      console.warn('Fullscreen toggle failed:', error);
-      announce('Fullscreen not supported');
-    }
-  };
+  // Utility functions
 
   const handlePlaybackRateChange = (rate: number) => {
     if (!videoRef.current) return;
@@ -308,17 +314,6 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
     } catch (error) {
       console.warn('Playback rate change failed:', error);
     }
-  };
-
-  const formatTime = (time: number): string => {
-    const hours = Math.floor(time / 3600);
-    const minutes = Math.floor((time % 3600) / 60);
-    const seconds = Math.floor(time % 60);
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   // Error state rendering
@@ -336,7 +331,7 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
                   size="small" 
                   onClick={() => {
                     const videoUrl = fixVideoUrl(video.url, video.filename, video.id);
-                    if (videoUrl) playbackManager.current?.loadVideo(videoUrl);
+                    if (videoUrl) playbackManager?.loadVideo(videoUrl);
                   }}
                   startIcon={<Refresh />}
                   aria-label="Retry loading video"
@@ -580,7 +575,7 @@ const AccessibleVideoPlayer: React.FC<AccessibleVideoPlayerProps> = ({
                 onChange={(_, value) => {
                   const newVolume = value as number;
                   setVolume(newVolume);
-                  playbackManager.current?.setVolume(newVolume);
+                  playbackManager?.setVolume(newVolume);
                 }}
                 size="small"
                 sx={{ ml: 1, width: 80 }}

@@ -83,7 +83,7 @@ const getStatusColor = (status: VideoFile['status']) => {
 const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
   open,
   onClose,
-  projectId,
+  // _projectId removed - unused prop
   onSelectionComplete,
   selectedVideoIds = [],
 }) => {
@@ -303,7 +303,7 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
                           <Typography variant="caption" component="div">
                             Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • 
                             Duration: {formatDuration(video.duration)} • 
-                            Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
+                            Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt || new Date().toISOString()).toLocaleDateString()}
                           </Typography>
                           
                           <Box sx={{ mt: 0.5, display: 'flex', gap: 1 }}>

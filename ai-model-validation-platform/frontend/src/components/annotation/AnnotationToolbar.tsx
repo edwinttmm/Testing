@@ -45,7 +45,7 @@ import {
   ColorLens,
 } from '@mui/icons-material';
 import { useAnnotation } from './AnnotationManager';
-import { DrawingTool, AnnotationStyle, BrushSettings } from './types';
+import { DrawingTool, AnnotationStyle, BrushSettings as _BrushSettings } from './types';
 
 const DRAWING_TOOLS: DrawingTool[] = [
   { id: 'select', name: 'Select', type: 'select', icon: <SelectIcon />, cursor: 'default', hotkey: 'V' },
@@ -188,7 +188,7 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   }, []);
 
   // Brush settings handler
-  const handleBrushSettingsUpdate = useCallback((updates: Partial<BrushSettings>) => {
+  const handleBrushSettingsUpdate = useCallback((updates: Partial<_BrushSettings>) => {
     actions.updateSettings({
       brushSettings: { ...state.settings.brushSettings, ...updates }
     });
@@ -641,7 +641,7 @@ const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
         </Box>
         <Divider />
         <MenuItem onClick={() => {
-          const customColor = prompt('Enter hex color:', '#000000');
+          const customColor = '#000000'; // TODO: Replace with proper color picker dialog
           if (customColor) {
             handleColorSelect(customColor);
           }

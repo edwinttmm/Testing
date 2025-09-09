@@ -16,7 +16,7 @@ describe('URL Fix Validation - Preventing Recursive :8000 Appending', () => {
   beforeAll(() => {
     jest.doMock('../utils/envConfig', () => ({
       getServiceConfig: jest.fn(() => ({
-        baseUrl: 'http://155.138.239.131:8000'
+        baseUrl: 'http://localhost:8000'
       }))
     }));
   });
@@ -24,7 +24,7 @@ describe('URL Fix Validation - Preventing Recursive :8000 Appending', () => {
   it('should demonstrate the problem that WAS occurring', () => {
     // This is what WOULD have happened with the old broken logic
     const originalUrl = 'http://localhost:8000/uploads/video.mp4';
-    const expectedFixed = 'http://155.138.239.131:8000/uploads/video.mp4';
+    const expectedFixed = 'http://localhost:8000/uploads/video.mp4';
     
     // First fix - should work correctly
     const firstFix = fixVideoUrl(originalUrl);
@@ -49,7 +49,7 @@ describe('URL Fix Validation - Preventing Recursive :8000 Appending', () => {
     const corruptedUrl = 'http://localhost:8000:8000/uploads/video.mp4';
     const result = fixVideoUrl(corruptedUrl);
     
-    expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(result).toBe('http://localhost:8000/uploads/video.mp4');
     expect(result).not.toContain(':8000:8000');
     expect(result).not.toContain(':8000:8000:8000');
   });
@@ -58,7 +58,7 @@ describe('URL Fix Validation - Preventing Recursive :8000 Appending', () => {
     const urlWithParams = 'http://localhost:8000/uploads/video.mp4?v=1&t=30#start';
     const result = fixVideoUrl(urlWithParams);
     
-    expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4?v=1&t=30#start');
+    expect(result).toBe('http://localhost:8000/uploads/video.mp4?v=1&t=30#start');
     expect(result).toContain('?v=1&t=30#start');
   });
 
@@ -66,19 +66,19 @@ describe('URL Fix Validation - Preventing Recursive :8000 Appending', () => {
     const testCases = [
       {
         input: 'http://localhost:8000/video.mp4',
-        expected: 'http://155.138.239.131:8000/video.mp4'
+        expected: 'http://localhost:8000/video.mp4'
       },
       {
         input: 'http://localhost/video.mp4',
-        expected: 'http://155.138.239.131:8000/video.mp4'
+        expected: 'http://localhost:8000/video.mp4'
       },
       {
         input: 'http://127.0.0.1:8000/video.mp4',
-        expected: 'http://155.138.239.131:8000/video.mp4'
+        expected: 'http://localhost:8000/video.mp4'
       },
       {
         input: 'http://127.0.0.1/video.mp4',
-        expected: 'http://155.138.239.131:8000/video.mp4'
+        expected: 'http://localhost:8000/video.mp4'
       }
     ];
 

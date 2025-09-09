@@ -9,8 +9,13 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     """Application configuration settings with environment variable support"""
     
-    # Database settings
-    database_url: str = os.getenv('AIVALIDATION_DATABASE_URL', os.getenv('DATABASE_URL', 'sqlite:///./dev_database.db'))
+    # Database settings with proper precedence
+    database_url: str = (
+        os.getenv('VRU_DATABASE_URL') or
+        os.getenv('DATABASE_URL') or 
+        os.getenv('AIVALIDATION_DATABASE_URL') or
+        'sqlite:///./dev_database.db'
+    )
     test_database_url: str = os.getenv('AIVALIDATION_TEST_DATABASE_URL', 'sqlite:///./test.db')
     database_pool_size: int = int(os.getenv('AIVALIDATION_DATABASE_POOL_SIZE', '10'))
     database_max_overflow: int = int(os.getenv('AIVALIDATION_DATABASE_MAX_OVERFLOW', '20'))
@@ -28,7 +33,12 @@ class Settings(BaseSettings):
     app_environment: str = os.getenv('AIVALIDATION_APP_ENVIRONMENT', os.getenv('APP_ENV', 'development'))
     
     # CORS settings - Environment-based configuration (includes production IP)
-    cors_origins: List[str] = os.getenv('AIVALIDATION_CORS_ORIGINS', os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000')).split(',')
+    cors_origins: List[str] = [
+        "http://localhost:3000",  # Frontend port
+        "http://127.0.0.1:3000",  # Alternative localhost
+        "http://localhost:8001",  # Backend port
+        "http://127.0.0.1:8001"   # Alternative localhost
+    ]
     cors_credentials: bool = True
     cors_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     cors_headers: List[str] = ["*"]
@@ -45,11 +55,11 @@ class Settings(BaseSettings):
     log_max_bytes: int = int(os.getenv('AIVALIDATION_LOG_MAX_BYTES', '10485760'))
     log_backup_count: int = int(os.getenv('AIVALIDATION_LOG_BACKUP_COUNT', '5'))
     
-    # Security settings - CRITICAL FOR PRODUCTION
-    secret_key: str = os.getenv('AIVALIDATION_SECRET_KEY', os.getenv('SECRET_KEY', 'INSECURE-DEFAULT-CHANGE-ME'))
+    # Security settings - CRITICAL FOR PRODUCTION - Unified priority order
+    secret_key: str = os.getenv('VRU_SECRET_KEY', os.getenv('AIVALIDATION_SECRET_KEY', os.getenv('SECRET_KEY', 'INSECURE-DEFAULT-CHANGE-ME')))
     
-    # JWT Configuration
-    jwt_secret_key: str = os.getenv('AIVALIDATION_JWT_SECRET_KEY', secret_key)
+    # JWT Configuration - Unified priority order
+    jwt_secret_key: str = os.getenv('VRU_JWT_SECRET_KEY', os.getenv('AIVALIDATION_JWT_SECRET_KEY', os.getenv('JWT_SECRET_KEY', secret_key)))
     jwt_algorithm: str = os.getenv('AIVALIDATION_JWT_ALGORITHM', 'HS256')
     jwt_expire_minutes: int = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '30'))
     
@@ -68,9 +78,9 @@ class Settings(BaseSettings):
     app_version: str = os.getenv('AIVALIDATION_APP_VERSION', '1.0.0')
     app_description: str = os.getenv('AIVALIDATION_APP_DESCRIPTION', 'API for validating vehicle-mounted camera VRU detection')
     
-    # Redis Configuration
-    redis_url: Optional[str] = os.getenv('AIVALIDATION_REDIS_URL')
-    redis_password: Optional[str] = os.getenv('AIVALIDATION_REDIS_PASSWORD')
+    # Redis Configuration - Unified priority order
+    redis_url: Optional[str] = os.getenv('VRU_REDIS_URL', os.getenv('AIVALIDATION_REDIS_URL', os.getenv('REDIS_URL')))
+    redis_password: Optional[str] = os.getenv('VRU_REDIS_PASSWORD', os.getenv('AIVALIDATION_REDIS_PASSWORD', os.getenv('REDIS_PASSWORD')))
     redis_decode_responses: bool = os.getenv('AIVALIDATION_REDIS_DECODE_RESPONSES', 'true').lower() == 'true'
     
     # Feature flags
@@ -96,8 +106,15 @@ class Settings(BaseSettings):
     @field_validator('cors_origins', mode='before')
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
+            # Handle empty string case
+            if not v.strip():
+                return ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8001"]
             return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+        elif isinstance(v, list):
+            return v
+        else:
+            # Fallback for any other case
+            return ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8001"]
     
     @field_validator('allowed_video_extensions', mode='before')
     def parse_allowed_extensions(cls, v):

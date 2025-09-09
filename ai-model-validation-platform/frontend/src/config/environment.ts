@@ -94,7 +94,7 @@ class EnvironmentService {
     const hostname = window.location.hostname;
     
     // Production server - explicit configuration for external IP
-    if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
+    if (hostname === 'localhost' || hostname.includes('production-domain')) {
       return 8000;
     }
     

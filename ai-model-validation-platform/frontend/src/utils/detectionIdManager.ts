@@ -41,7 +41,7 @@ class DetectionIdManager {
   /**
    * Generate a new detection ID
    */
-  generateDetectionId(vruType: VRUType, frameNumber?: number): string {
+  generateDetectionId(vruType: VRUType, _frameNumber?: number): string {
     const vruPrefix = this.config.includeVRUType ? this.getVRUPrefix(vruType) : '';
     const key = `${this.config.prefix}_${vruPrefix}`;
     

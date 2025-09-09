@@ -164,7 +164,7 @@ export const useBrushTool = (props: BrushToolProps) => {
     event.preventDefault();
     event.stopPropagation();
 
-    const pressure = (event as any).pressure || 1;
+    const pressure = (event as MouseEvent & { pressure?: number }).pressure || 1;
     startStroke(point, pressure);
   }, [props.enabled, startStroke]);
 
@@ -174,7 +174,7 @@ export const useBrushTool = (props: BrushToolProps) => {
     updatePreview(point);
 
     if (isDrawing) {
-      const pressure = (event as any)?.pressure || 1;
+      const pressure = (event as MouseEvent & { pressure?: number } | undefined)?.pressure || 1;
       addPoint(point, pressure);
     }
   }, [props.enabled, isDrawing, updatePreview, addPoint]);
@@ -186,7 +186,7 @@ export const useBrushTool = (props: BrushToolProps) => {
     event.stopPropagation();
 
     // Add final point
-    const pressure = (event as any).pressure || 1;
+    const pressure = (event as MouseEvent & { pressure?: number }).pressure || 1;
     addPoint(point, pressure);
     
     // Complete stroke after a short delay to allow final point processing
@@ -218,8 +218,8 @@ export const useBrushTool = (props: BrushToolProps) => {
     // Draw variable-width stroke
     if (currentStroke.length > 1) {
       for (let i = 1; i < currentStroke.length; i++) {
-        const prevPoint = currentStroke[i - 1] as any;
-        const currentPoint = currentStroke[i] as any;
+        const prevPoint = currentStroke[i - 1] as BrushPoint;
+        const currentPoint = currentStroke[i] as BrushPoint;
         
         const size = currentPoint.size || brushSettings.size;
         

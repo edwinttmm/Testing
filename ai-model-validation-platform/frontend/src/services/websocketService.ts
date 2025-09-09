@@ -107,18 +107,19 @@ class WebSocketService {
         
         // Development environment (localhost) - Updated to use external IP
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return 'http://155.138.239.131:8001'; // Socket.IO port
+          return 'http://localhost:8000'; // Backend API port
         }
         
         // Handle production server - configurable via environment
-        if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
+        if (hostname === 'localhost' || hostname.includes('production-domain')) {
           const isSecure = window.location.protocol === 'https:';
           const httpProtocol = isSecure ? 'https:' : 'http:';
           return `${httpProtocol}//${hostname}:8001`; // Socket.IO port
         }
         
         // Generic fallback for other environments
-        return `${protocol.replace('ws', 'http')}//${hostname}:8001`;
+        const httpProtocol = protocol === 'wss:' ? 'https:' : 'http:';
+        return `${httpProtocol}//${hostname}:8001`;
       };
 
       this.url = getWebSocketUrl()!;
@@ -133,7 +134,7 @@ class WebSocketService {
     } catch (error) {
       console.error('❌ Failed to initialize WebSocket URL:', error);
       // Use fallback URL
-      this.url = 'http://155.138.239.131:8001';
+      this.url = 'http://localhost:8001';
       this.urlResolved = true;
       console.log('🔧 Using fallback WebSocket URL:', this.url);
       

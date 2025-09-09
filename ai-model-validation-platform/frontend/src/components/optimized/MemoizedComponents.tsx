@@ -54,15 +54,15 @@ export const MemoizedProjectCard = memo<ProjectCardProps>(({
       variant="outlined"
       size="small"
     />,
-    ...((project.accuracy ?? 0) > 0 ? [
+    ...((project.averageAccuracy ?? 0) > 0 ? [
       <Chip
         key="accuracy"
-        label={`${project.accuracy ?? 0}% accuracy`}
+        label={`${project.averageAccuracy ?? 0}% accuracy`}
         variant="outlined"
         size="small"
       />
     ] : []),
-  ], [project.status, project.testsCount, project.accuracy ?? 0, statusColor]);
+  ], [project.status, project.testsCount, project.averageAccuracy ?? 0, statusColor]);
 
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

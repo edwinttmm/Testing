@@ -1,26 +1,42 @@
 FROM node:20-alpine
 
+# Install curl for healthcheck and bash for better script support
+RUN apk add --no-cache curl bash
+
 WORKDIR /app
 
-# Install dependencies in order with better error handling
+# Set environment variables for faster startup and production readiness
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=development
+ENV SKIP_PREFLIGHT_CHECK=true
+ENV TSC_COMPILE_ON_ERROR=true
+ENV FAST_REFRESH=true
+ENV GENERATE_SOURCEMAP=false
+ENV REACT_APP_API_URL=http://localhost:8000
+ENV REACT_APP_WS_URL=ws://localhost:8000
+ENV REACT_APP_ENVIRONMENT=development
+ENV CI=false
+ENV DOCKER=true
+
+# Copy package files first for better caching
 COPY package*.json ./
 
-# Clean install with SSL certificate handling and error recovery
-RUN set -x && \
-    npm cache clean --force && \
-    npm config set strict-ssl false && \
-    npm config set registry https://registry.npmjs.org/ && \
-    (npm install --verbose --no-audit --no-fund --legacy-peer-deps || \
-     npm install --verbose --no-audit --no-fund --legacy-peer-deps --unsafe-perm || \
-     npm install --verbose --no-audit --no-fund --legacy-peer-deps --strict-ssl=false) && \
-    npm list @craco/craco || echo "Craco not found in list" && \
-    ls -la node_modules/.bin/craco || echo "Craco binary not found" && \
-    which craco || echo "Craco not in PATH"
+# Install dependencies with better error handling
+RUN npm ci --legacy-peer-deps --no-audit --no-fund --silent
 
 # Copy source code
 COPY . .
 
+# Health check to ensure the app is responding
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
 EXPOSE 3000
 
-# Use npx to ensure craco is found, with fallback to react-scripts, bind to all interfaces
-CMD ["sh", "-c", "HOST=0.0.0.0 PORT=3000 npx craco start || (echo 'Craco failed, trying react-scripts...' && HOST=0.0.0.0 PORT=3000 npx react-scripts start)"]
+# Copy and use start script
+COPY start.sh ./
+RUN chmod +x start.sh
+
+# Start with custom script
+CMD ["./start.sh"]

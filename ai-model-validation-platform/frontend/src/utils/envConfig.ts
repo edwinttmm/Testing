@@ -74,7 +74,7 @@ class EnvironmentConfigManager {
       
       // Feature flags
       debug: this.getBooleanConfig('REACT_APP_DEBUG', environment === 'development'),
-      logLevel: this.getConfigValue('REACT_APP_LOG_LEVEL', environment === 'production' ? 'error' : 'debug') as any,
+      logLevel: this.getConfigValue('REACT_APP_LOG_LEVEL', environment === 'production' ? 'error' : 'debug') as 'debug' | 'info' | 'warn' | 'error',
       enableMockData: this.getBooleanConfig('REACT_APP_ENABLE_MOCK_DATA', false),
       enableDebugPanels: this.getBooleanConfig('REACT_APP_ENABLE_DEBUG_PANELS', environment === 'development'),
       enablePerformanceMonitoring: this.getBooleanConfig('REACT_APP_ENABLE_PERFORMANCE_MONITORING', true),
@@ -127,8 +127,26 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultApiUrl(): string {
-    // Consistent API URL for all environments to avoid localhost:8000 vs 155.138.239.131:8000 conflicts
-    return 'http://155.138.239.131:8000';
+    // Environment-aware API URL detection
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      
+      // Local development - use localhost for local access
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+      // Docker environment - use Docker internal network
+      else if (process.env.DOCKER === 'true') {
+        return 'http://backend:8000';
+      }
+      // Use the same hostname as frontend for external access
+      else {
+        return `http://${hostname}:8000`;
+      }
+    }
+    
+    // Default to localhost for local development
+    return 'http://localhost:8000';
   }
   
   private getDefaultWsUrl(): string {
@@ -138,8 +156,26 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultSocketioUrl(): string {
-    // Consistent Socket.IO URL for all environments
-    return 'http://155.138.239.131:8001';
+    // Environment-aware Socket.IO URL detection
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      
+      // Local development - use localhost for local access
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8001';
+      }
+      // Docker environment - use Docker internal network
+      else if (process.env.DOCKER === 'true') {
+        return 'http://backend:8001';
+      }
+      // Use the same hostname as frontend for external access
+      else {
+        return `http://${hostname}:8001`;
+      }
+    }
+    
+    // Default to localhost for local development
+    return 'http://localhost:8001';
   }
   
   private getDefaultVideoBaseUrl(): string {
@@ -287,9 +323,9 @@ class EnvironmentConfigManager {
         return { connected: false, error, latency };
       }
       
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       const latency = Date.now() - startTime;
-      const errorMessage = error.message || 'Unknown connection error';
+      const errorMessage = (error instanceof Error ? error.message : String(error)) || 'Unknown connection error';
       console.error('❌ API connectivity test failed:', errorMessage);
       return { connected: false, error: errorMessage, latency };
     }

@@ -132,7 +132,8 @@ def update_video_status(db: Session, video_id: str, status: str, duration: float
 def create_ground_truth_object(db: Session, video_id: str, timestamp: float, 
                               class_label: str, x: float, y: float, width: float, height: float,
                               confidence: float, frame_number: int = None, validated: bool = True, 
-                              difficult: bool = False, bounding_box: dict = None) -> GroundTruthObject:
+                              difficult: bool = False, bounding_box: dict = None,
+                              screenshot_path: str = None, screenshot_zoom_path: str = None) -> GroundTruthObject:
     # Create bounding_box dict for backward compatibility if not provided
     if bounding_box is None:
         bounding_box = {"x": x, "y": y, "width": width, "height": height}
@@ -149,7 +150,9 @@ def create_ground_truth_object(db: Session, video_id: str, timestamp: float,
         bounding_box=bounding_box,  # Keep for backward compatibility
         confidence=confidence,
         validated=validated,
-        difficult=difficult
+        difficult=difficult,
+        screenshot_path=screenshot_path,
+        screenshot_zoom_path=screenshot_zoom_path
     )
     db.add(db_object)
     db.commit()
@@ -167,10 +170,12 @@ def create_test_session(db: Session, test_session: TestSessionCreate, user_id: s
     db.refresh(db_session)
     return db_session
 
-def get_test_sessions(db: Session, project_id: str = None, skip: int = 0, limit: int = 100) -> List[TestSession]:
+def get_test_sessions(db: Session, project_id: str = None, video_id: str = None, skip: int = 0, limit: int = 100) -> List[TestSession]:
     query = db.query(TestSession)
     if project_id:
         query = query.filter(TestSession.project_id == project_id)
+    if video_id:
+        query = query.filter(TestSession.video_id == video_id)
     return query.offset(skip).limit(limit).all()
 
 def get_test_session(db: Session, session_id: str) -> Optional[TestSession]:

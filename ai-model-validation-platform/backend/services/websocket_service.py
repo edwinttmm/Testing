@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from typing import Dict, Set, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import WebSocket, WebSocketDisconnect
 import uuid
 
@@ -53,7 +53,8 @@ class WebSocketManager:
             # Remove from all rooms
             if connection_id in self.connection_metadata:
                 rooms = self.connection_metadata[connection_id].get("rooms", set())
-                for room in rooms:
+                # Create a copy of the set to avoid "Set changed size during iteration" error
+                for room in rooms.copy():
                     self.leave_room(connection_id, room)
             
             # Clean up connection
@@ -506,3 +507,17 @@ async def periodic_cleanup():
 
 # Start cleanup task on module import
 # asyncio.create_task(periodic_cleanup())
+
+
+# Global websocket service instance
+websocket_service = None
+
+def get_websocket_service():
+    """Get global websocket service instance"""
+    global websocket_service
+    if websocket_service is None:
+        websocket_service = {}  # Basic placeholder - implement proper service
+    return websocket_service
+
+# Export websocket_service for backward compatibility
+__all__ = ["websocket_service", "get_websocket_service"]

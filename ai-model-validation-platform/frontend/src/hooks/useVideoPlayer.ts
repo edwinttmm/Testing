@@ -5,6 +5,7 @@
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react';
+import logger from '../utils/safeErrorLogger';
 import {
   safeVideoPlay,
   safeVideoPause,
@@ -178,7 +179,7 @@ export function useVideoPlayer(options: UseVideoPlayerOptions = {}) {
       try {
         videoElement.currentTime = Math.max(0, Math.min(time, state.duration));
       } catch (error) {
-        console.warn('Seek failed:', error);
+        logger.warn('Seek failed', error, { context: 'video-player-hook' });
         setState(prev => ({ ...prev, error: 'Seek operation failed' }));
       }
     }, [state.duration]),
@@ -190,7 +191,7 @@ export function useVideoPlayer(options: UseVideoPlayerOptions = {}) {
       try {
         videoElement.volume = Math.max(0, Math.min(1, volume));
       } catch (error) {
-        console.warn('Volume change failed:', error);
+        logger.warn('Volume change failed', error, { context: 'video-player-hook' });
       }
     }, []),
 
@@ -201,7 +202,7 @@ export function useVideoPlayer(options: UseVideoPlayerOptions = {}) {
       try {
         videoElement.muted = !videoElement.muted;
       } catch (error) {
-        console.warn('Mute toggle failed:', error);
+        logger.warn('Mute toggle failed', error, { context: 'video-player-hook' });
       }
     }, []),
 

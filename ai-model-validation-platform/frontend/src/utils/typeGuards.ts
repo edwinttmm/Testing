@@ -3,8 +3,9 @@
  * Provides runtime type checking to ensure type safety in React components
  */
 
-import { VideoFile, GroundTruthAnnotation, VRUType } from '../services/types';
+import { VideoFile, GroundTruthAnnotation, VRUType, Annotation, BoundingBox, Detection } from '../services/types';
 import { AxiosError } from 'axios';
+import logger from './safeErrorLogger';
 
 /**
  * Type guard for VideoFile
@@ -161,7 +162,7 @@ export function createStableCallback<T extends unknown[], R>(
   deps: readonly unknown[]
 ): (...args: T) => R {
   if (!validateDependencies(deps)) {
-    console.warn('Unstable dependencies detected in callback');
+    logger.warn('Unstable dependencies detected in callback', deps, { context: 'type-guards' });
   }
   return callback;
 }
@@ -170,7 +171,7 @@ export function createStableCallback<T extends unknown[], R>(
  * Type guard for Axios errors
  */
 export function isAxiosError(obj: unknown): obj is AxiosError {
-  return obj instanceof Error && 'isAxiosError' in obj && (obj as any).isAxiosError === true;
+  return obj instanceof Error && 'isAxiosError' in obj && (obj as { isAxiosError: boolean }).isAxiosError === true;
 }
 
 /**
@@ -208,7 +209,7 @@ export function safeGet<T>(obj: unknown, path: string, defaultValue?: T): T | un
   if (!isObject(obj)) return defaultValue;
   
   const keys = path.split('.');
-  let result: any = obj;
+  let result: unknown = obj;
   
   for (const key of keys) {
     if (!isObject(result) || !(key in result)) {
@@ -222,36 +223,93 @@ export function safeGet<T>(obj: unknown, path: string, defaultValue?: T): T | un
 
 /**
  * Type guard for detection properties - validates individual detection object
- * Checks for actual YOLO detection properties instead of nested containers
+ * Matches actual YOLO/backend response format with snake_case and array bbox
  */
 export function hasDetectionProperties(obj: unknown): boolean {
   if (!isObject(obj)) {
-    console.log('🔍 hasDetectionProperties: not an object', obj);
+    logger.debug('hasDetectionProperties: not an object', obj, { context: 'type-guards', function: 'hasDetectionProperties' });
     return false;
   }
   
-  // Debug: show object keys
+  // Debug: show object keys and sample values
   const keys = Object.keys(obj);
-  console.log('🔍 hasDetectionProperties checking object with keys:', keys);
+  const sampleValues = Object.fromEntries(
+    keys.slice(0, 5).map(key => [key, obj[key]])
+  );
+  logger.debug('hasDetectionProperties checking object', {
+    keys,
+    sampleValues,
+    fullObject: obj
+  }, { context: 'type-guards', function: 'hasDetectionProperties' });
   
-  // Check for YOLO detection object properties - match backend format exactly
-  const hasConfidence = 'confidence' in obj || 'conf' in obj || 'score' in obj;
-  const hasBoundingBox = 'bbox' in obj || 'boundingBox' in obj || 'box' in obj || 
-     ('x' in obj && 'y' in obj && 'width' in obj && 'height' in obj) ||
-     ('x1' in obj && 'y1' in obj && 'x2' in obj && 'y2' in obj);
-  const hasClass = 'class' in obj || 'label' in obj || 'category' in obj || 'name' in obj || 'class_id' in obj || 'class_name' in obj;
+  // Check for backend response format properties
+  // Backend sends: class_name, bbox (array), confidence, frame_number, timestamp
+  const hasConfidence = 'confidence' in obj && isNumber(obj.confidence);
   
-  console.log('🔍 hasDetectionProperties checks:', {
+  // Backend bbox can be array [x, y, width, height] or object {x, y, width, height}
+  const hasBoundingBox = (
+    ('bbox' in obj && (
+      (isArray(obj.bbox) && (obj.bbox as unknown[]).length >= 4) ||
+      (isObject(obj.bbox) && 'x' in obj.bbox && 'y' in obj.bbox && 'width' in obj.bbox && 'height' in obj.bbox)
+    )) ||
+    ('bounding_box' in obj && (
+      (isArray(obj.bounding_box) && ((obj.bounding_box as unknown[]).length >= 4)) ||
+      (isObject(obj.bounding_box) && 'x' in obj.bounding_box && 'y' in obj.bounding_box && 'width' in obj.bounding_box && 'height' in obj.bounding_box)
+    )) ||
+    ('boundingBox' in obj && (isArray(obj.boundingBox) || isObject(obj.boundingBox))) ||
+    ('x' in obj && 'y' in obj && 'width' in obj && 'height' in obj) ||
+    ('x1' in obj && 'y1' in obj && 'x2' in obj && 'y2' in obj)
+  );
+  
+  // Backend sends class_name (snake_case), not className
+  const hasClass = (
+    ('class_name' in obj && isString(obj.class_name)) ||
+    ('class_label' in obj && isString(obj.class_label)) ||
+    ('className' in obj && isString(obj.className)) ||
+    ('label' in obj && isString(obj.label)) ||
+    ('class' in obj && isString(obj.class)) ||
+    ('name' in obj && isString(obj.name))
+  );
+  
+  // Optional but commonly present in backend response
+  const hasFrameInfo = (
+    ('frame_number' in obj) || 
+    ('frameNumber' in obj) || 
+    ('timestamp' in obj)
+  );
+  
+  logger.debug('hasDetectionProperties detailed checks', {
     hasConfidence,
+    confidenceValue: obj.confidence,
     hasBoundingBox,
+    bboxValue: obj.bbox || obj.bounding_box || obj.boundingBox,
+    bboxType: typeof (obj.bbox || obj.bounding_box || obj.boundingBox),
+    bboxIsArray: isArray(obj.bbox || obj.bounding_box || obj.boundingBox),
+    bboxIsObject: isObject(obj.bbox || obj.bounding_box || obj.boundingBox),
     hasClass,
+    classValue: obj.class_name || obj.class_label || obj.className || obj.label,
+    hasFrameInfo,
+    frameValue: obj.frame_number || obj.frameNumber,
+    timestampValue: obj.timestamp,
     objectKeys: keys
-  });
+  }, { context: 'type-guards', function: 'hasDetectionProperties' });
   
-  // Detection must have all three core components to be valid
+  // Detection must have confidence, bbox, and class - frame info is optional
   const hasValidDetectionStructure = hasConfidence && hasBoundingBox && hasClass;
   
-  console.log('🔍 hasDetectionProperties result:', hasValidDetectionStructure, 'for object:', obj);
+  if (!hasValidDetectionStructure) {
+    logger.warn('Detection validation failed', {
+      missingConfidence: !hasConfidence,
+      missingBoundingBox: !hasBoundingBox, 
+      missingClass: !hasClass,
+      object: obj
+    }, { context: 'type-guards', function: 'hasDetectionProperties' });
+  }
+  
+  logger.debug('hasDetectionProperties final result', { 
+    result: hasValidDetectionStructure, 
+    object: obj 
+  }, { context: 'type-guards', function: 'hasDetectionProperties' });
   
   return hasValidDetectionStructure;
 }
@@ -303,7 +361,7 @@ export function mapYoloClassToVRUType(className: string): string {
   const result = classMap[lowerClassName] || 'pedestrian'; // Default to pedestrian
   
   // Debug logging for class mapping
-  console.log(`🏷️ Class mapping: '${className}' -> '${result}'`);
+  logger.debug('Class mapping', { input: className, output: result }, { context: 'type-guards', function: 'mapYoloClassToVRUType' });
   
   return result;
 }
@@ -381,7 +439,7 @@ export function safeSpread<T extends Record<string, unknown>>(
     try {
       return { ...sourceObj } as T;
     } catch (error) {
-      console.warn('Safe spread failed:', error);
+      logger.warn('Safe spread failed (single parameter)', error, { context: 'type-guards', function: 'safeSpread' });
       return {} as T;
     }
   }
@@ -395,7 +453,7 @@ export function safeSpread<T extends Record<string, unknown>>(
   try {
     return { ...target, ...source } as T;
   } catch (error) {
-    console.warn('Safe spread failed:', error);
+    logger.warn('Safe spread failed (dual parameter)', error, { context: 'type-guards', function: 'safeSpread' });
     return target;
   }
 }
@@ -420,8 +478,9 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
     return null;
   }
   
-  // ProjectId is required in the interface
-  const projectId = (hasProperty(data, 'projectId') && isString(data.projectId)) ? data.projectId : '';
+  // ProjectId - try both camelCase and snake_case
+  const projectId = (hasProperty(data, 'projectId') && isString(data.projectId)) ? data.projectId : 
+                   (hasProperty(data, 'project_id') && isString(data.project_id)) ? data.project_id : '';
   
   try {
     const videoFile: VideoFile = {
@@ -430,23 +489,44 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
       filename: (hasProperty(data, 'filename') && isString(data.filename)) ? data.filename : `video_${data.id}.mp4`,
       originalName: (hasProperty(data, 'originalName') && isString(data.originalName)) ? data.originalName : 
                    (hasProperty(data, 'original_name') && isString(data.original_name)) ? data.original_name : data.id,
+      fileSize: (hasProperty(data, 'fileSize') && isNumber(data.fileSize)) ? data.fileSize :
+               (hasProperty(data, 'file_size') && isNumber(data.file_size)) ? data.file_size :
+               (hasProperty(data, 'size') && isNumber(data.size)) ? data.size : 0,
       size: (hasProperty(data, 'size') && isNumber(data.size)) ? data.size : 
            (hasProperty(data, 'fileSize') && isNumber(data.fileSize)) ? data.fileSize :
            (hasProperty(data, 'file_size') && isNumber(data.file_size)) ? data.file_size : 0,
+      processingStatus: (hasProperty(data, 'processingStatus') && isString(data.processingStatus)) ? 
+                       data.processingStatus as 'pending' | 'processing' | 'completed' | 'failed' | 'queued' : 
+                       (hasProperty(data, 'processing_status') && isString(data.processing_status)) ? 
+                       data.processing_status as 'pending' | 'processing' | 'completed' | 'failed' | 'queued' : 'pending',
+      groundTruthGenerated: (hasProperty(data, 'groundTruthGenerated') && typeof data.groundTruthGenerated === 'boolean') ? 
+                           data.groundTruthGenerated : 
+                           (hasProperty(data, 'ground_truth_generated') && typeof data.ground_truth_generated === 'boolean') ? 
+                           data.ground_truth_generated : false,
+      detectionCount: (hasProperty(data, 'detectionCount') && isNumber(data.detectionCount)) ? 
+                     data.detectionCount : 
+                     (hasProperty(data, 'detection_count') && isNumber(data.detection_count)) ? 
+                     data.detection_count : 0,
+      annotationCount: (hasProperty(data, 'annotationCount') && isNumber(data.annotationCount)) ? 
+                      data.annotationCount : 0,
+      createdAt: (hasProperty(data, 'createdAt') && isString(data.createdAt)) ? data.createdAt : 
+                 (hasProperty(data, 'created_at') && isString(data.created_at)) ? data.created_at : new Date().toISOString(),
       url: (hasProperty(data, 'url') && isString(data.url)) ? data.url : '',
       status: (hasProperty(data, 'status') && isString(data.status) && 
              ['uploading', 'processing', 'completed', 'failed'].includes(data.status)) 
              ? data.status as 'uploading' | 'processing' | 'completed' | 'failed'
              : 'uploading',
       uploadedAt: (hasProperty(data, 'uploadedAt') && isString(data.uploadedAt)) ? data.uploadedAt : 
-                 (hasProperty(data, 'uploaded_at') && isString(data.uploaded_at)) ? data.uploaded_at : new Date().toISOString(),
+                 (hasProperty(data, 'uploaded_at') && isString(data.uploaded_at)) ? data.uploaded_at : 
+                 (hasProperty(data, 'createdAt') && isString(data.createdAt)) ? data.createdAt :
+                 (hasProperty(data, 'created_at') && isString(data.created_at)) ? data.created_at : new Date().toISOString(),
       
       // Optional properties - only set if they have valid values
       name: (hasProperty(data, 'name') && isString(data.name)) ? data.name : 
             (hasProperty(data, 'filename') && isString(data.filename)) ? data.filename : data.id
     };
 
-    // Add optional properties only if they exist and are valid
+    // Add optional properties only if they exist and are valid - comprehensive mapping
     if (hasProperty(data, 'fileSize') && isNumber(data.fileSize)) {
       videoFile.fileSize = data.fileSize;
     }
@@ -456,11 +536,23 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
     if (hasProperty(data, 'duration') && isNumber(data.duration)) {
       videoFile.duration = data.duration;
     }
+    if (hasProperty(data, 'frameRate') && isNumber(data.frameRate)) {
+      videoFile.frameRate = data.frameRate;
+    }
+    if (hasProperty(data, 'frame_rate') && isNumber(data.frame_rate)) {
+      videoFile.frame_rate = data.frame_rate;
+    }
     if (hasProperty(data, 'createdAt') && isString(data.createdAt)) {
       videoFile.createdAt = data.createdAt;
     }
     if (hasProperty(data, 'created_at') && isString(data.created_at)) {
       videoFile.created_at = data.created_at;
+    }
+    if (hasProperty(data, 'updatedAt') && isString(data.updatedAt)) {
+      videoFile.updatedAt = data.updatedAt;
+    }
+    if (hasProperty(data, 'updated_at') && isString(data.updated_at)) {
+      videoFile.updated_at = data.updated_at;
     }
     if (hasProperty(data, 'processing_status') && isString(data.processing_status) && 
         ['pending', 'processing', 'completed', 'failed'].includes(data.processing_status)) {
@@ -470,6 +562,10 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
         ['pending', 'processing', 'completed', 'failed'].includes(data.groundTruthStatus)) {
       videoFile.groundTruthStatus = data.groundTruthStatus as 'pending' | 'processing' | 'completed' | 'failed';
     }
+    if (hasProperty(data, 'ground_truth_status') && isString(data.ground_truth_status) && 
+        ['pending', 'processing', 'completed', 'failed'].includes(data.ground_truth_status)) {
+      videoFile.ground_truth_status = data.ground_truth_status as 'pending' | 'processing' | 'completed' | 'failed';
+    }
     if (hasProperty(data, 'groundTruthGenerated') && data.groundTruthGenerated !== undefined) {
       videoFile.groundTruthGenerated = Boolean(data.groundTruthGenerated);
     }
@@ -478,6 +574,22 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
     }
     if (hasProperty(data, 'detectionCount') && isNumber(data.detectionCount)) {
       videoFile.detectionCount = data.detectionCount;
+    }
+    if (hasProperty(data, 'detection_count') && isNumber(data.detection_count)) {
+      videoFile.detection_count = data.detection_count;
+    }
+    // Backend path and metadata fields
+    if (hasProperty(data, 'project_id') && isString(data.project_id)) {
+      videoFile.project_id = data.project_id;
+    }
+    if (hasProperty(data, 'original_name') && isString(data.original_name)) {
+      videoFile.original_name = data.original_name;
+    }
+    if (hasProperty(data, 'file_path') && isString(data.file_path)) {
+      videoFile.file_path = data.file_path;
+    }
+    if (hasProperty(data, 'uploaded_at') && isString(data.uploaded_at)) {
+      videoFile.uploaded_at = data.uploaded_at;
     }
     if (hasProperty(data, 'width') && isNumber(data.width)) {
       videoFile.width = data.width;
@@ -504,12 +616,79 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
       videoFile.metadata = data.metadata;
     }
     if (hasProperty(data, 'annotations') && isArray(data.annotations)) {
-      videoFile.annotations = data.annotations as any;
+      // Convert array items to Annotation[] format for VideoFile compatibility
+      videoFile.annotations = data.annotations.map((annotation: unknown) => {
+        // Enhanced conversion handling both camelCase and snake_case fields
+        if (isObject(annotation)) {
+          const id = safeGet(annotation, 'id', '') as string;
+          const videoId = safeGet(annotation, 'videoId', safeGet(annotation, 'video_id', '')) as string;
+          const timestamp = safeGet(annotation, 'timestamp', 0) as number;
+          const endTimestamp = safeGet(annotation, 'endTimestamp', safeGet(annotation, 'end_timestamp', undefined)) as number | undefined;
+          
+          // Handle bounding box from various field formats
+          let boundingBoxes: BoundingBox[] = [];
+          const bbox = safeGet(annotation, 'boundingBox', safeGet(annotation, 'bounding_box', safeGet(annotation, 'bbox', null)));
+          if (isObject(bbox)) {
+            boundingBoxes = [{
+              x: safeGet(bbox, 'x', 0) as number,
+              y: safeGet(bbox, 'y', 0) as number,
+              width: safeGet(bbox, 'width', 100) as number,
+              height: safeGet(bbox, 'height', 100) as number,
+              label: safeGet(bbox, 'label', safeGet(bbox, 'class_label', 'unknown')) as string,
+              confidence: safeGet(bbox, 'confidence', safeGet(bbox, 'score', 1.0)) as number
+            }];
+          }
+          
+          const detectionType = safeGet(annotation, 'vruType', 
+            safeGet(annotation, 'vru_type',
+              safeGet(annotation, 'detectionType', 
+                safeGet(annotation, 'class_label', 'pedestrian')))) as string;
+                
+          const confidence = safeGet(annotation, 'confidence', 1.0) as number;
+          
+          // Try to get detections array or create from annotation data
+          let detections: Detection[] = [];
+          const detectionsArray = safeGet(annotation, 'detections', []);
+          if (isArray(detectionsArray)) {
+            detections = detectionsArray.map((det: unknown) => det as Detection);
+          } else {
+            // Create a detection from the annotation itself if no separate detections
+            detections = [{
+              id: id,
+              videoId: safeGet(annotation, 'videoId', safeGet(annotation, 'video_id', 'unknown')) as string,
+              detectionId: safeGet(annotation, 'detectionId', safeGet(annotation, 'detection_id', id)) as string,
+              frameNumber: safeGet(annotation, 'frameNumber', safeGet(annotation, 'frame_number', 0)) as number,
+              classId: safeGet(annotation, 'classId', safeGet(annotation, 'class_id', 1)) as number,
+              className: safeGet(annotation, 'className', safeGet(annotation, 'class_name', detectionType)) as string,
+              validationStatus: safeGet(annotation, 'validationStatus', safeGet(annotation, 'validation_status', 'pending')) as 'pending' | 'validated' | 'rejected' | 'needs_review',
+              timestamp: timestamp,
+              boundingBox: boundingBoxes[0] || { x: 0, y: 0, width: 100, height: 100, label: 'unknown', confidence: 1.0 },
+              vruType: detectionType as VRUType,
+              confidence: confidence,
+              isGroundTruth: true,
+              validated: safeGet(annotation, 'validated', false) as boolean,
+              createdAt: safeGet(annotation, 'createdAt', safeGet(annotation, 'created_at', new Date().toISOString())) as string
+            }];
+          }
+          
+          return {
+            id: id,
+            videoId: videoId,
+            timestamp: timestamp,
+            endTimestamp: endTimestamp,
+            boundingBoxes: boundingBoxes,
+            detectionType: detectionType,
+            confidence: confidence,
+            detections: detections
+          } as Annotation;
+        }
+        return annotation as Annotation;
+      });
     }
     
     return videoFile;
   } catch (error) {
-    console.warn('Failed to convert to VideoFile:', error);
+    logger.warn('Failed to convert to VideoFile', error, { context: 'type-guards', function: 'convertToVideoFile' });
     return null;
   }
 }
@@ -530,7 +709,7 @@ export function safeConvertArray<T>(
       .map(converter)
       .filter((item): item is T => item !== null);
   } catch (error) {
-    console.warn('Safe convert array failed:', error);
+    logger.warn('Safe convert array failed', error, { context: 'type-guards', function: 'safeConvertArray' });
     return [];
   }
 }

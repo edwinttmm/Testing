@@ -22,7 +22,7 @@ jest.mock('../src/utils/envConfig', () => ({
   getServiceConfig: jest.fn((service) => {
     if (service === 'video') {
       return {
-        baseUrl: 'http://155.138.239.131:8000',
+        baseUrl: 'http://localhost:8000',
         maxSizeMB: 100,
         supportedFormats: ['mp4', 'avi', 'mov', 'mkv']
       };
@@ -58,11 +58,11 @@ describe('VideoUrlFixer Optimization Features', () => {
       
       // First call should process and cache
       const result1 = fixVideoUrl(url);
-      expect(result1).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result1).toBe('http://localhost:8000/uploads/test.mp4');
       
       // Second call should use cache
       const result2 = fixVideoUrl(url);
-      expect(result2).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result2).toBe('http://localhost:8000/uploads/test.mp4');
       
       const metrics = getPerformanceMetrics();
       expect(metrics.cacheHits).toBeGreaterThan(0);
@@ -82,7 +82,7 @@ describe('VideoUrlFixer Optimization Features', () => {
       
       // Should process again due to expired cache
       const result = fixVideoUrl(url);
-      expect(result).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result).toBe('http://localhost:8000/uploads/test.mp4');
     });
 
     it('should handle cache size limits and perform cleanup', () => {
@@ -146,7 +146,7 @@ describe('VideoUrlFixer Optimization Features', () => {
           if (service === 'database') {
             return { migrating: true };
           }
-          return { baseUrl: 'http://155.138.239.131:8000' };
+          return { baseUrl: 'http://localhost:8000' };
         })
       }));
 
@@ -234,7 +234,7 @@ describe('VideoUrlFixer Optimization Features', () => {
       const url = 'http://localhost:8000/uploads/test.mp4';
       const result = fixVideoUrl(url, undefined, undefined, { debug: true });
       
-      expect(result).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result).toBe('http://localhost:8000/uploads/test.mp4');
       
       const metrics = getPerformanceMetrics();
       expect(metrics.systemStats.migrationActive).toBe(true);
@@ -247,7 +247,7 @@ describe('VideoUrlFixer Optimization Features', () => {
       const url = 'http://localhost:8000/uploads/test.mp4';
       const result = fixVideoUrl(url, undefined, undefined, { debug: true });
       
-      expect(result).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result).toBe('http://localhost:8000/uploads/test.mp4');
       
       // Clean up cookie
       document.cookie = 'migration-active=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
@@ -275,7 +275,7 @@ describe('VideoUrlFixer Optimization Features', () => {
         skipDeduplication: true
       });
       
-      expect(result).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result).toBe('http://localhost:8000/uploads/test.mp4');
     });
   });
 
@@ -374,7 +374,7 @@ describe('VideoUrlFixer Optimization Features', () => {
       };
 
       const result = fixVideoUrl('/uploads/test.mp4', undefined, undefined, options);
-      expect(result).toBe('http://155.138.239.131:8000/uploads/test.mp4');
+      expect(result).toBe('http://localhost:8000/uploads/test.mp4');
     });
 
     it('should work with legacy cache stats function', () => {
@@ -389,15 +389,15 @@ describe('VideoUrlFixer Optimization Features', () => {
       const testCases = [
         {
           input: 'http://localhost:8000/uploads/test.mp4',
-          expected: 'http://155.138.239.131:8000/uploads/test.mp4'
+          expected: 'http://localhost:8000/uploads/test.mp4'
         },
         {
           input: '/uploads/test.mp4',
-          expected: 'http://155.138.239.131:8000/uploads/test.mp4'
+          expected: 'http://localhost:8000/uploads/test.mp4'
         },
         {
-          input: 'http://155.138.239.131:8000/uploads/test.mp4',
-          expected: 'http://155.138.239.131:8000/uploads/test.mp4'
+          input: 'http://localhost:8000/uploads/test.mp4',
+          expected: 'http://localhost:8000/uploads/test.mp4'
         }
       ];
 

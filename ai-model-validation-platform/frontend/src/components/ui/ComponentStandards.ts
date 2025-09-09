@@ -57,7 +57,7 @@ export interface ErrorComponentProps extends BaseComponentProps {
  * Combined props for async components
  */
 export interface AsyncComponentProps extends LoadingComponentProps, ErrorComponentProps {
-  data?: any;
+  data?: Record<string, unknown>;
   onRefresh?: () => void;
 }
 
@@ -159,15 +159,15 @@ export interface ComponentConfig {
 /**
  * Type guard to check if a value is a valid React node
  */
-export const isValidReactNode = (value: any): value is ReactNode => {
+export const isValidReactNode = (value: unknown): value is ReactNode => {
   return value !== undefined && value !== null && typeof value !== 'boolean';
 };
 
 /**
  * Type guard to check if props include children
  */
-export const hasChildren = (props: any): props is ComponentPropsWithChildren => {
-  return props && 'children' in props && isValidReactNode(props.children);
+export const hasChildren = (props: unknown): props is ComponentPropsWithChildren & Record<string, unknown> => {
+  return typeof props === 'object' && props !== null && props !== undefined && 'children' in props && isValidReactNode((props as Record<string, any>).children);
 };
 
 /**
@@ -311,13 +311,13 @@ export const createComponent = <P extends BaseComponentProps>(
   }
 ): StandardComponent<P> => {
   const component = options.memo 
-    ? React.memo(render) as StandardComponent<P>
+    ? React.memo(render) as unknown as StandardComponent<P>
     : render;
 
   component.displayName = options.displayName;
 
   if (options.defaultProps) {
-    (component as any).defaultProps = options.defaultProps;
+    (component as React.ComponentType<any> & { defaultProps?: Record<string, unknown> }).defaultProps = options.defaultProps;
   }
 
   // Wrap with prop validation in development

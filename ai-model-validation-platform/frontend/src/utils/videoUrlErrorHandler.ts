@@ -92,13 +92,15 @@ class VideoUrlErrorHandler {
             originalName: video.originalName || video.filename,
             size: video.size || video.fileSize || 0,
             fileSize: video.fileSize || 0,
+            // Add required VideoFile properties
+            processingStatus: (video.processing_status as 'pending' | 'processing' | 'completed' | 'failed' | 'queued') || 'pending',
+            groundTruthGenerated: video.groundTruthGenerated || false,
+            detectionCount: video.detectionCount || 0,
+            annotationCount: video.annotationCount || 0,
             createdAt: video.createdAt || new Date().toISOString(),
             // Add other required VideoFile properties with defaults
             uploadedAt: video.uploadedAt || new Date().toISOString(),
-            status: (video.status as 'uploading' | 'processing' | 'completed' | 'failed') || 'completed',
-            processing_status: video.processing_status || 'pending',
-            groundTruthGenerated: video.groundTruthGenerated || false,
-            detectionCount: video.detectionCount || 0
+            status: (video.status as 'uploading' | 'processing' | 'completed' | 'failed') || 'completed'
           };
           
           this.recordError({
@@ -128,12 +130,14 @@ class VideoUrlErrorHandler {
             originalName: video.originalName || video.filename || video.id,
             size: video.size || video.fileSize || 0,
             fileSize: video.fileSize || 0,
+            // Add required VideoFile properties
+            processingStatus: (video.processing_status as 'pending' | 'processing' | 'completed' | 'failed' | 'queued') || 'pending',
+            groundTruthGenerated: video.groundTruthGenerated || false,
+            detectionCount: video.detectionCount || 0,
+            annotationCount: video.annotationCount || 0,
             createdAt: video.createdAt || new Date().toISOString(),
             uploadedAt: video.uploadedAt || new Date().toISOString(),
-            status: (video.status as 'uploading' | 'processing' | 'completed' | 'failed') || 'completed',
-            processing_status: video.processing_status || 'pending',
-            groundTruthGenerated: video.groundTruthGenerated || false,
-            detectionCount: video.detectionCount || 0
+            status: (video.status as 'uploading' | 'processing' | 'completed' | 'failed') || 'completed'
           };
           
           this.recordError({

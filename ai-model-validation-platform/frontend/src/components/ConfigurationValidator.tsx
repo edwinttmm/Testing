@@ -9,7 +9,7 @@
  * - Clear error messages and troubleshooting guidance
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -36,11 +36,8 @@ import {
   ExpandLess,
   Info,
   Settings,
-  NetworkCheck,
-  VideoLibrary
 } from '@mui/icons-material';
-import envConfig, { testApiConnectivity, getValidationErrors, isValidConfig, getConfig } from '../utils/envConfig';
-import { apiService } from '../services/api';
+import { testApiConnectivity, getValidationErrors, isValidConfig, getConfig } from '../utils/envConfig';
 // HTTP-only mode - no WebSocket imports needed
 
 export interface ConfigurationValidatorProps {
@@ -71,7 +68,7 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
   
   // HTTP-only mode - no WebSocket connections needed
   
-  const runValidation = async (): Promise<void> => {
+  const runValidation = useCallback(async (): Promise<void> => {
     setIsValidating(true);
     const results: ValidationResult[] = [];
     const timestamp = new Date();
@@ -114,11 +111,17 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
           ],
           timestamp
         };
-      } catch (error: any) {
+      } catch (error: unknown) {
+        let errorMessage = 'Unknown error occurred';
+        if (error instanceof Error) {
+          errorMessage = (error as Error).message || 'Error occurred';
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        }
         results[results.length - 1] = {
           service: 'API Connectivity',
           status: 'error',
-          message: `API test failed: ${error.message}`,
+          message: `API test failed: ${errorMessage}`,
           details: [
             'Backend server may not be running',
             'Check API URL configuration',
@@ -156,11 +159,17 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
         timestamp
       });
       
-    } catch (error: any) {
+    } catch (error: unknown) {
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = (error as Error).message || 'Error occurred';
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
       results.push({
         service: 'Validation System',
         status: 'error',
-        message: `Validation failed: ${error.message}`,
+        message: `Validation failed: ${errorMessage}`,
         timestamp
       });
     }
@@ -176,7 +185,7 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
       .flatMap(r => [r.message, ...(r.details || [])]);
     
     onValidationChange?.(overallValid, allErrors);
-  };
+  }, [onValidationChange]);
   
   // Auto-refresh validation
   useEffect(() => {
@@ -189,9 +198,9 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
     
     // Return empty cleanup function when not auto-refreshing
     return () => {};
-  }, [autoRefresh, refreshInterval]);
+  }, [autoRefresh, refreshInterval, runValidation]);
   
-  const getStatusColor = (status: ValidationResult['status']) => {
+  const getStatusColor = (status: ValidationResult['status']): import('../services/types').ChipColor => {
     switch (status) {
       case 'success': return 'success';
       case 'warning': return 'warning';
@@ -227,7 +236,7 @@ const ConfigurationValidator: React.FC<ConfigurationValidatorProps> = ({
             </Typography>
             <Chip 
               label={overallStatus.toUpperCase()} 
-              color={getStatusColor(overallStatus) as any}
+              color={getStatusColor(overallStatus)}
               size="small"
             />
           </Box>

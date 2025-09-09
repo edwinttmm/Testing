@@ -25,7 +25,21 @@ import hashlib
 import hmac
 import secrets
 
-from config import Settings, get_settings
+try:
+    from config import Settings, get_settings
+except ImportError:
+    # Fallback for when config is not available
+    class Settings:
+        jwt_secret_key = "fallback-key"
+        jwt_algorithm = "HS256"
+        jwt_expire_minutes = 30
+        security_headers_enabled = True
+        app_environment = "development"
+        hsts_enabled = False
+        csp_enabled = True
+    
+    def get_settings():
+        return Settings()
 
 logger = logging.getLogger(__name__)
 
@@ -398,6 +412,38 @@ def require_auth(settings: Settings = None):
             return await func(*args, **kwargs)
         return wrapper
     return decorator
+
+# Authentication dependency for FastAPI endpoints
+def get_current_user(credentials: HTTPAuthorizationCredentials = security):
+    """
+    Get current authenticated user from JWT token
+    
+    This is a simplified implementation - in production would validate
+    against user database and handle proper user sessions
+    """
+    try:
+        settings = get_settings()
+        jwt_handler = JWTAuthHandler(settings)
+        
+        # Decode and validate token
+        payload = jwt_handler.decode_token(credentials.credentials)
+        
+        # Return user data (simplified mock user)
+        user = {
+            "id": payload.get("user_id"),
+            "username": f"user_{payload.get('user_id')}",
+            "is_active": True
+        }
+        
+        return user
+        
+    except Exception as e:
+        logger.error(f"Authentication error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 # Utility functions for security validation
 def validate_secret_key(secret_key: str, environment: str) -> bool:

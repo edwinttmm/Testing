@@ -143,9 +143,13 @@ class GroundTruthService:
                         height=detection["height"],
                         confidence=detection["confidence"],
                         validated=detection.get("validated", True),
-                        difficult=detection.get("difficult", False)
+                        difficult=detection.get("difficult", False),
+                        screenshot_path=detection.get("screenshot_path"),
+                        screenshot_zoom_path=detection.get("screenshot_zoom_path")
                     )
                     detection_count += 1
+                    if detection.get("screenshot_path"):
+                        logger.info(f"📸 Ground truth screenshot saved: {detection['screenshot_path']}")
                 except Exception as e:
                     logger.error(f"❌ Failed to store detection: {str(e)}")
                     continue
@@ -228,6 +232,11 @@ class GroundTruthService:
                             # Get bounding box coordinates
                             x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                             
+                            # Generate screenshot for this detection
+                            screenshot_path, screenshot_zoom_path = self._generate_screenshot(
+                                frame, x1, y1, x2, y2, frame_count, self.vru_classes[class_id]
+                            )
+                            
                             detection = {
                                 "frame_number": frame_count,
                                 "timestamp": timestamp,
@@ -238,7 +247,9 @@ class GroundTruthService:
                                 "height": float(y2 - y1),
                                 "confidence": confidence,
                                 "validated": True,  # Mark AI detections as validated ground truth
-                                "difficult": False  # YOLO confident detections are not difficult
+                                "difficult": False,  # YOLO confident detections are not difficult
+                                "screenshot_path": screenshot_path,
+                                "screenshot_zoom_path": screenshot_zoom_path
                             }
                             detections.append(detection)
         
@@ -248,6 +259,54 @@ class GroundTruthService:
         except Exception as e:
             logger.error(f"Error processing video {video_path}: {e}")
             return []
+    
+    def _generate_screenshot(self, frame, x1, y1, x2, y2, frame_number, class_label):
+        """Generate screenshots for ground truth detection"""
+        import uuid
+        
+        try:
+            # Create screenshots directory if it doesn't exist
+            os.makedirs("screenshots", exist_ok=True)
+            
+            # Generate unique detection ID
+            detection_id = str(uuid.uuid4())
+            
+            # Full frame screenshot with bounding box
+            screenshot_frame = frame.copy()
+            cv2.rectangle(screenshot_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
+            cv2.putText(screenshot_frame, f"{class_label} ({frame_number})", 
+                       (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            
+            full_screenshot_path = f"screenshots/ground_truth_{detection_id}.jpg"
+            cv2.imwrite(full_screenshot_path, screenshot_frame)
+            
+            # Zoomed screenshot of detection area with padding
+            padding = 20
+            x1_crop = max(0, int(x1) - padding)
+            y1_crop = max(0, int(y1) - padding)
+            x2_crop = min(frame.shape[1], int(x2) + padding)
+            y2_crop = min(frame.shape[0], int(y2) + padding)
+            
+            cropped_frame = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+            
+            # Draw bounding box on cropped frame
+            adjusted_x1 = int(x1) - x1_crop
+            adjusted_y1 = int(y1) - y1_crop
+            adjusted_x2 = int(x2) - x1_crop
+            adjusted_y2 = int(y2) - y1_crop
+            
+            cv2.rectangle(cropped_frame, (adjusted_x1, adjusted_y1), (adjusted_x2, adjusted_y2), (0, 255, 0), 2)
+            cv2.putText(cropped_frame, class_label, (adjusted_x1, adjusted_y1 - 5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            
+            zoom_screenshot_path = f"screenshots/ground_truth_{detection_id}_zoom.jpg"
+            cv2.imwrite(zoom_screenshot_path, cropped_frame)
+            
+            return full_screenshot_path, zoom_screenshot_path
+            
+        except Exception as e:
+            logger.error(f"Failed to generate screenshot: {e}")
+            return None, None
     
     def get_ground_truth(self, video_id: str) -> GroundTruthResponse:
         """Get ground truth data for a video"""

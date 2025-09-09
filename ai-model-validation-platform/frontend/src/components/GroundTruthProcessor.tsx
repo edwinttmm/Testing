@@ -10,7 +10,7 @@ import {
 import {
   PlayArrow,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   HourglassEmpty,
 } from '@mui/icons-material';
 import { VideoFile } from '../services/types';
@@ -43,8 +43,7 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
       
       if (!response.ok) {
         const errorText = await response.text();
-        const errorInstance = Error as any;
-        throw new errorInstance(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
       const result = await response.json();
@@ -54,12 +53,13 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
       } else if (result.status === 'already_completed') {
         onProcessingComplete?.(video.id);
       } else if (result.status === 'failed') {
-        setError(result.message);
+        setError(result.message || 'Processing failed');
       }
       
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('Failed to start ground truth processing:', err);
-      setError(err?.message || err || 'Failed to start processing');
+      setError(errorMsg);
     } finally {
       setProcessing(false);
     }
@@ -73,7 +73,7 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
       return <HourglassEmpty color="warning" />;
     }
     if (video.status === 'failed') {
-      return <Error color="error" />;
+      return <ErrorIcon color="error" />;
     }
     return <HourglassEmpty color="info" />;
   };

@@ -22,6 +22,8 @@ import {
   Switch,
   FormControlLabel,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -35,18 +37,26 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Info as InfoIcon,
+  Fullscreen as FullscreenIcon,
+  FullscreenExit as ExitFullscreenIcon,
 } from '@mui/icons-material';
 
-import { Project, TestSession, VideoFile } from '../services/types';
+import { 
+  Project, 
+  TestSession, 
+  VideoFile,
+  ExtendedProject,
+  ChipColor,
+  ModelConfiguration,
+} from '../services/types';
 import { apiService } from '../services/api';
 import VideoSelectionDialog from '../components/VideoSelectionDialog';
+import { fullscreenManager, isFullscreenSupported } from '../utils/fullscreenUtils';
+import { enhancedFullscreenManager, testFullscreenSupport } from '../utils/enhancedFullscreenManager';
+import SequentialVideoPlayer from '../components/SequentialVideoPlayer';
+import { markUserInteraction } from '../utils/videoUtils';
 
-interface ModelConfiguration {
-  id: string;
-  name: string;
-  type: string;
-  config: any;
-}
+// ModelConfiguration imported from types/common.ts
 
 interface TestResults {
   id: string;
@@ -58,7 +68,7 @@ interface TestResults {
     precision: number;
     recall: number;
     f1Score: number;
-    detections: any[];
+    detections: Record<string, unknown>[];
     processingTime: number;
     errorCount: number;
   };
@@ -98,7 +108,46 @@ const TestExecution: React.FC = () => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('info');
 
+  // Fullscreen states
+  const [isFullscreenMode, setIsFullscreenMode] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+
   const wsRef = useRef<WebSocket | null>(null);
+  const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize fullscreen support detection
+  useEffect(() => {
+    const initializeFullscreen = async () => {
+      // Test basic fullscreen support
+      setFullscreenSupported(isFullscreenSupported());
+      
+      // Test enhanced fullscreen functionality
+      try {
+        const testResult = await testFullscreenSupport();
+        
+        if (!testResult.success && testResult.error) {
+          // Fullscreen test failed - will continue without fullscreen
+        }
+      } catch (error) {
+        // Fullscreen test error - will continue without fullscreen
+      }
+    };
+
+    initializeFullscreen();
+    
+    // Setup fullscreen change listener
+    const unsubscribe = fullscreenManager.onFullscreenChange((state) => {
+      setIsFullscreenMode(state.isFullscreen);
+      
+      if (!state.isFullscreen && showVideoPlayer) {
+        // Exited fullscreen, optionally hide video player or keep it visible
+        // For better UX, we'll keep the video player visible but exit fullscreen mode
+      }
+    });
+
+    return unsubscribe;
+  }, [showVideoPlayer]);
 
   // Helper functions
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
@@ -107,17 +156,24 @@ const TestExecution: React.FC = () => {
     setSnackbarOpen(true);
   }, [setSnackbarMessage, setSnackbarSeverity, setSnackbarOpen]);
 
-  const updateTestProgress = useCallback((progress: any) => {
+  const updateTestProgress = useCallback((_progress: Record<string, unknown>) => {
     // Update progress indicators
-    console.log('Test progress:', progress);
+    // Progress data available in progress parameter
   }, []);
 
   const addTestResult = useCallback((result: TestResults) => {
     setTestResults(prev => [...prev, result]);
   }, [setTestResults]);
 
-  const handleTestCompletion = useCallback((data: any) => {
+  const handleTestCompletion = useCallback((_data: Record<string, unknown>) => {
     setIsRunning(false);
+    setShowVideoPlayer(false);
+    
+    // Exit fullscreen if in fullscreen mode
+    if (isFullscreenMode) {
+      enhancedFullscreenManager.exitVideoFullscreen().catch(console.warn);
+    }
+    
     showSnackbar('Test execution completed', 'success');
     
     // Update session status
@@ -126,11 +182,19 @@ const TestExecution: React.FC = () => {
         s.id === currentSession?.id ? { ...s, status: 'completed' as const } : s
       )
     );
-  }, [currentSession?.id, showSnackbar]);
+  }, [currentSession?.id, showSnackbar, isFullscreenMode]);
 
-  const handleTestError = useCallback((error: any) => {
+  const handleTestError = useCallback((error: Error | unknown) => {
     setIsRunning(false);
-    showSnackbar(`Test execution failed: ${error.message}`, 'error');
+    setShowVideoPlayer(false);
+    
+    // Exit fullscreen if in fullscreen mode
+    if (isFullscreenMode) {
+      enhancedFullscreenManager.exitVideoFullscreen().catch(console.warn);
+    }
+    
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    showSnackbar(`Test execution failed: ${message}`, 'error');
     
     // Update session status
     setSessions(prevSessions =>
@@ -138,29 +202,64 @@ const TestExecution: React.FC = () => {
         s.id === currentSession?.id ? { ...s, status: 'failed' as const } : s
       )
     );
-  }, [currentSession?.id, showSnackbar]);
+  }, [currentSession?.id, showSnackbar, isFullscreenMode]);
 
-  const handleWebSocketMessage = useCallback((data: any) => {
+  // Fullscreen toggle handler
+  const toggleFullscreen = useCallback(async () => {
+    if (!fullscreenSupported || !videoPlayerContainerRef.current) {
+      showSnackbar('Fullscreen not available', 'warning');
+      return;
+    }
+
+    try {
+      if (isFullscreenMode) {
+        const result = await enhancedFullscreenManager.exitVideoFullscreen();
+        if (result.success) {
+          showSnackbar('Exited fullscreen mode', 'info');
+        } else {
+          showSnackbar('Failed to exit fullscreen', 'warning');
+        }
+      } else {
+        const result = await enhancedFullscreenManager.requestVideoFullscreen({
+          element: videoPlayerContainerRef.current,
+          onEnter: () => showSnackbar('Entered fullscreen mode', 'info'),
+          onExit: () => showSnackbar('Exited fullscreen mode', 'info'),
+          onError: (error) => showSnackbar('Fullscreen error: ' + error.message, 'warning'),
+          autoHideCursor: true,
+          escapeKeyEnabled: true,
+        });
+        
+        if (!result.success) {
+          showSnackbar('Failed to enter fullscreen', 'warning');
+        }
+      }
+    } catch (error) {
+      console.warn('Fullscreen toggle failed:', error);
+      showSnackbar('Fullscreen toggle failed', 'error');
+    }
+  }, [fullscreenSupported, isFullscreenMode, showSnackbar]);
+
+  const handleWebSocketMessage = useCallback((data: Record<string, unknown>) => {
     switch (data.type) {
       case 'test_progress':
-        updateTestProgress(data.payload);
+        updateTestProgress(data.payload as Record<string, unknown>);
         break;
       case 'test_result':
-        addTestResult(data.payload);
+        addTestResult(data.payload as TestResults);
         break;
       case 'test_completed':
-        handleTestCompletion(data.payload);
+        handleTestCompletion(data.payload as Record<string, unknown>);
         break;
       case 'test_error':
         handleTestError(data.payload);
         break;
       default:
-        console.log('Unknown WebSocket message:', data);
+        // Unknown WebSocket message - ignoring
     }
   }, [updateTestProgress, addTestResult, handleTestCompletion, handleTestError]);
 
   const connectWebSocket = useCallback(() => {
-    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://155.138.239.131:8001';
+    const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
     wsRef.current = new WebSocket(`${wsUrl}/ws/test-execution/${currentSession?.id}`);
     
     wsRef.current.onmessage = (event) => {
@@ -176,7 +275,7 @@ const TestExecution: React.FC = () => {
     wsRef.current.onclose = () => {
       if (isRunning) {
         // Attempt to reconnect
-        setTimeout(connectWebSocket, 3000);
+        setTimeout(connectWebSocket, 3000); // eslint-disable-line no-console
       }
     };
   }, [currentSession, handleWebSocketMessage, isRunning, showSnackbar]);
@@ -189,8 +288,9 @@ const TestExecution: React.FC = () => {
       if (response.length > 0) {
         setSelectedProject(response[0]);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load projects');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load projects';
+      setError(message);
       showSnackbar('Failed to load projects', 'error');
     } finally {
       setLoading(false);
@@ -204,8 +304,9 @@ const TestExecution: React.FC = () => {
       setLoading(true);
       const response = await apiService.get<TestSession[]>(`/api/projects/${selectedProject.id}/test-sessions`);
       setSessions(response);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load test sessions');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load test sessions';
+      setError(message);
       showSnackbar('Failed to load test sessions', 'error');
     } finally {
       setLoading(false);
@@ -257,7 +358,7 @@ const TestExecution: React.FC = () => {
       return;
     }
 
-    const modelConfigs = (selectedProject as any).modelConfigurations || (selectedProject as any).models || [];
+    const modelConfigs = (selectedProject as ExtendedProject).modelConfigurations || (selectedProject as ExtendedProject).models || [];
     if (modelConfigs.length === 0) {
       showSnackbar('Please configure at least one model', 'warning');
       return;
@@ -270,7 +371,7 @@ const TestExecution: React.FC = () => {
         description: sessionDescription,
         projectId: selectedProject.id,
         videoIds: selectedVideos.map(v => v.id),
-        modelConfigIds: modelConfigs.map((mc: any) => mc.id),
+        modelConfigIds: modelConfigs.map((mc: ModelConfiguration) => mc.id),
         configuration: testConfig,
       };
 
@@ -284,8 +385,9 @@ const TestExecution: React.FC = () => {
       setSessionDialogOpen(false);
       
       showSnackbar('Test session created successfully', 'success');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create test session');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create test session';
+      setError(message);
       showSnackbar('Failed to create test session', 'error');
     } finally {
       setLoading(false);
@@ -294,6 +396,9 @@ const TestExecution: React.FC = () => {
 
   const startTestExecution = async (session: TestSession) => {
     try {
+      // Mark user interaction immediately when button is clicked
+      markUserInteraction();
+      
       setIsRunning(true);
       setCurrentSession(session);
       setTestResults([]);
@@ -307,10 +412,48 @@ const TestExecution: React.FC = () => {
           s.id === session.id ? { ...s, status: 'running' as const } : s
         )
       );
+
+      // Show video player and attempt fullscreen mode if supported
+      setShowVideoPlayer(true);
       
-    } catch (err: any) {
+      if (fullscreenSupported && videoPlayerContainerRef.current) {
+        try {
+          // Small delay to allow UI to update
+          setTimeout(async () => {
+            try {
+              const fullscreenResult = await enhancedFullscreenManager.requestVideoFullscreen({
+                element: videoPlayerContainerRef.current!,
+                onEnter: () => {
+                  showSnackbar('Entered fullscreen mode', 'info');
+                },
+                onExit: () => {
+                  showSnackbar('Exited fullscreen mode', 'info');
+                },
+                onError: (error) => {
+                  showSnackbar('Fullscreen error: ' + error.message, 'warning');
+                },
+                autoHideCursor: true,
+                escapeKeyEnabled: true,
+              });
+
+              if (!fullscreenResult.success) {
+                showSnackbar('Fullscreen not available, continuing in window mode', 'warning');
+              }
+            } catch (fullscreenError) {
+              showSnackbar('Fullscreen not available, continuing in window mode', 'warning');
+            }
+          }, 100);
+        } catch (fullscreenError) {
+          showSnackbar('Fullscreen not available, continuing in window mode', 'warning');
+        }
+      } else if (!fullscreenSupported) {
+        showSnackbar('Fullscreen not supported, running in window mode', 'info');
+      }
+      
+    } catch (err: unknown) {
       setIsRunning(false);
-      setError(err.message || 'Failed to start test execution');
+      const message = err instanceof Error ? err.message : 'Failed to start test execution';
+      setError(message);
       showSnackbar('Failed to start test execution', 'error');
     }
   };
@@ -321,6 +464,17 @@ const TestExecution: React.FC = () => {
     try {
       await apiService.post(`/api/test-sessions/${currentSession.id}/stop`);
       setIsRunning(false);
+      setShowVideoPlayer(false);
+      
+      // Exit fullscreen if currently in fullscreen mode
+      if (isFullscreenMode) {
+        try {
+          await enhancedFullscreenManager.exitVideoFullscreen();
+        } catch (fullscreenError) {
+          console.warn('Failed to exit fullscreen:', fullscreenError);
+        }
+      }
+      
       showSnackbar('Test execution stopped', 'warning');
       
       // Update session status
@@ -330,8 +484,9 @@ const TestExecution: React.FC = () => {
         )
       );
       
-    } catch (err: any) {
-      setError(err.message || 'Failed to stop test execution');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to stop test execution';
+      setError(message);
       showSnackbar('Failed to stop test execution', 'error');
     }
   };
@@ -352,7 +507,7 @@ const TestExecution: React.FC = () => {
     }
   }, []);
 
-  const getStatusColor = useCallback((status: string) => {
+  const getStatusColor = useCallback((status: string): ChipColor => {
     switch (status) {
       case 'completed': return 'success';
       case 'running': return 'primary';
@@ -362,8 +517,9 @@ const TestExecution: React.FC = () => {
     }
   }, []);
 
-  const getModelConfigsCount = useCallback((project: Project) => {
-    const modelConfigs = (project as any).modelConfigurations || (project as any).models || [];
+  const getModelConfigsCount = useCallback((project: Project | ExtendedProject) => {
+    const extendedProject = project as ExtendedProject;
+    const modelConfigs = extendedProject.modelConfigurations || extendedProject.models || [];
     return modelConfigs.length;
   }, []);
 
@@ -512,6 +668,26 @@ const TestExecution: React.FC = () => {
               >
                 Stop Execution
               </Button>
+              
+              {fullscreenSupported && (
+                <Tooltip title={isFullscreenMode ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
+                  <IconButton
+                    onClick={toggleFullscreen}
+                    disabled={!showVideoPlayer}
+                    size={window.innerWidth < 600 ? "medium" : "small"}
+                    sx={{
+                      minHeight: { xs: '48px', sm: 'auto' },
+                      touchAction: 'manipulation',
+                      ml: 1,
+                      '&:active': {
+                        transform: 'scale(0.95)'
+                      }
+                    }}
+                  >
+                    {isFullscreenMode ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
             
             <LinearProgress sx={{ mb: 2 }} />
@@ -526,6 +702,118 @@ const TestExecution: React.FC = () => {
             >
               Progress: {testResults.length} / {selectedVideos.length * getModelConfigsCount(selectedProject || {} as Project)} tests completed
             </Typography>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Video Player for Test Execution */}
+      {showVideoPlayer && currentSession && selectedVideos.length > 0 && (
+        <Card 
+          ref={videoPlayerContainerRef}
+          sx={{ 
+            mb: 3,
+            position: isFullscreenMode ? 'fixed' : 'relative',
+            top: isFullscreenMode ? 0 : 'auto',
+            left: isFullscreenMode ? 0 : 'auto',
+            right: isFullscreenMode ? 0 : 'auto',
+            bottom: isFullscreenMode ? 0 : 'auto',
+            zIndex: isFullscreenMode ? 9999 : 1,
+            width: isFullscreenMode ? '100vw' : '100%',
+            height: isFullscreenMode ? '100vh' : 'auto',
+            backgroundColor: isFullscreenMode ? '#000' : 'background.paper',
+          }}
+        >
+          <CardContent sx={{ p: isFullscreenMode ? 0 : { xs: 1, sm: 2, md: 3 } }}>
+            {isFullscreenMode && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  zIndex: 10000,
+                  display: 'flex',
+                  gap: 1,
+                }}
+              >
+                <Tooltip title="Exit Fullscreen">
+                  <IconButton
+                    onClick={toggleFullscreen}
+                    sx={{
+                      bgcolor: 'rgba(0, 0, 0, 0.7)',
+                      color: 'white',
+                      '&:hover': {
+                        bgcolor: 'rgba(0, 0, 0, 0.9)',
+                      },
+                    }}
+                  >
+                    <ExitFullscreenIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Stop Test">
+                  <IconButton
+                    onClick={stopTestExecution}
+                    sx={{
+                      bgcolor: 'rgba(244, 67, 54, 0.7)',
+                      color: 'white',
+                      '&:hover': {
+                        bgcolor: 'rgba(244, 67, 54, 0.9)',
+                      },
+                    }}
+                  >
+                    <StopIcon />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            )}
+            
+            <SequentialVideoPlayer
+              videos={selectedVideos}
+              config={{
+                autoAdvance: true,
+                loopPlayback: false,
+                preloadNext: true,
+                fullscreenMode: true,
+                autoFullscreen: false, // We handle fullscreen manually
+                transitionDelay: 1000,
+                maxRetries: 3,
+                enableHardwareAcceleration: true,
+                syncWithExternalSignals: false,
+              }}
+              autoStart={true} // This is now user-initiated since it follows the button click
+              showControls={true}
+              showProgress={true}
+              showQueue={!isFullscreenMode}
+              onVideoStart={(video, index) => {
+                showSnackbar(`Playing video ${index + 1}: ${video.filename}`, 'info');
+              }}
+              onVideoEnd={(_video, _index) => {
+                // Video playback ended
+              }}
+              onPlaybackComplete={() => {
+                handleTestCompletion({});
+              }}
+              onError={(error) => {
+                console.error('Video playback error:', error);
+                
+                // Check if this is likely an autoplay issue
+                const errorMessage = error.message.toLowerCase();
+                if (errorMessage.includes('autoplay') || errorMessage.includes('interact') || errorMessage.includes('gesture')) {
+                  showSnackbar('Video autoplay blocked by browser. Please ensure you clicked the Start button and try again.', 'warning');
+                } else {
+                  showSnackbar(`Video Error: ${error.message}`, 'error');
+                }
+                
+                handleTestError(new Error(`Video Error: ${error.message}`));
+              }}
+              onProgressUpdate={(progress, videoIndex) => {
+                // Update test progress based on video playback
+                updateTestProgress({ 
+                  videoProgress: progress, 
+                  currentVideoIndex: videoIndex,
+                  totalProgress: progress 
+                });
+              }}
+            />
           </CardContent>
         </Card>
       )}
@@ -594,7 +882,7 @@ const TestExecution: React.FC = () => {
                     {getStatusIcon(session.status)}
                     <Chip 
                       label={session.status}
-                      color={getStatusColor(session.status) as any}
+                      color={getStatusColor(session.status)}
                       size="small"
                     />
                   </Box>
@@ -607,10 +895,10 @@ const TestExecution: React.FC = () => {
                 )}
                 
                 <Typography variant="body2" sx={{ mb: 1 }}>
-                  Videos: {(session as any).videoIds?.length || 1}
+                  Videos: {session.videoIds?.length || 1}
                 </Typography>
                 <Typography variant="body2" sx={{ mb: 1 }}>
-                  Models: {(session as any).modelConfigIds?.length || 1}
+                  Models: {session.modelConfigIds?.length || 1}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Created: {new Date(session.createdAt || Date.now()).toLocaleDateString()}

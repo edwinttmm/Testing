@@ -23,22 +23,22 @@ import {
   Switch,
   FormControlLabel,
   TextField,
-  Grid,
+  Grid as _Grid,
   Divider,
 } from '@mui/material';
 import {
   PlayArrow,
-  Pause,
+  Pause as _Pause,
   SkipNext,
   SkipPrevious,
   Shuffle,
-  Loop,
+  Loop as _Loop,
   Timeline,
   VideoLibrary,
-  Speed,
-  Sync,
+  Speed as _Speed,
+  Sync as _Sync,
   FiberManualRecord,
-  Stop,
+  Stop as _Stop,
   Settings,
   List as ListIcon,
   GridView,
@@ -217,7 +217,7 @@ const SequentialVideoManager: React.FC<SequentialVideoManagerProps> = ({
     }
   }, [getCurrentVideo, autoAdvance, latencyMs, advanceToNext]);
 
-  const handleTimeUpdate = useCallback((currentTime: number, frameNumber: number) => {
+  const handleTimeUpdate = useCallback((currentTime: number, _frameNumber: number) => {
     const currentVideo = getCurrentVideo();
     if (currentVideo) {
       setPlaybackState(prev => ({

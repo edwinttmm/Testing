@@ -16,7 +16,7 @@ import {
 jest.mock('../src/utils/envConfig', () => ({
   getServiceConfig: jest.fn((service) => {
     if (service === 'video') {
-      return { baseUrl: 'http://155.138.239.131:8000' };
+      return { baseUrl: 'http://localhost:8000' };
     }
     return {};
   })
@@ -34,7 +34,7 @@ describe('VideoUrlFixer Performance Benchmarks', () => {
       const testUrls = [
         'http://localhost:8000/uploads/test.mp4',
         '/uploads/relative.mp4',
-        'http://155.138.239.131:8000/uploads/correct.mp4',
+        'http://localhost:8000/uploads/correct.mp4',
         ''
       ];
 
@@ -105,7 +105,7 @@ describe('VideoUrlFixer Performance Benchmarks', () => {
           id: `video-${i}`,
           url: i % 3 === 0 ? `http://localhost:8000/uploads/video${i}.mp4` : 
                i % 3 === 1 ? `/uploads/video${i}.mp4` :
-               `http://155.138.239.131:8000/uploads/video${i}.mp4`,
+               `http://localhost:8000/uploads/video${i}.mp4`,
           filename: `video${i}.mp4`
         }));
         
@@ -280,7 +280,7 @@ describe('VideoUrlFixer Performance Benchmarks', () => {
           if (service === 'database') {
             return { migrating: true };
           }
-          return { baseUrl: 'http://155.138.239.131:8000' };
+          return { baseUrl: 'http://localhost:8000' };
         })
       }));
       

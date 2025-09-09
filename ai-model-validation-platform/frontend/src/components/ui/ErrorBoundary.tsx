@@ -30,8 +30,8 @@ export enum ErrorType {
 
 export interface ErrorInfo {
   componentStack: string;
-  errorBoundary?: string;
-  errorBoundaryStack?: string;
+  errorBoundary?: string | undefined;
+  errorBoundaryStack?: string | undefined;
 }
 
 export interface ErrorBoundaryState {
@@ -408,11 +408,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 // Higher-order component for easier wrapping
-export const withErrorBoundary = <P extends object>(
+export const withErrorBoundary = <P extends Record<string, unknown>>(
   WrappedComponent: React.ComponentType<P>,
   errorBoundaryProps?: Omit<ErrorBoundaryProps, 'children'>
-) => {
-  const WithErrorBoundaryComponent = (props: P) => (
+): React.FC<P> => {
+  const WithErrorBoundaryComponent: React.FC<P> = (props: P) => (
     <ErrorBoundary {...errorBoundaryProps}>
       <WrappedComponent {...props} />
     </ErrorBoundary>

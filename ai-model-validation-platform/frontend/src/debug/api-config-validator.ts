@@ -3,6 +3,8 @@
  * Comprehensive tool to diagnose and fix API configuration issues
  */
 
+import logger from '../utils/safeErrorLogger';
+
 interface ConfigDiagnostic {
   test: string;
   status: 'PASS' | 'FAIL' | 'WARN';
@@ -179,42 +181,39 @@ export class ApiConfigValidator {
   }
 
   printReport(): void {
-    console.log('=== API Configuration Diagnostic Report ===');
+    logger.info('=== API Configuration Diagnostic Report ===');
     
     const passed = this.diagnostics.filter(d => d.status === 'PASS').length;
     const failed = this.diagnostics.filter(d => d.status === 'FAIL').length;
     const warnings = this.diagnostics.filter(d => d.status === 'WARN').length;
     
-    console.log(`\nSummary: ${passed} PASS, ${failed} FAIL, ${warnings} WARN\n`);
+    logger.info(`Summary: ${passed} PASS, ${failed} FAIL, ${warnings} WARN`, { passed, failed, warnings });
     
     this.diagnostics.forEach(diagnostic => {
       const icon = diagnostic.status === 'PASS' ? '✅' : 
                   diagnostic.status === 'FAIL' ? '❌' : '⚠️';
       
-      console.log(`${icon} ${diagnostic.test}: ${diagnostic.message}`);
-      if (diagnostic.details) {
-        console.log('   Details:', diagnostic.details);
-      }
+      logger.info(`${icon} ${diagnostic.test}: ${diagnostic.message}`, diagnostic.details ? { details: diagnostic.details } : undefined);
     });
     
     // Recommendations
-    console.log('\n=== Recommendations ===');
+    logger.info('=== Recommendations ===');
     
     const failedTests = this.diagnostics.filter(d => d.status === 'FAIL');
     if (failedTests.some(t => t.test === 'Runtime Config Loading')) {
-      console.log('🔧 Ensure public/config.js is accessible and loaded in HTML');
+      logger.info('Ensure public/config.js is accessible and loaded in HTML');
     }
     
     if (failedTests.some(t => t.test === 'Process.env Override')) {
-      console.log('🔧 Configuration is now handled automatically by configurationManager');
+      logger.info('Configuration is now handled automatically by configurationManager');
     }
     
     if (failedTests.some(t => t.test === 'API Service Configuration')) {
-      console.log('🔧 API service may be instantiated before runtime config is applied');
+      logger.info('API service may be instantiated before runtime config is applied');
     }
     
     if (failedTests.some(t => t.test.includes('Network Connectivity'))) {
-      console.log('🔧 Check if backend server is running and accessible');
+      logger.info('Check if backend server is running and accessible');
     }
   }
 }

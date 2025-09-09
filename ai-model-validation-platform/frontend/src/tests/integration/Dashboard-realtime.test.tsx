@@ -9,9 +9,17 @@ const mockEmit = jest.fn();
 const mockUseWebSocket = {
   isConnected: true,
   connectionState: 'connected',
+  lastMessage: null,
+  error: null,
   subscribe: mockSubscribe,
   emit: mockEmit,
-  error: null
+  metrics: {
+    connectionAttempts: 0,
+    reconnectCount: 0,
+    totalMessages: 0,
+    isStable: true
+  },
+  healthStatus: 'healthy'
 };
 
 jest.mock('../../services/websocketService', () => ({

@@ -1,9 +1,81 @@
 from sqlalchemy import Column, String, DateTime, Float, Integer, Boolean, Text, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from passlib.context import CryptContext
 import uuid
 
 from database import Base
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Auth User Model - CRITICAL FOR DEPLOYMENT
+class AuthUser(Base):
+    """User authentication model for secure access"""
+    __tablename__ = "auth_users"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String, unique=True, nullable=False, index=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    full_name = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True, index=True)
+    is_superuser = Column(Boolean, default=False, index=True)
+    is_verified = Column(Boolean, default=False, index=True)
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Enhanced composite indexes for authentication performance
+    __table_args__ = (
+        Index('idx_auth_user_email_active', 'email', 'is_active'),
+        Index('idx_auth_user_username_active', 'username', 'is_active'),
+        Index('idx_auth_user_active_verified', 'is_active', 'is_verified'),
+        Index('idx_auth_user_superuser_active', 'is_superuser', 'is_active'),
+        Index('idx_auth_user_created_active', 'created_at', 'is_active'),
+        Index('idx_auth_user_last_login', 'last_login'),
+    )
+    
+    def verify_password(self, password: str) -> bool:
+        """Verify password against hash"""
+        return pwd_context.verify(password, self.hashed_password)
+    
+    @classmethod
+    def get_password_hash(cls, password: str) -> str:
+        """Generate password hash"""
+        return pwd_context.hash(password)
+    
+    def set_password(self, password: str) -> None:
+        """Set hashed password"""
+        self.hashed_password = self.get_password_hash(password)
+
+# User Session Management
+class UserSession(Base):
+    """User session tracking for security"""
+    __tablename__ = "user_sessions"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("auth_users.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_token = Column(String, nullable=False, unique=True, index=True)
+    ip_address = Column(String, index=True)
+    user_agent = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    last_activity = Column(DateTime(timezone=True), onupdate=func.now(), index=True)
+    
+    # Relationships
+    user = relationship("AuthUser")
+    
+    # Enhanced composite indexes for session management
+    __table_args__ = (
+        Index('idx_session_user_active', 'user_id', 'is_active'),
+        Index('idx_session_token_active', 'session_token', 'is_active'),
+        Index('idx_session_expires_active', 'expires_at', 'is_active'),
+        Index('idx_session_user_activity', 'user_id', 'last_activity'),
+        Index('idx_session_ip_activity', 'ip_address', 'last_activity'),
+        Index('idx_session_cleanup', 'expires_at', 'is_active'),  # For cleanup jobs
+    )
 
 class Project(Base):
     __tablename__ = "projects"
@@ -102,10 +174,15 @@ class TestSession(Base):
     video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
     tolerance_ms = Column(Integer, default=100)
     status = Column(String, default="created", index=True)  # Index for status filtering
+    session_type = Column(String, default="user_created", index=True)  # "user_created", "auto_generated", "system_test"
     started_at = Column(DateTime(timezone=True), index=True)  # Index for time-based queries
     completed_at = Column(DateTime(timezone=True), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # NEW LABJACK TIMING FIELDS
+    latency_threshold_ms = Column(Integer, default=100, index=True)  # Pass/Fail threshold for latency
+    video_start_timestamp = Column(Float, nullable=True, index=True)  # Session video start time reference
 
     project = relationship("Project", back_populates="test_sessions")
     detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
@@ -116,6 +193,9 @@ class TestSession(Base):
     __table_args__ = (
         Index('idx_testsession_project_status', 'project_id', 'status'),
         Index('idx_testsession_project_created', 'project_id', 'created_at'),
+        Index('idx_testsession_type_status', 'session_type', 'status'),  # Filter by session type and status
+        Index('idx_testsession_type_created', 'session_type', 'created_at'),  # Session type with time
+        Index('idx_testsession_user_sessions', 'session_type', 'status', 'created_at'),  # UI filtering
     )
 
 class DetectionEvent(Base):
@@ -123,19 +203,28 @@ class DetectionEvent(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=True, index=True)  # FIXED: Added video_id relationship
     timestamp = Column(Float, nullable=False, index=True)  # Index for temporal queries
-    confidence = Column(Float, index=True)  # Index for confidence-based filtering
-    class_label = Column(String, index=True)  # Index for filtering by detection type
-    validation_result = Column(String, index=True)  # Index for filtering by validation result ('TP', 'FP', 'FN')
+    validation_result = Column(String, index=True)  # Index for filtering by validation result ('Pass', 'Fail')
     ground_truth_match_id = Column(String(36), ForeignKey("ground_truth_objects.id", ondelete="SET NULL"), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    # NEW LABJACK TIMING FIELDS - PRIMARY DATA
+    latency_ms = Column(Float, nullable=True, index=True)  # Calculated latency between LabJack signal and detection
+    labjack_timestamp = Column(Float, nullable=True, index=True)  # LabJack detection timestamp
+    video_start_time = Column(Float, nullable=True, index=True)  # Video start reference time
+    labjack_voltage = Column(Float, nullable=True)  # LabJack voltage reading if available
+    
+    # LEGACY AI FIELDS (deprecated but kept for backward compatibility)
+    confidence = Column(Float, index=True)  # Index for confidence-based filtering (deprecated for LabJack)
+    class_label = Column(String, index=True)  # Index for filtering by detection type (deprecated for LabJack)
     
     # NEW FIELDS FOR COMPLETE DETECTION STORAGE
     detection_id = Column(String(36), nullable=True, index=True)  # Unique detection identifier
     frame_number = Column(Integer, nullable=True, index=True)  # Frame correlation
     vru_type = Column(String, nullable=True, index=True)  # VRU classification
     
-    # Bounding box coordinates (spatial data)
+    # Bounding box coordinates (spatial data) - deprecated for LabJack timing validation
     bounding_box_x = Column(Float, nullable=True)  # X coordinate
     bounding_box_y = Column(Float, nullable=True)  # Y coordinate  
     bounding_box_width = Column(Float, nullable=True)  # Width
@@ -148,13 +237,36 @@ class DetectionEvent(Base):
     # Processing metadata
     processing_time_ms = Column(Float, nullable=True)  # Time taken for detection
     model_version = Column(String, nullable=True)  # ML model version used
+    
+    # LABJACK TIMING VALIDATION FIELDS
+    labjack_timestamp = Column(Float, nullable=True, index=True)  # LabJack detection timestamp (Unix)
+    video_start_time = Column(Float, nullable=True, index=True)  # Video start timestamp (Unix)
+    latency_ms = Column(Float, nullable=True, index=True)  # Calculated latency in milliseconds
+    latency_threshold_ms = Column(Float, nullable=True)  # Threshold used for validation
+    latency_result = Column(String, nullable=True, index=True)  # 'pass', 'fail', 'error', 'timeout'
+    voltage_level = Column(Float, nullable=True)  # LabJack voltage reading that triggered detection
+    detection_channel = Column(String, nullable=True)  # LabJack channel used for detection
 
+    # RELATIONSHIPS - FIXED: Added missing video relationship
     test_session = relationship("TestSession", back_populates="detection_events")
+    video = relationship("Video")  # FIXED: Added missing video relationship
 
-    # Comprehensive composite indexes for performance-critical queries
+    # Comprehensive composite indexes for performance-critical queries - UPDATED FOR LABJACK
     __table_args__ = (
         Index('idx_detection_session_timestamp', 'test_session_id', 'timestamp'),
         Index('idx_detection_session_validation', 'test_session_id', 'validation_result'),
+        Index('idx_detection_video_timestamp', 'video_id', 'timestamp'),  # FIXED: Added video-based queries
+        Index('idx_detection_video_validation', 'video_id', 'validation_result'),  # FIXED: Added video validation queries
+        
+        # LABJACK TIMING SPECIFIC INDEXES
+        Index('idx_detection_latency_validation', 'latency_ms', 'validation_result'),  # Latency analysis
+        Index('idx_detection_labjack_timestamp', 'labjack_timestamp'),  # LabJack timing queries
+        Index('idx_detection_session_latency', 'test_session_id', 'latency_ms'),  # Session latency analysis
+        Index('idx_detection_video_start_time', 'video_start_time'),  # Video timing reference
+        Index('idx_detection_labjack_voltage', 'labjack_voltage'),  # Voltage analysis
+        Index('idx_detection_session_labjack_validation', 'test_session_id', 'validation_result', 'latency_ms'),  # Complex LabJack queries
+        
+        # LEGACY INDEXES (for backward compatibility)
         Index('idx_detection_timestamp_confidence', 'timestamp', 'confidence'),
         Index('idx_detection_frame_class', 'frame_number', 'class_label'),
         Index('idx_detection_bbox_area', 'bounding_box_width', 'bounding_box_height'),
@@ -253,24 +365,56 @@ class VideoProjectLink(Base):
     )
 
 class TestResult(Base):
-    """Enhanced test results with detailed metrics"""
+    """Enhanced test results with LabJack timing-based validation metrics"""
     __tablename__ = "test_results"
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
-    accuracy = Column(Float)
-    precision = Column(Float)
-    recall = Column(Float)
-    f1_score = Column(Float)
-    true_positives = Column(Integer)
-    false_positives = Column(Integer)
-    false_negatives = Column(Integer)
-    statistical_analysis = Column(JSON)
-    confidence_intervals = Column(JSON)
+    
+    # PRIMARY LABJACK TIMING METRICS
+    pass_rate = Column(Float, index=True)  # Percentage of detections that passed latency threshold
+    avg_latency_ms = Column(Float, index=True)  # Average latency across all detections
+    max_latency_ms = Column(Float, index=True)  # Maximum latency detected
+    min_latency_ms = Column(Float, index=True)  # Minimum latency detected
+    median_latency_ms = Column(Float, index=True)  # Median latency for better distribution understanding
+    std_dev_latency_ms = Column(Float, index=True)  # Standard deviation of latency
+    total_detections = Column(Integer, index=True)  # Total number of detection events
+    passed_detections = Column(Integer, index=True)  # Number of detections that passed threshold
+    failed_detections = Column(Integer, index=True)  # Number of detections that failed threshold
+    threshold_ms = Column(Integer, index=True)  # Latency threshold used for validation
+    latency_distribution = Column(JSON)  # Histogram bins and distribution data
+    
+    # VALIDATION METADATA
+    validation_type = Column(String(50), default="latency_based", index=True)  # Type of validation used
+    test_duration_seconds = Column(Float)  # Total test duration
+    detection_rate_hz = Column(Float)  # Detections per second
+    
+    # LEGACY AI METRICS (kept for backward compatibility, mapped from latency metrics)
+    accuracy = Column(Float)  # Maps to pass_rate for compatibility
+    precision = Column(Float)  # Maps to pass_rate for compatibility  
+    recall = Column(Float)  # Maps to pass_rate for compatibility
+    f1_score = Column(Float)  # Maps to pass_rate for compatibility
+    true_positives = Column(Integer)  # Maps to passed_detections
+    false_positives = Column(Integer)  # Maps to failed_detections
+    false_negatives = Column(Integer, default=0)  # Not applicable for latency validation
+    statistical_analysis = Column(JSON)  # Contains detailed latency metrics and histogram
+    confidence_intervals = Column(JSON)  # Statistical confidence data
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
     # Relationships
     test_session = relationship("TestSession", back_populates="results")
+    
+    # Enhanced composite indexes for LabJack timing analysis
+    __table_args__ = (
+        Index('idx_testresult_session_pass_rate', 'test_session_id', 'pass_rate'),
+        Index('idx_testresult_avg_latency', 'avg_latency_ms'),
+        Index('idx_testresult_max_latency', 'max_latency_ms'),
+        Index('idx_testresult_total_detections', 'total_detections'),
+        Index('idx_testresult_session_created', 'test_session_id', 'created_at'),
+        Index('idx_testresult_latency_range', 'min_latency_ms', 'max_latency_ms'),  # Latency range analysis
+        Index('idx_testresult_pass_fail_counts', 'passed_detections', 'failed_detections'),  # Pass/fail analysis
+    )
 
 class DetectionComparison(Base):
     """Detection comparison for ground truth validation"""
@@ -301,6 +445,9 @@ class DetectionComparison(Base):
         Index('idx_comparison_match_iou', 'match_type', 'iou_score'),  # Quality metrics
         Index('idx_comparison_temporal_distance', 'temporal_offset', 'distance_error'),  # Error analysis
     )
+
+# Import simple detection models
+from src.models.detection_session import DetectionSession, StoredDetectionEvent, VideoEvent
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

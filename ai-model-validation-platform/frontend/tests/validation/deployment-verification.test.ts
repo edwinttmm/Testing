@@ -12,13 +12,13 @@ import { jest } from '@jest/globals';
 // Environment detection
 const isProductionEnvironment = () => {
   return process.env.NODE_ENV === 'production' || 
-         window.location.hostname === '155.138.239.131' ||
+         window.location.hostname === 'localhost' ||
          window.location.hostname.includes('production-domain');
 };
 
 const getExpectedBaseUrl = () => {
   if (isProductionEnvironment()) {
-    return 'http://155.138.239.131:8000';
+    return 'http://localhost:8000';
   }
   return 'http://localhost:8000';
 };
@@ -216,7 +216,7 @@ describe('Deployment Verification - Frontend Configuration', () => {
   test('should verify environment configuration is correct', () => {
     // Check window.location for production environment
     if (isProductionEnvironment()) {
-      expect(window.location.hostname).toBe('155.138.239.131');
+      expect(window.location.hostname).toBe('localhost');
       console.log('✅ Running on production server');
     } else {
       console.log('ℹ️ Running in development environment');
@@ -323,7 +323,7 @@ describe('Deployment Verification - Summary', () => {
     
     if (isProductionEnvironment()) {
       console.log('🚀 Production deployment verification completed');
-      expect(summary.hostname).toBe('155.138.239.131');
+      expect(summary.hostname).toBe('localhost');
     } else {
       console.log('🏠 Development environment verification completed');
     }

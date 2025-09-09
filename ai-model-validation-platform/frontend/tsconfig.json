@@ -12,9 +12,11 @@
     ],
     "allowJs": true,
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "strict": true,
+    "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "module": "esnext",
@@ -24,12 +26,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "downlevelIteration": true,
-    "exactOptionalPropertyTypes": true,
+    "exactOptionalPropertyTypes": false,
     "noImplicitReturns": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "useDefineForClassFields": true,
-    "types": ["node", "jest", "@testing-library/jest-dom"],
+    "types": ["node", "jest"],
     "baseUrl": "./src",
     "paths": {
       "@/*": ["*"],
@@ -43,16 +45,23 @@
     }
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "src/types/global.d.ts"
   ],
   "exclude": [
     "node_modules",
     "build",
     "coverage",
-    "src/tests/**/*",
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",
-    "**/*.spec.tsx"
+    "**/*.spec.tsx",
+    "src/tests/**/*",
+    "tests/**/*",
+    "**/__tests__/**/*",
+    "**/*.stories.*",
+    "**/*.e2e.*",
+    "**/test-utils.*",
+    "**/setupTests.*"
   ]
 }

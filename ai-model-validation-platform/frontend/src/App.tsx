@@ -1,12 +1,18 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import EnhancedErrorBoundary from './utils/enhancedErrorBoundary';
+import GlobalErrorHandler from './components/ui/GlobalErrorHandler';
+import { ErrorNotificationProvider } from './components/ui/ErrorNotification';
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
 import ApiConnectionStatus from './components/ApiConnectionStatus';
+import { initializeLogging } from './config/logging.config';
+import { ComponentLogger, logErrorBoundary } from './utils/loggingUtils';
+import { ErrorBoundaryError } from './types/error.types';
+import { EnhancedErrorInfo, EnhancedErrorType } from './utils/enhancedErrorBoundary';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -19,6 +25,7 @@ const Results = lazy(() => import('./pages/Results'));
 const Datasets = lazy(() => import('./pages/Datasets'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const Settings = lazy(() => import('./pages/Settings'));
+const VideoTestComponent = lazy(() => import('./components/VideoTestComponent'));
 
 const theme = createTheme({
   palette: {
@@ -80,24 +87,52 @@ const LoadingFallback: React.FC<{ message?: string }> = ({ message = 'Loading...
 );
 
 const App: React.FC = () => {
-  const handleAppError = (error: Error, errorInfo: any, errorType: any) => {
-    console.error('App-level error caught:', { error, errorInfo, errorType });
-    // Send to error tracking service in production
+  const appLogger = new ComponentLogger('App');
+
+  // Initialize logging system
+  useEffect(() => {
+    initializeLogging();
+    appLogger.logger.info('Application initialized', {
+      action: 'app_init',
+      metadata: {
+        environment: process.env.NODE_ENV,
+        timestamp: new Date().toISOString()
+      }
+    });
+    // appLogger.logger is stable and doesn't need to be in dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAppError = (error: ErrorBoundaryError, errorInfo: EnhancedErrorInfo, errorType: EnhancedErrorType) => {
+    logErrorBoundary(error, { componentStack: errorInfo.componentStack || 'Unknown' }, 'App');
+    appLogger.logger.error('App-level error caught', {
+      action: 'error_boundary',
+      metadata: { errorType, hasErrorInfo: !!errorInfo }
+    }, error);
+  };
+
+  const handleGlobalError = (error: Error, source: string) => {
+    appLogger.logger.error('Global error handler triggered', {
+      action: 'global_error',
+      metadata: { source }
+    }, error);
   };
 
   return (
-    <EnhancedErrorBoundary
-      level="app"
-      context="application-root"
-      onError={handleAppError}
-      enableRetry={true}
-      maxRetries={1}
-      enableRecovery={true}
-    >
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Router>
-          <EnhancedErrorBoundary
+    <ErrorNotificationProvider>
+      <EnhancedErrorBoundary
+        level="app"
+        context="application-root"
+        onError={handleAppError}
+        enableRetry={true}
+        maxRetries={1}
+        enableRecovery={true}
+      >
+        <GlobalErrorHandler onError={handleGlobalError} />
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
+          <Router>
+            <EnhancedErrorBoundary
             level="app" 
             context="router-navigation"
             enableRetry={true}
@@ -203,15 +238,23 @@ const App: React.FC = () => {
                           </Suspense>
                         </EnhancedErrorBoundary>
                       } />
+                      <Route path="/video-test" element={
+                        <EnhancedErrorBoundary level="page" context="video-test" enableRecovery={true}>
+                          <Suspense fallback={<LoadingFallback message="Loading Video Test..." />}>
+                            <VideoTestComponent />
+                          </Suspense>
+                        </EnhancedErrorBoundary>
+                      } />
                     </Routes>
                   </Suspense>
                 </EnhancedErrorBoundary>
               </Box>
             </Box>
-          </EnhancedErrorBoundary>
-        </Router>
-      </ThemeProvider>
-    </EnhancedErrorBoundary>
+            </EnhancedErrorBoundary>
+          </Router>
+        </ThemeProvider>
+      </EnhancedErrorBoundary>
+    </ErrorNotificationProvider>
   );
 };
 

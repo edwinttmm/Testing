@@ -47,20 +47,15 @@ interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
 const customRender = (
   ui: ReactElement,
   options: CustomRenderOptions = {}
-): RenderResult & { user: ReturnType<typeof userEvent.setup> } => {
+): RenderResult => {
   const { wrapper = AllTheProviders, ...renderOptions } = options;
-  
-  const user = userEvent.setup();
   
   const result = render(ui, {
     wrapper,
     ...renderOptions,
   });
 
-  return {
-    user,
-    ...result,
-  };
+  return result;
 };
 
 // Test data generators for London School TDD approach
@@ -241,9 +236,9 @@ export const a11yTestHelpers = {
     expect(results.violations).toHaveLength(0);
   },
   
-  expectKeyboardNavigation: async (user: ReturnType<typeof userEvent.setup>, elements: HTMLElement[]) => {
+  expectKeyboardNavigation: async (elements: HTMLElement[]) => {
     for (let i = 0; i < elements.length; i++) {
-      await user.tab();
+      await userEvent.tab();
       expect(elements[i]).toHaveFocus();
     }
   },

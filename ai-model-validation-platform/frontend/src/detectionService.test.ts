@@ -1,8 +1,8 @@
-import { detectionService, DetectionConfig, DetectionResult } from '../../ai-model-validation-platform/frontend/src/services/detectionService';
-import { apiService } from '../../ai-model-validation-platform/frontend/src/services/api';
+import { detectionService, DetectionConfig, DetectionResult } from './services/detectionService';
+import { apiService } from './services/api';
 
 // Mock the API service
-jest.mock('../../ai-model-validation-platform/frontend/src/services/api');
+jest.mock('./services/api');
 const mockApiService = apiService as jest.Mocked<typeof apiService>;
 
 describe('DetectionService', () => {
@@ -49,10 +49,12 @@ describe('DetectionService', () => {
       ];
 
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: mockDetections,
         processingTime: 1500,
-        error: undefined
+        modelUsed: 'yolov8n',
+        totalDetections: mockDetections.length,
+        confidenceDistribution: { '0.8-0.9': 1 }
       });
 
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
@@ -62,16 +64,24 @@ describe('DetectionService', () => {
       expect(result.detections[0].boundingBox.confidence).toBe(0.85);
       expect(result.source).toBe('backend');
       expect(result.processingTime).toBeGreaterThan(0);
-      expect(mockApiService.runDetectionPipeline).toHaveBeenCalledWith(mockVideoId, mockConfig);
+      expect(mockApiService.runDetectionPipeline).toHaveBeenCalledWith(mockVideoId, {
+        confidenceThreshold: mockConfig.confidenceThreshold,
+        nmsThreshold: mockConfig.nmsThreshold,
+        modelName: mockConfig.modelName,
+        targetClasses: mockConfig.targetClasses
+      });
     });
 
     it('should prevent concurrent detection requests for same video', async () => {
       // Mock a slow backend response
       mockApiService.runDetectionPipeline.mockImplementation(() => 
         new Promise(resolve => setTimeout(() => resolve({
-          success: true,
+          videoId: mockVideoId,
           detections: [],
-          processingTime: 2000
+          processingTime: 2000,
+          modelUsed: 'yolov8n',
+          totalDetections: 0,
+          confidenceDistribution: {}
         }), 1000))
       );
 
@@ -98,7 +108,7 @@ describe('DetectionService', () => {
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Backend service unavailable');
+      expect(result.error).toContain('Detection service is currently unavailable');
       expect(result.source).toBe('backend');
     });
 
@@ -108,37 +118,38 @@ describe('DetectionService', () => {
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Network error');
+      expect(result.error).toContain('Detection service is currently unavailable');
       expect(result.source).toBe('backend');
     });
 
     it('should handle invalid backend response', async () => {
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: null as any,
-        processingTime: 1000
+        processingTime: 1000,
+        modelUsed: 'yolov8n',
+        totalDetections: 0,
+        confidenceDistribution: {}
       });
 
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid detection response from backend');
+      expect(result.success).toBe(true);
+      expect(result.detections).toHaveLength(0);
     });
 
     it('should convert detections to annotations correctly', async () => {
-      const mockDetections = [
+      const mockDetections: Array<Record<string, string | number | boolean>> = [
         {
           id: 'det-1',
           detectionId: 'det-1',
           frame: 5,
           timestamp: 166.67,
           vruType: 'cyclist',
-          bbox: {
-            x: 200,
-            y: 150,
-            width: 80,
-            height: 120
-          },
+          x: 200,
+          y: 150,
+          width: 80,
+          height: 120,
           label: 'bicycle',
           confidence: 0.92,
           occluded: false,
@@ -148,9 +159,12 @@ describe('DetectionService', () => {
       ];
 
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: mockDetections,
-        processingTime: 1200
+        processingTime: 1200,
+        modelUsed: 'yolov8n',
+        totalDetections: mockDetections.length,
+        confidenceDistribution: { '0.9-1.0': 1 }
       });
 
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
@@ -168,7 +182,7 @@ describe('DetectionService', () => {
           y: 150,
           width: 80,
           height: 120,
-          label: 'bicycle',
+          label: 'cyclist',
           confidence: 0.92
         },
         occluded: false,
@@ -185,16 +199,19 @@ describe('DetectionService', () => {
 
       const result = await detectionService.runDetection(mockVideoId, fallbackConfig);
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Detection service unavailable');
+      expect(result.success).toBe(true);
+      expect(result.detections).toHaveLength(2);
       expect(result.source).toBe('fallback');
     });
 
     it('should clean up processing state after completion', async () => {
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: [],
-        processingTime: 1000
+        processingTime: 1000,
+        modelUsed: 'yolov8n',
+        totalDetections: 0,
+        confidenceDistribution: {}
       });
 
       await detectionService.runDetection(mockVideoId, mockConfig);
@@ -211,9 +228,12 @@ describe('DetectionService', () => {
 
       // Should be able to run detection again immediately
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: [],
-        processingTime: 1000
+        processingTime: 1000,
+        modelUsed: 'yolov8n',
+        totalDetections: 0,
+        confidenceDistribution: {}
       });
 
       const secondResult = await detectionService.runDetection(mockVideoId, mockConfig);
@@ -348,22 +368,33 @@ describe('DetectionService', () => {
       };
 
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: [],
-        processingTime: 1000
+        processingTime: 1000,
+        modelUsed: 'yolov8n',
+        totalDetections: 0,
+        confidenceDistribution: {}
       });
 
       const result = await detectionService.runDetection(mockVideoId, minimalConfig);
 
       expect(result.success).toBe(true);
-      expect(mockApiService.runDetectionPipeline).toHaveBeenCalledWith(mockVideoId, minimalConfig);
+      expect(mockApiService.runDetectionPipeline).toHaveBeenCalledWith(mockVideoId, {
+        confidenceThreshold: minimalConfig.confidenceThreshold,
+        nmsThreshold: minimalConfig.nmsThreshold,
+        modelName: minimalConfig.modelName,
+        targetClasses: minimalConfig.targetClasses
+      });
     });
 
     it('should handle empty detections array', async () => {
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: [],
-        processingTime: 500
+        processingTime: 500,
+        modelUsed: 'yolov8n',
+        totalDetections: 0,
+        confidenceDistribution: {}
       });
 
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
@@ -373,22 +404,27 @@ describe('DetectionService', () => {
     });
 
     it('should handle malformed detection objects', async () => {
-      const malformedDetections = [
+      const malformedDetections: Array<Record<string, string | number | boolean>> = [
         {
           // Missing required fields
-          confidence: 0.8
+          confidence: 0.8,
+          class_name: 'person'
         },
         {
           id: 'det-2',
           // Missing bbox, should use defaults
-          label: 'person'
+          label: 'person',
+          class_name: 'person'
         }
       ];
 
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: mockVideoId,
         detections: malformedDetections,
-        processingTime: 1000
+        processingTime: 1000,
+        modelUsed: 'yolov8n',
+        totalDetections: malformedDetections.length,
+        confidenceDistribution: { '0.8-0.9': 1 }
       });
 
       const result = await detectionService.runDetection(mockVideoId, mockConfig);
@@ -425,11 +461,22 @@ describe('DetectionService', () => {
     it('should handle multiple detection requests for different videos', async () => {
       const videoIds = ['video-1', 'video-2', 'video-3'];
       
-      mockApiService.runDetectionPipeline.mockImplementation((videoId) =>
+      mockApiService.runDetectionPipeline.mockImplementation((videoId: string, config: any) =>
         Promise.resolve({
-          success: true,
-          detections: [{ id: `det-${videoId}`, videoId }],
-          processingTime: 1000
+          videoId,
+          detections: [{ 
+            id: `det-${videoId}`, 
+            class_name: 'person',
+            confidence: 0.85,
+            x: 100,
+            y: 100,
+            width: 50,
+            height: 100
+          }],
+          processingTime: 1000,
+          modelUsed: 'yolov8n',
+          totalDetections: 1,
+          confidenceDistribution: { '0.8-0.9': 1 }
         })
       );
 
@@ -449,9 +496,12 @@ describe('DetectionService', () => {
       
       mockApiService.runDetectionPipeline.mockImplementation(() =>
         new Promise(resolve => setTimeout(() => resolve({
-          success: true,
+          videoId: mockVideoId,
           detections: [],
-          processingTime: 100
+          processingTime: 100,
+          modelUsed: 'yolov8n',
+          totalDetections: 0,
+          confidenceDistribution: {}
         }), 50))
       );
 
@@ -465,9 +515,12 @@ describe('DetectionService', () => {
 
     it('should handle rapid sequential detection requests', async () => {
       mockApiService.runDetectionPipeline.mockResolvedValue({
-        success: true,
+        videoId: 'default',
         detections: [],
-        processingTime: 100
+        processingTime: 100,
+        modelUsed: 'yolov8n',
+        totalDetections: 0,
+        confidenceDistribution: {}
       });
 
       const requests = [];

@@ -199,8 +199,6 @@ describe('Edge Cases and Error Handling Test Suite', () => {
 
   describe('Event Handling Edge Cases', () => {
     it('should handle events with missing properties', async () => {
-      const user = userEvent.setup();
-
       render(
         <AnnotationProvider>
           <EnhancedAnnotationCanvas width={800} height={600} />

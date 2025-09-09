@@ -56,12 +56,14 @@ jest.mock('../services/api', () => ({
 // Mock WebSocket hook
 jest.mock('../hooks/useWebSocket', () => ({
   useWebSocket: jest.fn(() => ({
+    socket: null,
     isConnected: true,
-    on: jest.fn(() => jest.fn()),
-    emit: jest.fn(),
-    subscribe: jest.fn(() => jest.fn()),
     error: null,
-    connectionState: 'connected'
+    connect: jest.fn(),
+    disconnect: jest.fn(),
+    emit: jest.fn(),
+    on: jest.fn(() => jest.fn()),
+    configReady: true
   }))
 }));
 
@@ -79,10 +81,10 @@ jest.mock('socket.io-client', () => ({
 // Set up runtime config in window
 Object.defineProperty(window, 'RUNTIME_CONFIG', {
   value: {
-    REACT_APP_API_URL: 'http://155.138.239.131:8000',
-    REACT_APP_WS_URL: 'ws://155.138.239.131:8000',
-    REACT_APP_SOCKETIO_URL: 'http://155.138.239.131:8001',
-    REACT_APP_VIDEO_BASE_URL: 'http://155.138.239.131:8000',
+    REACT_APP_API_URL: 'http://localhost:8000',
+    REACT_APP_WS_URL: 'ws://localhost:8000',
+    REACT_APP_SOCKETIO_URL: 'http://localhost:8001',
+    REACT_APP_VIDEO_BASE_URL: 'http://localhost:8000',
     REACT_APP_ENVIRONMENT: 'production'
   },
   writable: true
@@ -102,7 +104,7 @@ describe('Integration Validation Test Suite', () => {
   });
 
   describe('Configuration Integration Tests', () => {
-    it('should load configuration with 155.138.239.131 URLs', async () => {
+    it('should load configuration with localhost URLs', async () => {
       // Wait for configuration to initialize
       await act(async () => {
         await configurationManager.waitForInitialization();
@@ -114,9 +116,9 @@ describe('Integration Validation Test Suite', () => {
       const wsUrl = getConfigValueSync('REACT_APP_WS_URL', '');
       const socketioUrl = getConfigValueSync('REACT_APP_SOCKETIO_URL', '');
 
-      expect(apiUrl).toBe('http://155.138.239.131:8000');
-      expect(wsUrl).toBe('ws://155.138.239.131:8000');
-      expect(socketioUrl).toBe('http://155.138.239.131:8001');
+      expect(apiUrl).toBe('http://localhost:8000');
+      expect(wsUrl).toBe('ws://localhost:8000');
+      expect(socketioUrl).toBe('http://localhost:8001');
     });
 
     it('should provide configuration access functions without errors', () => {
@@ -127,8 +129,8 @@ describe('Integration Validation Test Suite', () => {
       const apiUrl = getApiUrl();
       const wsUrl = getWebSocketUrl();
 
-      expect(apiUrl).toContain('155.138.239.131');
-      expect(wsUrl).toContain('155.138.239.131');
+      expect(apiUrl).toContain('localhost');
+      expect(wsUrl).toContain('localhost');
     });
 
     it('should validate environment service configuration', () => {
@@ -163,15 +165,15 @@ describe('Integration Validation Test Suite', () => {
     });
 
     it('should configure WebSocket URLs correctly', () => {
-      const expectedSocketIOUrl = 'http://155.138.239.131:8001';
-      const expectedWSUrl = 'ws://155.138.239.131:8000';
+      const expectedSocketIOUrl = 'http://localhost:8001';
+      const expectedWSUrl = 'ws://localhost:8000';
 
       // Test that configuration functions return expected URLs
       const wsUrl = getWebSocketUrl();
       const configValue = getConfigValueSync('REACT_APP_SOCKETIO_URL', '');
 
       expect(configValue).toBe(expectedSocketIOUrl);
-      expect(wsUrl).toContain('155.138.239.131');
+      expect(wsUrl).toContain('localhost');
     });
   });
 
@@ -226,8 +228,8 @@ describe('Integration Validation Test Suite', () => {
 
   describe('Runtime Configuration Loading Tests', () => {
     it('should load runtime config from window.RUNTIME_CONFIG', () => {
-      expect(window.RUNTIME_CONFIG).toBeDefined();
-      expect(window.RUNTIME_CONFIG.REACT_APP_API_URL).toBe('http://155.138.239.131:8000');
+      expect((window as any).RUNTIME_CONFIG).toBeDefined();
+      expect((window as any).RUNTIME_CONFIG.REACT_APP_API_URL).toBe('http://localhost:8000');
     });
 
     it('should override process.env with runtime config', async () => {
@@ -236,13 +238,13 @@ describe('Integration Validation Test Suite', () => {
       });
 
       // Verify process.env is updated with runtime config
-      expect(process.env.REACT_APP_API_URL).toBe('http://155.138.239.131:8000');
-      expect(process.env.REACT_APP_WS_URL).toBe('ws://155.138.239.131:8000');
+      expect(process.env.REACT_APP_API_URL).toBe('http://localhost:8000');
+      expect(process.env.REACT_APP_WS_URL).toBe('ws://localhost:8000');
     });
 
     it('should provide fallback configuration when runtime config fails', async () => {
       // Temporarily remove runtime config
-      const originalConfig = window.RUNTIME_CONFIG;
+      const originalConfig = (window as any).RUNTIME_CONFIG;
       delete (window as any).RUNTIME_CONFIG;
 
       try {
@@ -251,10 +253,10 @@ describe('Integration Validation Test Suite', () => {
 
         const apiUrl = getConfigValueSync('REACT_APP_API_URL', '');
         // Should still get the correct fallback URL
-        expect(apiUrl).toContain('155.138.239.131');
+        expect(apiUrl).toContain('localhost');
       } finally {
         // Restore runtime config
-        window.RUNTIME_CONFIG = originalConfig;
+        (window as any).RUNTIME_CONFIG = originalConfig;
       }
     });
   });
@@ -289,22 +291,22 @@ describe('Integration Validation Test Suite', () => {
   });
 
   describe('URL Configuration Tests', () => {
-    it('should use correct API URLs for 155.138.239.131', () => {
+    it('should use correct API URLs for localhost', () => {
       const apiUrl = getApiUrl('/test-endpoint');
-      expect(apiUrl).toBe('http://155.138.239.131:8000/test-endpoint');
+      expect(apiUrl).toBe('http://localhost:8000/test-endpoint');
     });
 
-    it('should use correct WebSocket URLs for 155.138.239.131', () => {
+    it('should use correct WebSocket URLs for localhost', () => {
       const wsUrl = getWebSocketUrl('/ws-endpoint');
-      expect(wsUrl).toBe('ws://155.138.239.131:8000/ws-endpoint');
+      expect(wsUrl).toBe('ws://localhost:8000/ws-endpoint');
     });
 
     it('should handle URL normalization correctly', () => {
       const apiUrlWithSlash = getApiUrl('/api/test');
       const apiUrlWithoutSlash = getApiUrl('api/test');
 
-      expect(apiUrlWithSlash).toBe('http://155.138.239.131:8000/api/test');
-      expect(apiUrlWithoutSlash).toBe('http://155.138.239.131:8000/api/test');
+      expect(apiUrlWithSlash).toBe('http://localhost:8000/api/test');
+      expect(apiUrlWithoutSlash).toBe('http://localhost:8000/api/test');
     });
   });
 });

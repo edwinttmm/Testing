@@ -15,7 +15,7 @@ interface ErrorReport {
   url: string;
   userId?: string;
   sessionId?: string;
-  additionalData?: Record<string, any>;
+  additionalData?: Record<string, unknown>;
 }
 
 interface ErrorReportingConfig {
@@ -94,8 +94,8 @@ class ErrorReportingService {
           level: 'app',
           context: 'resource-loading-error',
           additionalData: {
-            element: (event.target as any)?.tagName,
-            source: (event.target as any)?.src || (event.target as any)?.href,
+            element: (event.target as HTMLElement)?.tagName,
+            source: this.getElementSource(event.target as HTMLElement),
           },
         });
       }
@@ -131,6 +131,16 @@ class ErrorReportingService {
     return this.config.ignoreErrors.some(pattern => 
       message.toLowerCase().includes(pattern.toLowerCase())
     );
+  }
+
+  private getElementSource(element: HTMLElement): string | undefined {
+    if ('src' in element && typeof element.src === 'string') {
+      return element.src;
+    }
+    if ('href' in element && typeof element.href === 'string') {
+      return element.href;
+    }
+    return undefined;
   }
 
   private generateErrorId(): string {
@@ -215,13 +225,13 @@ class ErrorReportingService {
 
   private scheduleRetry(report: ErrorReport): void {
     // Exponential backoff retry
-    const retryCount = report.additionalData?.retryCount || 0;
+    const retryCount = (report.additionalData?.retryCount as number) || 0;
     
     if (retryCount < this.config.maxRetries) {
       const delay = Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30s delay
       
       setTimeout(() => {
-        const updatedReport = {
+        const updatedReport: ErrorReport = {
           ...report,
           additionalData: {
             ...report.additionalData,
@@ -241,7 +251,7 @@ class ErrorReportingService {
     level: 'app' | 'page' | 'component',
     context: string
   ): void {
-    const errorReport: any = {
+    const errorReport: Partial<ErrorReport> & { message: string } = {
       message: error.message,
       componentStack: errorInfo.componentStack,
       level,
@@ -269,7 +279,7 @@ class ErrorReportingService {
       statusText?: string;
     }
   ): void {
-    const apiErrorReport: any = {
+    const apiErrorReport: Partial<ErrorReport> & { message: string } = {
       message: error.message,
       level: 'component',
       context: `api-${context}`,
@@ -326,7 +336,7 @@ class ErrorReportingService {
 }
 
 // Create singleton instance with safe configuration
-const errorConfig: any = {
+const errorConfig: Partial<ErrorReportingConfig> = {
   enableRemoteLogging: process.env.REACT_APP_ENABLE_ERROR_REPORTING === 'true',
 };
 

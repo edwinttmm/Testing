@@ -32,31 +32,25 @@ export interface ApiResponse<T = unknown> {
   timestamp?: string;
 }
 
-// Project Types
+// Project Types - Updated to match backend camelCase serializers
 export interface Project {
   id: string;
   name: string;
   description?: string;
   cameraModel: string;
-  camera_model?: string; // API response alias
   cameraView: CameraType;
-  camera_view?: CameraType; // API response alias
   signalType: SignalType;
-  signal_type?: SignalType; // API response alias
   lensType?: string;
-  lens_type?: string; // API response alias
   resolution?: string;
   frameRate?: number;
-  frame_rate?: number; // API response alias
   createdAt: string;
-  created_at?: string; // API response alias
   updatedAt?: string;
-  updated_at?: string; // API response alias
   status: ProjectStatus;
   testsCount?: number;
-  accuracy?: number;
-  userId?: string;
-  owner_id?: string; // API response alias
+  videoCount?: number; // New field from backend
+  totalAnnotations?: number; // New field from backend
+  averageAccuracy?: number; // New field from backend
+  ownerId: string; // Required field from backend
 }
 
 export interface ProjectCreate {
@@ -78,37 +72,61 @@ export interface ProjectUpdate {
   [key: string]: unknown;
 }
 
-// Video Types
+// Extended Project with additional properties
+export interface ExtendedProject extends Project {
+  modelConfigurations?: ModelConfiguration[];
+  models?: ModelConfiguration[];
+}
+
+// Video Types - Updated to match backend camelCase serializers
 export interface VideoFile {
   id: string;
   projectId: string;
   filename: string;
-  originalName: string;
-  name?: string;
-  size: number;
-  fileSize?: number;
-  file_size?: number; // API response field
+  originalName?: string;
+  name?: string; // Add name property for compatibility
+  fileSize: number;
+  size?: number; // Add size alias for compatibility
+  filePath?: string;
+  url?: string;
   duration?: number;
-  uploadedAt: string;
-  createdAt?: string;
-  created_at?: string; // API response field
-  url: string;
-  status: 'uploading' | 'processing' | 'completed' | 'failed';
-  processing_status?: 'pending' | 'processing' | 'completed' | 'failed'; // API response field
-  groundTruthStatus?: 'pending' | 'processing' | 'completed' | 'failed';
-  groundTruthGenerated?: boolean;
-  ground_truth_generated?: boolean; // API response field
-  detectionCount?: number;
-  annotations?: Annotation[];
-  // Additional properties for enhanced video handling
+  fps?: number;
+  frameRate?: number; // Add frameRate alias
+  frame_rate?: number; // Add snake_case frameRate alias
+  resolution?: string;
+  frameCount?: number;
+  status: 'uploaded' | 'processing' | 'completed' | 'failed' | 'uploading'; // Add uploading status
+  processingStatus: 'pending' | 'processing' | 'completed' | 'failed' | 'queued';
+  processing_status?: 'pending' | 'processing' | 'completed' | 'failed' | 'queued'; // Snake case alias
+  groundTruthGenerated: boolean;
+  ground_truth_generated?: boolean; // Snake case alias
+  groundTruthStatus?: 'pending' | 'processing' | 'completed' | 'failed'; // Add groundTruthStatus
+  ground_truth_status?: 'pending' | 'processing' | 'completed' | 'failed'; // Snake case alias
+  detectionCount: number;
+  detection_count?: number; // Snake case alias
+  annotationCount: number;
+  validationScore?: number;
+  uploadedAt?: string;
+  uploaded_at?: string; // Snake case alias
+  createdAt: string;
+  created_at?: string; // Snake case alias
+  updatedAt?: string;
+  updated_at?: string; // Snake case alias
+  processedAt?: string;
+  // Additional metadata
   width?: number;
   height?: number;
-  fps?: number;
   bitrate?: number;
   format?: string;
   codec?: string;
+  mimeType?: string;
   thumbnailUrl?: string;
   metadata?: Record<string, unknown>;
+  annotations?: unknown[]; // Add annotations property
+  file_size?: number; // Snake case alias for fileSize
+  project_id?: string; // Snake case alias for projectId
+  original_name?: string; // Snake case alias for originalName
+  file_path?: string; // Snake case alias for filePath
 }
 
 export interface VideoUpload {
@@ -122,11 +140,11 @@ export type VRUType = 'pedestrian' | 'cyclist' | 'motorcyclist' | 'wheelchair_us
 // Export VRUType for annotation components
 export type { VRUType as AnnotationVRUType };
 
-// WebSocket Message Types
+// WebSocket Message Types - Updated for type consistency
 export interface WebSocketMessage<T = unknown> {
   type: string;
   payload: T;
-  timestamp: number;
+  timestamp: string; // ISO timestamp string for consistency
   id?: string;
 }
 
@@ -146,32 +164,28 @@ export interface SignalData {
   metadata?: Record<string, unknown>;
 }
 
-// Annotation Types
+// Detection Types - Updated to match backend camelCase serializers
 export interface Detection {
   id: string;
-  detectionId: string;
+  videoId: string;
+  detectionId?: string;
+  inferenceSessionId?: string;
+  frameNumber: number;
   timestamp: number;
-  boundingBox: BoundingBox;
+  classId: number;
+  className: string;
   vruType: VRUType;
   confidence: number;
-  isGroundTruth: boolean;
-  notes?: string;
-  validated: boolean;
+  boundingBox: BoundingBox;
+  detectionScore?: number;
+  nmsScore?: number;
+  trackingId?: string;
+  validationStatus: 'pending' | 'validated' | 'rejected' | 'needs_review';
+  groundTruthMatchId?: string;
+  iouWithGroundTruth?: number;
+  isGroundTruth?: boolean; // Add isGroundTruth property
+  validated?: boolean; // Add validated property
   createdAt: string;
-  updatedAt?: string;
-  // Additional properties for API compatibility
-  frame?: number;
-  frameNumber?: number;
-  bbox?: BoundingBox;
-  label?: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  time?: number;
-  occluded?: boolean;
-  truncated?: boolean;
-  difficult?: boolean;
 }
 
 export interface Annotation {
@@ -185,13 +199,19 @@ export interface Annotation {
   detections: Detection[];
 }
 
+// BoundingBox - Updated to match backend camelCase serializers
 export interface BoundingBox {
   x: number;
   y: number;
   width: number;
   height: number;
-  label: string;
-  confidence: number;
+  confidence?: number;
+  // Optional label for backward compatibility
+  label?: string;
+  // Computed fields (from serializers)
+  area?: number;
+  centerX?: number;
+  centerY?: number;
 }
 
 // Enhanced Point and Shape Types for Annotation Canvas
@@ -226,27 +246,31 @@ export interface AnnotationShape {
   boundingBox: Rectangle;
   style: AnnotationStyle;
   label?: string;
-  confidence?: number;
+  confidence?: number | undefined;
   locked?: boolean;
   selected?: boolean;
   visible?: boolean;
 }
 
-// Ground Truth Annotation Types
+// Ground Truth Annotation Types - Updated to match backend camelCase serializers
 export interface GroundTruthAnnotation {
   id: string;
   videoId: string;
-  detectionId: string;
+  detectionId?: string;
   frameNumber: number;
   timestamp: number;
+  endTimestamp?: number;
   vruType: VRUType;
+  classLabel?: string;
   boundingBox: BoundingBox;
   occluded: boolean;
   truncated: boolean;
   difficult: boolean;
+  validationStatus: 'pending' | 'validated' | 'rejected' | 'needs_review';
+  validated: boolean;
+  confidence?: number;
   notes?: string;
   annotator?: string;
-  validated: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -286,9 +310,13 @@ export interface TestSession {
   createdAt?: string | Date;
   startedAt?: string;
   completedAt?: string;
-  config?: any; // Test configuration object
+  config?: TestConfiguration; // Test configuration object
   detectionEvents?: DetectionEvent[];
   metrics?: TestMetrics;
+  // Additional properties for TestExecution
+  modelConfigurations?: ModelConfiguration[];
+  models?: ModelConfiguration[];
+  modelConfigIds?: string[];
 }
 
 export interface TestSessionCreate {
@@ -297,7 +325,11 @@ export interface TestSessionCreate {
   videoIds?: string[];
   name: string;
   description?: string;
-  config?: any;
+  config?: TestConfiguration;
+  [key: string]: unknown;
+}
+
+export interface TestConfiguration {
   [key: string]: unknown;
 }
 
@@ -435,6 +467,26 @@ export interface ExportOptions {
   includeStatisticalAnalysis: boolean;
 }
 
+// Test Configuration Interface for replacing any types
+export interface TestConfiguration {
+  modelName?: string;
+  confidenceThreshold?: number;
+  detectionClasses?: VRUType[];
+  processingOptions?: {
+    batchSize?: number;
+    maxFrames?: number;
+    skipFrames?: number;
+  };
+  validationCriteria?: {
+    minAccuracy?: number;
+    minPrecision?: number;
+    minRecall?: number;
+    maxLatency?: number;
+  };
+  outputFormat?: 'json' | 'xml' | 'csv';
+  metadata?: Record<string, string | number | boolean>;
+}
+
 // Dashboard Types - Aligned with backend snake_case
 export interface DashboardStats {
   project_count: number;
@@ -534,11 +586,22 @@ export interface DetectionPipelineConfig {
 
 export interface DetectionPipelineResult {
   videoId: string;
-  detections: Array<Record<string, number | string | boolean>>;
+  detections: Array<Record<string, number | string | boolean | object | null>>;
   processingTime: number;
   modelUsed: string;
   totalDetections: number;
   confidenceDistribution: Record<string, number>;
+  success?: boolean; // Optional success flag for compatibility
+  error?: string; // Optional error message for failed operations
+}
+
+// Backend response type alias for compatibility
+export interface DetectionPipelineResponse extends DetectionPipelineResult {
+  video_id?: string; // Backend snake_case field
+  processing_time?: number; // Backend snake_case field  
+  model_used?: string; // Backend snake_case field
+  total_detections?: number; // Backend snake_case field
+  confidence_distribution?: Record<string, number>; // Backend snake_case field
 }
 
 export interface EnhancedDashboardStats extends DashboardStats {
@@ -589,8 +652,96 @@ export interface ResultsFilter {
     minRecall?: number;
   };
   status?: ('completed' | 'failed' | 'running')[];
-  sortBy?: 'accuracy' | 'precision' | 'recall' | 'f1Score' | 'date' | 'name';
+  sortBy?: ResultsSortBy;
   sortOrder?: 'asc' | 'desc';
+}
+
+// Event Data Types for WebSocket handlers
+export interface DetectionEventData {
+  id?: string;
+  videoId?: string;
+  detectionId?: string;
+  timestamp?: number;
+  vruType?: VRUType;
+  confidence?: number;
+  boundingBox?: BoundingBox;
+  success?: boolean;
+  processingTime?: number;
+}
+
+export interface AnnotationEventData {
+  id?: string;
+  videoId?: string;
+  annotationId?: string;
+  detectionId?: string;
+  timestamp?: number;
+  vruType?: VRUType;
+  boundingBox?: BoundingBox;
+  validated?: boolean;
+  annotator?: string;
+}
+
+export interface SignalProcessingEventData {
+  id?: string;
+  signalType?: SignalType;
+  success?: boolean;
+  processingTime?: number;
+  timestamp?: number;
+  metadata?: Record<string, unknown>;
+}
+
+// Chart and Data Visualization Types
+export interface ChartSortValue {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+// MUI Component Type Helpers
+export type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+export type LinearProgressColor = 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+export type ResultsSortBy = 'date' | 'accuracy' | 'precision' | 'recall' | 'f1Score' | 'sessionName';
+
+// API Response Types for Raw Data
+export interface RawDetectionData {
+  id?: string;
+  detection_id?: string;
+  detectionId?: string;
+  frame_number?: number;
+  frameNumber?: number;
+  timestamp?: number;
+  vru_type?: VRUType;
+  vruType?: VRUType;
+  bounding_box?: Partial<BoundingBox>;
+  boundingBox?: Partial<BoundingBox>;
+  confidence?: number;
+  occluded?: boolean;
+  truncated?: boolean;
+  difficult?: boolean;
+  validated?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface ImportAnnotationItem {
+  id?: string;
+  type?: string;
+  x?: number | string;
+  y?: number | string;
+  width?: number | string;
+  height?: number | string;
+  label?: string;
+  points?: Point[];
+  [key: string]: unknown;
+}
+
+export interface ModelConfiguration {
+  id: string;
+  name: string;
+  type: string;
+  parameters?: Record<string, unknown>;
+  active?: boolean;
 }
 
 // Error Types
@@ -619,4 +770,59 @@ export class ApiError extends Error {
     // Maintain proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, ApiError.prototype);
   }
+}
+
+// LabJack Types - Shared across components
+export type ConnectionMode = 'bridge' | 'direct' | 'mock' | 'auto';
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'retrying' | 'discovering' | 'testing' | 'recovery';
+
+export interface WindowsDriverInfo {
+  detected: boolean;
+  version?: string;
+  path?: string;
+  supported: boolean;
+  recommendations?: string[];
+}
+
+export interface LabJackStatus {
+  mode: ConnectionMode;
+  status: ConnectionStatus;
+  connected: boolean;
+  device_info: {
+    device_type?: string;
+    serial_number?: string;
+    ip_address?: string;
+    is_mock?: boolean;
+    bridge_host?: string;
+    bridge_port?: number;
+    firmware_version?: string;
+    hardware_version?: string;
+    calibration_date?: string;
+  };
+  streaming: boolean;
+  sample_rate: number;
+  channels: string[];
+  voltage_threshold: number;
+  last_data_time?: string;
+  error_message?: string;
+  statistics: {
+    samples_received: number;
+    errors_count: number;
+    connection_attempts: number;
+    successful_connections: number;
+    failed_connections: number;
+    last_error_time?: string;
+    uptime_start: string;
+    total_uptime: number;
+    recovery_attempts: number;
+  };
+  bridge_latency?: number;
+  bridge_health?: 'healthy' | 'degraded' | 'unhealthy';
+  windows_driver?: WindowsDriverInfo;
+  auto_discovery?: {
+    enabled: boolean;
+    last_scan?: string;
+    devices_found?: number;
+    scan_duration?: number;
+  };
 }

@@ -166,16 +166,28 @@ async def run_test_session(session_id: str):
             # Wait between events
             await asyncio.sleep(2)
             
-            # Emit detection event
-            await sio.emit('detection_event', {
+            # Emit detection event with enhanced data
+            detection_data = {
                 'session_id': session_id,
                 'event_id': f"event_{i+1}",
                 'timestamp': asyncio.get_event_loop().time(),
                 'detection_type': 'person' if i % 2 == 0 else 'vehicle',
                 'confidence': 0.85 + (i * 0.01),
                 'validation_result': 'TP' if i % 3 != 0 else 'FP',
-                'progress': (i + 1) / 10 * 100
-            }, room=room)
+                'progress': (i + 1) / 10 * 100,
+                'frame_number': i + 1,
+                'bounding_box': {
+                    'x': 100 + (i * 10),
+                    'y': 150 + (i * 15),
+                    'width': 80,
+                    'height': 120
+                }
+            }
+            
+            await sio.emit('detection_event', detection_data, room=room)
+            
+            # Also emit to general detection room for broadcast monitoring
+            await sio.emit('detection_event', detection_data, room='detections')
         
         # Complete the session
         if session_data['status'] == 'running':
@@ -200,5 +212,31 @@ def create_socketio_app(fastapi_app: FastAPI):
     socketio_asgi_app = socketio.ASGIApp(sio, fastapi_app)
     return socketio_asgi_app
 
+# Utility functions for real-time detection events
+async def emit_detection_event(detection_data: dict, test_session_id: str):
+    """Emit real-time detection event to all connected clients"""
+    try:
+        # Emit to test session room
+        room = f"test_session_{test_session_id}"
+        await sio.emit('detection_event', detection_data, room=room)
+        
+        # Emit to general detections room for monitoring
+        await sio.emit('detection_event', detection_data, room='detections')
+        
+        logger.debug(f"Emitted detection event to room {room}")
+        
+    except Exception as e:
+        logger.error(f"Failed to emit detection event: {str(e)}")
+
+async def emit_processing_status(status_data: dict, session_id: str):
+    """Emit processing status update"""
+    try:
+        room = f"test_session_{session_id}"
+        await sio.emit('processing_status', status_data, room=room)
+        logger.debug(f"Emitted processing status to room {room}")
+        
+    except Exception as e:
+        logger.error(f"Failed to emit processing status: {str(e)}")
+
 # Export the Socket.IO server for use in main.py
-__all__ = ['sio', 'create_socketio_app']
+__all__ = ['sio', 'create_socketio_app', 'emit_detection_event', 'emit_processing_status']

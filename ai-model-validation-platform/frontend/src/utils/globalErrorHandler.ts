@@ -1,7 +1,10 @@
+/// <reference path="../types/global.d.ts" />
 /**
  * Global Error Handler for Unhandled Promise Rejections
  * Centralizes error handling to prevent [object Object] console spam
  */
+
+import logger from './safeErrorLogger';
 
 // Global error serialization utility
 export const serializeError = (error: unknown): string => {
@@ -50,26 +53,26 @@ export const serializeError = (error: unknown): string => {
 // Global promise rejection handler
 export const setupGlobalErrorHandling = () => {
   // Prevent duplicate handlers
-  if ((window as any).__globalErrorHandlerSetup) {
+  if (window.__globalErrorHandlerSetup) {
     return;
   }
 
   // Handle unhandled promise rejections
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
     const errorMsg = serializeError(event.reason);
-    console.warn('🚨 Unhandled Promise Rejection:', errorMsg);
+    logger.error('Unhandled Promise Rejection', event.reason, { context: 'global-error-handler' });
     
     // Log full error details in development
     if (process.env.NODE_ENV === 'development') {
-      console.error('Full error details:', event.reason);
+      logger.debug('Full error details for unhandled promise rejection', event.reason, { context: 'global-error-handler' });
     }
     
     // Prevent default browser behavior
     event.preventDefault();
     
     // Send to error reporting service if available
-    if ((window as any).errorReporter) {
-      (window as any).errorReporter.reportError({
+    if (window.errorReporter) {
+      window.errorReporter.reportError({
         type: 'unhandled_promise_rejection',
         message: errorMsg,
         reason: event.reason,
@@ -81,17 +84,17 @@ export const setupGlobalErrorHandling = () => {
   // Handle global JavaScript errors
   window.addEventListener('error', (event: ErrorEvent) => {
     const errorMsg = serializeError(event.error);
-    console.warn('🚨 Global JavaScript Error:', errorMsg);
+    logger.error('Global JavaScript Error', event.error, { context: 'global-error-handler' });
     
     if (process.env.NODE_ENV === 'development') {
-      console.error('Full error details:', event.error);
+      logger.debug('Full error details for global error', event.error, { context: 'global-error-handler' });
     }
   });
 
   // Mark as setup to prevent duplicates
-  (window as any).__globalErrorHandlerSetup = true;
+  window.__globalErrorHandlerSetup = true;
   
-  console.info('✅ Global error handling initialized');
+  logger.info('Global error handling initialized', undefined, { context: 'global-error-handler' });
 };
 
 // Export for use in components

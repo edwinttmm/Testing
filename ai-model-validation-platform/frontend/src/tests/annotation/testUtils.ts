@@ -1,12 +1,57 @@
 import { AnnotationShape, Point, AnnotationStyle } from '../../components/annotation/types';
 
+// Utility imports (assuming these exist)
+export const GeometryUtils = {
+  calculateBoundingBox: (points: Point[]) => {
+    if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  },
+  
+  pointInPolygon: (point: Point, polygon: Point[]): boolean => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      if (((polygon[i].y > point.y) !== (polygon[j].y > point.y)) &&
+          (point.x < (polygon[j].x - polygon[i].x) * (point.y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i].x)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+};
+
+export const PerformanceUtils = {
+  measureTime: <T>(fn: () => T): { result: T; duration: number } => {
+    const start = performance.now();
+    const result = fn();
+    const duration = performance.now() - start;
+    return { result, duration };
+  },
+  
+  getMemoryUsage: (): { used: number; total: number } | null => {
+    if ('memory' in performance) {
+      return {
+        used: (performance as any).memory.usedJSHeapSize,
+        total: (performance as any).memory.totalJSHeapSize,
+      };
+    }
+    return null;
+  }
+};
+
 // Test utility functions and mock data for annotation testing
 
 /**
- * Mock Canvas Context
+ * Mock Canvas Context - Uses global mocks from setupTests.ts
  */
 export const createMockCanvasContext = () => {
-  const context = {
+  // Use the global canvas context mock from setupTests.ts
+  const context = global.getMockCanvasContext?.() || {
     clearRect: jest.fn(),
     save: jest.fn(),
     restore: jest.fn(),
@@ -42,35 +87,27 @@ export const createMockCanvasContext = () => {
 
   // Reset all mocks
   const resetMocks = () => {
-    Object.values(context).forEach(mock => {
-      if (typeof mock === 'function' && 'mockReset' in mock) {
-        mock.mockReset();
-      }
-    });
+    if (global.resetCanvasMocks) {
+      global.resetCanvasMocks();
+    } else {
+      Object.values(context).forEach(mock => {
+        if (typeof mock === 'function' && 'mockClear' in mock) {
+          (mock as jest.Mock).mockClear();
+        }
+      });
+    }
   };
 
   return { context, resetMocks };
 };
 
 /**
- * Setup Canvas Mock
+ * Setup Canvas Mock - Uses global setup from setupTests.ts
  */
 export const setupCanvasMock = () => {
   const { context, resetMocks } = createMockCanvasContext();
   
-  HTMLCanvasElement.prototype.getContext = jest.fn(() => context) as any;
-  HTMLCanvasElement.prototype.getBoundingClientRect = jest.fn(() => ({
-    left: 0,
-    top: 0,
-    width: 800,
-    height: 600,
-    right: 800,
-    bottom: 600,
-    x: 0,
-    y: 0,
-    toJSON: jest.fn(),
-  }));
-
+  // Canvas mocks are already set up in setupTests.ts, just return the interface
   return { context, resetMocks };
 };
 
@@ -266,78 +303,7 @@ export class MockEventFactory {
   }
 }
 
-/**
- * Geometry Testing Utilities
- */
-export const GeometryUtils = {
-  /**
-   * Check if two points are approximately equal within tolerance
-   */
-  pointsEqual(p1: Point, p2: Point, tolerance = 1): boolean {
-    return Math.abs(p1.x - p2.x) <= tolerance && Math.abs(p1.y - p2.y) <= tolerance;
-  },
-
-  /**
-   * Check if point is inside rectangle
-   */
-  pointInRectangle(point: Point, rect: { x: number; y: number; width: number; height: number }): boolean {
-    return (
-      point.x >= rect.x &&
-      point.x <= rect.x + rect.width &&
-      point.y >= rect.y &&
-      point.y <= rect.y + rect.height
-    );
-  },
-
-  /**
-   * Check if point is inside polygon using ray casting
-   */
-  pointInPolygon(point: Point, polygon: Point[]): boolean {
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      if (
-        polygon[i].y > point.y !== polygon[j].y > point.y &&
-        point.x <
-          ((polygon[j].x - polygon[i].x) * (point.y - polygon[i].y)) /
-            (polygon[j].y - polygon[i].y) +
-            polygon[i].x
-      ) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  },
-
-  /**
-   * Calculate distance between two points
-   */
-  distance(p1: Point, p2: Point): number {
-    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-  },
-
-  /**
-   * Calculate bounding box for multiple points
-   */
-  boundingBox(points: Point[]): { x: number; y: number; width: number; height: number } {
-    if (points.length === 0) {
-      return { x: 0, y: 0, width: 0, height: 0 };
-    }
-
-    const xs = points.map(p => p.x);
-    const ys = points.map(p => p.y);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    const maxX = Math.max(...xs);
-    const maxY = Math.max(...ys);
-
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
-    };
-  },
-};
+// GeometryUtils now imported from centralized utility
 
 /**
  * Animation Testing Utilities
@@ -378,53 +344,7 @@ export const AnimationUtils = {
   },
 };
 
-/**
- * Performance Testing Utilities
- */
-export const PerformanceUtils = {
-  /**
-   * Measure execution time
-   */
-  measureTime<T>(fn: () => T): { result: T; duration: number } {
-    const start = performance.now();
-    const result = fn();
-    const duration = performance.now() - start;
-    return { result, duration };
-  },
-
-  /**
-   * Create performance benchmark
-   */
-  benchmark(name: string, fn: () => void, iterations = 1000): { name: string; avgTime: number; totalTime: number } {
-    const times: number[] = [];
-    
-    for (let i = 0; i < iterations; i++) {
-      const start = performance.now();
-      fn();
-      const duration = performance.now() - start;
-      times.push(duration);
-    }
-
-    const totalTime = times.reduce((sum, time) => sum + time, 0);
-    const avgTime = totalTime / iterations;
-
-    return { name, avgTime, totalTime };
-  },
-
-  /**
-   * Memory usage checker (if available)
-   */
-  getMemoryUsage(): { used: number; total: number } | null {
-    const memory = (performance as any).memory;
-    if (memory) {
-      return {
-        used: memory.usedJSHeapSize,
-        total: memory.totalJSHeapSize,
-      };
-    }
-    return null;
-  },
-};
+// PerformanceUtils now imported from centralized utility
 
 /**
  * Test Data Generators
@@ -599,9 +519,7 @@ export const setupTestEnvironment = () => {
 export default {
   MockShapeFactory,
   MockEventFactory,
-  GeometryUtils,
   AnimationUtils,
-  PerformanceUtils,
   TestDataGenerator,
   AssertionHelpers,
   setupTestEnvironment,

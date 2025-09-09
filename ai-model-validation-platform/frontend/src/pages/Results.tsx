@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -48,17 +49,25 @@ import {
   Compare,
   Analytics,
   Timeline,
+  Upgrade,
+  Science,
   FilterList,
   ExpandMore,
   Speed,
   Refresh,
+  Close,
 } from '@mui/icons-material';
-import { apiService } from '../services/api';
+import { apiService, getEnhancedTestSessions } from '../services/api';
+import { GroundTruthComparisonPanel } from '../components/results/GroundTruthComparisonPanel';
+import EnhancedTestMetricsPanel from '../components/results/EnhancedTestMetricsPanel';
 import { 
   Project, 
   DetailedTestResults, 
   ResultsFilter,
   PassFailResult,
+  ChipColor,
+  LinearProgressColor,
+  ResultsSortBy,
 } from '../services/types';
 
 // Enhanced test result interface for the Results component
@@ -104,9 +113,9 @@ const Results: React.FC = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   
-  // Comparison view state (commented out until implemented)
-  // const [detectionComparisons, setDetectionComparisons] = useState<DetectionComparison[]>([]);
-  // const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  // Enhanced results state
+  const [enhancedResultsOpen, setEnhancedResultsOpen] = useState(false);
+  const [selectedSessionForEnhanced, setSelectedSessionForEnhanced] = useState<string | null>(null);
 
   // Analytics and export state
   const [showStatistics, setShowStatistics] = useState(false);
@@ -128,23 +137,86 @@ const Results: React.FC = () => {
       const projectList = await apiService.getProjects();
       setProjects(projectList);
 
-      // Load test sessions
-      const testSessions = await apiService.getTestSessions(
-        selectedProject === 'all' ? undefined : selectedProject
-      );
+      // Load test sessions - try enhanced API first if project is selected
+      let testSessions: any[] = [];
+      let useEnhancedAPI = false;
+      
+      if (selectedProject !== 'all') {
+        try {
+          // Try enhanced results API for better data
+          testSessions = await getEnhancedTestSessions(selectedProject, 100);
+          useEnhancedAPI = true;
+          console.log('✅ Using enhanced results API for project sessions');
+        } catch (error) {
+          console.warn('⚠️ Enhanced API not available, falling back to standard API:', error);
+          testSessions = await apiService.getTestSessions(selectedProject);
+        }
+      } else {
+        // For 'all' projects, use standard API
+        testSessions = await apiService.getTestSessions();
+      }
 
-      // Transform sessions into enhanced results
-      const results: EnhancedTestResult[] = await Promise.all(
+      // Transform sessions into enhanced results with comprehensive error handling
+      const results: EnhancedTestResult[] = await Promise.allSettled(
         testSessions.map(async (session) => {
           try {
-            // Load basic results
-            const sessionResults = await apiService.getTestResults(session.id);
+            // Handle different session data formats based on API used
+            let sessionResults: any = {};
+            let sessionId: string;
+            let sessionName: string;
+            let sessionStatus: string;
+            let sessionStartedAt: string;
+            let sessionCompletedAt: string | undefined;
+            let projectName: string;
+            
+            if (useEnhancedAPI && session.session_id) {
+              // Enhanced API format
+              sessionId = session.session_id;
+              sessionName = session.session_name || `Test ${sessionId.slice(0, 8)}`;
+              sessionStatus = session.status || 'completed';
+              sessionStartedAt = session.started_at || new Date().toISOString();
+              sessionCompletedAt = session.completed_at;
+              projectName = projectList.find(p => p.id === selectedProject)?.name || 'Unknown Project';
+              
+              // Enhanced API already includes results summary
+              if (session.results_summary) {
+                sessionResults = session.results_summary;
+              } else {
+                // Fallback to loading results separately with error handling
+                try {
+                  sessionResults = await apiService.getTestResults(sessionId);
+                } catch (resultsError) {
+                  console.warn(`Could not load results for session ${sessionId}:`, resultsError);
+                  sessionResults = {
+                    accuracy: 0, precision: 0, recall: 0, f1Score: 0,
+                    truePositives: 0, falsePositives: 0, falseNegatives: 0, totalDetections: 0
+                  };
+                }
+              }
+            } else {
+              // Standard API format
+              sessionId = session.id;
+              sessionName = session.name || `Test ${sessionId.slice(0, 8)}`;
+              sessionStatus = session.status || 'completed';
+              sessionStartedAt = session.createdAt || session.started_at || new Date().toISOString();
+              sessionCompletedAt = session.completedAt || session.completed_at;
+              projectName = projectList.find(p => p.id === session.projectId)?.name || 'Unknown Project';
+              
+              // Load results separately for standard API with error handling
+              try {
+                sessionResults = await apiService.getTestResults(sessionId);
+              } catch (resultsError) {
+                console.warn(`Could not load results for session ${sessionId}:`, resultsError);
+                sessionResults = {
+                  accuracy: 0, precision: 0, recall: 0, f1Score: 0,
+                  truePositives: 0, falsePositives: 0, falseNegatives: 0, totalDetections: 0
+                };
+              }
+            }
             
             // Calculate duration
-            const startTimeRaw = session.createdAt;
-            const endTimeRaw = session.completedAt;
-            const startTimeStr = typeof startTimeRaw === 'string' ? startTimeRaw : (startTimeRaw && typeof startTimeRaw === 'object' && 'toISOString' in startTimeRaw ? (startTimeRaw as Date).toISOString() : new Date().toISOString());
-            const endTimeStr = typeof endTimeRaw === 'string' ? endTimeRaw : (endTimeRaw && typeof endTimeRaw === 'object' && 'toISOString' in endTimeRaw ? (endTimeRaw as Date).toISOString() : new Date().toISOString());
+            const startTimeStr = typeof sessionStartedAt === 'string' ? sessionStartedAt : new Date().toISOString();
+            const endTimeStr = typeof sessionCompletedAt === 'string' ? sessionCompletedAt : new Date().toISOString();
             const startTime = new Date(startTimeStr).getTime();
             const endTime = new Date(endTimeStr).getTime();
             const durationSeconds = Math.max(Math.floor((endTime - startTime) / 1000), 60);
@@ -152,14 +224,14 @@ const Results: React.FC = () => {
             // Try to get pass/fail result (using mock data for now)
             let passFailResult: PassFailResult | undefined;
             // For now, create simple pass/fail result based on basic metrics
-            if (sessionResults.accuracy && sessionResults.precision && sessionResults.recall) {
+            if (typeof sessionResults.accuracy === 'number' && typeof sessionResults.precision === 'number' && typeof sessionResults.recall === 'number') {
               const score = (sessionResults.accuracy + sessionResults.precision + sessionResults.recall) / 3;
               passFailResult = {
                 overall: score >= 85 ? 'PASS' : score >= 70 ? 'WARNING' : 'FAIL',
                 criteria: {
                   minPrecision: { required: 85, actual: sessionResults.precision, status: sessionResults.precision >= 85 ? 'PASS' : 'FAIL' },
                   minRecall: { required: 85, actual: sessionResults.recall, status: sessionResults.recall >= 85 ? 'PASS' : 'FAIL' },
-                  minF1Score: { required: 85, actual: sessionResults.f1Score || 0, status: (sessionResults.f1Score || 0) >= 85 ? 'PASS' : 'FAIL' },
+                  minF1Score: { required: 85, actual: typeof sessionResults.f1Score === 'number' ? sessionResults.f1Score : 0, status: (typeof sessionResults.f1Score === 'number' ? sessionResults.f1Score : 0) >= 85 ? 'PASS' : 'FAIL' },
                   maxLatency: { required: 100, actual: 45, status: 'PASS' },
                 },
                 recommendations: score < 85 ? ['Improve model accuracy', 'Increase training data'] : [],
@@ -168,31 +240,36 @@ const Results: React.FC = () => {
             }
 
             return {
-              sessionId: session.id,
-              sessionName: session.name || `Test ${session.id.slice(0, 8)}`,
-              projectName: projectList.find(p => p.id === session.projectId)?.name || 'Unknown Project',
+              sessionId,
+              sessionName,
+              projectName,
               videoName: 'Video', // Would come from session data
-              status: session.status as 'completed' | 'failed' | 'running',
-              accuracy: sessionResults.accuracy || 0,
-              precision: sessionResults.precision || 0,
-              recall: sessionResults.recall || 0,
-              f1Score: sessionResults.f1Score || 0,
-              truePositives: sessionResults.truePositives || 0,
-              falsePositives: sessionResults.falsePositives || 0,
-              falseNegatives: sessionResults.falseNegatives || 0,
-              totalDetections: sessionResults.totalDetections || 0,
-              startedAt: typeof session.createdAt === 'string' ? session.createdAt : (session.createdAt && typeof session.createdAt === 'object' && 'toISOString' in session.createdAt ? (session.createdAt as Date).toISOString() : new Date().toISOString()),
-              completedAt: typeof session.completedAt === 'string' ? session.completedAt : (session.completedAt && typeof session.completedAt === 'object' && 'toISOString' in session.completedAt ? (session.completedAt as Date).toISOString() : undefined),
+              status: sessionStatus as 'completed' | 'failed' | 'running',
+              accuracy: typeof sessionResults.accuracy === 'number' ? sessionResults.accuracy : 0,
+              precision: typeof sessionResults.precision === 'number' ? sessionResults.precision : 0,
+              recall: typeof sessionResults.recall === 'number' ? sessionResults.recall : 0,
+              f1Score: typeof sessionResults.f1Score === 'number' ? sessionResults.f1Score : 0,
+              truePositives: typeof sessionResults.truePositives === 'number' ? sessionResults.truePositives : 0,
+              falsePositives: typeof sessionResults.falsePositives === 'number' ? sessionResults.falsePositives : 0,
+              falseNegatives: typeof sessionResults.falseNegatives === 'number' ? sessionResults.falseNegatives : 0,
+              totalDetections: typeof sessionResults.totalDetections === 'number' ? sessionResults.totalDetections : 0,
+              startedAt: startTimeStr,
+              ...(sessionCompletedAt ? { completedAt: endTimeStr } : {}),
               duration: durationSeconds,
-              passFailResult,
+              passFailResult: passFailResult || undefined,
               hasDetailedResults: true,
             };
           } catch (error) {
-            console.error(`Failed to load results for session ${session.id}:`, error);
+            // Handle errors for both API formats
+            const errorSessionId = session.session_id || session.id;
+            const errorSessionName = session.session_name || session.name || `Test ${errorSessionId.slice(0, 8)}`;
+            const errorProjectName = projectList.find(p => p.id === (session.project_id || session.projectId))?.name || 'Unknown Project';
+            
+            console.error(`Failed to load results for session ${errorSessionId}:`, error);
             return {
-              sessionId: session.id,
-              sessionName: session.name || `Test ${session.id.slice(0, 8)}`,
-              projectName: projectList.find(p => p.id === session.projectId)?.name || 'Unknown Project',
+              sessionId: errorSessionId,
+              sessionName: errorSessionName,
+              projectName: errorProjectName,
               videoName: 'Video',
               status: 'failed' as const,
               accuracy: 0,
@@ -203,13 +280,17 @@ const Results: React.FC = () => {
               falsePositives: 0,
               falseNegatives: 0,
               totalDetections: 0,
-              startedAt: typeof session.createdAt === 'string' ? session.createdAt : (session.createdAt && typeof session.createdAt === 'object' && 'toISOString' in session.createdAt ? (session.createdAt as Date).toISOString() : new Date().toISOString()),
-              completedAt: typeof session.completedAt === 'string' ? session.completedAt : (session.completedAt && typeof session.completedAt === 'object' && 'toISOString' in session.completedAt ? (session.completedAt as Date).toISOString() : undefined),
+              startedAt: session.started_at || session.createdAt || new Date().toISOString(),
+              ...(session.completed_at || session.completedAt ? { completedAt: session.completed_at || session.completedAt } : {}),
               duration: 60,
               hasDetailedResults: false,
             };
           }
         })
+      ).then(settledResults => 
+        settledResults
+          .filter((result): result is PromiseFulfilledResult<EnhancedTestResult> => result.status === 'fulfilled')
+          .map(result => result.value)
       );
 
       // Apply time range filter
@@ -249,8 +330,9 @@ const Results: React.FC = () => {
       }
 
       setTestResults(filteredResults.filter(r => r.status === 'completed'));
-    } catch (err: any) {
-      console.error('Failed to load results:', err);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Failed to load results:', error.message || 'Unknown error');
       setError('Failed to load test results. Using mock data for demonstration.');
       
       // Provide mock data for demonstration
@@ -496,14 +578,18 @@ const Results: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipColor => {
     switch (status) {
       case 'completed':
         return 'success';
       case 'failed':
         return 'error';
-      default:
+      case 'pending':
         return 'warning';
+      case 'processing':
+        return 'info';
+      default:
+        return 'default';
     }
   };
 
@@ -621,6 +707,21 @@ const Results: React.FC = () => {
             Export
           </Button>
           <Button
+            variant="outlined"
+            startIcon={<Upgrade />}
+            component={RouterLink}
+            to="/enhanced-results"
+            sx={{ 
+              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+              color: 'white',
+              '&:hover': {
+                background: 'linear-gradient(45deg, #1976D2 30%, #0288D1 90%)',
+              }
+            }}
+          >
+            Enhanced Results
+          </Button>
+          <Button
             variant="contained"
             startIcon={<Analytics />}
             onClick={() => setShowStatistics(!showStatistics)}
@@ -661,6 +762,12 @@ const Results: React.FC = () => {
             iconPosition="start" 
             sx={tabStyle}
           />
+          <Tab 
+            label="Test Execution Metrics" 
+            icon={<Speed />} 
+            iconPosition="start" 
+            sx={tabStyle}
+          />
         </Tabs>
       </Card>
 
@@ -668,7 +775,7 @@ const Results: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Project</InputLabel>
                 <Select
@@ -685,7 +792,7 @@ const Results: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Time Range</InputLabel>
                 <Select
@@ -701,14 +808,14 @@ const Results: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Sort By</InputLabel>
                 <Select
                   value={filters.sortBy || 'date'}
-                  onChange={(e: SelectChangeEvent) => 
-                    setFilters(prev => ({ ...prev, sortBy: e.target.value as any }))
-                  }
+                  onChange={(e: SelectChangeEvent) => {
+                    setFilters(prev => ({ ...prev, sortBy: e.target.value as ResultsSortBy }));
+                  }}
                   label="Sort By"
                 >
                   <MenuItem value="date">Date</MenuItem>
@@ -720,7 +827,7 @@ const Results: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">
                   Showing {testResults.length} results
@@ -755,7 +862,7 @@ const Results: React.FC = () => {
           {/* Overall Metrics */}
           {overallMetrics && (
             <Grid container spacing={3} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 12, md: 2.4 }}>
+              <Grid item xs={12} md={2}>
                 <Card>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -768,13 +875,13 @@ const Results: React.FC = () => {
                     <LinearProgress
                       variant="determinate"
                       value={overallMetrics.avgAccuracy}
-                      color={getPerformanceColor(overallMetrics.avgAccuracy, 'accuracy') as any}
+                      color={getPerformanceColor(overallMetrics.avgAccuracy, 'accuracy') as LinearProgressColor}
                       sx={{ mt: 1 }}
                     />
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid size={{ xs: 12, md: 2.4 }}>
+              <Grid item xs={12} md={2}>
                 <Card>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -787,13 +894,13 @@ const Results: React.FC = () => {
                     <LinearProgress
                       variant="determinate"
                       value={overallMetrics.avgPrecision}
-                      color={getPerformanceColor(overallMetrics.avgPrecision, 'precision') as any}
+                      color={getPerformanceColor(overallMetrics.avgPrecision, 'precision') as LinearProgressColor}
                       sx={{ mt: 1 }}
                     />
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid size={{ xs: 12, md: 2.4 }}>
+              <Grid item xs={12} md={2}>
                 <Card>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -806,13 +913,13 @@ const Results: React.FC = () => {
                     <LinearProgress
                       variant="determinate"
                       value={overallMetrics.avgRecall}
-                      color={getPerformanceColor(overallMetrics.avgRecall, 'recall') as any}
+                      color={getPerformanceColor(overallMetrics.avgRecall, 'recall') as LinearProgressColor}
                       sx={{ mt: 1 }}
                     />
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid size={{ xs: 12, md: 2.4 }}>
+              <Grid item xs={12} md={2}>
                 <Card>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -825,13 +932,13 @@ const Results: React.FC = () => {
                     <LinearProgress
                       variant="determinate"
                       value={overallMetrics.avgF1Score}
-                      color={getPerformanceColor(overallMetrics.avgF1Score, 'f1Score') as any}
+                      color={getPerformanceColor(overallMetrics.avgF1Score, 'f1Score') as LinearProgressColor}
                       sx={{ mt: 1 }}
                     />
                   </CardContent>
                 </Card>
               </Grid>
-              <Grid size={{ xs: 12, md: 2.4 }}>
+              <Grid item xs={12} md={2}>
                 <Card>
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -904,7 +1011,7 @@ const Results: React.FC = () => {
                             <Chip
                               icon={getStatusIcon(result.status)}
                               label={result.status.toUpperCase()}
-                              color={getStatusColor(result.status) as any}
+                              color={getStatusColor(result.status)}
                               size="small"
                             />
                           </TableCell>
@@ -912,7 +1019,7 @@ const Results: React.FC = () => {
                             {result.passFailResult && (
                               <Chip
                                 label={`${result.passFailResult.overall} (${result.passFailResult.score.toFixed(0)})`}
-                                color={getPassFailColor(result.passFailResult) as any}
+                                color={getPassFailColor(result.passFailResult) as ChipColor}
                                 size="small"
                               />
                             )}
@@ -977,8 +1084,14 @@ const Results: React.FC = () => {
                                 <Visibility />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Compare with Ground Truth">
-                              <IconButton size="small">
+                            <Tooltip title="Enhanced Results Analysis">
+                              <IconButton 
+                                size="small"
+                                onClick={() => {
+                                  setSelectedSessionForEnhanced(result.sessionId);
+                                  setEnhancedResultsOpen(true);
+                                }}
+                              >
                                 <Compare />
                               </IconButton>
                             </Tooltip>
@@ -1055,7 +1168,7 @@ const Results: React.FC = () => {
             {detailedResults && (
               <Chip
                 label={detailedResults.passFailResult.overall}
-                color={getPassFailColor(detailedResults.passFailResult) as any}
+                color={getPassFailColor(detailedResults.passFailResult) as ChipColor}
               />
             )}
           </Box>
@@ -1071,19 +1184,19 @@ const Results: React.FC = () => {
               <Card sx={{ mb: 3 }}>
                 <CardContent>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid item xs={12} md={6}>
                       <Typography variant="subtitle1" color="text.secondary">Session Name</Typography>
                       <Typography variant="h6">{detailedResults.sessionName}</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid item xs={12} md={6}>
                       <Typography variant="subtitle1" color="text.secondary">Video</Typography>
                       <Typography variant="h6">{detailedResults.videoName}</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid item xs={12} md={6}>
                       <Typography variant="subtitle1" color="text.secondary">Project</Typography>
                       <Typography variant="body1">{detailedResults.projectName}</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid item xs={12} md={6}>
                       <Typography variant="subtitle1" color="text.secondary">Overall Score</Typography>
                       <Typography variant="h5" color={getPassFailColor(detailedResults.passFailResult)}>
                         {detailedResults.passFailResult.score.toFixed(1)}
@@ -1101,7 +1214,7 @@ const Results: React.FC = () => {
                 <AccordionDetails>
                   <Grid container spacing={2}>
                     {Object.entries(detailedResults.passFailResult.criteria).map(([key, criteria]) => (
-                      <Grid size={{ xs: 12, md: 6 }} key={key}>
+                      <Grid item xs={12} md={6} key={key}>
                         <Card variant="outlined">
                           <CardContent>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1202,7 +1315,7 @@ const Results: React.FC = () => {
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12 }}>
+                    <Grid item xs={12}>
                       <Typography variant="subtitle2" gutterBottom>
                         Confidence Intervals (95%)
                       </Typography>
@@ -1221,11 +1334,11 @@ const Results: React.FC = () => {
                         </TableBody>
                       </Table>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid item xs={12} md={6}>
                       <Typography variant="subtitle2" color="text.secondary">Sample Size</Typography>
                       <Typography variant="h6">{detailedResults.statisticalAnalysis.sampleSize}</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid item xs={12} md={6}>
                       <Typography variant="subtitle2" color="text.secondary">P-Value</Typography>
                       <Typography variant="h6">{detailedResults.statisticalAnalysis.pValue}</Typography>
                     </Grid>
@@ -1240,23 +1353,23 @@ const Results: React.FC = () => {
                 </AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 3 }}>
+                    <Grid item xs={12} md={3}>
                       <Typography variant="subtitle2" color="text.secondary">Average</Typography>
                       <Typography variant="h6">{detailedResults.latencyAnalysis.averageLatency.toFixed(1)}ms</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 3 }}>
+                    <Grid item xs={12} md={3}>
                       <Typography variant="subtitle2" color="text.secondary">Median</Typography>
                       <Typography variant="h6">{detailedResults.latencyAnalysis.medianLatency.toFixed(1)}ms</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 3 }}>
+                    <Grid item xs={12} md={3}>
                       <Typography variant="subtitle2" color="text.secondary">Min</Typography>
                       <Typography variant="h6">{detailedResults.latencyAnalysis.minLatency.toFixed(1)}ms</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12, md: 3 }}>
+                    <Grid item xs={12} md={3}>
                       <Typography variant="subtitle2" color="text.secondary">Max</Typography>
                       <Typography variant="h6">{detailedResults.latencyAnalysis.maxLatency.toFixed(1)}ms</Typography>
                     </Grid>
-                    <Grid size={{ xs: 12 }}>
+                    <Grid item xs={12}>
                       <Typography variant="subtitle2" gutterBottom>Distribution</Typography>
                       <Table size="small">
                         <TableHead>
@@ -1368,6 +1481,91 @@ const Results: React.FC = () => {
             Export
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Enhanced Results Dialog */}
+      <Dialog
+        open={enhancedResultsOpen}
+        onClose={() => setEnhancedResultsOpen(false)}
+        maxWidth="xl"
+        fullWidth
+        fullScreen
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">
+              Enhanced Results Analysis
+            </Typography>
+            <Button
+              onClick={() => setEnhancedResultsOpen(false)}
+              startIcon={<Close />}
+            >
+              Close
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {selectedSessionForEnhanced && (
+            <GroundTruthComparisonPanel
+              comparison={{
+                sessionId: selectedSessionForEnhanced,
+                videoId: '',
+                totalFrames: 1000,
+                comparisonResults: [],
+                overallMetrics: {
+                  accuracy: 94.2,
+                  precision: 91.5,
+                  recall: 87.3,
+                  f1Score: 89.3,
+                  truePositives: 142,
+                  falsePositives: 13,
+                  falseNegatives: 21,
+                  totalDetections: 176,
+                  matchedDetections: 155,
+                  unmatchedGroundTruth: 8,
+                  meanIoU: 0.78,
+                  meanConfidence: 0.85,
+                  averageIou: 0.78,
+                  averageConfidence: 0.85,
+                  averageLatency: 45.2
+                },
+                perClassMetrics: {},
+                temporalAnalysis: {
+                  performanceOverTime: [],
+                  detectionGaps: [],
+                  consistencyScore: 0.89
+                },
+                spatialAnalysis: {
+                  detectionHeatmap: [],
+                  spatialDistribution: {
+                    quadrants: {
+                      'top-left': 25.5,
+                      'top-right': 23.2,
+                      'bottom-left': 26.8,
+                      'bottom-right': 24.5
+                    },
+                    hotspots: [
+                      { x: 100, y: 150, radius: 50, density: 0.8 },
+                      { x: 300, y: 200, radius: 40, density: 0.6 }
+                    ]
+                  },
+                  coverageAnalysis: {
+                    coveredRegions: 0.92,
+                    hotspots: [
+                      { x: 100, y: 150, radius: 50, density: 0.8 },
+                      { x: 300, y: 200, radius: 40, density: 0.6 }
+                    ],
+                    blindSpots: [
+                      { x: 50, y: 50, radius: 20, severity: 'medium' },
+                      { x: 400, y: 350, radius: 30, severity: 'low' }
+                    ]
+                  }
+                }
+              }}
+              loading={loadingDetails}
+            />
+          )}
+        </DialogContent>
       </Dialog>
     </Box>
   );

@@ -49,14 +49,14 @@ else
 fi
 
 # Check Backend
-if curl -f http://155.138.239.131:8000/health > /dev/null 2>&1; then
+if curl -f http://localhost:8000/health > /dev/null 2>&1; then
     echo "✅ Backend API is ready"
 else
     echo "❌ Backend API is not ready"
 fi
 
 # Check Frontend
-if curl -f http://155.138.239.131:3000 > /dev/null 2>&1; then
+if curl -f http://localhost:3000 > /dev/null 2>&1; then
     echo "✅ Frontend is ready"
 else
     echo "❌ Frontend is not ready"
@@ -65,11 +65,11 @@ fi
 echo ""
 echo "🎉 AI Model Validation Platform is starting!"
 echo ""
-echo "📱 Frontend: http://155.138.239.131:3000"
-echo "🔧 Backend API: http://155.138.239.131:8000"
-echo "📚 API Documentation: http://155.138.239.131:8000/docs"
-echo "🐘 PostgreSQL: 155.138.239.131:5432"
-echo "📝 CVAT: http://155.138.239.131:8080 (optional)"
+echo "📱 Frontend: http://localhost:3000"
+echo "🔧 Backend API: http://localhost:8000"
+echo "📚 API Documentation: http://localhost:8000/docs"
+echo "🐘 PostgreSQL: localhost:5432"
+echo "📝 CVAT: http://localhost:8080 (optional)"
 echo ""
 echo "To stop the platform: ./scripts/stop.sh"
 echo "To view logs: docker-compose logs -f"

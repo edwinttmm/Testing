@@ -37,8 +37,8 @@ interface AnnotationToolsProps {
   onAnnotationUpdate?: (annotation: Partial<GroundTruthAnnotation>) => void;
   onAnnotationDelete?: (annotationId: string) => void;
   onAnnotationValidate?: (annotationId: string, validated: boolean) => void;
-  onToolSelect?: (tool: AnnotationTool) => void;
-  selectedTool?: AnnotationTool;
+  onToolSelect?: (tool: AnnotationToolDefinition) => void;
+  selectedTool?: AnnotationToolDefinition | null;
   onCreateAnnotation?: (vruType: VRUType, boundingBox?: Partial<BoundingBox>) => void;
   annotationMode: boolean;
   onAnnotationModeToggle?: (enabled: boolean) => void;
@@ -48,7 +48,7 @@ interface AnnotationToolsProps {
   timestamp: number;
 }
 
-export interface AnnotationTool {
+export interface AnnotationToolDefinition {
   id: string;
   name: string;
   type: 'rectangle' | 'polygon' | 'circle' | 'point';
@@ -56,7 +56,7 @@ export interface AnnotationTool {
   cursor: string;
 }
 
-const ANNOTATION_TOOLS: AnnotationTool[] = [
+const ANNOTATION_TOOLS: AnnotationToolDefinition[] = [
   {
     id: 'rectangle',
     name: 'Rectangle',
@@ -114,7 +114,7 @@ const AnnotationTools: React.FC<AnnotationToolsProps> = ({
     }
   }, [selectedAnnotation]);
 
-  const handleToolSelect = useCallback((tool: AnnotationTool) => {
+  const handleToolSelect = useCallback((tool: AnnotationToolDefinition) => {
     onToolSelect?.(tool);
   }, [onToolSelect]);
 

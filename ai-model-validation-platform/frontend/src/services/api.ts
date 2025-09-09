@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { AppError, ErrorFactory } from '../utils/errorTypes';
 import { getConfigValueSync, isConfigInitialized } from '../utils/configurationManager';
 import { fixVideoObjectUrl } from '../utils/videoUrlFixer';
+import { ApiErrorData } from '../types/common';
 import {
   Project,
   ProjectCreate,
@@ -18,6 +19,7 @@ import {
   VideoQualityAssessment,
   DetectionPipelineConfig,
   DetectionPipelineResult,
+  DetectionPipelineResponse,
   EnhancedDashboardStats,
   SignalType,
   GroundTruthAnnotation,
@@ -39,25 +41,35 @@ import errorReporting from './errorReporting';
 import { apiCache } from '../utils/apiCache';
 import envConfig, { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 import { videoEnhancementCache } from '../utils/videoEnhancementCache';
+import { ComponentLogger } from '../utils/loggingUtils';
 
 // Configuration is now handled automatically by configurationManager
 
 class ApiService {
   private api: AxiosInstance;
+  private logger: ComponentLogger;
 
   constructor() {
+    this.logger = new ComponentLogger('ApiService');
+    
     // Get API configuration with proper initialization check
-    const baseURL = isConfigInitialized() 
-      ? getConfigValueSync('REACT_APP_API_URL', 'http://155.138.239.131:8000')
-      : 'http://155.138.239.131:8000';
+    // Always prioritize environment variables for localhost development
+    const baseURL = process.env.REACT_APP_API_URL || 
+      (isConfigInitialized() 
+        ? getConfigValueSync('REACT_APP_API_URL', 'http://localhost:8000')
+        : 'http://localhost:8000');
     const apiConfig = getServiceConfig('api');
     
-    console.log('🔧 API Service initializing with config:', {
-      baseURL,
-      configUrl: apiConfig.url,
-      timeout: apiConfig.timeout,
-      retryAttempts: apiConfig.retryAttempts,
-      retryDelay: apiConfig.retryDelay
+    this.logger.logger.info('API Service initializing', {
+      action: 'service_init',
+      metadata: {
+        baseURL,
+        configUrl: apiConfig.url,
+        timeout: apiConfig.timeout,
+        retryAttempts: apiConfig.retryAttempts,
+        retryDelay: apiConfig.retryDelay,
+        configInitialized: isConfigInitialized()
+      }
     });
 
     this.api = axios.create({
@@ -79,20 +91,52 @@ class ApiService {
     const validationErrors = envConfig.getValidationErrors();
     
     if (validationErrors.length > 0) {
-      console.error('❌ API Service Configuration Errors:', validationErrors);
+      this.logger.logger.error('API Service Configuration Errors', {
+        action: 'config_validation',
+        metadata: {
+          errorCount: validationErrors.length,
+          errors: validationErrors
+        }
+      });
     }
     
     // Test API connectivity in development mode
     if (config.isDevelopment || config.debug) {
+      const connectivityTimer = this.logger.logger.time('api-connectivity-test');
+      
       try {
         const connectivityTest = await envConfig.testApiConnectivity();
+        connectivityTimer();
+        
         if (connectivityTest.connected) {
-          console.log(`✅ API connectivity verified (${connectivityTest.latency}ms latency)`);
+          this.logger.logger.info('API connectivity verified', {
+            action: 'connectivity_test',
+            performance: {
+              timestamp: Date.now(),
+              duration: connectivityTest.latency ?? 0
+            },
+            metadata: {
+              latency: `${connectivityTest.latency}ms`,
+              status: 'connected'
+            }
+          });
         } else {
-          console.warn('⚠️ API connectivity issue:', connectivityTest.error);
+          this.logger.logger.warn('API connectivity issue detected', {
+            action: 'connectivity_test',
+            metadata: {
+              error: connectivityTest.error,
+              status: 'disconnected'
+            }
+          });
         }
       } catch (error) {
-        console.warn('⚠️ API connectivity test failed:', error);
+        connectivityTimer();
+        this.logger.logger.warn('API connectivity test failed', {
+          action: 'connectivity_test',
+          metadata: {
+            status: 'test_failed'
+          }
+        }, error as Error);
       }
     }
   }
@@ -112,7 +156,10 @@ class ApiService {
     // Response interceptor - handle responses and errors
     this.api.interceptors.response.use(
       (response: AxiosResponse) => {
-        // Backend already provides camelCase data - no transformation needed
+        // Backend uses camelCase serializers - apply minimal transformation
+        if (response.data) {
+          response.data = this.transformResponseData(response.data);
+        }
         return response;
       },
       (error: AxiosError) => {
@@ -130,6 +177,7 @@ class ApiService {
 
     let customError: Error;
     let errorMessage = 'An unexpected error occurred';
+    let userFriendlyMessage = '';
 
     try {
       if (isAxiosError(error) && error.response) {
@@ -152,8 +200,35 @@ class ApiService {
         } else {
           errorMessage = `HTTP ${error.response.status}: ${error.response.statusText || 'Unknown error'}`;
         }
+
+        // Generate user-friendly messages based on status code
+        switch (error.response.status) {
+          case 503:
+            userFriendlyMessage = 'The service is temporarily unavailable. Please try again in a few moments.';
+            break;
+          case 405:
+            userFriendlyMessage = 'This operation is not currently supported. Please try a different action.';
+            break;
+          case 404:
+            userFriendlyMessage = 'The requested resource was not found. It may have been moved or deleted.';
+            break;
+          case 403:
+            userFriendlyMessage = 'You don\'t have permission to access this resource.';
+            break;
+          case 401:
+            userFriendlyMessage = 'Your session has expired. Please refresh the page and try again.';
+            break;
+          case 400:
+            userFriendlyMessage = 'The request contains invalid data. Please check your input and try again.';
+            break;
+          case 500:
+            userFriendlyMessage = 'An internal server error occurred. Our team has been notified.';
+            break;
+          default:
+            userFriendlyMessage = `Server error (${error.response.status}). Please try again or contact support if the problem persists.`;
+        }
         
-        apiError.message = errorMessage;
+        apiError.message = userFriendlyMessage || errorMessage;
         if (isObject(responseData)) {
           apiError.details = responseData;
         }
@@ -162,25 +237,34 @@ class ApiService {
         const errorContext = {
           originalError: error,
           method: safeGet(error, 'config.method', undefined),
-          url: safeGet(error, 'config.url', undefined)
+          url: safeGet(error, 'config.url', undefined),
+          userFriendlyMessage
         };
         
         customError = ErrorFactory.createApiError(
-          error.response as any,
+          error.response as unknown as Record<string, unknown>,
           (isObject(responseData) ? responseData : {}) as Record<string, unknown>,
           errorContext
         );
 
       } else if (isAxiosError(error) && error.request) {
         // Network error - no response received
-        errorMessage = 'Network error - please check your connection';
-        apiError.message = errorMessage;
+        if (error.code === 'ERR_NETWORK' || !navigator.onLine) {
+          errorMessage = 'No internet connection. Please check your network and try again.';
+          userFriendlyMessage = 'You appear to be offline. Please check your internet connection.';
+        } else {
+          errorMessage = 'Network error - unable to reach the server';
+          userFriendlyMessage = 'Unable to connect to the server. Please check your connection and try again.';
+        }
+        
+        apiError.message = userFriendlyMessage || errorMessage;
         apiError.code = 'NETWORK_ERROR';
         
         const networkErrorContext = {
           originalError: error,
           method: safeGet(error, 'config.method', undefined),
-          url: safeGet(error, 'config.url', undefined)
+          url: safeGet(error, 'config.url', undefined),
+          userFriendlyMessage
         };
         
         customError = ErrorFactory.createNetworkError(
@@ -191,16 +275,26 @@ class ApiService {
       } else if (isAxiosError(error) && error.code === 'ECONNABORTED') {
         // Request timeout
         errorMessage = 'Request timeout - please try again';
-        apiError.message = errorMessage;
+        userFriendlyMessage = 'The request took too long to complete. Please try again.';
+        apiError.message = userFriendlyMessage;
         apiError.code = 'TIMEOUT_ERROR';
+        customError = new Error(errorMessage);
+
+      } else if (isAxiosError(error) && error.code === 'ERR_CANCELED') {
+        // Request was cancelled
+        errorMessage = 'Request was cancelled';
+        userFriendlyMessage = 'The operation was cancelled.';
+        apiError.message = userFriendlyMessage;
+        apiError.code = 'CANCELLED_ERROR';
         customError = new Error(errorMessage);
 
       } else {
         // Request setup error or other error
         const parsedError = parseErrorResponse(error);
         errorMessage = parsedError.message;
+        userFriendlyMessage = 'An unexpected error occurred. Please try again.';
         
-        apiError.message = errorMessage;
+        apiError.message = userFriendlyMessage;
         apiError.status = parsedError.status || 500;
         customError = new Error(`Request error: ${errorMessage}`);
       }
@@ -208,7 +302,9 @@ class ApiService {
       // Safely build error context using type guards
       const errorContext: Record<string, unknown> = {
         timestamp: new Date().toISOString(),
-        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+        userFriendlyMessage,
+        originalMessage: errorMessage
       };
       
       if (isAxiosError(error)) {
@@ -232,9 +328,10 @@ class ApiService {
         console.warn('Failed to report error:', reportingError);
       }
 
-      // Safe console logging
+      // Safe console logging with both technical and user-friendly messages
       console.error('API Error:', {
-        message: apiError.message,
+        userMessage: apiError.message,
+        technicalMessage: errorMessage,
         status: apiError.status,
         code: apiError.code,
         context: errorContext
@@ -248,7 +345,7 @@ class ApiService {
       
       const fallbackError: AppError = {
         name: 'UnknownError',
-        message: 'An unexpected error occurred',
+        message: 'An unexpected error occurred. Please refresh the page and try again.',
         status: 500,
         code: 'UNKNOWN_ERROR'
       };
@@ -257,8 +354,10 @@ class ApiService {
     }
   }
 
-  // Transform backend snake_case responses to frontend camelCase
+  // Backend now uses camelCase serializers - minimal transformation needed
   private transformResponseData(data: unknown): unknown {
+    // Backend already provides camelCase data via Pydantic serializers
+    // Only minimal transformation needed for specific cases
     if (!isObject(data) && !Array.isArray(data)) {
       return data;
     }
@@ -268,44 +367,18 @@ class ApiService {
       return data.map(item => this.transformResponseData(item));
     }
 
-    // Handle objects - using type guard
+    // Handle objects - minimal processing since backend uses camelCase
     if (!isObject(data)) return data;
-    const transformed: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(data)) {
-      let newKey = key;
-      
-      // Transform common snake_case fields to camelCase
-      const fieldMappings: { [key: string]: string } = {
-        'project_id': 'projectId',
-        'video_id': 'videoId', 
-        'file_size': 'fileSize',
-        'file_path': 'filePath',
-        'created_at': 'createdAt',
-        'updated_at': 'updatedAt',
-        'uploaded_at': 'uploadedAt',
-        'ground_truth_generated': 'groundTruthGenerated',
-        'ground_truth_status': 'groundTruthStatus',
-        'processing_status': 'processingStatus',
-        'detection_count': 'detectionCount',
-        'test_session_id': 'testSessionId',
-        'original_name': 'originalName',
-        'camera_model': 'cameraModel',
-        'camera_view': 'cameraView',
-        'lens_type': 'lensType',
-        'frame_rate': 'frameRate',
-        'signal_type': 'signalType',
-        'owner_id': 'ownerId',
-        'class_label': 'classLabel',
-        'validation_result': 'validationResult',
-        'bounding_box': 'boundingBox'
-      };
-
-      if (fieldMappings[key]) {
-        newKey = fieldMappings[key];
-      }
-
-      // Recursively transform nested objects
-      transformed[newKey] = this.transformResponseData(value);
+    const transformed: Record<string, unknown> = { ...data };
+    
+    // Handle any remaining snake_case fields for backward compatibility
+    if ('created_at' in data && !('createdAt' in data)) {
+      transformed.createdAt = data.created_at;
+      delete transformed.created_at;
+    }
+    if ('updated_at' in data && !('updatedAt' in data)) {
+      transformed.updatedAt = data.updated_at;
+      delete transformed.updated_at;
     }
 
     return transformed;
@@ -342,7 +415,7 @@ class ApiService {
     return videoObj;
   }
 
-  // Enhanced request method with caching and deduplication
+  // Enhanced request method with caching and deduplication and retry logic
   private async cachedRequest<T>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     url: string,
@@ -373,26 +446,53 @@ class ApiService {
       }
     }
 
-    // Make the actual request
-    const requestPromise = this.api.request<T>({
-      method: method.toLowerCase(),
-      url,
-      data,
-      ...config,
-    }).then(response => {
-      // Cache successful GET responses
-      if (method === 'GET') {
-        apiCache.set(method, url, response.data, safeParams(params));
-        if (isDebugEnabled()) {
-          console.log(`💾 Cached response for ${method} ${url}`);
+    // Retry configuration
+    const maxRetries = 3;
+    const retryDelay = (attempt: number) => Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff
+    
+    const executeRequest = async (attempt: number = 0): Promise<T> => {
+      try {
+        const response = await this.api.request<T>({
+          method: method.toLowerCase(),
+          url,
+          data,
+          ...config,
+        });
+
+        // Cache successful GET responses
+        if (method === 'GET') {
+          apiCache.set(method, url, response.data, safeParams(params));
+          if (isDebugEnabled()) {
+            console.log(`💾 Cached response for ${method} ${url}`);
+          }
         }
+        
+        return response.data;
+      } catch (error: unknown) {
+        if (isDebugEnabled()) {
+          console.error(`❌ Request failed for ${method} ${url} (attempt ${attempt + 1}):`, (error as Error)?.message || 'Unknown error');
+        }
+
+        // Determine if we should retry
+        const shouldRetry = attempt < maxRetries && this.shouldRetryRequest(error);
+        
+        if (shouldRetry) {
+          if (isDebugEnabled()) {
+            console.log(`🔄 Retrying ${method} ${url} in ${retryDelay(attempt)}ms (attempt ${attempt + 2}/${maxRetries + 1})`);
+          }
+          
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, retryDelay(attempt)));
+          return executeRequest(attempt + 1);
+        }
+        
+        throw error;
       }
-      return response.data;
-    }).catch(error => {
-      if (isDebugEnabled()) {
-        console.error(`❌ Request failed for ${method} ${url}:`, error.message);
-      }
-      throw error;
+    };
+
+    const requestPromise = executeRequest().catch(error => {
+      // Ensure errors are properly handled and re-thrown
+      throw this.handleError(error);
     });
 
     // Track pending request for deduplication
@@ -401,6 +501,39 @@ class ApiService {
     }
 
     return requestPromise;
+  }
+
+  private shouldRetryRequest(error: Error | unknown): boolean {
+    // Don't retry on client errors (4xx) except for 408, 429
+    if (isAxiosError(error) && error.response) {
+      const status = error.response.status;
+      
+      // Retry on server errors (5xx)
+      if (status >= 500) {
+        return true;
+      }
+      
+      // Retry on specific client errors
+      if (status === 408 || status === 429) { // Request Timeout, Too Many Requests
+        return true;
+      }
+      
+      // Don't retry on other client errors
+      return false;
+    }
+    
+    // Retry on network errors
+    if (isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK')) {
+      return true;
+    }
+    
+    // Don't retry on cancelled requests
+    if (isAxiosError(error) && error.code === 'ERR_CANCELED') {
+      return false;
+    }
+    
+    // Retry on other unknown errors
+    return true;
   }
   
   /**
@@ -670,7 +803,7 @@ class ApiService {
   }
 
   // Ground truth - Enhanced with fallback data and proper error handling
-  async getGroundTruth(videoId: string): Promise<any> {
+  async getGroundTruth(videoId: string): Promise<Record<string, unknown>> {
     try {
       const response = await this.api.get(`/api/videos/${videoId}/ground-truth`);
       
@@ -678,7 +811,7 @@ class ApiService {
       if (hasResponseData(response) && isObject(response.data)) {
         const objectsData = safeGet(response.data, 'objects', []);
         if (Array.isArray(objectsData)) {
-          (response.data as any).objects = objectsData.map((obj: unknown) => {
+          (response.data as Record<string, unknown>).objects = objectsData.map((obj: unknown) => {
             if (!isObject(obj)) return obj;
           
           // Safely extract bounding box data
@@ -755,28 +888,29 @@ class ApiService {
   }
 
   async createAnnotation(videoId: string, annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'>): Promise<GroundTruthAnnotation> {
-    // Ensure pure JSON serialization for bounding_box - strip any TypeScript class methods
-    const pureBoundingBox = JSON.parse(JSON.stringify({
-      x: Number(annotation.boundingBox.x) || 0,
-      y: Number(annotation.boundingBox.y) || 0,
-      width: Number(annotation.boundingBox.width) || 50,
-      height: Number(annotation.boundingBox.height) || 100,
-      label: String(annotation.boundingBox.label || annotation.vruType || 'unknown'),
-      confidence: Number(annotation.boundingBox.confidence) || 1.0
-    }));
-
+    // Backend expects camelCase data with proper serialization
     const result = await this.cachedRequest<GroundTruthAnnotation>('POST', `/api/videos/${videoId}/annotations`, {
-      detection_id: annotation.detectionId,
-      frame_number: annotation.frameNumber,
+      detectionId: annotation.detectionId,
+      frameNumber: annotation.frameNumber,
       timestamp: annotation.timestamp,
-      vru_type: annotation.vruType,
-      bounding_box: pureBoundingBox,
+      endTimestamp: annotation.endTimestamp,
+      vruType: annotation.vruType,
+      classLabel: annotation.classLabel,
+      boundingBox: {
+        x: Number(annotation.boundingBox.x) || 0,
+        y: Number(annotation.boundingBox.y) || 0,
+        width: Number(annotation.boundingBox.width) || 50,
+        height: Number(annotation.boundingBox.height) || 100,
+        confidence: Number(annotation.boundingBox.confidence) || 1.0
+      },
       occluded: annotation.occluded,
       truncated: annotation.truncated,
       difficult: annotation.difficult,
+      validationStatus: annotation.validationStatus,
+      validated: annotation.validated,
+      confidence: annotation.confidence,
       notes: annotation.notes,
-      annotator: annotation.annotator,
-      validated: annotation.validated
+      annotator: annotation.annotator
     });
     // Invalidate cache for video annotations
     apiCache.invalidatePattern(`/api/videos/${videoId}/annotations`);
@@ -784,29 +918,34 @@ class ApiService {
   }
 
   async updateAnnotation(annotationId: string, updates: Partial<GroundTruthAnnotation>): Promise<GroundTruthAnnotation> {
-    // Ensure pure JSON serialization for bounding_box if it exists
-    const pureBoundingBox = updates.boundingBox ? JSON.parse(JSON.stringify({
-      x: Number(updates.boundingBox.x) || 0,
-      y: Number(updates.boundingBox.y) || 0,
-      width: Number(updates.boundingBox.width) || 50,
-      height: Number(updates.boundingBox.height) || 100,
-      label: String(updates.boundingBox.label || updates.vruType || 'unknown'),
-      confidence: Number(updates.boundingBox.confidence) || 1.0
-    })) : undefined;
+    // Backend expects camelCase data
+    const updateData: Record<string, unknown> = {};
+    
+    if (updates.detectionId !== undefined) updateData.detectionId = updates.detectionId;
+    if (updates.frameNumber !== undefined) updateData.frameNumber = updates.frameNumber;
+    if (updates.timestamp !== undefined) updateData.timestamp = updates.timestamp;
+    if (updates.endTimestamp !== undefined) updateData.endTimestamp = updates.endTimestamp;
+    if (updates.vruType !== undefined) updateData.vruType = updates.vruType;
+    if (updates.classLabel !== undefined) updateData.classLabel = updates.classLabel;
+    if (updates.boundingBox !== undefined) {
+      updateData.boundingBox = {
+        x: Number(updates.boundingBox.x) || 0,
+        y: Number(updates.boundingBox.y) || 0,
+        width: Number(updates.boundingBox.width) || 50,
+        height: Number(updates.boundingBox.height) || 100,
+        confidence: Number(updates.boundingBox.confidence) || 1.0
+      };
+    }
+    if (updates.occluded !== undefined) updateData.occluded = updates.occluded;
+    if (updates.truncated !== undefined) updateData.truncated = updates.truncated;
+    if (updates.difficult !== undefined) updateData.difficult = updates.difficult;
+    if (updates.validationStatus !== undefined) updateData.validationStatus = updates.validationStatus;
+    if (updates.validated !== undefined) updateData.validated = updates.validated;
+    if (updates.confidence !== undefined) updateData.confidence = updates.confidence;
+    if (updates.notes !== undefined) updateData.notes = updates.notes;
+    if (updates.annotator !== undefined) updateData.annotator = updates.annotator;
 
-    const result = await this.cachedRequest<GroundTruthAnnotation>('PUT', `/api/annotations/${annotationId}`, {
-      detection_id: updates.detectionId,
-      frame_number: updates.frameNumber,
-      timestamp: updates.timestamp,
-      vru_type: updates.vruType,
-      bounding_box: pureBoundingBox,
-      occluded: updates.occluded,
-      truncated: updates.truncated,
-      difficult: updates.difficult,
-      notes: updates.notes,
-      annotator: updates.annotator,
-      validated: updates.validated
-    });
+    const result = await this.cachedRequest<GroundTruthAnnotation>('PUT', `/api/annotations/${annotationId}`, updateData);
     // Invalidate related cache entries
     apiCache.invalidatePattern('/api/videos');
     apiCache.invalidatePattern('/api/annotations');
@@ -836,8 +975,8 @@ class ApiService {
 
   async createAnnotationSession(videoId: string, projectId: string): Promise<AnnotationSession> {
     const result = await this.cachedRequest<AnnotationSession>('POST', '/api/annotation-sessions', {
-      video_id: videoId,
-      project_id: projectId
+      videoId: videoId,
+      projectId: projectId
     });
     return result;
   }
@@ -849,9 +988,9 @@ class ApiService {
   async updateAnnotationSession(sessionId: string, updates: Partial<AnnotationSession>): Promise<AnnotationSession> {
     const result = await this.cachedRequest<AnnotationSession>('PUT', `/api/annotation-sessions/${sessionId}`, {
       status: updates.status,
-      current_frame: updates.currentFrame,
-      total_detections: updates.totalDetections,
-      validated_detections: updates.validatedDetections
+      currentFrame: updates.currentFrame,
+      totalDetections: updates.totalDetections,
+      validatedDetections: updates.validatedDetections
     });
     return result;
   }
@@ -882,9 +1021,20 @@ class ApiService {
 
   // Test sessions
   async getTestSessions(projectId?: string): Promise<TestSession[]> {
-    const params = projectId ? { project_id: projectId } : {};
+    const params = projectId ? { projectId: projectId } : {};
     const response = await this.api.get<TestSession[]>('/api/test-sessions', { params });
     return response.data;
+  }
+
+  // Get enhanced test results sessions for a specific project
+  async getEnhancedTestSessions(projectId: string, limit: number = 10): Promise<any[]> {
+    try {
+      return this.cachedRequest<any[]>('GET', `/api/results/projects/${projectId}/sessions`, undefined, { params: { limit } });
+    } catch (error) {
+      console.warn('Enhanced results API not available for project sessions:', error);
+      // Fallback to regular sessions
+      return this.getTestSessions(projectId);
+    }
   }
 
   async getTestSession(sessionId: string): Promise<TestSession> {
@@ -897,9 +1047,17 @@ class ApiService {
     return response.data;
   }
 
-  async getTestResults(sessionId: string): Promise<any> {
-    const response = await this.api.get(`/api/test-sessions/${sessionId}/results`);
-    return response.data;
+  async getTestResults(sessionId: string): Promise<Record<string, unknown>> {
+    try {
+      // First try the enhanced results API for detailed session results
+      const response = await this.cachedRequest<any>('GET', `/api/results/sessions/${sessionId}/detailed`);
+      return response;
+    } catch (error) {
+      console.warn('Enhanced results API not available, falling back to standard API:', error);
+      // Fallback to standard API
+      const response = await this.api.get(`/api/test-sessions/${sessionId}/results`);
+      return response.data;
+    }
   }
 
   // Dashboard
@@ -935,15 +1093,36 @@ class ApiService {
     return this.cachedRequest<VideoQualityAssessment>('GET', `/api/video-library/quality-assessment/${videoId}`);
   }
 
-  // Detection Pipeline
+  // Detection Pipeline with enhanced result handling and extended timeout
   async runDetectionPipeline(videoId: string, config: DetectionPipelineConfig): Promise<DetectionPipelineResult> {
-    return this.cachedRequest<DetectionPipelineResult>('POST', '/api/detection/pipeline/run', { 
-      video_id: videoId,
+    const result = await this.cachedRequest<DetectionPipelineResponse>('POST', '/api/detection/pipeline/run', { 
+      video_id: videoId,  // Backend expects video_id, not videoId
       confidence_threshold: config.confidenceThreshold,
       nms_threshold: config.nmsThreshold,
       model_name: config.modelName,
       target_classes: config.targetClasses
+    }, {
+      timeout: 120000  // 120 seconds to handle real YOLOv8 processing (70s + buffer)
     });
+    
+    // Ensure the result conforms to DetectionPipelineResult interface
+    // Backend returns DetectionPipelineResponse with snake_case - normalize to frontend format
+    const baseResult = {
+      videoId: result.videoId || result.video_id || videoId,
+      detections: result.detections || [],
+      processingTime: result.processingTime || result.processing_time || 0,
+      modelUsed: result.modelUsed || result.model_used || config.modelName || 'unknown',
+      totalDetections: result.totalDetections || result.total_detections || (result.detections ? result.detections.length : 0),
+      confidenceDistribution: result.confidenceDistribution || result.confidence_distribution || {},
+      success: result.success !== undefined ? result.success : true
+    };
+    
+    // Build final result with conditional error property for exactOptionalPropertyTypes
+    const normalizedResult: DetectionPipelineResult = result.error
+      ? { ...baseResult, error: result.error }
+      : baseResult;
+    
+    return normalizedResult;
   }
 
   async getAvailableModels(): Promise<{models: string[], default: string, recommended: string}> {
@@ -951,7 +1130,7 @@ class ApiService {
   }
 
   // Get detection results for a video
-  async getVideoDetections(videoId: string): Promise<any[]> {
+  async getVideoDetections(videoId: string): Promise<Record<string, unknown>[]> {
     try {
       const response = await this.api.get(`/api/videos/${videoId}/detections`);
       return response.data.detections || [];
@@ -963,7 +1142,7 @@ class ApiService {
   }
 
   // Get detection results for a test session  
-  async getTestSessionDetections(sessionId: string): Promise<any[]> {
+  async getTestSessionDetections(sessionId: string): Promise<Record<string, unknown>[]> {
     try {
       const response = await this.api.get(`/api/test-sessions/${sessionId}/detections`);
       return response.data.detections || [];
@@ -977,9 +1156,9 @@ class ApiService {
   // Signal Processing
   async processSignal(signalType: SignalType, signalData: unknown, config?: Record<string, unknown>): Promise<SignalProcessingResult> {
     return this.cachedRequest<SignalProcessingResult>('POST', '/api/signals/process', {
-      signal_type: signalType,
-      signal_data: signalData,
-      processing_config: config
+      signalType: signalType,
+      signalData: signalData,
+      processingConfig: config
     });
   }
 
@@ -990,10 +1169,10 @@ class ApiService {
   // Enhanced Project Management
   async configurePassFailCriteria(projectId: string, criteria: Omit<PassFailCriteria, 'id' | 'projectId' | 'createdAt'>): Promise<PassFailCriteria> {
     return this.cachedRequest<PassFailCriteria>('POST', `/api/projects/${projectId}/criteria/configure`, {
-      min_precision: criteria.minPrecision,
-      min_recall: criteria.minRecall,
-      min_f1_score: criteria.minF1Score,
-      max_latency_ms: criteria.maxLatencyMs
+      minPrecision: criteria.minPrecision,
+      minRecall: criteria.minRecall,
+      minF1Score: criteria.minF1Score,
+      maxLatencyMs: criteria.maxLatencyMs
     });
   }
 
@@ -1004,8 +1183,8 @@ class ApiService {
   // Statistical Validation
   async runStatisticalValidation(testSessionId: string, confidenceLevel: number = 0.95): Promise<StatisticalValidation> {
     return this.cachedRequest<StatisticalValidation>('POST', '/api/validation/statistical/run', {
-      test_session_id: testSessionId,
-      confidence_level: confidenceLevel
+      testSessionId: testSessionId,
+      confidenceLevel: confidenceLevel
     });
   }
 
@@ -1054,6 +1233,156 @@ class ApiService {
     apiCache.invalidatePattern(`/api/projects/${projectId}/videos`);
   }
 
+  // LabJack Signal Validation endpoints
+  async checkLabJackStatus(): Promise<{connected: boolean, mock_mode?: boolean, voltage_threshold?: number, channels?: string[], sample_rate?: number, current_voltages?: Record<string, number>, error?: string}> {
+    return this.cachedRequest<{connected: boolean, mock_mode?: boolean, voltage_threshold?: number, channels?: string[], sample_rate?: number, current_voltages?: Record<string, number>, error?: string}>('GET', '/api/signal-validation/labjack/status');
+  }
+
+  async initializeLabJack(config?: {voltage_threshold?: {lower: number, upper: number}, channels?: string[], sample_rate?: number}): Promise<{status: string, message: string, mock_mode?: boolean, error?: string}> {
+    return this.cachedRequest<{status: string, message: string, mock_mode?: boolean, error?: string}>('POST', '/api/signal-validation/labjack/initialize', config || {});
+  }
+
+  async configureLabJack(config: {voltage_threshold?: number, channels?: string[], sample_rate?: number}): Promise<{status: string, message: string}> {
+    return this.cachedRequest<{status: string, message: string}>('POST', '/api/signal-validation/labjack/configure', config);
+  }
+
+  async startSignalMonitoring(testSessionId: string = 'default-session'): Promise<{status: string, message: string, test_session_id?: string}> {
+    return this.cachedRequest<{status: string, message: string, test_session_id?: string}>('POST', `/api/signal-validation/monitoring/start/${testSessionId}`, {});
+  }
+
+  async stopSignalMonitoring(): Promise<{status: string, message: string}> {
+    return this.cachedRequest<{status: string, message: string}>('POST', '/api/signal-validation/monitoring/stop', {});
+  }
+
+  async getSignalStatistics(testSessionId: string): Promise<{total_signals: number, valid_signals: number, invalid_signals: number, average_delay: number, statistics: Record<string, unknown>}> {
+    return this.cachedRequest<{total_signals: number, valid_signals: number, invalid_signals: number, average_delay: number, statistics: Record<string, unknown>}>('GET', `/api/signal-validation/statistics/${testSessionId}`);
+  }
+
+  async testSignalValidationConnection(): Promise<{status: string, components: Record<string, unknown>}> {
+    return this.cachedRequest<{status: string, components: Record<string, unknown>}>('GET', '/api/signal-validation/test-connection');
+  }
+
+  // Enhanced Test Workflow endpoints
+  async startEnhancedTestWorkflow(config: {
+    projectId: string;
+    detectionWindowMs: number;
+    voltageThreshold: number;
+    sampleRate: number;
+    channels: string[];
+  }): Promise<{message: string; projectId: string; videoCount: number; sessionId: string}> {
+    return this.cachedRequest<{message: string; projectId: string; videoCount: number; sessionId: string}>('POST', '/api/enhanced-test-workflow/start', {
+      project_id: config.projectId,
+      detection_window_ms: config.detectionWindowMs,
+      voltage_threshold: config.voltageThreshold,
+      sample_rate: config.sampleRate,
+      channels: config.channels
+    });
+  }
+
+  async stopEnhancedTestWorkflow(): Promise<{message: string; results: unknown[]}> {
+    return this.cachedRequest<{message: string; results: unknown[]}>('POST', '/api/enhanced-test-workflow/stop', {});
+  }
+
+  async getEnhancedTestWorkflowStatus(): Promise<{
+    active: boolean;
+    currentVideo: number;
+    totalVideos: number;
+    resultsCount: number;
+    sessionId?: string;
+  }> {
+    return this.cachedRequest<{
+      active: boolean;
+      currentVideo: number;
+      totalVideos: number;
+      resultsCount: number;
+      sessionId?: string;
+    }>('GET', '/api/enhanced-test-workflow/status');
+  }
+
+  async getEnhancedTestWorkflowResults(): Promise<{
+    active: boolean;
+    results: Array<{
+      videoId: string;
+      videoName: string;
+      expectedDetectionTime: number;
+      actualDetectionTime?: number;
+      detectionDelayMs?: number;
+      status: 'pass' | 'fail_no_detection' | 'fail_timeout';
+    }>;
+    summary: {
+      totalVideos: number;
+      passed: number;
+      failed: number;
+      avgLatency: number;
+    };
+  }> {
+    return this.cachedRequest('GET', '/api/enhanced-test-workflow/results');
+  }
+
+  // Enhanced Test Session Management - integrate with existing sessions
+  async getEnhancedTestSessions(projectId?: string): Promise<Array<{
+    id: string;
+    name: string;
+    projectId: string;
+    status: 'created' | 'running' | 'completed' | 'failed';
+    videoCount: number;
+    results?: unknown[];
+    createdAt: string;
+    completedAt?: string;
+  }>> {
+    const params = projectId ? { projectId } : {};
+    return this.cachedRequest('GET', '/api/enhanced-test-workflow/sessions', undefined, { params });
+  }
+
+  async createEnhancedTestSession(sessionData: {
+    name: string;
+    description?: string;
+    projectId: string;
+    videoIds: string[];
+    config: {
+      detectionWindowMs: number;
+      voltageThreshold: number;
+      sampleRate: number;
+      channels: string[];
+    };
+  }): Promise<{
+    id: string;
+    name: string;
+    projectId: string;
+    status: 'created';
+    sessionData: unknown;
+  }> {
+    return this.cachedRequest('POST', '/api/enhanced-test-workflow/sessions', {
+      name: sessionData.name,
+      description: sessionData.description,
+      project_id: sessionData.projectId,
+      video_ids: sessionData.videoIds,
+      config: sessionData.config
+    });
+  }
+
+  async runEnhancedTestSession(sessionId: string): Promise<{
+    message: string;
+    sessionId: string;
+    status: string;
+  }> {
+    return this.cachedRequest('POST', `/api/enhanced-test-workflow/sessions/${sessionId}/run`, {});
+  }
+
+  async getEnhancedTestSessionResults(sessionId: string): Promise<{
+    sessionId: string;
+    results: unknown[];
+    summary: {
+      totalVideos: number;
+      passed: number;
+      failed: number;
+      avgDetectionDelay: number;
+      testDuration: number;
+    };
+  }> {
+    return this.cachedRequest('GET', `/api/enhanced-test-workflow/sessions/${sessionId}/results`);
+  }
+
   // Generic request methods for custom endpoints
   async get<T = unknown>(url: string, config?: Record<string, unknown>): Promise<T> {
     const response = await this.api.get<T>(url, config);
@@ -1094,6 +1423,7 @@ export const getVideo = apiServiceInstance.getVideo.bind(apiServiceInstance);
 export const deleteVideo = apiServiceInstance.deleteVideo.bind(apiServiceInstance);
 export const getGroundTruth = apiServiceInstance.getGroundTruth.bind(apiServiceInstance);
 export const getTestSessions = apiServiceInstance.getTestSessions.bind(apiServiceInstance);
+export const getEnhancedTestSessions = apiServiceInstance.getEnhancedTestSessions.bind(apiServiceInstance);
 export const getTestSession = apiServiceInstance.getTestSession.bind(apiServiceInstance);
 export const createTestSession = apiServiceInstance.createTestSession.bind(apiServiceInstance);
 export const getTestResults = apiServiceInstance.getTestResults.bind(apiServiceInstance);
@@ -1129,5 +1459,19 @@ export const getAnnotationSession = apiServiceInstance.getAnnotationSession.bind
 export const updateAnnotationSession = apiServiceInstance.updateAnnotationSession.bind(apiServiceInstance);
 export const exportAnnotations = apiServiceInstance.exportAnnotations.bind(apiServiceInstance);
 export const importAnnotations = apiServiceInstance.importAnnotations.bind(apiServiceInstance);
+export const checkLabJackStatus = apiServiceInstance.checkLabJackStatus.bind(apiServiceInstance);
+export const initializeLabJack = apiServiceInstance.initializeLabJack.bind(apiServiceInstance);
+export const configureLabJack = apiServiceInstance.configureLabJack.bind(apiServiceInstance);
+export const startSignalMonitoring = apiServiceInstance.startSignalMonitoring.bind(apiServiceInstance);
+export const stopSignalMonitoring = apiServiceInstance.stopSignalMonitoring.bind(apiServiceInstance);
+export const getSignalStatistics = apiServiceInstance.getSignalStatistics.bind(apiServiceInstance);
+export const testSignalValidationConnection = apiServiceInstance.testSignalValidationConnection.bind(apiServiceInstance);
+export const startEnhancedTestWorkflow = apiServiceInstance.startEnhancedTestWorkflow.bind(apiServiceInstance);
+export const stopEnhancedTestWorkflow = apiServiceInstance.stopEnhancedTestWorkflow.bind(apiServiceInstance);
+export const getEnhancedTestWorkflowStatus = apiServiceInstance.getEnhancedTestWorkflowStatus.bind(apiServiceInstance);
+export const getEnhancedTestWorkflowResults = apiServiceInstance.getEnhancedTestWorkflowResults.bind(apiServiceInstance);
+export const createEnhancedTestSession = apiServiceInstance.createEnhancedTestSession.bind(apiServiceInstance);
+export const runEnhancedTestSession = apiServiceInstance.runEnhancedTestSession.bind(apiServiceInstance);
+export const getEnhancedTestSessionResults = apiServiceInstance.getEnhancedTestSessionResults.bind(apiServiceInstance);
 
 export default apiService;

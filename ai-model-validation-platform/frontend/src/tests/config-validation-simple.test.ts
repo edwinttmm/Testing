@@ -9,10 +9,10 @@ import { environmentService } from '../config/environment';
 
 // Set up runtime config in jsdom environment
 const mockRuntimeConfig = {
-  REACT_APP_API_URL: 'http://155.138.239.131:8000',
-  REACT_APP_WS_URL: 'ws://155.138.239.131:8000',
-  REACT_APP_SOCKETIO_URL: 'http://155.138.239.131:8001',
-  REACT_APP_VIDEO_BASE_URL: 'http://155.138.239.131:8000',
+  REACT_APP_API_URL: 'http://localhost:8000',
+  REACT_APP_WS_URL: 'ws://localhost:8000',
+  REACT_APP_SOCKETIO_URL: 'http://localhost:8001',
+  REACT_APP_VIDEO_BASE_URL: 'http://localhost:8000',
   REACT_APP_ENVIRONMENT: 'production'
 };
 
@@ -43,40 +43,40 @@ describe('Configuration Validation Tests', () => {
       const wsUrl = await configurationManager.getConfigValue('REACT_APP_WS_URL', '');
       const socketioUrl = await configurationManager.getConfigValue('REACT_APP_SOCKETIO_URL', '');
 
-      expect(apiUrl).toBe('http://155.138.239.131:8000');
-      expect(wsUrl).toBe('ws://155.138.239.131:8000');
-      expect(socketioUrl).toBe('http://155.138.239.131:8001');
+      expect(apiUrl).toBe('http://localhost:8000');
+      expect(wsUrl).toBe('ws://localhost:8000');
+      expect(socketioUrl).toBe('http://localhost:8001');
     });
 
     it('should provide synchronous configuration access after initialization', () => {
       const apiUrl = getConfigValueSync('REACT_APP_API_URL', '');
       const wsUrl = getConfigValueSync('REACT_APP_WS_URL', '');
 
-      expect(apiUrl).toBe('http://155.138.239.131:8000');
-      expect(wsUrl).toBe('ws://155.138.239.131:8000');
+      expect(apiUrl).toBe('http://localhost:8000');
+      expect(wsUrl).toBe('ws://localhost:8000');
     });
   });
 
   describe('App Configuration', () => {
     it('should provide correct API configuration', () => {
-      expect(appConfig.api.baseUrl).toContain('155.138.239.131');
-      expect(appConfig.websocket.url).toContain('155.138.239.131');
+      expect(appConfig.api.baseUrl).toContain('localhost');
+      expect(appConfig.websocket.url).toContain('localhost');
     });
 
     it('should generate correct API URLs', () => {
       const baseUrl = getApiUrl();
       const endpointUrl = getApiUrl('/api/test');
 
-      expect(baseUrl).toBe('http://155.138.239.131:8000');
-      expect(endpointUrl).toBe('http://155.138.239.131:8000/api/test');
+      expect(baseUrl).toBe('http://localhost:8000');
+      expect(endpointUrl).toBe('http://localhost:8000/api/test');
     });
 
     it('should generate correct WebSocket URLs', () => {
       const baseWsUrl = getWebSocketUrl();
       const endpointWsUrl = getWebSocketUrl('/ws/test');
 
-      expect(baseWsUrl).toContain('155.138.239.131');
-      expect(endpointWsUrl).toContain('155.138.239.131');
+      expect(baseWsUrl).toContain('localhost');
+      expect(endpointWsUrl).toContain('localhost');
     });
   });
 
@@ -97,8 +97,8 @@ describe('Configuration Validation Tests', () => {
       const apiUrl = environmentService.getApiUrl();
       const wsUrl = environmentService.getWsUrl();
 
-      expect(apiUrl).toContain('155.138.239.131');
-      expect(wsUrl).toContain('155.138.239.131');
+      expect(apiUrl).toContain('localhost');
+      expect(wsUrl).toContain('localhost');
     });
   });
 
@@ -145,7 +145,7 @@ describe('Configuration Validation Tests', () => {
   describe('Runtime Configuration Override', () => {
     it('should use window.RUNTIME_CONFIG when available', () => {
       expect((window as any).RUNTIME_CONFIG).toBeDefined();
-      expect((window as any).RUNTIME_CONFIG.REACT_APP_API_URL).toBe('http://155.138.239.131:8000');
+      expect((window as any).RUNTIME_CONFIG.REACT_APP_API_URL).toBe('http://localhost:8000');
     });
 
     it('should prioritize runtime config over environment variables', async () => {
@@ -156,7 +156,7 @@ describe('Configuration Validation Tests', () => {
       try {
         // Runtime config should still win
         const apiUrl = await configurationManager.getConfigValue('REACT_APP_API_URL', '');
-        expect(apiUrl).toBe('http://155.138.239.131:8000');
+        expect(apiUrl).toBe('http://localhost:8000');
       } finally {
         // Restore original env
         if (originalEnv !== undefined) {
