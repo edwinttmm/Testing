@@ -29,7 +29,22 @@ try:
     LABJACK_AVAILABLE = True
 except ImportError:
     LABJACK_AVAILABLE = False
-    logging.warning("LabJack LJM library not installed. Install with: pip install labjack-ljm")
+    logging.warning("LabJack LJM library not installed. Using mock mode.")
+    # Import mock LabJack interface
+    try:
+        from services.mock_labjack import ljm, get_mock_labjack_status
+        logging.info("Mock LabJack interface loaded successfully")
+    except ImportError as mock_error:
+        logging.error(f"Failed to load mock LabJack interface: {mock_error}")
+        ljm = None
+
+# Import configuration
+try:
+    from config.labjack_env_config import load_config_from_env, detect_labjack_availability
+except ImportError:
+    logging.warning("LabJack environment configuration not available")
+    load_config_from_env = None
+    detect_labjack_availability = None
 
 from models import GroundTruthObject, DetectionEvent, TestSession
 from schemas_video_annotation import (
@@ -62,39 +77,82 @@ class DetectionSignal:
 
 
 class LabJackInterface:
-    """Interface for LabJack voltage signal acquisition"""
+    """Interface for LabJack voltage signal acquisition with fallback support"""
     
-    def __init__(self):
+    def __init__(self, force_mock_mode: bool = False):
         self.handle = None
         self.is_connected = False
         self.voltage_threshold = 2.5  # Voltage threshold for detection (adjustable)
         self.sample_rate = 1000  # Hz
         self.channels = ["AIN0", "AIN1"]  # Analog input channels
+        self.mock_mode = force_mock_mode or not LABJACK_AVAILABLE
+        self.connection_retries = 0
+        self.max_retries = 3
+        
+        # Load configuration if available
+        if load_config_from_env:
+            try:
+                config = load_config_from_env()
+                self.voltage_threshold = config.voltage_threshold
+                self.sample_rate = config.sample_rate
+                self.channels = config.channels
+                self.mock_mode = config.mock_mode or self.mock_mode
+                logger.info(f"LabJack configuration loaded: mock_mode={self.mock_mode}")
+            except Exception as e:
+                logger.warning(f"Failed to load LabJack configuration: {e}")
+        
+        if self.mock_mode:
+            logger.info("🔧 LabJack interface initialized in MOCK MODE")
+        else:
+            logger.info("🔌 LabJack interface initialized in HARDWARE MODE")
         
     def connect(self, device_type: str = "ANY", connection_type: str = "ANY", identifier: str = "ANY"):
-        """Connect to LabJack device"""
-        if not LABJACK_AVAILABLE:
-            raise RuntimeError("LabJack LJM library not installed")
-            
-        try:
-            # Open connection to LabJack
-            self.handle = ljm.openS(device_type, connection_type, identifier)
-            info = ljm.getHandleInfo(self.handle)
-            logger.info(f"Connected to LabJack - Device Type: {info[0]}, Connection: {info[1]}, "
-                       f"Serial: {info[2]}, IP: {ljm.numberToIP(info[3])}, Port: {info[4]}")
-            
-            # Configure analog inputs for best resolution
-            # Set analog input range to ±10V for better signal detection
-            for channel in self.channels:
-                ljm.eWriteName(self.handle, f"{channel}_RANGE", 10.0)
-                ljm.eWriteName(self.handle, f"{channel}_RESOLUTION_INDEX", 0)  # Default resolution
+        """Connect to LabJack device with automatic fallback to mock mode"""
+        if ljm is None:
+            raise RuntimeError("Neither real nor mock LabJack interface is available")
+        
+        # Reset connection retry counter
+        self.connection_retries = 0
+        
+        while self.connection_retries < self.max_retries:
+            try:
+                if self.mock_mode:
+                    # Use mock interface
+                    self.handle = ljm.openS(device_type, connection_type, identifier)
+                    logger.info(f"🔧 Connected to Mock LabJack - Device Type: {device_type}")
+                else:
+                    # Try real hardware connection
+                    self.handle = ljm.openS(device_type, connection_type, identifier)
+                    info = ljm.getHandleInfo(self.handle)
+                    logger.info(f"🔌 Connected to LabJack - Device Type: {info[0]}, Connection: {info[1]}, "
+                               f"Serial: {info[2]}, IP: {ljm.numberToIP(info[3])}, Port: {info[4]}")
                 
-            self.is_connected = True
-            return True
-            
-        except ljm.LJMError as e:
-            logger.error(f"Failed to connect to LabJack: {e}")
-            return False
+                # Configure analog inputs for best resolution
+                # Set analog input range to ±10V for better signal detection
+                for channel in self.channels:
+                    ljm.eWriteName(self.handle, f"{channel}_RANGE", 10.0)
+                    ljm.eWriteName(self.handle, f"{channel}_RESOLUTION_INDEX", 0)  # Default resolution
+                    
+                self.is_connected = True
+                return True
+                
+            except Exception as e:
+                self.connection_retries += 1
+                error_msg = str(e)
+                
+                # Check if this is a "no devices found" error and we're not in mock mode
+                if not self.mock_mode and ("NO_DEVICES_FOUND" in error_msg or "LJME_NO_DEVICES_FOUND" in error_msg):
+                    logger.warning(f"No LabJack hardware found (attempt {self.connection_retries}), falling back to mock mode")
+                    self.mock_mode = True
+                    continue
+                elif self.connection_retries < self.max_retries:
+                    logger.warning(f"Connection attempt {self.connection_retries} failed: {e}")
+                    continue
+                else:
+                    logger.error(f"Failed to connect to LabJack after {self.max_retries} attempts: {e}")
+                    return False
+        
+        return False
     
     def configure_stream(self, scan_rate: int = 1000):
         """Configure streaming for continuous voltage monitoring"""
@@ -120,12 +178,11 @@ class LabJackInterface:
             raise
     
     def read_voltage_signals(self, duration_ms: int = 100) -> List[DetectionSignal]:
-        """Read voltage signals for specified duration"""
+        """Read voltage signals for specified duration with error handling"""
         if not self.is_connected:
             return []
             
         signals = []
-        samples_to_read = int(self.sample_rate * duration_ms / 1000)
         
         try:
             # Read stream data
@@ -152,19 +209,27 @@ class LabJackInterface:
                                 metadata={
                                     "channel": channel,
                                     "sample_index": i,
-                                    "threshold": self.voltage_threshold
+                                    "threshold": self.voltage_threshold,
+                                    "mock_mode": self.mock_mode
                                 }
                             )
                             signals.append(signal)
                             
-        except ljm.LJMError as e:
-            if e.errorCode != ljm.errorcodes.NO_DATA_AVAILABLE:
+        except Exception as e:
+            # Handle both real and mock LabJack errors
+            error_code = getattr(e, 'errorCode', None)
+            no_data_codes = [2398]  # NO_DATA_AVAILABLE
+            
+            if hasattr(ljm, 'errorcodes') and hasattr(ljm.errorcodes, 'NO_DATA_AVAILABLE'):
+                no_data_codes.append(ljm.errorcodes.NO_DATA_AVAILABLE)
+            
+            if error_code not in no_data_codes:
                 logger.error(f"Stream read error: {e}")
                 
         return signals
     
     def read_single_voltage(self) -> Dict[str, float]:
-        """Read single voltage values from all channels"""
+        """Read single voltage values from all channels with error handling"""
         if not self.is_connected:
             return {}
             
@@ -173,21 +238,48 @@ class LabJackInterface:
             for channel in self.channels:
                 voltage = ljm.eReadName(self.handle, channel)
                 voltages[channel] = voltage
-        except ljm.LJMError as e:
+        except Exception as e:
             logger.error(f"Failed to read voltage: {e}")
+            # Return empty dict on error
+            return {}
             
         return voltages
     
     def disconnect(self):
-        """Disconnect from LabJack"""
+        """Disconnect from LabJack with proper cleanup"""
         if self.handle is not None:
             try:
                 ljm.eStreamStop(self.handle)
             except:
                 pass
-            ljm.close(self.handle)
+            try:
+                ljm.close(self.handle)
+            except:
+                pass
             self.is_connected = False
-            logger.info("Disconnected from LabJack")
+            mode_text = "Mock LabJack" if self.mock_mode else "LabJack"
+            logger.info(f"Disconnected from {mode_text}")
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get current status of LabJack interface"""
+        status = {
+            "connected": self.is_connected,
+            "mock_mode": self.mock_mode,
+            "voltage_threshold": self.voltage_threshold,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "connection_retries": self.connection_retries,
+            "max_retries": self.max_retries
+        }
+        
+        if self.is_connected:
+            try:
+                voltages = self.read_single_voltage()
+                status["current_voltages"] = voltages
+            except Exception as e:
+                status["voltage_read_error"] = str(e)
+        
+        return status
 
 
 class SignalValidationService:
@@ -217,38 +309,44 @@ class SignalValidationService:
         self.timing_tolerance_ms = 100  # Acceptable timing difference in milliseconds
         self.spatial_tolerance = 0.3  # IoU threshold for spatial matching
         
-        # Initialize LabJack if available
-        if LABJACK_AVAILABLE:
+        # Initialize LabJack interface (with automatic fallback)
+        try:
             self.labjack = LabJackInterface()
+            logger.info("LabJack interface initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize LabJack interface: {e}")
+            self.labjack = None
     
     async def initialize_labjack(self, device_config: Dict[str, Any] = None) -> bool:
-        """Initialize LabJack connection for voltage signal acquisition"""
-        if not LABJACK_AVAILABLE:
-            logger.warning("LabJack LJM library not available")
-            return False
+        """Initialize LabJack connection with automatic fallback to mock mode"""
+        try:
+            if self.labjack is None:
+                self.labjack = LabJackInterface()
             
-        if self.labjack is None:
-            self.labjack = LabJackInterface()
+            # Connect to LabJack with provided config or defaults
+            config = device_config or {}
+            device_type = config.get("device_type", "ANY")
+            connection_type = config.get("connection_type", "ANY")
+            identifier = config.get("identifier", "ANY")
             
-        # Connect to LabJack with provided config or defaults
-        config = device_config or {}
-        device_type = config.get("device_type", "ANY")
-        connection_type = config.get("connection_type", "ANY")
-        identifier = config.get("identifier", "ANY")
-        
-        if self.labjack.connect(device_type, connection_type, identifier):
-            # Configure voltage thresholds
-            if "voltage_threshold" in config:
-                self.labjack.voltage_threshold = config["voltage_threshold"]
-            
-            # Configure channels if specified
-            if "channels" in config:
-                self.labjack.channels = config["channels"]
+            if self.labjack.connect(device_type, connection_type, identifier):
+                # Configure voltage thresholds
+                if "voltage_threshold" in config:
+                    self.labjack.voltage_threshold = config["voltage_threshold"]
                 
-            logger.info("LabJack initialized successfully")
-            return True
-        else:
-            logger.error("Failed to initialize LabJack")
+                # Configure channels if specified
+                if "channels" in config:
+                    self.labjack.channels = config["channels"]
+                    
+                mode_text = "Mock LabJack" if self.labjack.mock_mode else "LabJack hardware"
+                logger.info(f"{mode_text} initialized successfully")
+                return True
+            else:
+                logger.error("Failed to initialize LabJack (all connection attempts failed)")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during LabJack initialization: {e}")
             return False
     
     def start_signal_monitoring(self, test_session_id: str):
@@ -427,30 +525,43 @@ class SignalValidationService:
         return stats
     
     async def check_labjack_connection(self) -> Dict[str, Any]:
-        """Check LabJack connection status and current readings"""
+        """Check LabJack connection status and current readings with comprehensive error handling"""
         
-        if not LABJACK_AVAILABLE:
+        try:
+            if self.labjack is None:
+                return {
+                    "connected": False,
+                    "mock_mode": False,
+                    "error": "LabJack interface not initialized"
+                }
+            
+            # Get detailed status from LabJack interface
+            status = self.labjack.get_status()
+            
+            if not status["connected"]:
+                return {
+                    "connected": False,
+                    "mock_mode": status["mock_mode"],
+                    "error": "LabJack not connected"
+                }
+            
+            # Add system availability information
+            if detect_labjack_availability:
+                availability = detect_labjack_availability()
+                status.update({
+                    "hardware_availability": availability,
+                    "ljm_library_available": availability.get("ljm_library", False)
+                })
+            
+            return status
+            
+        except Exception as e:
+            logger.error(f"Error checking LabJack connection: {e}")
             return {
                 "connected": False,
-                "error": "LabJack LJM library not installed"
+                "mock_mode": True,
+                "error": f"Connection check failed: {e}"
             }
-        
-        if not self.labjack or not self.labjack.is_connected:
-            return {
-                "connected": False,
-                "error": "LabJack not connected"
-            }
-        
-        # Read current voltage values
-        voltages = self.labjack.read_single_voltage()
-        
-        return {
-            "connected": True,
-            "current_voltages": voltages,
-            "voltage_threshold": self.labjack.voltage_threshold,
-            "channels": self.labjack.channels,
-            "sample_rate": self.labjack.sample_rate
-        }
     
     async def configure_voltage_detection(
         self,

@@ -10,10 +10,10 @@ import {
 import {
   PlayArrow,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   HourglassEmpty,
 } from '@mui/icons-material';
-import { VideoFile } from '../services/types';
+import { VideoFile, VideoValidationStatus } from '../services/types';
 
 interface GroundTruthProcessorProps {
   video: VideoFile;
@@ -43,8 +43,7 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
       
       if (!response.ok) {
         const errorText = await response.text();
-        const errorInstance = Error as any;
-        throw new errorInstance(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
       const result = await response.json();
@@ -54,12 +53,13 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
       } else if (result.status === 'already_completed') {
         onProcessingComplete?.(video.id);
       } else if (result.status === 'failed') {
-        setError(result.message);
+        setError(result.message || 'Processing failed');
       }
       
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('Failed to start ground truth processing:', err);
-      setError(err?.message || err || 'Failed to start processing');
+      setError(errorMsg);
     } finally {
       setProcessing(false);
     }
@@ -72,33 +72,39 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
     if (video.processing_status === 'processing') {
       return <HourglassEmpty color="warning" />;
     }
-    if (video.status === 'failed') {
-      return <Error color="error" />;
+    if (video.status === VideoValidationStatus.ERROR) {
+      return <ErrorIcon color="error" />;
     }
     return <HourglassEmpty color="info" />;
   };
 
   const getStatusText = () => {
+    if (video.status === VideoValidationStatus.VALIDATED) {
+      return 'Validated';
+    }
     if (video.ground_truth_generated || video.groundTruthGenerated) {
       return 'Ground Truth Ready';
     }
     if (video.processing_status === 'processing') {
       return 'Processing...';
     }
-    if (video.status === 'failed') {
+    if (video.status === VideoValidationStatus.ERROR) {
       return 'Processing Failed';
     }
     return 'Pending Processing';
   };
 
   const getStatusColor = (): "success" | "warning" | "error" | "info" => {
+    if (video.status === VideoValidationStatus.VALIDATED) {
+      return 'success';
+    }
     if (video.ground_truth_generated || video.groundTruthGenerated) {
       return 'success';
     }
     if (video.processing_status === 'processing') {
       return 'warning';
     }
-    if (video.status === 'failed') {
+    if (video.status === VideoValidationStatus.ERROR) {
       return 'error';
     }
     return 'info';
@@ -106,7 +112,7 @@ const GroundTruthProcessor: React.FC<GroundTruthProcessorProps> = ({
 
   const canStartProcessing = () => {
     return (
-      video.status === 'completed' &&
+      (video.status === VideoValidationStatus.UPLOADED || video.status === VideoValidationStatus.ANNOTATED) &&
       !video.ground_truth_generated &&
       !video.groundTruthGenerated &&
       video.processing_status !== 'processing' &&

@@ -1,0 +1,37 @@
+{
+  "timestamp": "2025-08-28T07:35:11.732Z",
+  "tests": {
+    "homepage": {
+      "status": 200,
+      "success": true,
+      "hasHtml": true,
+      "hasReact": true,
+      "hasConfig": true
+    },
+    "config": {
+      "status": 200,
+      "success": true,
+      "hasBackendUrl": false
+    },
+    "api": {
+      "status": 200,
+      "success": true,
+      "hasData": true,
+      "isJson": true
+    },
+    "health": {
+      "status": 503,
+      "success": false,
+      "isJson": true,
+      "hasStatus": true
+    }
+  },
+  "success": false,
+  "errors": [],
+  "summary": {
+    "total": 4,
+    "passed": 3,
+    "failed": 1,
+    "successRate": "75.0"
+  }
+}

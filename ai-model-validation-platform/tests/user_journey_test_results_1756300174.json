@@ -1,0 +1,140 @@
+{
+  "test_started": "2025-08-27T14:09:25.006367",
+  "frontend_url": "http://localhost:3000",
+  "backend_url": "http://localhost:8000",
+  "tests": [
+    {
+      "test_name": "Frontend Accessibility",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:25.014694",
+      "details": "Frontend accessible at http://localhost:3000",
+      "error": null
+    },
+    {
+      "test_name": "API: Dashboard stats",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:26.023868",
+      "details": "Endpoint: /api/dashboard/stats, Response keys: ['total_projects', 'total_videos', 'active_sessions', 'completed_tests', 'system_status']",
+      "error": null
+    },
+    {
+      "test_name": "API: Projects list",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:26.027992",
+      "details": "Endpoint: /api/projects, Response keys: ['projects', 'count']",
+      "error": null
+    },
+    {
+      "test_name": "API: Videos list",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:26.032923",
+      "details": "Endpoint: /api/videos, Response keys: ['videos', 'count']",
+      "error": null
+    },
+    {
+      "test_name": "API: Datasets list",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:09:26.036043",
+      "details": "Status: 404",
+      "error": null
+    },
+    {
+      "test_name": "API: Results list",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:09:26.038727",
+      "details": "Status: 404",
+      "error": null
+    },
+    {
+      "test_name": "Project Creation",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:27.052991",
+      "details": "Created project: User Journey Test Project 1756300167 (ID: 12)",
+      "error": null
+    },
+    {
+      "test_name": "Video Upload API",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:28.109351",
+      "details": "Upload endpoint responding (Status: 422)",
+      "error": null
+    },
+    {
+      "test_name": "Form Validation: Empty Project Name",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:09:29.134937",
+      "details": "Should reject invalid data, got: 200",
+      "error": null
+    },
+    {
+      "test_name": "Form Validation: Invalid Project Data",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:29.139320",
+      "details": "Properly rejected invalid data (Status: 422)",
+      "error": null
+    },
+    {
+      "test_name": "Pagination",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:30.149018",
+      "details": "Pagination working, got structured response",
+      "error": null
+    },
+    {
+      "test_name": "Filtering",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:30.151468",
+      "details": "Filtering endpoint responding",
+      "error": null
+    },
+    {
+      "test_name": "Annotation API: Annotations list",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:31.154318",
+      "details": "Endpoint accessible (Status: 404)",
+      "error": null
+    },
+    {
+      "test_name": "Annotation API: Ground truth data",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:31.156131",
+      "details": "Endpoint accessible (Status: 404)",
+      "error": null
+    },
+    {
+      "test_name": "Annotation API: Detection events",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:31.158021",
+      "details": "Endpoint accessible (Status: 404)",
+      "error": null
+    },
+    {
+      "test_name": "Responsive Design",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:32.163023",
+      "details": "Found responsive design indicators: ['viewport']",
+      "error": null
+    },
+    {
+      "test_name": "Error Handling: 404",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:33.167428",
+      "details": "Properly returns 404 for invalid endpoint",
+      "error": null
+    },
+    {
+      "test_name": "Error Handling: Method",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:09:33.170220",
+      "details": "Properly handles invalid HTTP method",
+      "error": null
+    }
+  ],
+  "summary": {
+    "total_tests": 18,
+    "passed": 15,
+    "failed": 3,
+    "partial": 0,
+    "success_rate": "83.3%"
+  }
+}

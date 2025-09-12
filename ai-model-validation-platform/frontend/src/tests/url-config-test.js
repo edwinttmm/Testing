@@ -1,13 +1,13 @@
 // URL Configuration Test
-// This tests if all URLs are correctly configured to use 155.138.239.131
+// This tests if all URLs are correctly configured to use localhost
 
 // Simulate window.RUNTIME_CONFIG loading
 global.window = global.window || {};
 global.window.RUNTIME_CONFIG = {
-  REACT_APP_API_URL: 'http://155.138.239.131:8000',
-  REACT_APP_WS_URL: 'ws://155.138.239.131:8000',
-  REACT_APP_SOCKETIO_URL: 'http://155.138.239.131:8001',
-  REACT_APP_VIDEO_BASE_URL: 'http://155.138.239.131:8000',
+  REACT_APP_API_URL: 'http://localhost:8000',
+  REACT_APP_WS_URL: 'ws://localhost:8000',
+  REACT_APP_SOCKETIO_URL: 'http://localhost:8001',
+  REACT_APP_VIDEO_BASE_URL: 'http://localhost:8000',
   REACT_APP_ENVIRONMENT: 'production'
 };
 
@@ -58,9 +58,9 @@ const hasLocalhost = Object.values(fullConfig).some(val =>
 );
 
 console.log('\n✅ URL Configuration Test Results:');
-console.log('- All URLs use 155.138.239.131:', !hasLocalhost);
+console.log('- All URLs use localhost:', !hasLocalhost);
 console.log('- Runtime config loaded:', !!global.window.RUNTIME_CONFIG);
-console.log('- Process.env updated:', process.env.REACT_APP_API_URL === 'http://155.138.239.131:8000');
+console.log('- Process.env updated:', process.env.REACT_APP_API_URL === 'http://localhost:8000');
 
 if (hasLocalhost) {
   console.error('❌ FOUND LOCALHOST REFERENCES!');
@@ -70,5 +70,5 @@ if (hasLocalhost) {
     }
   });
 } else {
-  console.log('✅ All URLs correctly configured for 155.138.239.131');
+  console.log('✅ All URLs correctly configured for localhost');
 }

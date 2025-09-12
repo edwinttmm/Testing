@@ -1,0 +1,770 @@
+// Enhanced Results Types for comprehensive test execution analysis
+// LabJack Timing Validation Types
+export interface LatencyValidationResult {
+  session_id: string;
+  total_detections: number;
+  passed_detections: number;
+  failed_detections: number;
+  pass_rate: number; // percentage 0-100
+  average_latency_ms: number;
+  max_latency_ms: number;
+  min_latency_ms: number;
+  latency_threshold_ms: number;
+  latency_distribution: number[];
+  detection_events: DetectionLatencyEvent[];
+  summary_statistics: LatencyStatistics;
+}
+
+export interface DetectionLatencyEvent {
+  id: string;
+  timestamp: number;
+  frame_number: number;
+  detection_time_ms: number;
+  processing_latency_ms: number;
+  labJack_trigger_time_ms: number;
+  passed: boolean;
+  error_message?: string;
+  // Failure snapshot fields for timing validation
+  screenshot_path?: string;
+  screenshot_zoom_path?: string;
+  failure_reason?: string;
+  failure_type?: 'timing' | 'accuracy' | 'detection' | 'system';
+}
+
+export interface LatencyStatistics {
+  mean: number;
+  median: number;
+  std_deviation: number;
+  p95: number;
+  p99: number;
+  outlier_count: number;
+  outlier_threshold_ms: number;
+}
+
+// Legacy AI validation types (maintained for compatibility)
+export interface FrameAnalysisResult {
+  frameNumber: number;
+  timestamp: number;
+  detectionCount: number;
+  processingLatencyMs: number;
+  confidenceDistribution: number[];
+  detections: FrameDetection[];
+  groundTruthMatch: {
+    truePositives: number;
+    falsePositives: number;
+    falseNegatives: number;
+    iouScores: number[];
+  };
+}
+
+export interface FrameDetection {
+  id: string;
+  frameNumber: number;
+  timestamp: number;
+  className: string;
+  vruType: 'pedestrian' | 'cyclist' | 'motorcyclist' | 'wheelchair_user' | 'scooter_rider';
+  confidence: number;
+  boundingBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  trackingId?: string;
+  groundTruthId?: string;
+  iouScore?: number;
+  isGroundTruth: boolean;
+  matchType?: 'true_positive' | 'false_positive' | 'false_negative' | 'unmatched';
+  // Failure snapshot fields
+  failed?: boolean;
+  screenshot_path?: string;
+  screenshot_zoom_path?: string;
+  failure_reason?: string;
+  failure_type?: 'timing' | 'accuracy' | 'detection' | 'system';
+}
+
+export interface EnhancedTestExecution {
+  sessionId: string;
+  sessionName: string;
+  projectId: string;
+  videoId: string;
+  status: 'preparing' | 'running' | 'analyzing' | 'completed' | 'failed' | 'cancelled';
+  progress: {
+    currentFrame: number;
+    totalFrames: number;
+    currentPhase: 'initialization' | 'detection' | 'comparison' | 'analysis' | 'finalization';
+    phaseProgress: number;
+    estimatedTimeRemaining?: number;
+  };
+  realtimeResults: {
+    currentFrame: FrameAnalysisResult;
+    runningMetrics: RunningMetrics;
+    detectionEvents: DetectionEvent[];
+    anomalies: AnomalyDetection[];
+  };
+  startTime: string;
+  endTime?: string;
+  duration?: number;
+  config: TestExecutionConfig;
+}
+
+export interface RunningMetrics {
+  totalFramesProcessed: number;
+  totalDetections: number;
+  averageConfidence: number;
+  averageProcessingLatency: number;
+  detectionRate: number;
+  // Legacy AI metrics
+  accuracyEstimate: number;
+  precisionEstimate: number;
+  recallEstimate: number;
+  f1ScoreEstimate: number;
+  confidenceDistribution: {
+    high: number; // >0.8
+    medium: number; // 0.5-0.8
+    low: number; // <0.5
+  };
+  // LabJack timing metrics
+  passRateEstimate?: number;
+  currentPassRate?: number;
+  currentFailureRate?: number;
+  latencyDistribution?: {
+    fast: number; // <50ms
+    normal: number; // 50-100ms
+    slow: number; // >100ms
+  };
+}
+
+export interface DetectionEvent {
+  id: string;
+  timestamp: number;
+  frameNumber: number;
+  eventType: 'detection' | 'ground_truth_match' | 'ground_truth_miss' | 'false_positive';
+  vruType: string;
+  confidence?: number;
+  details: Record<string, unknown>;
+  // Failure snapshot fields
+  failed?: boolean;
+  screenshot_path?: string;
+  screenshot_zoom_path?: string;
+  failure_reason?: string;
+  failure_type?: 'timing' | 'accuracy' | 'detection' | 'system';
+}
+
+export interface AnomalyDetection {
+  id: string;
+  timestamp: number;
+  frameNumber: number;
+  anomalyType: 'confidence_drop' | 'processing_delay' | 'detection_gap' | 'unusual_pattern';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface TestExecutionConfig {
+  detectionModel: string;
+  confidenceThreshold: number;
+  nmsThreshold: number;
+  targetClasses: string[];
+  processingOptions: {
+    batchSize: number;
+    skipFrames: number;
+    maxFrames?: number;
+  };
+  comparisonOptions: {
+    iouThreshold: number;
+    enableTrackingAnalysis: boolean;
+    temporalWindowMs: number;
+  };
+  realtimeUpdates: boolean;
+  saveIntermediateResults: boolean;
+}
+
+// Ground Truth Comparison Types
+export interface GroundTruthComparison {
+  sessionId: string;
+  videoId: string;
+  totalFrames: number;
+  comparisonResults: FrameComparisonResult[];
+  overallMetrics: ComparisonMetrics;
+  perClassMetrics: Record<string, ComparisonMetrics>;
+  temporalAnalysis: TemporalAnalysis;
+  spatialAnalysis: SpatialAnalysis;
+}
+
+export interface FrameComparisonResult {
+  frameNumber: number;
+  timestamp: number;
+  groundTruthDetections: FrameDetection[];
+  testDetections: FrameDetection[];
+  matches: DetectionMatch[];
+  unmatched: {
+    groundTruth: FrameDetection[];
+    test: FrameDetection[];
+  };
+  frameMetrics: ComparisonMetrics;
+}
+
+export interface DetectionMatch {
+  groundTruthDetection: FrameDetection;
+  testDetection: FrameDetection;
+  iouScore: number;
+  confidenceScore: number;
+  spatialError: {
+    centerDistancePixels: number;
+    areaRatio: number;
+    aspectRatioError: number;
+  };
+  classMatch: boolean;
+  temporalConsistency?: number;
+}
+
+// Updated ComparisonMetrics for LabJack timing validation
+export interface ComparisonMetrics {
+  // Legacy AI metrics (maintained for compatibility)
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1Score: number;
+  truePositives: number;
+  falsePositives: number;
+  falseNegatives: number;
+  trueNegatives?: number;
+  totalDetections?: number;
+  matchedDetections?: number;
+  unmatchedGroundTruth?: number;
+  meanIoU?: number;
+  meanConfidence?: number;
+  averageIou: number;
+  averageConfidence: number;
+  averageLatency: number;
+  
+  // LabJack timing validation metrics
+  passRate?: number; // percentage 0-100
+  averageLatencyMs?: number;
+  maxLatencyMs?: number;
+  minLatencyMs?: number;
+  latencyThresholdMs?: number;
+  failedDetections?: number;
+  passedDetections?: number;
+}
+
+export interface TemporalAnalysis {
+  trackingConsistency?: number;
+  temporalStability?: number;
+  performanceOverTime: Array<{
+    timestamp: number;
+    frameNumber: number;
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1Score: number;
+    detectionCount: number;
+    processingLatency: number;
+    truePositives: number;
+    falsePositives: number;
+    falseNegatives: number;
+    averageIou: number;
+  }>;
+  detectionGaps: Array<{
+    startFrame: number;
+    endFrame: number;
+    duration: number;
+    severity?: 'low' | 'medium' | 'high';
+    affectedObjects?: string[];
+  }>;
+  consistencyScore?: number;
+  temporalPatterns?: Array<{
+    pattern: string;
+    frequency: number;
+    confidence: number;
+  }>;
+}
+
+export interface SpatialAnalysis {
+  detectionHeatmap?: Array<{
+    x: number;
+    y: number;
+    intensity: number;
+    detectionCount: number;
+  }>;
+  spatialDistribution: {
+    quadrants?: Record<string, number>;
+    hotspots?: Array<{
+      x: number;
+      y: number;
+      radius: number;
+      density: number;
+    }>;
+  };
+  coverageAnalysis?: {
+    coveredRegions: number;
+    hotspots: Array<{
+      x: number;
+      y: number;
+      radius: number;
+      density: number;
+    }>;
+    blindSpots: Array<{
+      x: number;
+      y: number;
+      radius: number;
+      severity: string;
+    }>;
+  };
+  boundingBoxQuality: {
+    averageIou: number;
+    tightnessFactor: number;
+    consistencyScore: number;
+  };
+  occlusionAnalysis: {
+    totalOccluded: number;
+    partialOcclusion: number;
+    fullOcclusion: number;
+    occlusionImpact: number;
+  };
+}
+
+// Statistical Validation Types
+export interface StatisticalValidationResult {
+  sessionId: string;
+  validationId: string;
+  timestamp: string;
+  sampleSize: number;
+  confidenceLevel: number;
+  statisticalTests: {
+    tTest: TTestResult;
+    mannWhitneyU: MannWhitneyUResult;
+    kolmogorovSmirnov: KolmogorovSmirnovResult;
+    chisquare: ChiSquareResult;
+  };
+  confidenceIntervals: ConfidenceIntervals;
+  effectSize: EffectSizeAnalysis;
+  powerAnalysis: PowerAnalysis;
+  validationSummary: ValidationSummary;
+}
+
+export interface TTestResult {
+  statistic: number;
+  pValue: number;
+  degreesOfFreedom: number;
+  criticalValue: number;
+  isSignificant: boolean;
+  effectSize: number;
+  confidenceInterval: [number, number];
+}
+
+export interface MannWhitneyUResult {
+  uStatistic: number;
+  pValue: number;
+  zScore: number;
+  isSignificant: boolean;
+  rankSums: {
+    group1: number;
+    group2: number;
+  };
+}
+
+export interface KolmogorovSmirnovResult {
+  kStatistic: number;
+  pValue: number;
+  criticalValue: number;
+  isSignificant: boolean;
+  maxDivergence: number;
+}
+
+export interface ChiSquareResult {
+  chiSquareStatistic: number;
+  pValue: number;
+  degreesOfFreedom: number;
+  expectedFrequencies: number[];
+  observedFrequencies: number[];
+  isSignificant: boolean;
+}
+
+export interface ConfidenceIntervals {
+  accuracy: ConfidenceInterval;
+  precision: ConfidenceInterval;
+  recall: ConfidenceInterval;
+  f1Score: ConfidenceInterval;
+  latency: ConfidenceInterval;
+  iou: ConfidenceInterval;
+}
+
+export interface ConfidenceInterval {
+  estimate: number;
+  lowerBound: number;
+  upperBound: number;
+  confidenceLevel: number;
+  marginOfError: number;
+  standardError: number;
+  method: 'bootstrap' | 'normal' | 'student_t' | 'wilson';
+}
+
+export interface EffectSizeAnalysis {
+  cohensD: number;
+  hedgesG: number;
+  glasssDelta: number;
+  cliffsDelta: number;
+  interpretation: 'negligible' | 'small' | 'medium' | 'large' | 'very_large';
+  practicalSignificance: boolean;
+}
+
+export interface PowerAnalysis {
+  observedPower: number;
+  requiredSampleSize: number;
+  minimumDetectableEffect: number;
+  powerCurve: Array<{
+    sampleSize: number;
+    power: number;
+  }>;
+  recommendations: string[];
+}
+
+export interface ValidationSummary {
+  overallSignificance: boolean;
+  significantTests: string[];
+  nonSignificantTests: string[];
+  recommendations: string[];
+  dataQuality: {
+    completeness: number;
+    consistency: number;
+    outliers: number;
+    normalityScore: number;
+  };
+  limitations: string[];
+}
+
+// Visual Analytics Types
+export interface VisualizationData {
+  sessionId: string;
+  charts: {
+    performanceTimeline: TimelineChartData;
+    confidenceDistribution: DistributionChartData;
+    confusionMatrix: ConfusionMatrixData;
+    rocCurve: ROCCurveData;
+    precisionRecallCurve: PRCurveData;
+    latencyDistribution: DistributionChartData;
+    spatialHeatmap: HeatmapData;
+    temporalPatterns: TemporalPatternData;
+  };
+  interactiveElements: {
+    frameNavigation: boolean;
+    detectionFiltering: boolean;
+    zoomableCharts: boolean;
+    exportOptions: string[];
+  };
+}
+
+export interface TimelineChartData {
+  data: Array<{
+    timestamp: number;
+    frameNumber: number;
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1Score: number;
+    detectionCount: number;
+    processingLatency: number;
+  }>;
+  annotations: Array<{
+    timestamp: number;
+    type: 'anomaly' | 'milestone' | 'error';
+    label: string;
+    description: string;
+  }>;
+}
+
+export interface DistributionChartData {
+  bins: Array<{
+    min: number;
+    max: number;
+    count: number;
+    density: number;
+  }>;
+  statistics: {
+    mean: number;
+    median: number;
+    mode: number;
+    standardDeviation: number;
+    skewness: number;
+    kurtosis: number;
+  };
+  outliers: number[];
+}
+
+export interface ConfusionMatrixData {
+  classes: string[];
+  matrix: number[][];
+  normalized: number[][];
+  classMetrics: Record<string, {
+    precision: number;
+    recall: number;
+    f1Score: number;
+    support: number;
+  }>;
+}
+
+export interface ROCCurveData {
+  curves: Array<{
+    className: string;
+    fpr: number[];
+    tpr: number[];
+    auc: number;
+    thresholds: number[];
+  }>;
+  microAverage: {
+    fpr: number[];
+    tpr: number[];
+    auc: number;
+  };
+  macroAverage: {
+    fpr: number[];
+    tpr: number[];
+    auc: number;
+  };
+}
+
+export interface PRCurveData {
+  curves: Array<{
+    className: string;
+    precision: number[];
+    recall: number[];
+    ap: number;
+    thresholds: number[];
+  }>;
+  microAverage: {
+    precision: number[];
+    recall: number[];
+    ap: number;
+  };
+  macroAverage: {
+    precision: number[];
+    recall: number[];
+    ap: number;
+  };
+}
+
+export interface HeatmapData {
+  width: number;
+  height: number;
+  data: Array<{
+    x: number;
+    y: number;
+    intensity: number;
+    detectionCount: number;
+  }>;
+  colorScale: {
+    min: number;
+    max: number;
+    colormap: string;
+  };
+}
+
+export interface TemporalPatternData {
+  patterns: Array<{
+    id: string;
+    name: string;
+    description: string;
+    frequency: number;
+    confidence: number;
+    timeRanges: Array<{
+      start: number;
+      end: number;
+      strength: number;
+    }>;
+  }>;
+  periodicities: Array<{
+    period: number;
+    amplitude: number;
+    phase: number;
+    significance: number;
+  }>;
+}
+
+// Real-time Streaming Types
+export interface RealTimeUpdate {
+  sessionId: string;
+  updateType: 'frame_processed' | 'metrics_updated' | 'anomaly_detected' | 'phase_changed' | 'completed' | 'error';
+  timestamp: string;
+  data: {
+    currentFrame?: FrameAnalysisResult;
+    runningMetrics?: RunningMetrics;
+    anomaly?: AnomalyDetection;
+    phase?: string;
+    progress?: number;
+    error?: string;
+    finalResults?: GroundTruthComparison;
+  };
+}
+
+export interface StreamingConnection {
+  sessionId: string;
+  isConnected: boolean;
+  lastUpdate: string;
+  connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error' | 'reconnecting';
+  messageCount: number;
+  errorCount: number;
+  latency: number;
+}
+
+// Failure Snapshot Display Types
+export interface FailureSnapshotData {
+  id: string;
+  frameNumber: number;
+  timestamp: number;
+  screenshot_path: string;
+  screenshot_zoom_path?: string;
+  failure_reason: string;
+  failure_type: 'timing' | 'accuracy' | 'detection' | 'system';
+  detection_id?: string;
+  event_id?: string;
+  confidence?: number;
+  expected_value?: number;
+  actual_value?: number;
+  threshold?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SnapshotDisplaySettings {
+  showThumbnails: boolean;
+  enableZoom: boolean;
+  lazyLoading: boolean;
+  imageQuality: 'low' | 'medium' | 'high';
+  maxWidth: number;
+  maxHeight: number;
+  groupByType: boolean;
+  sortBy: 'timestamp' | 'frame' | 'severity';
+  filterByType?: ('timing' | 'accuracy' | 'detection' | 'system')[];
+}
+
+export interface ImageLoadingState {
+  loading: boolean;
+  error?: string;
+  retryCount: number;
+  loaded: boolean;
+}
+
+export interface ZoomModalState {
+  isOpen: boolean;
+  imageUrl?: string;
+  title?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+}
+
+// Export and Analysis Types
+export interface ResultsExportConfig {
+  sessionId: string;
+  format: 'pdf' | 'excel' | 'csv' | 'json' | 'html';
+  sections: {
+    executiveSummary: boolean;
+    detailedMetrics: boolean;
+    frameByFrameAnalysis: boolean;
+    statisticalValidation: boolean;
+    visualizations: boolean;
+    rawData: boolean;
+    recommendations: boolean;
+  };
+  visualizationOptions: {
+    includeCharts: boolean;
+    chartFormat: 'png' | 'svg' | 'pdf';
+    resolution: 'low' | 'medium' | 'high';
+    colorScheme: 'default' | 'dark' | 'grayscale' | 'colorblind_friendly';
+  };
+  filtering: {
+    frameRange?: [number, number];
+    confidenceThreshold?: number;
+    classFilter?: string[];
+    timeRange?: [string, string];
+    includeFailureSnapshots?: boolean;
+    onlyFailures?: boolean;
+  };
+}
+
+export interface ResultsExportStatus {
+  exportId: string;
+  status: 'preparing' | 'generating' | 'completed' | 'failed';
+  progress: number;
+  estimatedTimeRemaining?: number;
+  downloadUrl?: string;
+  error?: string;
+  fileSize?: number;
+  generatedAt?: string;
+}
+
+// Performance Benchmark Types
+export interface PerformanceBenchmark {
+  sessionId: string;
+  benchmarkId: string;
+  baseline: ComparisonMetrics;
+  current: ComparisonMetrics;
+  improvement: {
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1Score: number;
+    latency: number;
+  };
+  significantChanges: Array<{
+    metric: string;
+    change: number;
+    isImprovement: boolean;
+    isSignificant: boolean;
+    pValue: number;
+  }>;
+  recommendations: Array<{
+    category: 'performance' | 'accuracy' | 'efficiency';
+    priority: 'high' | 'medium' | 'low';
+    description: string;
+    expectedImpact: number;
+  }>;
+}
+
+// Integration Types for Results Page
+export interface EnhancedResultsPageState {
+  selectedSession: string | null;
+  activeTab: 'overview' | 'comparison' | 'statistics' | 'timeline' | 'export';
+  streamingConnection: StreamingConnection | null;
+  realtimeUpdates: boolean;
+  filters: ResultsFilter;
+  comparisonMode: ComparisonViewMode;
+  exportConfig: ResultsExportConfig | null;
+  visualizationSettings: VisualizationSettings;
+}
+
+export interface ResultsFilter {
+  dateRange?: [string, string];
+  sessionIds?: string[];
+  projectIds?: string[];
+  performanceThreshold?: {
+    minAccuracy?: number;
+    minPrecision?: number;
+    minRecall?: number;
+    maxLatency?: number;
+  };
+  statusFilter?: Array<'preparing' | 'running' | 'completed' | 'failed'>;
+  sortBy: 'date' | 'accuracy' | 'precision' | 'recall' | 'f1Score' | 'latency';
+  sortOrder: 'asc' | 'desc';
+  searchTerm?: string;
+}
+
+export interface ComparisonViewMode {
+  layout: 'side_by_side' | 'overlay' | 'difference_map' | 'timeline_sync';
+  showGroundTruth: boolean;
+  showPredictions: boolean;
+  highlightMismatches: boolean;
+  overlayOpacity: number;
+  frameSync: boolean;
+  playbackSpeed: number;
+}
+
+export interface VisualizationSettings {
+  colorScheme: 'default' | 'dark' | 'colorblind_friendly' | 'high_contrast';
+  animation: boolean;
+  interactivity: boolean;
+  autoRefresh: boolean;
+  refreshInterval: number;
+  maxDataPoints: number;
+  smoothing: boolean;
+}

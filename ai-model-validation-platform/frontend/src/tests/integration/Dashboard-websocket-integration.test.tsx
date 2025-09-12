@@ -7,9 +7,17 @@ import Dashboard from '../../pages/Dashboard';
 const mockWebSocketService = {
   isConnected: true,
   connectionState: 'connected',
+  lastMessage: null,
+  error: null,
   subscribe: jest.fn(() => () => {}), // Always return unsubscribe function
   emit: jest.fn(),
-  error: null
+  metrics: {
+    connectionAttempts: 0,
+    reconnectCount: 0,
+    totalMessages: 0,
+    isStable: true
+  },
+  healthStatus: 'healthy'
 };
 
 jest.mock('../../services/websocketService', () => ({

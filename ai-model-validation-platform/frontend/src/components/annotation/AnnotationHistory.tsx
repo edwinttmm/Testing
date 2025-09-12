@@ -50,17 +50,22 @@ const AnnotationHistory: React.FC<AnnotationHistoryProps> = ({
     type: AnnotationAction['type'],
     description: string,
     shapeIds: string[],
-    before?: any,
-    after?: any
+    before?: AnnotationShape | AnnotationShape[],
+    after?: AnnotationShape | AnnotationShape[]
   ): AnnotationAction => {
-    return {
+    const actionBase = {
       id: generateActionId(),
       type,
       timestamp: Date.now(),
       description,
       shapeIds,
-      before,
-      after,
+    };
+    
+    // Add optional properties only if they have values
+    return {
+      ...actionBase,
+      ...(before !== undefined && { before }),
+      ...(after !== undefined && { after }),
     };
   }, [generateActionId]);
 
@@ -138,7 +143,7 @@ const AnnotationHistory: React.FC<AnnotationHistoryProps> = ({
       // Pure modification
       const beforeShapes = modifiedShapes.map(shape => 
         lastShapesState.find(oldShape => oldShape.id === shape.id)
-      ).filter(Boolean);
+      ).filter((shape): shape is AnnotationShape => shape !== undefined);
       
       action = createAction(
         'update',
@@ -332,13 +337,13 @@ const AnnotationHistory: React.FC<AnnotationHistoryProps> = ({
     const originalRedo = actions.redo;
 
     // Replace with enhanced versions
-    (actions as any).undo = enhancedUndo;
-    (actions as any).redo = enhancedRedo;
+    (actions as Record<string, unknown>).undo = enhancedUndo;
+    (actions as Record<string, unknown>).redo = enhancedRedo;
 
     return () => {
       // Restore original functions on cleanup
-      (actions as any).undo = originalUndo;
-      (actions as any).redo = originalRedo;
+      (actions as Record<string, unknown>).undo = originalUndo;
+      (actions as Record<string, unknown>).redo = originalRedo;
     };
   }, [actions, enhancedUndo, enhancedRedo]);
 

@@ -1,0 +1,330 @@
+# ===========================================
+# VRU AI Model Validation Platform
+# UNIFIED DOCKER COMPOSE CONFIGURATION
+# Fixes all port conflicts and orchestration issues
+# ===========================================
+
+version: '3.8'
+name: vru-platform-unified
+
+services:
+  # ===========================================
+  # PostgreSQL Database - Production Ready
+  # ===========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: vru_postgres_unified
+    hostname: postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: ${VRU_DATABASE_NAME:-vru_validation}
+      POSTGRES_USER: ${VRU_DATABASE_USER:-vru_user}
+      POSTGRES_PASSWORD: ${VRU_DATABASE_PASSWORD:-secure_password_change_me}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    volumes:
+      - postgres_unified_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - vru_unified_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VRU_DATABASE_USER:-vru_user} -d ${VRU_DATABASE_NAME:-vru_validation}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    command: [
+      "postgres",
+      "-c", "log_statement=all",
+      "-c", "log_destination=stderr",
+      "-c", "logging_collector=off",
+      "-c", "max_connections=100",
+      "-c", "shared_buffers=256MB",
+      "-c", "effective_cache_size=1GB"
+    ]
+
+  # ===========================================
+  # Redis - Session Management & Caching
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: vru_redis_unified
+    hostname: redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    environment:
+      - REDIS_PASSWORD=${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}
+    volumes:
+      - redis_unified_data:/data
+    networks:
+      - vru_unified_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    command: [
+      "redis-server",
+      "--requirepass", "${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}",
+      "--appendonly", "yes",
+      "--save", "60", "1000",
+      "--maxmemory", "256mb",
+      "--maxmemory-policy", "allkeys-lru"
+    ]
+
+  # ===========================================
+  # Backend - FastAPI Application
+  # ===========================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend-optimized
+      target: production
+    container_name: vru_backend_unified
+    hostname: backend
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8000:8000"
+    environment:
+      # Database Configuration
+      - VRU_DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD:-secure_password_change_me}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      - DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD:-secure_password_change_me}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      - AIVALIDATION_DATABASE_URL=postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD:-secure_password_change_me}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      
+      # Redis Configuration  
+      - VRU_REDIS_URL=redis://:${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}@redis:6379/0
+      - REDIS_URL=redis://:${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}@redis:6379/0
+      - AIVALIDATION_REDIS_URL=redis://:${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}@redis:6379/0
+      
+      # Security
+      - VRU_SECRET_KEY=${VRU_SECRET_KEY:-change-in-production-secret-key-32-chars}
+      - AIVALIDATION_SECRET_KEY=${VRU_SECRET_KEY:-change-in-production-secret-key-32-chars}
+      
+      # API Configuration
+      - VRU_API_HOST=0.0.0.0
+      - VRU_API_PORT=8000
+      - AIVALIDATION_API_HOST=0.0.0.0
+      - AIVALIDATION_API_PORT=8000
+      
+      # CORS Configuration
+      - VRU_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://${VRU_EXTERNAL_IP:-155.138.239.131}:3000,https://${VRU_EXTERNAL_IP:-155.138.239.131}:3000
+      - AIVALIDATION_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://${VRU_EXTERNAL_IP:-155.138.239.131}:3000"]
+      - ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://${VRU_EXTERNAL_IP:-155.138.239.131}:3000"]
+      
+      # Application Settings
+      - VRU_ENVIRONMENT=${VRU_ENVIRONMENT:-production}
+      - AIVALIDATION_APP_ENVIRONMENT=${VRU_ENVIRONMENT:-production}
+      - VRU_DEBUG=${VRU_DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VRU_DOCKER_MODE=true
+      - AIVALIDATION_DOCKER_MODE=true
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vru_unified_network
+    volumes:
+      # Read-only model files
+      - ./models:/app/models:ro
+      # Writable upload directory
+      - uploaded_videos:/app/uploads
+      # Database file mount (if using SQLite fallback)
+      - ./backend/dev_database.db:/app/dev_database.db:rw
+      # Development mode source mounting (commented for production)
+      # - ./backend:/app:ro
+    healthcheck:
+      test: ["CMD", "/app/health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  # ===========================================
+  # Frontend - React Application  
+  # ===========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend-optimized
+      target: production
+      args:
+        - REACT_APP_API_URL=http://${VRU_EXTERNAL_IP:-155.138.239.131}:8000
+        - REACT_APP_WS_URL=ws://${VRU_EXTERNAL_IP:-155.138.239.131}:8000
+        - REACT_APP_SOCKETIO_URL=http://${VRU_EXTERNAL_IP:-155.138.239.131}:8001
+        - REACT_APP_VIDEO_BASE_URL=http://${VRU_EXTERNAL_IP:-155.138.239.131}:8000
+    container_name: vru_frontend_unified
+    hostname: frontend
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://${VRU_EXTERNAL_IP:-155.138.239.131}:8000
+      - REACT_APP_WS_URL=ws://${VRU_EXTERNAL_IP:-155.138.239.131}:8000
+      - REACT_APP_SOCKETIO_URL=http://${VRU_EXTERNAL_IP:-155.138.239.131}:8001
+      - REACT_APP_VIDEO_BASE_URL=http://${VRU_EXTERNAL_IP:-155.138.239.131}:8000
+      - REACT_APP_ENVIRONMENT=${VRU_ENVIRONMENT:-production}
+      - REACT_APP_DEBUG=${VRU_DEBUG:-false}
+      - GENERATE_SOURCEMAP=false
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - vru_unified_network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/health_check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # ===========================================
+  # CVAT - Optional Annotation Tool
+  # Only starts with "cvat" profile
+  # ===========================================
+  cvat_db:
+    image: postgres:15-alpine
+    container_name: vru_cvat_db_unified
+    hostname: cvat_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cvat
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: ${CVAT_POSTGRES_PASSWORD:-cvat_secure_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - cvat_db_data:/var/lib/postgresql/data
+    networks:
+      - vru_unified_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d cvat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    profiles: ["cvat", "full"]
+
+  cvat:
+    image: cvat/server:v2.7.0
+    container_name: vru_cvat_unified
+    hostname: cvat
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8080:8080"
+    environment:
+      - CVAT_REDIS_HOST=redis
+      - CVAT_REDIS_PASSWORD=${VRU_REDIS_PASSWORD:-secure_redis_password_change_me}
+      - CVAT_POSTGRES_HOST=cvat_db
+      - CVAT_POSTGRES_DB=cvat
+      - CVAT_POSTGRES_USER=root
+      - CVAT_POSTGRES_PASSWORD=${CVAT_POSTGRES_PASSWORD:-cvat_secure_password}
+    depends_on:
+      redis:
+        condition: service_healthy
+      cvat_db:
+        condition: service_healthy
+    networks:
+      - vru_unified_network
+    volumes:
+      - cvat_data:/home/django/data
+      - cvat_keys:/home/django/keys
+      - cvat_logs:/home/django/logs
+      - uploaded_videos:/home/django/share
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/server/about"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    profiles: ["cvat", "full"]
+
+# ===========================================
+# PERSISTENT VOLUMES
+# ===========================================
+volumes:
+  postgres_unified_data:
+    driver: local
+    name: vru_postgres_unified_data
+    
+  redis_unified_data:
+    driver: local
+    name: vru_redis_unified_data
+    
+  uploaded_videos:
+    driver: local
+    name: vru_uploaded_videos
+    
+  cvat_db_data:
+    driver: local
+    name: vru_cvat_db_data
+    
+  cvat_data:
+    driver: local  
+    name: vru_cvat_data
+    
+  cvat_keys:
+    driver: local
+    name: vru_cvat_keys
+    
+  cvat_logs:
+    driver: local
+    name: vru_cvat_logs
+
+# ===========================================
+# UNIFIED NETWORK CONFIGURATION
+# ===========================================
+networks:
+  vru_unified_network:
+    driver: bridge
+    name: vru_unified_network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.22.0.0/16
+          gateway: 172.22.0.1
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true" 
+      com.docker.network.bridge.host_binding_ipv4: "0.0.0.0"
+      com.docker.network.driver.mtu: "1500"

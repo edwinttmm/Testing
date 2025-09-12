@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
-import { useDetectionWebSocket, DetectionUpdate } from '../../ai-model-validation-platform/frontend/src/hooks/useDetectionWebSocket';
+import { useDetectionWebSocket, DetectionUpdate } from './hooks/useDetectionWebSocket';
 
 describe('useDetectionWebSocket', () => {
   let mockWebSocket: any;

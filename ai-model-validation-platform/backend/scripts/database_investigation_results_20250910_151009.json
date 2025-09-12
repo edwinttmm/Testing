@@ -1,0 +1,739 @@
+{
+  "timestamp": "2025-09-10T14:10:09.759190+00:00",
+  "database_url": "sqlite:///./dev_database.db",
+  "database_file": "/home/rigade/Testing/ai-model-validation-platform/backend/./dev_database.db",
+  "investigation_results": {
+    "schema": {
+      "tables": [
+        "alembic_version",
+        "annotation_sessions",
+        "annotations",
+        "audit_logs",
+        "auth_users",
+        "detection_comparisons",
+        "detection_events",
+        "ground_truth_batch_items",
+        "ground_truth_batches",
+        "ground_truth_exports",
+        "ground_truth_objects",
+        "ground_truth_quality_metrics",
+        "ground_truth_validation_workflows",
+        "projects",
+        "test_results",
+        "test_sessions",
+        "user_sessions",
+        "validation_history",
+        "video_project_links",
+        "videos"
+      ],
+      "table_details": {
+        "videos": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "filename",
+              "type": "VARCHAR",
+              "nullable": false
+            },
+            {
+              "name": "file_path",
+              "type": "VARCHAR",
+              "nullable": false
+            },
+            {
+              "name": "file_size",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "duration",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "fps",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "resolution",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "status",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "processing_status",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "ground_truth_generated",
+              "type": "BOOLEAN",
+              "nullable": true
+            },
+            {
+              "name": "project_id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "nullable": true
+            }
+          ],
+          "indexes": [
+            {
+              "name": "idx_video_duration_fps",
+              "column_names": [
+                "duration",
+                "fps"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_video_file_path",
+              "column_names": [
+                "file_path"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_video_ground_truth_status",
+              "column_names": [
+                "ground_truth_generated",
+                "processing_status"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_video_project_created",
+              "column_names": [
+                "project_id",
+                "created_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_video_project_ground_truth",
+              "column_names": [
+                "project_id",
+                "ground_truth_generated"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_video_project_status",
+              "column_names": [
+                "project_id",
+                "status"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_video_size_resolution",
+              "column_names": [
+                "file_size",
+                "resolution"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_videos_created_at",
+              "column_names": [
+                "created_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_videos_filename",
+              "column_names": [
+                "filename"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_videos_ground_truth_generated",
+              "column_names": [
+                "ground_truth_generated"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_videos_processing_status",
+              "column_names": [
+                "processing_status"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_videos_project_id",
+              "column_names": [
+                "project_id"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_videos_status",
+              "column_names": [
+                "status"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            }
+          ],
+          "foreign_keys": [
+            {
+              "name": null,
+              "constrained_columns": [
+                "project_id"
+              ],
+              "referred_schema": null,
+              "referred_table": "projects",
+              "referred_columns": [
+                "id"
+              ],
+              "options": {
+                "ondelete": "CASCADE"
+              }
+            }
+          ]
+        },
+        "detection_events": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "test_session_id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "timestamp",
+              "type": "FLOAT",
+              "nullable": false
+            },
+            {
+              "name": "confidence",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "class_label",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "validation_result",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "ground_truth_match_id",
+              "type": "VARCHAR(36)",
+              "nullable": true
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "detection_id",
+              "type": "VARCHAR(36)",
+              "nullable": true
+            },
+            {
+              "name": "frame_number",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "vru_type",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "bounding_box_x",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "bounding_box_y",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "bounding_box_width",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "bounding_box_height",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "screenshot_path",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "screenshot_zoom_path",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "processing_time_ms",
+              "type": "FLOAT",
+              "nullable": true
+            },
+            {
+              "name": "model_version",
+              "type": "VARCHAR",
+              "nullable": true
+            }
+          ],
+          "indexes": [
+            {
+              "name": "idx_detection_bbox_area",
+              "column_names": [
+                "bounding_box_width",
+                "bounding_box_height"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_class_confidence",
+              "column_names": [
+                "class_label",
+                "confidence"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_confidence_validation_timestamp",
+              "column_names": [
+                "confidence",
+                "validation_result",
+                "timestamp"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_frame_class",
+              "column_names": [
+                "frame_number",
+                "class_label"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_model_version",
+              "column_names": [
+                "model_version"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_processing_time",
+              "column_names": [
+                "processing_time_ms"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_session_class_timestamp",
+              "column_names": [
+                "test_session_id",
+                "class_label",
+                "timestamp"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_session_frame",
+              "column_names": [
+                "test_session_id",
+                "frame_number"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_session_timestamp",
+              "column_names": [
+                "test_session_id",
+                "timestamp"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_session_validation",
+              "column_names": [
+                "test_session_id",
+                "validation_result"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_spatial_center",
+              "column_names": [
+                "bounding_box_x",
+                "bounding_box_y"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_timestamp_confidence",
+              "column_names": [
+                "timestamp",
+                "confidence"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_detection_vru_validation",
+              "column_names": [
+                "vru_type",
+                "validation_result"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_class_label",
+              "column_names": [
+                "class_label"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_confidence",
+              "column_names": [
+                "confidence"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_created_at",
+              "column_names": [
+                "created_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_detection_id",
+              "column_names": [
+                "detection_id"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_frame_number",
+              "column_names": [
+                "frame_number"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_ground_truth_match_id",
+              "column_names": [
+                "ground_truth_match_id"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_test_session_id",
+              "column_names": [
+                "test_session_id"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_timestamp",
+              "column_names": [
+                "timestamp"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_validation_result",
+              "column_names": [
+                "validation_result"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_detection_events_vru_type",
+              "column_names": [
+                "vru_type"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            }
+          ],
+          "foreign_keys": [
+            {
+              "name": null,
+              "constrained_columns": [
+                "test_session_id"
+              ],
+              "referred_schema": null,
+              "referred_table": "test_sessions",
+              "referred_columns": [
+                "id"
+              ],
+              "options": {
+                "ondelete": "CASCADE"
+              }
+            },
+            {
+              "name": null,
+              "constrained_columns": [
+                "ground_truth_match_id"
+              ],
+              "referred_schema": null,
+              "referred_table": "ground_truth_objects",
+              "referred_columns": [
+                "id"
+              ],
+              "options": {
+                "ondelete": "SET NULL"
+              }
+            }
+          ]
+        },
+        "test_sessions": {
+          "columns": [
+            {
+              "name": "id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "name",
+              "type": "VARCHAR",
+              "nullable": false
+            },
+            {
+              "name": "project_id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "video_id",
+              "type": "VARCHAR(36)",
+              "nullable": false
+            },
+            {
+              "name": "tolerance_ms",
+              "type": "INTEGER",
+              "nullable": true
+            },
+            {
+              "name": "status",
+              "type": "VARCHAR",
+              "nullable": true
+            },
+            {
+              "name": "started_at",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "completed_at",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "created_at",
+              "type": "DATETIME",
+              "nullable": true
+            },
+            {
+              "name": "updated_at",
+              "type": "DATETIME",
+              "nullable": true
+            }
+          ],
+          "indexes": [
+            {
+              "name": "idx_testsession_project_created",
+              "column_names": [
+                "project_id",
+                "created_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "idx_testsession_project_status",
+              "column_names": [
+                "project_id",
+                "status"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_completed_at",
+              "column_names": [
+                "completed_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_created_at",
+              "column_names": [
+                "created_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_name",
+              "column_names": [
+                "name"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_project_id",
+              "column_names": [
+                "project_id"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_started_at",
+              "column_names": [
+                "started_at"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_status",
+              "column_names": [
+                "status"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            },
+            {
+              "name": "ix_test_sessions_video_id",
+              "column_names": [
+                "video_id"
+              ],
+              "unique": 0,
+              "dialect_options": {}
+            }
+          ],
+          "foreign_keys": [
+            {
+              "name": null,
+              "constrained_columns": [
+                "project_id"
+              ],
+              "referred_schema": null,
+              "referred_table": "projects",
+              "referred_columns": [
+                "id"
+              ],
+              "options": {
+                "ondelete": "CASCADE"
+              }
+            },
+            {
+              "name": null,
+              "constrained_columns": [
+                "video_id"
+              ],
+              "referred_schema": null,
+              "referred_table": "videos",
+              "referred_columns": [
+                "id"
+              ],
+              "options": {
+                "ondelete": "CASCADE"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "video_table": {
+      "error": "(sqlite3.OperationalError) no such column: metadata\n[SQL: \n                SELECT \n                    id, \n                    filename, \n                    processing_status, \n                    metadata,\n                    created_at,\n                    updated_at,\n                    project_id\n                FROM videos \n                ORDER BY created_at DESC\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "detection_events": {
+      "error": "(sqlite3.OperationalError) no such column: video_id\n[SQL: \n                SELECT \n                    video_id,\n                    COUNT(*) as event_count,\n                    MIN(timestamp) as first_detection,\n                    MAX(timestamp) as last_detection,\n                    GROUP_CONCAT(DISTINCT event_type) as event_types\n                FROM detection_events \n                GROUP BY video_id\n                ORDER BY event_count DESC\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "consistency": {
+      "error": "(sqlite3.OperationalError) no such column: video_id\n[SQL: \n                SELECT \n                    v.id,\n                    v.filename,\n                    v.processing_status,\n                    COALESCE(de.event_count, 0) as actual_detections,\n                    CASE \n                        WHEN COALESCE(de.event_count, 0) = 0 THEN 'no_detections'\n                        WHEN COALESCE(de.event_count, 0) < 24 THEN 'incomplete'\n                        WHEN COALESCE(de.event_count, 0) = 24 THEN 'complete'\n                        ELSE 'excess'\n                    END as expected_status,\n                    v.updated_at as video_updated,\n                    de.last_detection\n                FROM videos v\n                LEFT JOIN (\n                    SELECT \n                        video_id,\n                        COUNT(*) as event_count,\n                        MAX(timestamp) as last_detection\n                    FROM detection_events \n                    GROUP BY video_id\n                ) de ON v.id = de.video_id\n                ORDER BY v.created_at DESC\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "recent_data": {
+      "error": "(sqlite3.OperationalError) no such column: video_id\n[SQL: \n                SELECT \n                    video_id,\n                    event_type,\n                    timestamp,\n                    metadata\n                FROM detection_events \n                WHERE timestamp > datetime('now', '-1 day')\n                ORDER BY timestamp DESC\n                LIMIT 50\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "constraints": {
+      "error": "(sqlite3.OperationalError) no such column: de.video_id\n[SQL: \n                SELECT COUNT(*) as orphaned_count\n                FROM detection_events de\n                LEFT JOIN videos v ON de.video_id = v.id\n                WHERE v.id IS NULL\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "transactions": {
+      "error": "(sqlite3.OperationalError) no such column: de.video_id\n[SQL: \n                SELECT \n                    v.id,\n                    v.filename,\n                    v.processing_status,\n                    COUNT(de.id) as detection_count,\n                    MAX(de.timestamp) as last_detection_time,\n                    v.updated_at as video_updated_time\n                FROM videos v\n                LEFT JOIN detection_events de ON v.id = de.video_id\n                GROUP BY v.id, v.filename, v.processing_status, v.updated_at\n                HAVING COUNT(de.id) > 0 \n                AND v.processing_status = 'Manual'\n                AND datetime(MAX(de.timestamp)) > datetime(v.updated_at)\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "api_consistency": {
+      "error": "(sqlite3.OperationalError) no such column: de.video_id\n[SQL: \n                SELECT \n                    v.id,\n                    v.filename,\n                    v.processing_status as db_status,\n                    COUNT(de.id) as detection_count,\n                    CASE \n                        WHEN COUNT(de.id) = 24 THEN 'Completed'\n                        WHEN COUNT(de.id) > 0 THEN 'Processing'\n                        ELSE 'Manual'\n                    END as expected_api_status\n                FROM videos v\n                LEFT JOIN detection_events de ON v.id = de.video_id\n                GROUP BY v.id, v.filename, v.processing_status\n                HAVING db_status != expected_api_status\n            ]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    }
+  }
+}

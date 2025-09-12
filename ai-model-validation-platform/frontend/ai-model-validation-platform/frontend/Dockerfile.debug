@@ -1,0 +1,55 @@
+FROM node:20-alpine
+
+# Install curl and debugging tools
+RUN apk add --no-cache curl wget netstat-nat procps git python3 make g++
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Clean install with debugging
+RUN set -x && \
+    npm cache clean --force && \
+    npm config set strict-ssl false && \
+    npm config set registry https://registry.npmjs.org/ && \
+    npm install --verbose --no-audit --no-fund --legacy-peer-deps
+
+# Copy source code
+COPY . .
+
+# Copy Docker environment file
+COPY .env.docker .env.local
+
+# Set environment variables for debugging
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=development
+ENV CI=false
+ENV DOCKER=true
+ENV DEBUG=webpack*
+ENV WEBPACK_DEV_SERVER_VERBOSE=true
+ENV WDS_SOCKET_HOST=0.0.0.0
+ENV WDS_SOCKET_PORT=3000
+ENV FAST_REFRESH=true
+ENV NODE_OPTIONS=--max_old_space_size=2048
+
+# Create non-root user
+RUN addgroup -g 1000 appuser && adduser -u 1000 -G appuser -s /bin/sh -D appuser
+RUN chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 3000
+
+# Fixed health check with wget fallback
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:3000/health || wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+
+# Debug startup with minimal config
+CMD ["sh", "-c", "echo '=== FRONTEND DEBUG STARTUP ===' && \
+    echo 'Environment Variables:' && env | grep -E '^(HOST|PORT|NODE_ENV|REACT_APP_|WDS_|DEBUG)' | sort && \
+    echo 'Craco availability:' && ls -la node_modules/.bin/craco && \
+    echo 'Starting with minimal config...' && \
+    cp craco.config.minimal.js craco.config.js && \
+    HOST=0.0.0.0 PORT=3000 npx craco start --verbose"]

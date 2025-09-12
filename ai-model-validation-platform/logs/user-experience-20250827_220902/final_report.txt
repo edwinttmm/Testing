@@ -1,0 +1,13 @@
+========================================
+FULL USER EXPERIENCE TEST COMPLETE
+========================================
+Test completed at: Wed Aug 27 22:11:59 BST 2025
+Logs saved to: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902
+
+Key Files:
+- Main log: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902/main.log
+- Error summary: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902/error_summary.txt
+- Backend errors: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902/backend_errors.log
+- Frontend errors: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902/frontend_errors.log
+- TypeScript errors: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902/typescript_check.log
+- Browser console: /home/rigade/Testing/ai-model-validation-platform/logs/user-experience-20250827_220902/browser_errors.json

@@ -3,7 +3,6 @@ import {
   Box,
   Card,
   CardContent,
-  Grid,
   Typography,
   Alert,
   Snackbar,
@@ -23,6 +22,7 @@ import {
   FormControl,
   InputLabel,
   Divider,
+  Grid,
 } from '@mui/material';
 import {
   Help,
@@ -33,7 +33,7 @@ import {
 import { VideoFile, GroundTruthAnnotation, VRUType } from '../../services/types';
 import { AnnotationShape, Point } from './types';
 import { AnnotationProvider, useAnnotation } from './AnnotationManager';
-import { fixVideoUrl } from '../../utils/videoUrlFixer';
+import { getDynamicVideoUrl } from '../../utils/videoUtils';
 import EnhancedAnnotationCanvas from './EnhancedAnnotationCanvas';
 import AnnotationToolbar from './AnnotationToolbar';
 import KeyboardShortcuts from './KeyboardShortcuts';
@@ -93,15 +93,19 @@ interface EnhancedAnnotationInterfaceProps {
   onShapeCreate: (shape: AnnotationShape) => void;
   onShapeUpdate: (shape: AnnotationShape) => void;
   onShapeDelete: (shapeId: string) => void;
+  onFrameNavigate: (direction: 'prev' | 'next') => void;
+  onPlayPause: () => void;
 }
 
 const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = ({
-  video,
+  video: _video,
   videoElement,
   canvasSize,
-  onShapeCreate,
+  onShapeCreate: _onShapeCreate,
   onShapeUpdate,
-  onShapeDelete
+  onShapeDelete: _onShapeDelete,
+  onFrameNavigate,
+  onPlayPause
 }) => {
   const { state, actions } = useAnnotation();
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -138,7 +142,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     enableTooltips: true
   });
   // Handle shape creation from canvas
-  const handleCanvasClick = useCallback((point: Point, event: MouseEvent) => {
+  const handleCanvasClick = useCallback((point: Point, event: React.MouseEvent) => {
     // Only create shapes when using drawing tools
     if (['rectangle', 'polygon', 'brush', 'point'].includes(state.activeToolId)) {
       // Canvas will handle this through its drawing tools
@@ -155,7 +159,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
   }, [state.activeToolId, setContextMenu]);
 
   // Handle shape click
-  const handleShapeClick = useCallback((shape: AnnotationShape, event: MouseEvent) => {
+  const handleShapeClick = useCallback((shape: AnnotationShape, event: React.MouseEvent) => {
     if (event.button === 2) { // Right click
       setContextMenu({
         position: { top: event.clientY, left: event.clientX },
@@ -180,32 +184,9 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
     setContextMenu(null);
   }, []);
 
-  // Handle frame navigation
-  const handleFrameNavigate = useCallback((direction: 'prev' | 'next') => {
-    if (!videoElement) return;
-    
-    const frameTime = 1 / 30; // Assuming 30 FPS
-    const currentTime = videoElement.currentTime;
-    const newTime = direction === 'next' 
-      ? Math.min(currentTime + frameTime, videoElement.duration)
-      : Math.max(currentTime - frameTime, 0);
-    
-    videoElement.currentTime = newTime;
-  }, [videoElement]);
+  // Frame navigation will be defined in the main component where frameRate is available
 
-  // Handle play/pause
-  const handlePlayPause = useCallback(() => {
-    if (!videoElement) return;
-    
-    if (videoElement.paused) {
-      videoElement.play().catch(error => {
-        console.error('Error playing video:', error);
-        // Handle autoplay restrictions or other errors
-      });
-    } else {
-      videoElement.pause();
-    }
-  }, [videoElement]);
+  // Play/pause will be passed from the main component
 
   // Handle fullscreen toggle
   const handleFullscreenToggle = useCallback(async () => {
@@ -225,11 +206,11 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
   }, []);
 
   // Handle settings change
-  const handleSettingsChange = useCallback((key: string, value: any) => {
+  const handleSettingsChange = useCallback((key: string, value: string | number | boolean) => {
     setVideoSettings(prev => ({ ...prev, [key]: value }));
     
     // Apply settings immediately if video is available
-    if (videoElement && key === 'playbackRate') {
+    if (videoElement && key === 'playbackRate' && typeof value === 'number') {
       videoElement.playbackRate = value;
     }
   }, [videoElement]);
@@ -430,7 +411,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
  <DialogContent>
           <Grid container spacing={3}>
             {/* Video Quality */}
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Video Quality</InputLabel>
                 <Select
@@ -447,7 +428,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
             </Grid>
             
             {/* Playback Speed */}
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Playback Speed</InputLabel>
                 <Select
@@ -466,18 +447,18 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               </FormControl>
             </Grid>
             
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Divider />
             </Grid>
             
             {/* Annotation Settings */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Typography variant="h6" gutterBottom>
                 Annotation Display
               </Typography>
             </Grid>
             
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -489,7 +470,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               />
             </Grid>
             
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -501,7 +482,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               />
             </Grid>
             
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -513,7 +494,7 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
               />
             </Grid>
             
-            <Grid size={{ xs: 12, sm: 6 }}>
+            <Grid item xs={12} sm={6}>
               <FormControlLabel
                 control={
                   <Switch
@@ -536,8 +517,8 @@ const EnhancedAnnotationInterface: React.FC<EnhancedAnnotationInterfaceProps> = 
 
       {/* Keyboard shortcuts */}
       <KeyboardShortcuts
-        onFrameNavigate={handleFrameNavigate}
-        onPlayPause={handlePlayPause}
+        onFrameNavigate={onFrameNavigate}
+        onPlayPause={onPlayPause}
         showHelpDialog={showKeyboardHelp}
         onHelpDialogClose={() => setShowKeyboardHelp(false)}
       />
@@ -550,22 +531,23 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
   const {
     video,
     annotations,
-    onAnnotationSelect,
-    onTimeUpdate,
-    onCanvasClick,
-    annotationMode,
-    selectedAnnotation,
+    onAnnotationSelect: _onAnnotationSelect,
+    onTimeUpdate: _onTimeUpdate,
+    onCanvasClick: _onCanvasClick,
+    annotationMode: _annotationMode,
+    selectedAnnotation: _selectedAnnotation,
     frameRate = 30,
     showDetectionControls = false,
     detectionControlsComponent,
-    onAnnotationCreate,
-    onAnnotationUpdate,
-    onAnnotationDelete,
+    onAnnotationCreate: _onAnnotationCreate,
+    onAnnotationUpdate: _onAnnotationUpdate,
+    onAnnotationDelete: _onAnnotationDelete,
   } = props;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [enhancedMode, setEnhancedMode] = useState(true);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Missing state variables
   const [videoSettings] = useState({
@@ -576,6 +558,33 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
     autoPlay: false,
     enableTooltips: true,
   });
+
+  // Handle frame navigation - moved here after frameRate is available
+  const handleFrameNavigate = useCallback((direction: 'prev' | 'next') => {
+    if (!videoElement) return;
+    
+    const frameTime = 1 / frameRate; // Use actual frame rate from props
+    const currentTime = videoElement.currentTime;
+    const newTime = direction === 'next' 
+      ? Math.min(currentTime + frameTime, videoElement.duration)
+      : Math.max(currentTime - frameTime, 0);
+    
+    videoElement.currentTime = newTime;
+  }, [videoElement, frameRate]);
+
+  // Handle play/pause - moved here for consistency
+  const handlePlayPause = useCallback(() => {
+    if (!videoElement) return;
+    
+    if (videoElement.paused) {
+      videoElement.play().catch(error => {
+        console.error('Error playing video:', error);
+        setError('Failed to start video playback');
+      });
+    } else {
+      videoElement.pause();
+    }
+  }, [videoElement]);
 
   // VRU color mapping - moved before usage to fix dependency order
   const getVRUColor = useCallback((vruType: VRUType): string => {
@@ -657,32 +666,47 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
 
   // Convert existing annotations to shapes
   const convertAnnotationsToShapes = useCallback((annotations: GroundTruthAnnotation[]): AnnotationShape[] => {
-    return annotations.map(annotation => ({
-      id: annotation.id,
-      type: 'rectangle' as const,
-      points: [
-        { x: annotation.boundingBox.x, y: annotation.boundingBox.y },
-        { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y },
-        { x: annotation.boundingBox.x + annotation.boundingBox.width, y: annotation.boundingBox.y + annotation.boundingBox.height },
-        { x: annotation.boundingBox.x, y: annotation.boundingBox.y + annotation.boundingBox.height },
-      ],
-      boundingBox: annotation.boundingBox,
-      style: {
-        strokeColor: getVRUColor(annotation.vruType),
-        fillColor: `${getVRUColor(annotation.vruType)}20`,
-        strokeWidth: selectedAnnotation?.id === annotation.id ? 3 : 2,
-        fillOpacity: 0.2,
-      },
-      label: annotation.vruType,
-      confidence: annotation.boundingBox.confidence,
-      visible: true,
-      selected: selectedAnnotation?.id === annotation.id,
-    }));
-  }, [selectedAnnotation, getVRUColor]);
+    console.log('Converting annotations to shapes - input:', annotations.length, 'annotations');
+    
+    return annotations.map(annotation => {
+      // Handle both camelCase (boundingBox) and snake_case (bounding_box) from API
+      const bbox = annotation.boundingBox || (annotation as any).bounding_box;
+      
+      if (!bbox) {
+        console.warn('Annotation missing bounding box data:', annotation);
+        return null;
+      }
+      
+      const shape = {
+        id: annotation.id,
+        type: 'rectangle' as const,
+        points: [
+          { x: bbox.x, y: bbox.y },
+          { x: bbox.x + bbox.width, y: bbox.y },
+          { x: bbox.x + bbox.width, y: bbox.y + bbox.height },
+          { x: bbox.x, y: bbox.y + bbox.height },
+        ],
+        boundingBox: bbox,
+        style: {
+          strokeColor: getVRUColor(annotation.vruType),
+          fillColor: `${getVRUColor(annotation.vruType)}20`,
+          strokeWidth: _selectedAnnotation?.id === annotation.id ? 3 : 2,
+          fillOpacity: 0.2,
+        },
+        label: annotation.vruType,
+        confidence: bbox.confidence ?? undefined,
+        visible: true,
+        selected: _selectedAnnotation?.id === annotation.id,
+      };
+      
+      console.log('Created shape:', shape);
+      return shape;
+    }).filter(shape => shape !== null) as AnnotationShape[];
+  }, [_selectedAnnotation, getVRUColor]);
 
   // Handle shape creation
   const handleShapeCreate = useCallback((shape: AnnotationShape) => {
-    if (!onAnnotationCreate) return;
+    if (!_onAnnotationCreate) return;
 
     // Convert shape to ground truth annotation
     const annotation: Omit<GroundTruthAnnotation, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -700,14 +724,15 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
       truncated: false,
       difficult: false,
       validated: false,
+      validationStatus: 'pending' as const,
     };
 
-    onAnnotationCreate(annotation);
-  }, [onAnnotationCreate, video.id, frameRate]);
+    _onAnnotationCreate(annotation);
+  }, [_onAnnotationCreate, video.id, frameRate]);
 
   // Handle shape updates
   const handleShapeUpdate = useCallback((shape: AnnotationShape) => {
-    if (!onAnnotationUpdate) return;
+    if (!_onAnnotationUpdate) return;
 
     const updates: Partial<GroundTruthAnnotation> = {
       boundingBox: {
@@ -718,39 +743,35 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
       vruType: (shape.label || 'pedestrian') as VRUType,
     };
 
-    onAnnotationUpdate(shape.id, updates);
-  }, [onAnnotationUpdate]);
+    _onAnnotationUpdate(shape.id, updates);
+  }, [_onAnnotationUpdate]);
 
   // Handle shape deletion
   const handleShapeDelete = useCallback((shapeId: string) => {
-    if (!onAnnotationDelete) return;
-    onAnnotationDelete(shapeId);
-  }, [onAnnotationDelete]);
+    if (!_onAnnotationDelete) return;
+    _onAnnotationDelete(shapeId);
+  }, [_onAnnotationDelete]);
 
-  // Update canvas size when video loads and apply settings
+  // Initialize canvas size and apply settings when video ref changes
   useEffect(() => {
-    const updateCanvasSize = () => {
-      if (videoRef.current) {
-        const video = videoRef.current;
+    if (videoRef.current) {
+      const video = videoRef.current;
+      setVideoElement(video);
+      
+      // If metadata is already loaded, set canvas size immediately
+      if (video.videoWidth && video.videoHeight) {
         setCanvasSize({
-          width: video.videoWidth || 800,
-          height: video.videoHeight || 600,
+          width: video.videoWidth,
+          height: video.videoHeight,
         });
-        
-        // Apply video settings
-        video.playbackRate = videoSettings.playbackRate;
-        if (videoSettings.autoPlay) {
-          video.autoplay = true;
-        }
       }
-    };
-
-    const video = videoRef.current;
-    if (video) {
-      video.addEventListener('loadedmetadata', updateCanvasSize);
-      return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
+      
+      // Apply video settings
+      video.playbackRate = videoSettings.playbackRate;
+      if (videoSettings.autoPlay) {
+        video.autoplay = true;
+      }
     }
-    return undefined;
   }, [videoSettings]);
 
   // Apply settings when they change
@@ -763,7 +784,14 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
 
   // Convert annotations to shapes
   const initialShapes = useMemo(() => {
-    return convertAnnotationsToShapes(annotations);
+    const shapes = convertAnnotationsToShapes(annotations);
+    console.log('Converting annotations to shapes:', { 
+      annotationsCount: annotations.length, 
+      shapesCount: shapes.length,
+      rawAnnotations: annotations.slice(0, 2), // Log first 2 raw annotations
+      convertedShapes: shapes.slice(0, 2) // Log first 2 converted shapes
+    });
+    return shapes;
   }, [annotations, convertAnnotationsToShapes]);
 
   // Enhanced mode toggle
@@ -793,31 +821,56 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
         // Enhanced annotation interface
         <AnnotationProvider
           initialShapes={initialShapes}
-          onChange={(shapes: AnnotationShape[]) => shapes.forEach(handleShapeUpdate)}
+          onChange={(shapes: AnnotationShape[]) => {
+            console.log('AnnotationProvider onChange called with shapes:', shapes.slice(0, 2));
+            shapes.forEach(handleShapeUpdate);
+          }}
         >
           <EnhancedAnnotationInterface
             video={video}
-            videoElement={videoRef.current}
+            videoElement={videoElement}
             canvasSize={canvasSize}
             onShapeCreate={handleShapeCreate}
             onShapeUpdate={handleShapeUpdate}
             onShapeDelete={handleShapeDelete}
+            onFrameNavigate={handleFrameNavigate}
+            onPlayPause={handlePlayPause}
           />
           
-          {/* Hidden video element for playback control */}
+          {/* Hidden video element for playback control - with autoload */}
           <video
             ref={videoRef}
-            src={fixVideoUrl(video.url, video.filename, video.id)}
+            src={getDynamicVideoUrl(video.id)}
             style={{ display: 'none' }}
+            preload="auto"
+            crossOrigin="anonymous"
             onTimeUpdate={(e) => {
               const video = e.currentTarget;
-              onTimeUpdate?.(video.currentTime, Math.floor(video.currentTime * frameRate));
+              _onTimeUpdate?.(video.currentTime, Math.floor(video.currentTime * frameRate));
+            }}
+            onLoadedMetadata={(e) => {
+              // Force a redraw when video metadata is loaded
+              const videoEl = e.currentTarget;
+              setVideoElement(videoEl);
+              setCanvasSize({
+                width: videoEl.videoWidth || 800,
+                height: videoEl.videoHeight || 600,
+              });
+              // Apply video settings
+              videoEl.playbackRate = videoSettings.playbackRate;
+              if (videoSettings.autoPlay) {
+                videoEl.autoplay = true;
+              }
             }}
             onError={handleVideoError}
             onLoadStart={handleVideoLoadStart}
             onCanPlay={handleVideoCanPlay}
             onPlay={handleVideoPlay}
             onPause={handleVideoPause}
+            onLoadedData={(e) => {
+              const videoEl = e.currentTarget;
+              setVideoElement(videoEl);
+            }}
           />
         </AnnotationProvider>
       ) : (
@@ -826,11 +879,11 @@ const EnhancedVideoAnnotationPlayer = (props: EnhancedVideoAnnotationPlayerProps
           <VideoAnnotationPlayer
           video={video}
           annotations={annotations}
-          onAnnotationSelect={onAnnotationSelect ?? (() => {})}
-          onTimeUpdate={onTimeUpdate ?? (() => {})}
-          onCanvasClick={onCanvasClick ?? (() => {})}
-          annotationMode={annotationMode}
-          selectedAnnotation={selectedAnnotation || null}
+          onAnnotationSelect={_onAnnotationSelect ?? (() => {})}
+          onTimeUpdate={_onTimeUpdate ?? (() => {})}
+          onCanvasClick={_onCanvasClick ?? (() => {})}
+          annotationMode={_annotationMode}
+          selectedAnnotation={_selectedAnnotation || null}
           frameRate={frameRate}
           showDetectionControls={showDetectionControls}
           detectionControlsComponent={detectionControlsComponent}

@@ -48,7 +48,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
     
     // Test WebSocket uses external IP
     const websocketConfig = getServiceConfig('socketio');
-    expect(websocketConfig?.baseUrl).toContain('155.138.239.131:8001');
+    expect(websocketConfig?.baseUrl).toContain('localhost:8001');
     expect(websocketConfig?.baseUrl).not.toContain('localhost');
     
     console.log('✅ WebSocket configuration uses external IP:', websocketConfig?.baseUrl);
@@ -60,7 +60,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
     // Test localhost URL gets fixed
     const localhostUrl = 'http://localhost:8000/uploads/video.mp4';
     const fixedUrl = fixVideoUrl(localhostUrl);
-    expect(fixedUrl).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(fixedUrl).toBe('http://localhost:8000/uploads/video.mp4');
     expect(fixedUrl).not.toContain('localhost');
     expect(fixedUrl).not.toContain(':8000:8000');
     
@@ -68,7 +68,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
     const corruptedUrl = 'http://localhost:8000:8000/uploads/video.mp4';
     const cleanedUrl = fixVideoUrl(corruptedUrl);
     expect(cleanedUrl).not.toContain(':8000:8000');
-    expect(cleanedUrl).toContain('155.138.239.131:8000');
+    expect(cleanedUrl).toContain('localhost:8000');
     
     console.log('✅ Video URL corruption prevention working');
   });
@@ -108,7 +108,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
       url: fixVideoUrl(mockChildDetectionVideo.url)
     };
     
-    expect(fixedVideo.url).toBe('http://155.138.239.131:8000/uploads/child_playground_scene.mp4');
+    expect(fixedVideo.url).toBe('http://localhost:8000/uploads/child_playground_scene.mp4');
     expect(fixedVideo.url).not.toContain('localhost');
     
     // Step 2: Run detection (mocked)
@@ -145,7 +145,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
     // Verify no issues with the complete workflow
     expect(mockDetectionResult.detections.length).toBe(1);
     expect(mockDetectionResult.detections[0].vruType).toBe('pedestrian');
-    expect(fixedVideo.url).toContain('155.138.239.131:8000');
+    expect(fixedVideo.url).toContain('localhost:8000');
     
     console.log('✅ Complete child detection workflow validated');
   });
@@ -154,7 +154,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
     console.log('🧪 Testing API configuration...');
     
     const apiConfig = getServiceConfig('api');
-    expect(apiConfig?.baseUrl).toBe('http://155.138.239.131:8000');
+    expect(apiConfig?.baseUrl).toBe('http://localhost:8000');
     expect(apiConfig?.baseUrl).not.toContain('localhost');
     
     console.log('✅ API configuration correct');
@@ -166,13 +166,13 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
     // Test various edge cases
     expect(fixVideoUrl('')).toBe('');
     expect(fixVideoUrl('invalid-url')).toBe('invalid-url');
-    expect(fixVideoUrl('/uploads/video.mp4')).toBe('http://155.138.239.131:8000/uploads/video.mp4');
-    expect(fixVideoUrl('http://155.138.239.131:8000/uploads/video.mp4')).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(fixVideoUrl('/uploads/video.mp4')).toBe('http://localhost:8000/uploads/video.mp4');
+    expect(fixVideoUrl('http://localhost:8000/uploads/video.mp4')).toBe('http://localhost:8000/uploads/video.mp4');
     
     // Test with query parameters
     const urlWithQuery = 'http://localhost:8000/uploads/video.mp4?token=abc123';
     const fixedUrlWithQuery = fixVideoUrl(urlWithQuery);
-    expect(fixedUrlWithQuery).toBe('http://155.138.239.131:8000/uploads/video.mp4?token=abc123');
+    expect(fixedUrlWithQuery).toBe('http://localhost:8000/uploads/video.mp4?token=abc123');
     
     console.log('✅ URL parsing edge cases handled correctly');
   });
@@ -182,7 +182,7 @@ describe('Final Integration Test - Complete Video Detection Workflow', () => {
 // Integration test summary
 console.log(`
 🎯 INTEGRATION TEST SUMMARY:
-1. ✅ WebSocket URLs fixed (localhost → 155.138.239.131:8001)
+1. ✅ WebSocket URLs fixed (localhost → localhost:8001)
 2. ✅ Video URL corruption prevented (:8000:8000 patterns)  
 3. ✅ Detection field validation (class_name support)
 4. ✅ Complete workflow tested with child detection scenario

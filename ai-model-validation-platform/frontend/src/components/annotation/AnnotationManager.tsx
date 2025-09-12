@@ -7,7 +7,7 @@ import {
   Rectangle,
   CanvasTransform,
   AnnotationSettings,
-  BrushSettings,
+  BrushSettings as _BrushSettings,
   AnnotationStyle,
 } from './types';
 // Generate unique IDs without external dependencies

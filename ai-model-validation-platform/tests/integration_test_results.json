@@ -1,0 +1,7 @@
+{
+  "frontend_to_backend": "healthy",
+  "backend_to_database": "healthy",
+  "redis_connectivity": "failed",
+  "file_upload_workflow": "healthy",
+  "api_consistency": "healthy"
+}

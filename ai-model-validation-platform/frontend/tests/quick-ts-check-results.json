@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-08-31T00:54:08.396Z",
+  "fileCount": {
+    "ts": 105,
+    "tsx": 115,
+    "total": 220
+  },
+  "syntaxCheck": {
+    "success": true,
+    "errorCount": 0,
+    "errors": [],
+    "output": "/bin/sh: 1: tsc: not found\n"
+  },
+  "status": "PASS"
+}

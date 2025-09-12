@@ -16,7 +16,7 @@ import {
 } from '@mui/icons-material';
 import { getDashboardStats } from '../services/api';
 import { getTestSessions } from '../services/api';
-import { EnhancedDashboardStats, TestSession, VideoFile, Project } from '../services/types';
+import { EnhancedDashboardStats, TestSession, VideoFile, Project, DetectionEventData, AnnotationEventData, SignalProcessingEventData } from '../services/types';
 import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -66,7 +66,7 @@ const Dashboard: React.FC = () => {
       video_count: prevStats.video_count + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely, setRealtimeUpdates]);
+  }, [updateStatsSafely]);
 
   const handleProjectCreated = useCallback((data: Project) => {
     console.log('📁 Project created event received:', data);
@@ -75,7 +75,7 @@ const Dashboard: React.FC = () => {
       project_count: prevStats.project_count + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely, setRealtimeUpdates]);
+  }, [updateStatsSafely]);
 
   const handleTestCompleted = useCallback((data: TestSession) => {
     console.log('🧪 Test completed event received:', data);
@@ -106,9 +106,9 @@ const Dashboard: React.FC = () => {
       active_tests: prevStats.active_tests + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely, setRealtimeUpdates]);
+  }, [updateStatsSafely]);
 
-  const handleDetectionEvent = useCallback((data: any) => {
+  const handleDetectionEvent = useCallback((data: DetectionEventData) => {
     console.log('🎯 Detection event received:', data);
     updateStatsSafely(prevStats => ({
       ...prevStats,
@@ -122,7 +122,7 @@ const Dashboard: React.FC = () => {
     setRealtimeUpdates(prev => prev + 1);
   }, [updateStatsSafely]);
 
-  const handleAnnotationCreated = useCallback((data: any) => {
+  const handleAnnotationCreated = useCallback((data: AnnotationEventData) => {
     console.log('📝 Annotation created event received:', data);
     updateStatsSafely(prevStats => ({
       ...prevStats,
@@ -130,15 +130,15 @@ const Dashboard: React.FC = () => {
       total_detections: prevStats.total_detections + 1
     }));
     setRealtimeUpdates(prev => prev + 1);
-  }, [updateStatsSafely, setRealtimeUpdates]);
+  }, [updateStatsSafely]);
 
-  const handleAnnotationValidated = useCallback((data: any) => {
+  const handleAnnotationValidated = useCallback((data: AnnotationEventData) => {
     console.log('✅ Annotation validated event received:', data);
     // Don't increment counts for validation, just update quality metrics
     setRealtimeUpdates(prev => prev + 1);
-  }, [setRealtimeUpdates]);
+  }, []);
 
-  const handleSignalProcessed = useCallback((data: any) => {
+  const handleSignalProcessed = useCallback((data: SignalProcessingEventData) => {
     console.log('📡 Signal processed event received:', data);
     updateStatsSafely(prevStats => {
       const totalSignals = prevStats.signal_processing_metrics.totalSignals + 1;
@@ -261,7 +261,7 @@ const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [setLoading, setStats, setRecentSessions, setError]);
+  }, []);
 
   // WebSocket subscriptions for real-time updates
   useEffect(() => {

@@ -1,0 +1,467 @@
+{
+  "test_run_id": "69c2b438-8f93-4d37-94eb-0a434718fde4",
+  "timestamp": "2025-08-27T22:48:46.035905",
+  "test_type": "mock_testing",
+  "tests": {
+    "architecture_validation": {
+      "success": true,
+      "architecture_checks": {
+        "detection_pipeline_exists": true,
+        "components": {
+          "ModelRegistry": true,
+          "DetectionPipeline": true,
+          "RealYOLOv8Wrapper": true,
+          "FrameProcessor": true,
+          "TimestampSynchronizer": true,
+          "ScreenshotCapture": true
+        },
+        "async_support": {
+          "async_methods": 17,
+          "await_calls": 21,
+          "asyncio_usage": true
+        },
+        "error_handling": {
+          "try_blocks": 20,
+          "except_blocks": 21,
+          "logging_calls": 58
+        },
+        "vru_detection": {
+          "vru_config": true,
+          "pedestrian_support": true,
+          "cyclist_support": true,
+          "confidence_thresholds": true
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.036354",
+      "architecture_score": 6
+    },
+    "pipeline_initialization": {
+      "success": true,
+      "initialization_tests": {
+        "import_success": false,
+        "import_error": "No module named 'numpy'",
+        "patterns": {
+          "has_init_method": true,
+          "has_initialize_method": true,
+          "has_cleanup_patterns": true,
+          "has_threading_support": true,
+          "has_queue_management": true
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.037659"
+    },
+    "model_loading_simulation": {
+      "success": true,
+      "model_tests": {
+        "yolo11n": {
+          "loaded": true,
+          "load_time_ms": 104.27403450012207,
+          "expected_load_time_s": 5,
+          "model_type": "nano",
+          "has_names": true,
+          "class_count": 4
+        },
+        "yolo11s": {
+          "loaded": true,
+          "load_time_ms": 101.72533988952637,
+          "expected_load_time_s": 10,
+          "model_type": "small",
+          "has_names": true,
+          "class_count": 4
+        },
+        "yolo11l": {
+          "loaded": true,
+          "load_time_ms": 102.21481323242188,
+          "expected_load_time_s": 20,
+          "model_type": "large",
+          "has_names": true,
+          "class_count": 4
+        },
+        "registry_simulation": {
+          "can_register_models": true,
+          "can_set_active_model": true,
+          "can_cache_models": true,
+          "supports_multiple_models": true
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.044724"
+    },
+    "video_processing_simulation": {
+      "success": false,
+      "video_tests": {
+        "test_video": {
+          "filename": "442124cc-008d-4b52-bf50-aa61dbe414cb.mp4",
+          "size_mb": 10.0,
+          "path": "backend/uploads/442124cc-008d-4b52-bf50-aa61dbe414cb.mp4"
+        },
+        "properties": {
+          "fps": 25.0,
+          "frame_count": 100,
+          "duration_seconds": 4.0,
+          "is_openable": true
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.353046",
+      "error": "No module named 'numpy'"
+    },
+    "detection_workflow": {
+      "success": true,
+      "detection_tests": {
+        "frame_preprocessing": {
+          "completed": true,
+          "processing_time_ms": 5.47480583190918,
+          "simulated": true
+        },
+        "model_inference": {
+          "completed": true,
+          "processing_time_ms": 5.792140960693359,
+          "simulated": true
+        },
+        "result_postprocessing": {
+          "completed": true,
+          "processing_time_ms": 5.386114120483398,
+          "simulated": true
+        },
+        "confidence_filtering": {
+          "completed": true,
+          "processing_time_ms": 5.489587783813477,
+          "simulated": true
+        },
+        "nms_application": {
+          "completed": true,
+          "processing_time_ms": 5.609035491943359,
+          "simulated": true
+        },
+        "result_formatting": {
+          "completed": true,
+          "processing_time_ms": 5.668401718139648,
+          "simulated": true
+        },
+        "vru_detection_summary": {
+          "pedestrian": {
+            "detections": 1,
+            "avg_confidence": 0.8899720846897294,
+            "confidence_threshold": 0.4
+          },
+          "cyclist": {
+            "detections": 2,
+            "avg_confidence": 0.7315628542078559,
+            "confidence_threshold": 0.4
+          },
+          "motorcyclist": {
+            "detections": 0,
+            "avg_confidence": 0.36979170176892,
+            "confidence_threshold": 0.4
+          },
+          "wheelchair_user": {
+            "detections": 0,
+            "avg_confidence": 0.4354826975241302,
+            "confidence_threshold": 0.4
+          },
+          "scooter_rider": {
+            "detections": 3,
+            "avg_confidence": 0.8132675948597377,
+            "confidence_threshold": 0.4
+          }
+        },
+        "batch_processing_1": {
+          "batch_size": 1,
+          "total_time_ms": 20.691394805908203,
+          "time_per_item_ms": 20.691394805908203,
+          "efficiency_gain": false
+        },
+        "batch_processing_4": {
+          "batch_size": 4,
+          "total_time_ms": 81.10976219177246,
+          "time_per_item_ms": 20.277440547943115,
+          "efficiency_gain": false
+        },
+        "batch_processing_8": {
+          "batch_size": 8,
+          "total_time_ms": 160.59350967407227,
+          "time_per_item_ms": 20.074188709259033,
+          "efficiency_gain": false
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.354347"
+    },
+    "error_handling": {
+      "success": true,
+      "error_tests": {
+        "error_patterns": {
+          "try_except_blocks": 20,
+          "specific_exceptions": 21,
+          "generic_exception_handling": 17,
+          "runtime_error_handling": true,
+          "import_error_handling": true,
+          "file_not_found_handling": true,
+          "logging_on_errors": 18
+        },
+        "graceful_degradation": {
+          "has_fallback_models": true,
+          "dependency_checking": true,
+          "timeout_handling": false,
+          "resource_cleanup": true
+        },
+        "scenario_missing_model_file": {
+          "scenario": "Model file not found",
+          "can_detect": true,
+          "can_recover": true,
+          "logs_appropriately": true,
+          "maintains_system_stability": true
+        },
+        "scenario_insufficient_memory": {
+          "scenario": "Out of memory during inference",
+          "can_detect": true,
+          "can_recover": true,
+          "logs_appropriately": true,
+          "maintains_system_stability": true
+        },
+        "scenario_corrupted_video": {
+          "scenario": "Cannot read video file",
+          "can_detect": true,
+          "can_recover": true,
+          "logs_appropriately": true,
+          "maintains_system_stability": true
+        },
+        "scenario_network_timeout": {
+          "scenario": "Model download timeout",
+          "can_detect": true,
+          "can_recover": true,
+          "logs_appropriately": true,
+          "maintains_system_stability": true
+        },
+        "scenario_invalid_configuration": {
+          "scenario": "Invalid detection configuration",
+          "can_detect": true,
+          "can_recover": true,
+          "logs_appropriately": true,
+          "maintains_system_stability": true
+        },
+        "overall_score": {
+          "pattern_score": "7/7",
+          "degradation_score": "3/4",
+          "total_score_percentage": 87.5
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.664932"
+    },
+    "performance_patterns": {
+      "success": true,
+      "performance_tests": {
+        "optimization_patterns": {
+          "batch_processing": true,
+          "async_processing": true,
+          "thread_pool_usage": true,
+          "memory_pooling": true,
+          "caching": true,
+          "queue_management": true,
+          "gpu_acceleration": true
+        },
+        "monitoring": {
+          "timing_measurements": true,
+          "performance_logging": true,
+          "fps_calculation": true,
+          "memory_tracking": true,
+          "bottleneck_identification": false
+        },
+        "single_frame_processing": {
+          "expected": "50 ms",
+          "simulated": "43.0 ms",
+          "acceptable": true,
+          "performance_ratio": 0.8598603019802262
+        },
+        "batch_8_processing": {
+          "expected": "200 ms",
+          "simulated": "188.5 ms",
+          "acceptable": true,
+          "performance_ratio": 0.9423786919030656
+        },
+        "video_processing_fps": {
+          "expected": "15 fps",
+          "simulated": "13.6 fps",
+          "acceptable": true,
+          "performance_ratio": 0.9088608355805836
+        },
+        "model_loading_time": {
+          "expected": "10 seconds",
+          "simulated": "10.1 seconds",
+          "acceptable": true,
+          "performance_ratio": 1.005572250212078
+        },
+        "memory_usage_peak": {
+          "expected": "1500 MB",
+          "simulated": "1447.9 MB",
+          "acceptable": true,
+          "performance_ratio": 0.965246106537015
+        },
+        "summary": {
+          "optimization_score": "7/7",
+          "monitoring_score": "4/5",
+          "benchmark_score": "5/5",
+          "overall_performance_readiness": 93.33333333333333
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.666779"
+    },
+    "api_integration": {
+      "success": true,
+      "api_tests": {
+        "connectivity": {
+          "can_connect": true,
+          "response": "{\"status\":\"unhealthy\",\"message\":\"Critical systems down: database\",\"timestamp\":1756331326.9597492,\"architecture\":\"unified_sparc\",\"checks\":{\"traditional\":{\"database\":{\"status\":\"unhealthy\",\"database\":\"un"
+        },
+        "endpoint_analysis": {
+          "has_video_upload": true,
+          "has_detection_endpoint": true,
+          "has_ground_truth": true,
+          "has_health_check": true,
+          "has_cors_setup": true,
+          "has_error_handling": true
+        },
+        "async_patterns": {
+          "async_endpoints": 65,
+          "background_tasks": true,
+          "file_upload_handling": true,
+          "response_models": true
+        },
+        "scenario_video_upload": {
+          "expected_status": 200,
+          "content_type": "multipart/form-data",
+          "simulated_response_time_ms": 50,
+          "handles_correctly": true
+        },
+        "scenario_detection_processing": {
+          "expected_status": 200,
+          "content_type": "application/json",
+          "simulated_response_time_ms": 150,
+          "handles_correctly": true
+        },
+        "scenario_ground_truth_create": {
+          "expected_status": 201,
+          "content_type": "application/json",
+          "simulated_response_time_ms": 50,
+          "handles_correctly": true
+        },
+        "scenario_health_check": {
+          "expected_status": 200,
+          "content_type": "application/json",
+          "simulated_response_time_ms": 50,
+          "handles_correctly": true
+        },
+        "scenario_invalid_request": {
+          "expected_status": 422,
+          "content_type": "application/json",
+          "simulated_response_time_ms": 50,
+          "handles_correctly": true
+        },
+        "integration_score": {
+          "endpoint_coverage": "6/6",
+          "async_support": true,
+          "overall_readiness": 100.0
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.669949"
+    },
+    "database_integration": {
+      "success": true,
+      "database_tests": {
+        "model_analysis": {
+          "has_detection_event": true,
+          "has_ground_truth": true,
+          "has_video_model": true,
+          "has_test_session": true,
+          "has_project_model": true,
+          "uses_sqlalchemy": true
+        },
+        "relationship_analysis": {
+          "has_relationships": true,
+          "has_foreign_keys": true,
+          "has_indexes": true,
+          "has_constraints": true
+        },
+        "configuration": {
+          "has_session_management": true,
+          "has_engine_config": true,
+          "has_connection_pooling": true,
+          "has_error_handling": true
+        },
+        "operation_create_detection_event": {
+          "operation_type": "INSERT",
+          "expected_time_ms": 50,
+          "simulated_time_ms": 80.0,
+          "performance_acceptable": false,
+          "simulated_success": true
+        },
+        "operation_query_ground_truth": {
+          "operation_type": "SELECT",
+          "expected_time_ms": 20,
+          "simulated_time_ms": 24.0,
+          "performance_acceptable": true,
+          "simulated_success": true
+        },
+        "operation_update_test_session": {
+          "operation_type": "UPDATE",
+          "expected_time_ms": 30,
+          "simulated_time_ms": 36.0,
+          "performance_acceptable": true,
+          "simulated_success": true
+        },
+        "operation_delete_old_data": {
+          "operation_type": "DELETE",
+          "expected_time_ms": 100,
+          "simulated_time_ms": 140.0,
+          "performance_acceptable": true,
+          "simulated_success": true
+        },
+        "operation_bulk_insert_detections": {
+          "operation_type": "BULK_INSERT",
+          "expected_time_ms": 200,
+          "simulated_time_ms": 320.0,
+          "performance_acceptable": false,
+          "simulated_success": true
+        },
+        "integration_score": {
+          "model_completeness": "6/6",
+          "relationship_design": "4/4",
+          "configuration_quality": "4/4",
+          "overall_database_readiness": 100.0
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.967462"
+    },
+    "concurrent_processing": {
+      "success": true,
+      "concurrent_tests": {
+        "concurrent_processing": {
+          "videos_processed": 3,
+          "total_time_ms": 354.1092872619629,
+          "avg_time_per_video_ms": 118.03642908732097,
+          "total_detections": 18,
+          "all_successful": true
+        },
+        "sequential_processing": {
+          "total_time_ms": 1058.774709701538,
+          "speedup_factor": 2.9899659449436524
+        },
+        "resource_management": {
+          "memory_efficiency": "Simulated efficient memory usage",
+          "thread_safety": "Code analysis suggests thread-safe patterns",
+          "connection_pooling": "Database connection pooling detected",
+          "queue_management": "Processing queue implementation found"
+        },
+        "concurrency_score": {
+          "speedup_factor": 2.9899659449436524,
+          "efficiency_percentage": 100.0,
+          "resource_management_quality": "HIGH"
+        }
+      },
+      "timestamp": "2025-08-27T22:48:46.968598"
+    }
+  },
+  "summary": {
+    "total": 10,
+    "passed": 9,
+    "failed": 1
+  }
+}

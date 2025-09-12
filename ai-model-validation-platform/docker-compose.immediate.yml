@@ -1,0 +1,85 @@
+services:
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: ai_validation_redis_immediate
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --requirepass secure_redis_password --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # Backend 
+  backend:
+    image: python:3.11-slim
+    container_name: ai_validation_backend_immediate
+    ports:
+      - "0.0.0.0:8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./dev_database.db
+      - REDIS_URL=redis://:secure_redis_password@redis:6379
+      - AIVALIDATION_SECRET_KEY=dev-secret-key
+      - AIVALIDATION_API_HOST=0.0.0.0
+      - AIVALIDATION_API_PORT=8000
+      - AIVALIDATION_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+    volumes:
+      - ./backend:/app
+      - ./models:/app/models
+    working_dir: /app
+    command: bash -c "
+      apt-get update && apt-get install -y curl &&
+      pip install -r requirements.txt &&
+      python startup_database.py &&
+      uvicorn main:socketio_app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # Frontend - Use simple Node setup
+  frontend:
+    image: node:20-slim
+    container_name: ai_validation_frontend_immediate
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - PORT=3000
+    volumes:
+      - ./frontend:/app
+    working_dir: /app
+    command: bash -c "
+      apt-get update && apt-get install -y curl python3 make g++ &&
+      npm cache clean --force &&
+      npm install --legacy-peer-deps --unsafe-perm &&
+      npm start"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+
+networks:
+  default:
+    name: ai_validation_immediate
+
+volumes:
+  redis_data:

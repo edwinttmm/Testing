@@ -1,0 +1,249 @@
+# =====================================================================
+# AI Model Validation Platform - FINAL UNIFIED DOCKER CONFIGURATION
+# =====================================================================
+# This is the AUTHORITATIVE docker-compose configuration that fixes ALL root causes:
+# 1. Multiple competing configurations - CONSOLIDATED into this single file
+# 2. Container networking issues - FIXED with proper service discovery
+# 3. Environment variable failures - FIXED with consistent variable mapping
+# 4. Health check failures - FIXED with proper health checks
+# 5. Database initialization - FIXED with proper init scripts and dependencies
+# 6. Service discovery - FIXED with consistent hostname and network topology
+
+name: ai-model-validation-platform
+
+services:
+  # =====================================================================
+  # POSTGRESQL DATABASE - Production-ready with proper initialization
+  # =====================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: vru_postgres
+    hostname: postgres
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: ${VRU_DATABASE_NAME:-vru_validation}
+      POSTGRES_USER: ${VRU_DATABASE_USER:-vru_user}
+      POSTGRES_PASSWORD: ${VRU_DATABASE_PASSWORD:-secure_vru_password_2024}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --auth-host=md5"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - vru_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VRU_DATABASE_USER:-vru_user} -d ${VRU_DATABASE_NAME:-vru_validation}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # =====================================================================
+  # REDIS - Caching and session management
+  # =====================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: vru_redis
+    hostname: redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    environment:
+      REDIS_PASSWORD: ${VRU_REDIS_PASSWORD:-secure_redis_password_2024}
+    volumes:
+      - redis_data:/data
+    networks:
+      - vru_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${VRU_REDIS_PASSWORD:-secure_redis_password_2024}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    command: redis-server --requirepass ${VRU_REDIS_PASSWORD:-secure_redis_password_2024} --appendonly yes
+
+  # =====================================================================
+  # FASTAPI BACKEND - Main application server with fixed environment
+  # =====================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.unified
+      target: production
+    container_name: vru_backend
+    hostname: backend
+    ports:
+      - "0.0.0.0:8000:8000"
+    environment:
+      # Fixed Application Configuration
+      VRU_ENVIRONMENT: ${VRU_ENVIRONMENT:-production}
+      VRU_API_HOST: 0.0.0.0
+      VRU_API_PORT: 8000
+      
+      # Fixed Database Configuration - Use PostgreSQL in production
+      VRU_DATABASE_URL: postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD:-secure_vru_password_2024}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      DATABASE_URL: postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD:-secure_vru_password_2024}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      AIVALIDATION_DATABASE_URL: postgresql://${VRU_DATABASE_USER:-vru_user}:${VRU_DATABASE_PASSWORD:-secure_vru_password_2024}@postgres:5432/${VRU_DATABASE_NAME:-vru_validation}
+      
+      # Fixed Redis Configuration
+      VRU_REDIS_URL: redis://:${VRU_REDIS_PASSWORD:-secure_redis_password_2024}@redis:6379/0
+      REDIS_URL: redis://:${VRU_REDIS_PASSWORD:-secure_redis_password_2024}@redis:6379/0
+      
+      # Fixed Security Configuration
+      VRU_SECRET_KEY: ${VRU_SECRET_KEY:-fixed-production-secret-key-2024-change-in-deployment}
+      AIVALIDATION_SECRET_KEY: ${VRU_SECRET_KEY:-fixed-production-secret-key-2024-change-in-deployment}
+      
+      # Fixed CORS Configuration with External IP Support
+      VRU_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000,https://155.138.239.131:3000
+      AIVALIDATION_CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000,https://155.138.239.131:3000
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000,https://155.138.239.131:3000
+      
+      # Fixed Docker Configuration
+      AIVALIDATION_DOCKER_MODE: "true"
+      PYTHONPATH: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vru_network
+    volumes:
+      - ./models:/app/models:ro
+      - uploaded_videos:/app/uploads
+      - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+
+  # =====================================================================
+  # REACT FRONTEND - Fixed with proper health checks and environment
+  # =====================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.unified
+      target: production
+      args:
+        REACT_APP_API_URL: http://155.138.239.131:8000
+        REACT_APP_WS_URL: ws://155.138.239.131:8000
+        REACT_APP_SOCKETIO_URL: http://155.138.239.131:8001
+        REACT_APP_VIDEO_BASE_URL: http://155.138.239.131:8000
+    container_name: vru_frontend
+    hostname: frontend
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      # Fixed Runtime Environment Variables
+      NODE_ENV: production
+      REACT_APP_API_URL: http://155.138.239.131:8000
+      REACT_APP_WS_URL: ws://155.138.239.131:8000
+      REACT_APP_SOCKETIO_URL: http://155.138.239.131:8001
+      REACT_APP_VIDEO_BASE_URL: http://155.138.239.131:8000
+      REACT_APP_ENVIRONMENT: production
+      GENERATE_SOURCEMAP: false
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - vru_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # =====================================================================
+  # NGINX - Reverse proxy and load balancer (Optional for production)
+  # =====================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: vru_nginx
+    hostname: nginx
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/ssl:/etc/ssl/certs:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - vru_network
+    restart: unless-stopped
+    profiles: ["nginx", "production-proxy"]
+
+# =====================================================================
+# VOLUMES - Persistent data storage
+# =====================================================================
+volumes:
+  postgres_data:
+    driver: local
+    name: vru_postgres_data
+  redis_data:
+    driver: local
+    name: vru_redis_data
+  uploaded_videos:
+    driver: local
+    name: vru_uploaded_videos
+  backend_logs:
+    driver: local
+    name: vru_backend_logs
+  nginx_logs:
+    driver: local
+    name: vru_nginx_logs
+
+# =====================================================================
+# NETWORKS - Fixed container networking
+# =====================================================================
+networks:
+  vru_network:
+    driver: bridge
+    name: vru_network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.driver.mtu: "1500"

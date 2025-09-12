@@ -4,17 +4,28 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
+import { setupGlobalUploadErrorHandler } from './utils/uploadPromiseHandler';
 import { waitForConfig } from './utils/configurationManager';
+import { initializeLogging } from './config/logging.config';
+import { getLogger } from './services/logger';
+import { setupGlobalLogging } from './utils/loggingUtils';
+
+// Initialize logging system FIRST
+initializeLogging();
+setupGlobalLogging();
+
+const initLogger = getLogger('initialization');
 
 // Initialize configuration manager FIRST
-console.log('🔧 Starting configuration initialization...');
+initLogger.info('Starting configuration initialization');
 
 // Initialize global error handling
 setupGlobalErrorHandling();
+setupGlobalUploadErrorHandler();
 
 // Wait for configuration to be ready before rendering React app
 waitForConfig().then(() => {
-  console.log('✅ Configuration ready, starting React app...');
+  initLogger.info('Configuration ready, starting React app');
   
   const root = ReactDOM.createRoot(
     document.getElementById('root') as HTMLElement
@@ -25,7 +36,13 @@ waitForConfig().then(() => {
     </React.StrictMode>
   );
 }).catch(error => {
-  console.error('❌ Configuration initialization failed:', error);
+  initLogger.error('Configuration initialization failed', {
+    action: 'config_init_error',
+    metadata: {
+      errorMessage: error.message,
+      errorName: error.name
+    }
+  }, error);
   
   // Show error to user
   document.body.innerHTML = `

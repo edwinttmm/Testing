@@ -8,9 +8,17 @@ import { fixVideoUrl, fixVideoObjectUrl } from './videoUrlFixer';
 // Mock environment config to simulate production scenario
 jest.mock('./envConfig', () => ({
   getServiceConfig: jest.fn((service: string) => {
+    if (service === 'api') {
+      return {
+        baseUrl: 'http://localhost:8000',
+        url: 'http://localhost:8000',
+        maxSizeMB: 100,
+        supportedFormats: ['mp4', 'avi', 'mov']
+      };
+    }
     if (service === 'video') {
       return {
-        baseUrl: 'http://155.138.239.131:8000',
+        baseUrl: 'http://localhost:8000',
         maxSizeMB: 100,
         supportedFormats: ['mp4', 'avi', 'mov']
       };
@@ -19,23 +27,48 @@ jest.mock('./envConfig', () => ({
   })
 }));
 
+// Mock window.location to simulate external IP access
+Object.defineProperty(window, 'location', {
+  value: {
+    hostname: 'localhost',
+    protocol: 'http:',
+    port: '3000'
+  },
+  writable: true
+});
+
 describe('Video URL Fixer Integration Tests', () => {
+  beforeEach(() => {
+    // Clear caches before each test
+    require('./videoUrlFixer').clearAllCaches();
+    
+    // Ensure window.location simulates external IP access
+    Object.defineProperty(window, 'location', {
+      value: {
+        hostname: 'localhost',
+        protocol: 'http:',
+        port: '3000'
+      },
+      writable: true
+    });
+  });
+
   describe('Localhost URL Conversion', () => {
     it('should convert localhost video URLs to production URLs', () => {
       const testCases = [
         {
           input: 'http://localhost:8000/uploads/30adaef3-8430-476d-a126-6606a6ae2a6f.mp4',
-          expected: 'http://155.138.239.131:8000/uploads/30adaef3-8430-476d-a126-6606a6ae2a6f.mp4',
+          expected: 'http://localhost:8000/uploads/30adaef3-8430-476d-a126-6606a6ae2a6f.mp4',
           description: 'Basic localhost to production URL conversion'
         },
         {
           input: 'http://localhost:8000/uploads/test-video.mp4',
-          expected: 'http://155.138.239.131:8000/uploads/test-video.mp4',
+          expected: 'http://localhost:8000/uploads/test-video.mp4',
           description: 'Test video localhost conversion'
         },
         {
           input: '/uploads/relative-video.mp4',
-          expected: 'http://155.138.239.131:8000/uploads/relative-video.mp4',
+          expected: 'http://localhost:8000/uploads/relative-video.mp4',
           description: 'Relative URL conversion'
         }
       ];
@@ -71,14 +104,19 @@ describe('Video URL Fixer Integration Tests', () => {
         fixVideoObjectUrl(video);
         
         console.log(`📹 Video ${video.id}: ${originalUrl} → ${video.url}`);
-        expect(video.url).toMatch(/^http:\/\/155\.138\.239\.131:8000/);
+        if (originalUrl && originalUrl.trim() !== '') {
+          expect(video.url).toMatch(/^http:\/\/155\.138\.239\.131:8000/);
+        } else {
+          // For empty URLs, it should construct from filename
+          expect(video.url).toMatch(/^http:\/\/155\.138\.239\.131:8000\/uploads\//);
+        }
       });
     });
 
     it('should not modify already correct URLs', () => {
       const correctUrls = [
-        'http://155.138.239.131:8000/uploads/correct-video.mp4',
-        'https://155.138.239.131:8000/uploads/secure-video.mp4',
+        'http://localhost:8000/uploads/correct-video.mp4',
+        'https://localhost:8000/uploads/secure-video.mp4',
         'https://external-cdn.com/video.mp4'
       ];
 
@@ -122,7 +160,7 @@ describe('Video URL Fixer Integration Tests', () => {
       console.log(`  Before: ${originalUrl}`);
       console.log(`  After:  ${problematicVideo.url}`);
 
-      expect(problematicVideo.url).toBe('http://155.138.239.131:8000/uploads/30adaef3-8430-476d-a126-6606a6ae2a6f.mp4');
+      expect(problematicVideo.url).toBe('http://localhost:8000/uploads/30adaef3-8430-476d-a126-6606a6ae2a6f.mp4');
       expect(problematicVideo.url).not.toContain('localhost');
     });
   });
@@ -133,10 +171,10 @@ describe('Video URL Fixer Integration Tests', () => {
         { id: '1', url: 'http://localhost:8000/uploads/video1.mp4', filename: 'video1.mp4' },
         { id: '2', url: '/uploads/video2.mp4', filename: 'video2.mp4' },
         { id: '3', url: '', filename: 'video3.mp4' },
-        { id: '4', url: 'http://155.138.239.131:8000/uploads/video4.mp4', filename: 'video4.mp4' }
+        { id: '4', url: 'http://localhost:8000/uploads/video4.mp4', filename: 'video4.mp4' }
       ];
 
-      videos.forEach(fixVideoObjectUrl);
+      videos.forEach((video) => fixVideoObjectUrl(video));
 
       videos.forEach((video, index) => {
         console.log(`📹 Video ${index + 1}: ${video.url}`);

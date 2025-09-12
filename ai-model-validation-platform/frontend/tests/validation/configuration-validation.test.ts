@@ -62,7 +62,7 @@ describe('Configuration Management - Environment Service', () => {
   test('should load configuration correctly for production environment', () => {
     // Mock production environment
     process.env.NODE_ENV = 'production';
-    mockLocation.hostname = '155.138.239.131';
+    mockLocation.hostname = 'localhost';
 
     const config = environmentService.getConfig();
 
@@ -72,8 +72,8 @@ describe('Configuration Management - Environment Service', () => {
     expect(config.videoBaseUrl).toBeDefined();
     
     // In production, should use the production server
-    expect(config.apiUrl).toContain('155.138.239.131');
-    expect(config.videoBaseUrl).toContain('155.138.239.131');
+    expect(config.apiUrl).toContain('localhost');
+    expect(config.videoBaseUrl).toContain('localhost');
     
     console.log('✅ Production environment configuration loaded');
   });
@@ -155,8 +155,8 @@ describe('Configuration Management - Environment Service', () => {
       },
       {
         name: 'Production Server',
-        hostname: '155.138.239.131',
-        expectedBase: '155.138.239.131'
+        hostname: 'localhost',
+        expectedBase: 'localhost'
       },
       {
         name: 'Staging Environment',
@@ -186,7 +186,7 @@ describe('Configuration Management - URL Service Integration', () => {
     expect(videoConfig).toBeDefined();
     expect(videoConfig.baseUrl).toBeDefined();
     expect(videoConfig.baseUrl).not.toContain('localhost');
-    expect(videoConfig.baseUrl).toContain('155.138.239.131:8000');
+    expect(videoConfig.baseUrl).toContain('localhost:8000');
 
     console.log(`✅ Video URL service base URL: ${videoConfig.baseUrl}`);
   });
@@ -423,7 +423,7 @@ describe('Configuration Management - Integration Summary', () => {
   test('should validate URL fix integration with configuration', () => {
     // Test that URL fixes work with the current configuration
     const videoConfig = getServiceConfig('video');
-    const baseUrl = videoConfig?.baseUrl || 'http://155.138.239.131:8000';
+    const baseUrl = videoConfig?.baseUrl || 'http://localhost:8000';
 
     // Import and test URL fixing functionality
     const { fixVideoUrl } = require('../../src/utils/videoUrlFixer');
@@ -432,7 +432,7 @@ describe('Configuration Management - Integration Summary', () => {
     const fixedUrl = fixVideoUrl(testUrl);
 
     // Fixed URL should use the configuration base URL
-    expect(fixedUrl).toContain('155.138.239.131:8000');
+    expect(fixedUrl).toContain('localhost:8000');
     expect(fixedUrl).not.toContain('localhost');
 
     // Should be consistent with environment configuration

@@ -1,0 +1,170 @@
+{
+  "test_started": "2025-08-27T14:10:30.733152",
+  "frontend_url": "http://localhost:3000",
+  "backend_url": "http://localhost:8000",
+  "navigation_tests": [
+    {
+      "test_name": "Main Page Load",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:30.739478",
+      "details": "Found 4/4 essential elements",
+      "error": null
+    },
+    {
+      "test_name": "JavaScript Resources",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:30.739649",
+      "details": "Found 2 JS resources",
+      "error": null
+    },
+    {
+      "test_name": "CSS Resources",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:30.739757",
+      "details": "Found 1 CSS resources",
+      "error": null
+    },
+    {
+      "test_name": "JS Resource: /static/js/main.a11d605d.js",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.285358",
+      "details": "Size: 501718 bytes",
+      "error": null
+    },
+    {
+      "test_name": "CSS Resource: /static/css/main.e6c13ad2.css",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.288605",
+      "details": "Size: 337 bytes",
+      "error": null
+    },
+    {
+      "test_name": "Static Resources Overall",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.288620",
+      "details": "2/2 resources loaded",
+      "error": null
+    },
+    {
+      "test_name": "API Connectivity: /api/dashboard/stats",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.800420",
+      "details": "GET request successful",
+      "error": null
+    },
+    {
+      "test_name": "API Connectivity: /api/projects",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.803063",
+      "details": "GET request successful",
+      "error": null
+    },
+    {
+      "test_name": "API Connectivity: /api/videos",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.806023",
+      "details": "GET request successful",
+      "error": null
+    },
+    {
+      "test_name": "CORS Configuration",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:31.806040",
+      "details": "3/3 endpoints support CORS",
+      "error": null
+    },
+    {
+      "test_name": "Responsive: viewport_meta",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:32.316408",
+      "details": "Found 1 instances",
+      "error": null
+    },
+    {
+      "test_name": "Responsive: media_queries",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:32.316486",
+      "details": "Not found in initial HTML",
+      "error": null
+    },
+    {
+      "test_name": "Responsive: responsive_classes",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:32.316635",
+      "details": "Not found in initial HTML",
+      "error": null
+    },
+    {
+      "test_name": "Responsive: bootstrap_grid",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:32.316755",
+      "details": "Not found in initial HTML",
+      "error": null
+    },
+    {
+      "test_name": "Responsive: flexbox",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:32.316833",
+      "details": "Not found in initial HTML",
+      "error": null
+    },
+    {
+      "test_name": "Responsive: grid",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:32.316903",
+      "details": "Not found in initial HTML",
+      "error": null
+    },
+    {
+      "test_name": "Overall Responsive Design",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:32.316914",
+      "details": "Found only 1/6 responsive indicators",
+      "error": null
+    },
+    {
+      "test_name": "Error Handling: /nonexistent-page",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:32.822129",
+      "details": "SPA routing - handled client-side",
+      "error": null
+    },
+    {
+      "test_name": "Error Handling: /projects/99999",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:32.824410",
+      "details": "SPA routing - handled client-side",
+      "error": null
+    },
+    {
+      "test_name": "Error Handling: /videos/invalid-id",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:32.826457",
+      "details": "SPA routing - handled client-side",
+      "error": null
+    },
+    {
+      "test_name": "Error Handling: /dashboard/fake-section",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:32.828872",
+      "details": "SPA routing - handled client-side",
+      "error": null
+    },
+    {
+      "test_name": "Page Load Time",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:33.333823",
+      "details": "Loaded in 0.00 seconds",
+      "error": null
+    },
+    {
+      "test_name": "Content Size",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:33.333857",
+      "details": "Reasonable size: 0.7 KB",
+      "error": null
+    }
+  ],
+  "ui_component_tests": [],
+  "javascript_tests": []
+}

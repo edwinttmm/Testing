@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { apiService } from '../services/api';
+import logger from '../utils/safeErrorLogger';
 
 // Contract version tracking
 export const API_CONTRACT_VERSION = '1.0.0';
@@ -74,7 +75,7 @@ export const VideoFileSchema = z.object({
   updatedAt: z.string().datetime().nullable().optional()
 });
 
-export const AnnotationSchema = z.object({
+export const ContractAnnotationSchema = z.object({
   id: z.string().uuid(),
   videoId: z.string().uuid(),
   detectionId: z.string().nullable().optional(),
@@ -88,7 +89,7 @@ export const AnnotationSchema = z.object({
   difficult: z.boolean().default(false),
   notes: z.string().nullable().optional(),
   annotator: z.string().nullable().optional(),
-  validated: z.boolean().default(false),
+  validated: z.boolean().optional().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime().nullable().optional()
 });
@@ -146,7 +147,9 @@ export const HealthCheckSchema = z.object({
 // Type definitions from schemas
 export type Project = z.infer<typeof ProjectSchema>;
 export type VideoFile = z.infer<typeof VideoFileSchema>;
-export type Annotation = z.infer<typeof AnnotationSchema>;
+export type ContractAnnotation = z.infer<typeof ContractAnnotationSchema>;
+// Alias for backward compatibility
+export const AnnotationSchema = ContractAnnotationSchema;
 export type BoundingBox = z.infer<typeof BoundingBoxSchema>;
 export type TestSession = z.infer<typeof TestSessionSchema>;
 export type ValidationMetrics = z.infer<typeof ValidationMetricsSchema>;
@@ -187,8 +190,8 @@ class ContractValidator {
       total: z.number().int().min(0)
     }));
     
-    this.contracts.set('GET /api/videos/:id/annotations', z.array(AnnotationSchema));
-    this.contracts.set('POST /api/videos/:id/annotations', AnnotationSchema);
+    this.contracts.set('GET /api/videos/:id/annotations', z.array(ContractAnnotationSchema));
+    this.contracts.set('POST /api/videos/:id/annotations', ContractAnnotationSchema);
     this.contracts.set('GET /api/videos/:id/ground-truth', z.object({
       video_id: z.string().uuid(),
       objects: z.array(z.object({
@@ -214,7 +217,7 @@ class ContractValidator {
     this.contracts.set('GET /api/dashboard/stats', DashboardStatsSchema);
     this.contracts.set('GET /health', HealthCheckSchema);
     
-    console.log(`✅ Initialized ${this.contracts.size} API contract validations`);
+    logger.info('Initialized API contract validations', { count: this.contracts.size }, { context: 'contract-validator' });
   }
 
   /**
@@ -269,8 +272,8 @@ class ContractValidator {
                 message: issue.message,
                 severity: this.getViolationSeverity(issue.code),
                 fieldPath: issue.path.join('.'),
-                actualValue: issue.received,
-                expectedType: issue.expected
+                actualValue: (issue as any).received || 'unknown',
+                expectedType: (issue as any).expected || 'unknown'
               });
             });
           }
@@ -570,7 +573,7 @@ export const setupContractInterceptors = (enableValidation: boolean = true) => {
         );
         
         if (!validation.isValid && validation.violations.some(v => v.severity === ValidationSeverity.ERROR)) {
-          console.error('Contract validation failed for request:', validation.violations);
+          logger.error('Contract validation failed for request', validation.violations, { context: 'contract-validator' });
           // In strict mode, you could reject the request here
           // return Promise.reject(new Error('Contract validation failed'));
         }
@@ -592,7 +595,7 @@ export const setupContractInterceptors = (enableValidation: boolean = true) => {
         );
         
         if (!validation.isValid) {
-          console.warn('Contract validation warnings for response:', validation.violations);
+          logger.warn('Contract validation warnings for response', validation.violations, { context: 'contract-validator' });
           
           // Add validation metadata to response
           (response as any).contractValidation = validation;
@@ -610,14 +613,14 @@ export const setupContractInterceptors = (enableValidation: boolean = true) => {
         );
         
         if (!validation.isValid) {
-          console.error('Contract validation failed for error response:', validation.violations);
+          logger.error('Contract validation failed for error response', validation.violations, { context: 'contract-validator' });
         }
       }
       return Promise.reject(error);
     }
   );
 
-  console.log('✅ Contract validation interceptors setup complete');
+  logger.info('Contract validation interceptors setup complete', undefined, { context: 'contract-validator' });
 };
 
 // Validation utility functions
@@ -638,7 +641,7 @@ export const validateApiResponse = <T>(
       expectedType: (issue as any).expected
     }));
     
-    console.error(`API response validation failed for ${endpoint}:`, violations);
+    logger.error('API response validation failed', violations, { context: 'contract-validator', endpoint });
     throw new Error(`API response validation failed: ${violations.map(v => v.message).join(', ')}`);
   }
   return result.data;
@@ -674,9 +677,9 @@ export class ContractAwareApiService {
     return validateApiResponse(z.array(VideoFileSchema), response, 'GET /api/projects/:id/videos');
   }
   
-  async getAnnotations(videoId: string): Promise<Annotation[]> {
+  async getAnnotations(videoId: string): Promise<any[]> {
     const response = await this.apiService.getAnnotations(videoId);
-    return validateApiResponse(z.array(AnnotationSchema), response, 'GET /api/videos/:id/annotations');
+    return validateApiResponse(z.array(ContractAnnotationSchema), response, 'GET /api/videos/:id/annotations');
   }
   
   async getDashboardStats(): Promise<DashboardStats> {

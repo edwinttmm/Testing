@@ -1,0 +1,45 @@
+# AI Model Validation Platform - Fixed Frontend Dockerfile
+# Solution for Docker credential errors
+
+FROM node:20-slim
+
+WORKDIR /app
+
+# Install system dependencies for building native modules
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure npm for reliability
+RUN npm config set strict-ssl false && \
+    npm config set registry https://registry.npmjs.org/ && \
+    npm config set fund false && \
+    npm config set audit false
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm cache clean --force && \
+    npm install --legacy-peer-deps --verbose || \
+    npm install --legacy-peer-deps --verbose --unsafe-perm
+
+# Copy source code
+COPY . .
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Start development server
+CMD ["sh", "-c", "HOST=0.0.0.0 PORT=3000 npx craco start || HOST=0.0.0.0 PORT=3000 npx react-scripts start"]

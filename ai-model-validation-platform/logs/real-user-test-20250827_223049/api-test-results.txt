@@ -1,0 +1,8 @@
+API Endpoint Test Results:
+===========================
+✅ GET /api/ground-truth: 307
+✅ GET /: 200
+✅ GET /api/projects: 200
+✅ GET /api/videos: 200
+✅ GET /docs: 200
+✅ GET /health: 200

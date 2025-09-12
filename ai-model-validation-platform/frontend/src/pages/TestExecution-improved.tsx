@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { apiService } from '../services/api';
-import { TestSession as TestSessionType, VideoFile, Project, ApiError } from '../services/types';
+import { TestSession as TestSessionType, VideoFile, Project, ApiError, LabJackStatus, VideoStatus } from '../services/types';
 import {
   safeVideoPlay,
   safeVideoPause,
@@ -49,6 +49,15 @@ import {
 } from '../utils/videoUtils';
 import environmentService from '../config/environment';
 import AccessibleVideoPlayer from '../components/AccessibleVideoPlayer';
+import LabJackStatusPanel from '../components/LabJackStatusPanel';
+
+interface StreamingData {
+  data: number[];
+  timestamp: number;
+  sample_rate: number;
+  channels: string[];
+}
+
 
 interface DetectionEvent {
   id: string;
@@ -76,6 +85,11 @@ const TestExecution: React.FC = () => {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
+  
+  // LabJack integration state
+  const [labJackStatus, setLabJackStatus] = useState<LabJackStatus | null>(null);
+  const [streamingData, setStreamingData] = useState<number[]>([]);
+  const [signalValidationEnabled, setSignalValidationEnabled] = useState(false);
 
   // Load projects and videos
   useEffect(() => {
@@ -108,7 +122,7 @@ const TestExecution: React.FC = () => {
   const loadVideos = async (projectId: string) => {
     try {
       const videoList = await apiService.getVideos(projectId);
-      setVideos(videoList.filter(v => v.status === 'completed')); // Only show ready videos
+      setVideos(videoList.filter(v => v.status === VideoStatus.VALIDATED)); // Only show ready videos
     } catch (err) {
       const apiError = err as ApiError;
       setError(`Failed to load videos: ${apiError.message}`);
@@ -203,6 +217,15 @@ const TestExecution: React.FC = () => {
       }, delay);
     }
   }, [reconnectAttempts, initializeWebSocket]);
+
+  // LabJack event handlers
+  const handleLabJackDataReceived = useCallback((data: StreamingData) => {
+    setStreamingData(prev => [...prev.slice(-200), ...data.data]);
+  }, []);
+
+  const handleLabJackStatusChanged = useCallback((status: LabJackStatus) => {
+    setLabJackStatus(status);
+  }, []);
 
   const handleStartTest = async () => {
     if (!selectedProject || !selectedVideo) {
@@ -677,6 +700,14 @@ const TestExecution: React.FC = () => {
                   </List>
                 </CardContent>
               </Card>
+            </Box>
+
+            {/* LabJack Hardware Status */}
+            <Box>
+              <LabJackStatusPanel
+                onDataReceived={handleLabJackDataReceived}
+                onStatusChanged={handleLabJackStatusChanged}
+              />
             </Box>
           </Box>
         </Box>

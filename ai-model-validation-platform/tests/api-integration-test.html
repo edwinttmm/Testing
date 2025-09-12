@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Integration Testing Suite</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-group {
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        .test-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #ccc;
+        }
+        .test-item.success {
+            border-left-color: #28a745;
+            background: #f8fff9;
+        }
+        .test-item.error {
+            border-left-color: #dc3545;
+            background: #fff8f8;
+        }
+        .test-item.warning {
+            border-left-color: #ffc107;
+            background: #fffef8;
+        }
+        .test-item.loading {
+            border-left-color: #007bff;
+            background: #f8fbff;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-success { background: #28a745; color: white; }
+        .status-error { background: #dc3545; color: white; }
+        .status-warning { background: #ffc107; color: black; }
+        .status-loading { background: #007bff; color: white; }
+        .status-pending { background: #6c757d; color: white; }
+        .test-details {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .summary {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        .summary-item {
+            text-align: center;
+            padding: 15px;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        .summary-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .config-display {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+        .log-output {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .cors-test {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔗 API Integration Testing Suite</h1>
+        <p>Comprehensive frontend-to-backend connectivity testing for AI Model Validation Platform</p>
+    </div>
+
+    <div class="container">
+        <h2>Configuration Analysis</h2>
+        <div id="config-analysis"></div>
+        
+        <h3>Current Environment Configuration</h3>
+        <div id="config-display" class="config-display"></div>
+        
+        <button class="btn" onclick="refreshConfig()">Refresh Configuration</button>
+        <button class="btn" onclick="testCORSManually()">Test CORS Manually</button>
+    </div>
+
+    <div class="container">
+        <h2>Test Results Summary</h2>
+        <div id="test-summary" class="summary">
+            <div class="summary-item">
+                <div class="summary-value" id="total-tests">0</div>
+                <div>Total Tests</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value" id="passed-tests" style="color: #28a745;">0</div>
+                <div>Passed</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value" id="failed-tests" style="color: #dc3545;">0</div>
+                <div>Failed</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value" id="pending-tests" style="color: #ffc107;">0</div>
+                <div>Pending</div>
+            </div>
+        </div>
+        
+        <button class="btn" onclick="runAllTests()" id="run-tests-btn">🚀 Run All Tests</button>
+        <button class="btn" onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="container">
+        <h2>API Endpoint Tests</h2>
+        <div id="api-tests"></div>
+    </div>
+
+    <div class="container cors-test">
+        <h2>🌐 CORS Configuration Test</h2>
+        <p>Testing Cross-Origin Resource Sharing configuration between frontend and backend.</p>
+        <div id="cors-results"></div>
+    </div>
+
+    <div class="container">
+        <h2>WebSocket Connection Tests</h2>
+        <div id="websocket-tests"></div>
+    </div>
+
+    <div class="container">
+        <h2>Data Flow Tests</h2>
+        <div id="data-flow-tests"></div>
+    </div>
+
+    <div class="container">
+        <h2>Test Log</h2>
+        <div id="test-log" class="log-output"></div>
+    </div>
+
+    <script>
+        class APIIntegrationTester {
+            constructor() {
+                this.testResults = new Map();
+                this.apiBaseUrl = '';
+                this.wsUrl = '';
+                this.socketioUrl = '';
+                this.testLog = [];
+                
+                this.init();
+            }
+
+            init() {
+                this.detectConfiguration();
+                this.setupTestSuite();
+                this.updateDisplay();
+            }
+
+            log(message, level = 'info') {
+                const timestamp = new Date().toISOString();
+                const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+                this.testLog.push(logEntry);
+                console.log(logEntry);
+                this.updateLogDisplay();
+            }
+
+            detectConfiguration() {
+                // Try multiple sources for configuration
+                const sources = [
+                    () => window.RUNTIME_CONFIG,
+                    () => process?.env,
+                    () => ({
+                        REACT_APP_API_URL: 'http://localhost:8000',
+                        REACT_APP_WS_URL: 'ws://localhost:8000',
+                        REACT_APP_SOCKETIO_URL: 'http://localhost:8001'
+                    })
+                ];
+
+                let config = null;
+                for (const getConfig of sources) {
+                    try {
+                        config = getConfig();
+                        if (config && config.REACT_APP_API_URL) {
+                            break;
+                        }
+                    } catch (e) {
+                        this.log(`Configuration source failed: ${e.message}`, 'warn');
+                    }
+                }
+
+                if (!config) {
+                    this.log('No configuration found, using defaults', 'warn');
+                    config = {
+                        REACT_APP_API_URL: 'http://localhost:8000',
+                        REACT_APP_WS_URL: 'ws://localhost:8000',
+                        REACT_APP_SOCKETIO_URL: 'http://localhost:8001'
+                    };
+                }
+
+                this.apiBaseUrl = config.REACT_APP_API_URL || 'http://localhost:8000';
+                this.wsUrl = config.REACT_APP_WS_URL || 'ws://localhost:8000';
+                this.socketioUrl = config.REACT_APP_SOCKETIO_URL || 'http://localhost:8001';
+
+                this.log(`Configuration detected: API=${this.apiBaseUrl}, WS=${this.wsUrl}, SocketIO=${this.socketioUrl}`);
+
+                // Analyze configuration
+                this.analyzeConfiguration(config);
+            }
+
+            analyzeConfiguration(config) {
+                const analysis = {
+                    environment: this.detectEnvironment(),
+                    hostname: window.location.hostname,
+                    port: window.location.port,
+                    protocol: window.location.protocol,
+                    origin: window.location.origin,
+                    userAgent: navigator.userAgent,
+                    timestamp: new Date().toISOString()
+                };
+
+                const configDisplay = document.getElementById('config-display');
+                configDisplay.innerHTML = `
+                    <strong>Environment Analysis:</strong>
+                    ${JSON.stringify(analysis, null, 2)}
+                    
+                    <strong>Configuration Object:</strong>
+                    ${JSON.stringify(config, null, 2)}
+                `;
+
+                const configAnalysis = document.getElementById('config-analysis');
+                const issues = this.findConfigurationIssues(config, analysis);
+                
+                if (issues.length === 0) {
+                    configAnalysis.innerHTML = '<div class="test-item success">✅ Configuration looks good!</div>';
+                } else {
+                    const issuesHtml = issues.map(issue => 
+                        `<div class="test-item ${issue.level}">${issue.icon} ${issue.message}</div>`
+                    ).join('');
+                    configAnalysis.innerHTML = issuesHtml;
+                }
+            }
+
+            findConfigurationIssues(config, analysis) {
+                const issues = [];
+
+                // Check for localhost vs external IP issues
+                if (analysis.hostname !== 'localhost' && analysis.hostname !== '127.0.0.1') {
+                    if (this.apiBaseUrl.includes('localhost')) {
+                        issues.push({
+                            level: 'warning',
+                            icon: '⚠️',
+                            message: `Frontend running on ${analysis.hostname} but API configured for localhost. This may cause CORS issues.`
+                        });
+                    }
+                }
+
+                // Check for external IP in API URL
+                if (this.apiBaseUrl.includes('155.138.239.131')) {
+                    issues.push({
+                        level: 'error',
+                        icon: '🚨',
+                        message: 'API URL contains external IP which will cause connection failures!'
+                    });
+                }
+
+                // Check protocol mismatch
+                if (analysis.protocol === 'https:' && this.apiBaseUrl.startsWith('http:')) {
+                    issues.push({
+                        level: 'error',
+                        icon: '🔒',
+                        message: 'Protocol mismatch: Frontend uses HTTPS but API uses HTTP'
+                    });
+                }
+
+                // Check port accessibility
+                try {
+                    const apiUrl = new URL(this.apiBaseUrl);
+                    if (apiUrl.port && apiUrl.port !== '80' && apiUrl.port !== '443') {
+                        issues.push({
+                            level: 'warning',
+                            icon: '🔌',
+                            message: `API using non-standard port ${apiUrl.port}. Ensure it's accessible.`
+                        });
+                    }
+                } catch (e) {
+                    issues.push({
+                        level: 'error',
+                        icon: '❌',
+                        message: `Invalid API URL format: ${this.apiBaseUrl}`
+                    });
+                }
+
+                return issues;
+            }
+
+            detectEnvironment() {
+                const hostname = window.location.hostname;
+                if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                    return 'development';
+                } else if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+                    return 'production-ip';
+                } else {
+                    return 'production-domain';
+                }
+            }
+
+            setupTestSuite() {
+                this.testSuite = [
+                    // Basic connectivity tests
+                    { group: 'Basic Connectivity', name: 'Health Check', endpoint: '/health', method: 'GET' },
+                    { group: 'Basic Connectivity', name: 'Root Endpoint', endpoint: '/', method: 'GET' },
+                    
+                    // API endpoint tests
+                    { group: 'API Endpoints', name: 'Projects List', endpoint: '/api/projects', method: 'GET' },
+                    { group: 'API Endpoints', name: 'Videos List', endpoint: '/api/videos', method: 'GET' },
+                    { group: 'API Endpoints', name: 'Dashboard Stats', endpoint: '/api/dashboard/stats', method: 'GET' },
+                    
+                    // CORS tests
+                    { group: 'CORS Tests', name: 'Preflight Request', endpoint: '/api/projects', method: 'OPTIONS' },
+                    { group: 'CORS Tests', name: 'Cross-Origin GET', endpoint: '/health', method: 'GET', cors: true },
+                    
+                    // Data flow tests
+                    { group: 'Data Flow', name: 'JSON Response Parsing', endpoint: '/api/dashboard/stats', method: 'GET', validate: 'json' },
+                    { group: 'Data Flow', name: 'Error Handling', endpoint: '/api/nonexistent', method: 'GET', expectError: true },
+                ];
+            }
+
+            async runAllTests() {
+                const button = document.getElementById('run-tests-btn');
+                button.disabled = true;
+                button.textContent = '🔄 Running Tests...';
+                
+                this.testResults.clear();
+                this.testLog = [];
+                this.log('Starting comprehensive API integration tests');
+                
+                try {
+                    for (const test of this.testSuite) {
+                        await this.runTest(test);
+                        await this.delay(100); // Small delay between tests
+                    }
+                    
+                    // Run WebSocket tests
+                    await this.runWebSocketTests();
+                    
+                } catch (error) {
+                    this.log(`Test suite error: ${error.message}`, 'error');
+                } finally {
+                    button.disabled = false;
+                    button.textContent = '🚀 Run All Tests';
+                    this.updateDisplay();
+                    this.generateReport();
+                }
+            }
+
+            async runTest(test) {
+                const testKey = `${test.group}-${test.name}`;
+                this.testResults.set(testKey, { status: 'loading', ...test });
+                this.updateDisplay();
+                
+                this.log(`Running test: ${test.name}`);
+                
+                try {
+                    const startTime = Date.now();
+                    const url = `${this.apiBaseUrl}${test.endpoint}`;
+                    
+                    const options = {
+                        method: test.method,
+                        mode: test.cors ? 'cors' : 'cors',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        }
+                    };
+
+                    const response = await fetch(url, options);
+                    const duration = Date.now() - startTime;
+                    
+                    let result = {
+                        status: 'success',
+                        httpStatus: response.status,
+                        duration: duration,
+                        url: url,
+                        ...test
+                    };
+
+                    // Handle expected errors
+                    if (test.expectError) {
+                        if (response.ok) {
+                            result.status = 'error';
+                            result.message = 'Expected error but got success response';
+                        } else {
+                            result.message = `Expected error received: ${response.status}`;
+                        }
+                    } else if (!response.ok) {
+                        result.status = 'error';
+                        result.message = `HTTP ${response.status}: ${response.statusText}`;
+                    } else {
+                        // Validate response if needed
+                        if (test.validate === 'json') {
+                            try {
+                                const data = await response.json();
+                                result.dataKeys = Object.keys(data);
+                                result.message = `JSON response with ${Object.keys(data).length} keys`;
+                            } catch (e) {
+                                result.status = 'error';
+                                result.message = 'Invalid JSON response';
+                            }
+                        } else {
+                            result.message = `Success (${duration}ms)`;
+                        }
+                    }
+
+                    this.testResults.set(testKey, result);
+                    this.log(`Test ${test.name}: ${result.status} - ${result.message}`);
+
+                } catch (error) {
+                    const result = {
+                        status: 'error',
+                        message: error.message,
+                        errorType: error.name,
+                        ...test
+                    };
+                    
+                    this.testResults.set(testKey, result);
+                    this.log(`Test ${test.name} failed: ${error.message}`, 'error');
+                }
+
+                this.updateDisplay();
+            }
+
+            async runWebSocketTests() {
+                this.log('Running WebSocket connectivity tests');
+                
+                const wsTests = [
+                    { name: 'WebSocket Basic Connection', url: this.wsUrl },
+                    { name: 'Socket.IO Connection', url: this.socketioUrl }
+                ];
+
+                for (const wsTest of wsTests) {
+                    const testKey = `WebSocket-${wsTest.name}`;
+                    this.testResults.set(testKey, { status: 'loading', ...wsTest, group: 'WebSocket' });
+                    this.updateDisplay();
+
+                    try {
+                        const result = await this.testWebSocketConnection(wsTest.url);
+                        this.testResults.set(testKey, {
+                            status: result.success ? 'success' : 'error',
+                            message: result.message,
+                            ...wsTest,
+                            group: 'WebSocket'
+                        });
+                        this.log(`WebSocket test ${wsTest.name}: ${result.message}`);
+                    } catch (error) {
+                        this.testResults.set(testKey, {
+                            status: 'error',
+                            message: error.message,
+                            ...wsTest,
+                            group: 'WebSocket'
+                        });
+                        this.log(`WebSocket test ${wsTest.name} failed: ${error.message}`, 'error');
+                    }
+
+                    this.updateDisplay();
+                }
+            }
+
+            async testWebSocketConnection(url) {
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        resolve({ success: false, message: 'Connection timeout' });
+                    }, 5000);
+
+                    try {
+                        const ws = new WebSocket(url);
+                        
+                        ws.onopen = () => {
+                            clearTimeout(timeout);
+                            ws.close();
+                            resolve({ success: true, message: 'Connection successful' });
+                        };
+                        
+                        ws.onerror = (error) => {
+                            clearTimeout(timeout);
+                            resolve({ success: false, message: 'Connection failed' });
+                        };
+                        
+                        ws.onclose = (event) => {
+                            if (event.wasClean) {
+                                // Connection was successful and closed cleanly
+                                return;
+                            }
+                            clearTimeout(timeout);
+                            resolve({ success: false, message: `Connection closed: ${event.code}` });
+                        };
+                        
+                    } catch (error) {
+                        clearTimeout(timeout);
+                        resolve({ success: false, message: error.message });
+                    }
+                });
+            }
+
+            updateDisplay() {
+                this.updateSummary();
+                this.updateTestResults();
+            }
+
+            updateSummary() {
+                const total = this.testResults.size;
+                const passed = Array.from(this.testResults.values()).filter(r => r.status === 'success').length;
+                const failed = Array.from(this.testResults.values()).filter(r => r.status === 'error').length;
+                const pending = Array.from(this.testResults.values()).filter(r => r.status === 'loading').length;
+
+                document.getElementById('total-tests').textContent = total;
+                document.getElementById('passed-tests').textContent = passed;
+                document.getElementById('failed-tests').textContent = failed;
+                document.getElementById('pending-tests').textContent = pending;
+            }
+
+            updateTestResults() {
+                const groups = this.groupTestResults();
+                
+                const containers = {
+                    'Basic Connectivity': document.getElementById('api-tests'),
+                    'API Endpoints': document.getElementById('api-tests'),
+                    'CORS Tests': document.getElementById('cors-results'),
+                    'Data Flow': document.getElementById('data-flow-tests'),
+                    'WebSocket': document.getElementById('websocket-tests')
+                };
+
+                // Clear containers
+                Object.values(containers).forEach(container => {
+                    if (container) container.innerHTML = '';
+                });
+
+                for (const [groupName, tests] of Object.entries(groups)) {
+                    const container = containers[groupName];
+                    if (!container) continue;
+
+                    const groupHtml = `
+                        <div class="test-group">
+                            <h3>${groupName}</h3>
+                            ${tests.map(test => this.renderTestItem(test)).join('')}
+                        </div>
+                    `;
+                    
+                    container.innerHTML += groupHtml;
+                }
+            }
+
+            groupTestResults() {
+                const groups = {};
+                
+                for (const [key, test] of this.testResults) {
+                    const groupName = test.group || 'Other';
+                    if (!groups[groupName]) {
+                        groups[groupName] = [];
+                    }
+                    groups[groupName].push({ key, ...test });
+                }
+                
+                return groups;
+            }
+
+            renderTestItem(test) {
+                const statusClass = test.status;
+                const statusBadge = this.getStatusBadge(test.status);
+                
+                let details = '';
+                if (test.url) details += `URL: ${test.url}<br>`;
+                if (test.httpStatus) details += `Status: ${test.httpStatus}<br>`;
+                if (test.duration) details += `Duration: ${test.duration}ms<br>`;
+                if (test.dataKeys) details += `Response Keys: ${test.dataKeys.join(', ')}<br>`;
+                if (test.errorType) details += `Error Type: ${test.errorType}<br>`;
+
+                return `
+                    <div class="test-item ${statusClass}">
+                        <div>
+                            <strong>${test.name}</strong>
+                            ${test.method ? `<small>(${test.method})</small>` : ''}
+                            <div style="font-size: 12px; color: #666;">${test.message || ''}</div>
+                        </div>
+                        ${statusBadge}
+                        ${details ? `<div class="test-details">${details}</div>` : ''}
+                    </div>
+                `;
+            }
+
+            getStatusBadge(status) {
+                const badges = {
+                    success: '<span class="status-badge status-success">✅ PASS</span>',
+                    error: '<span class="status-badge status-error">❌ FAIL</span>',
+                    warning: '<span class="status-badge status-warning">⚠️ WARN</span>',
+                    loading: '<span class="status-badge status-loading">🔄 LOADING</span>',
+                    pending: '<span class="status-badge status-pending">⏳ PENDING</span>'
+                };
+                return badges[status] || badges.pending;
+            }
+
+            updateLogDisplay() {
+                const logContainer = document.getElementById('test-log');
+                logContainer.textContent = this.testLog.slice(-50).join('\n');
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+
+            generateReport() {
+                this.log('Generating final test report');
+                
+                const results = Array.from(this.testResults.values());
+                const summary = {
+                    total: results.length,
+                    passed: results.filter(r => r.status === 'success').length,
+                    failed: results.filter(r => r.status === 'error').length,
+                    warnings: results.filter(r => r.status === 'warning').length
+                };
+                
+                this.log(`Test Summary: ${summary.passed}/${summary.total} passed, ${summary.failed} failed, ${summary.warnings} warnings`);
+                
+                // Log critical failures
+                const criticalFailures = results.filter(r => 
+                    r.status === 'error' && 
+                    ['Health Check', 'Root Endpoint'].includes(r.name)
+                );
+                
+                if (criticalFailures.length > 0) {
+                    this.log('CRITICAL: Basic connectivity tests failed!', 'error');
+                    criticalFailures.forEach(failure => {
+                        this.log(`  - ${failure.name}: ${failure.message}`, 'error');
+                    });
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Global helper functions
+        let tester = null;
+
+        function initializeTester() {
+            tester = new APIIntegrationTester();
+            return tester;
+        }
+
+        function runAllTests() {
+            if (!tester) tester = initializeTester();
+            tester.runAllTests();
+        }
+
+        function clearResults() {
+            if (tester) {
+                tester.testResults.clear();
+                tester.testLog = [];
+                tester.updateDisplay();
+                tester.updateLogDisplay();
+            }
+        }
+
+        function refreshConfig() {
+            if (tester) {
+                tester.detectConfiguration();
+                tester.log('Configuration refreshed');
+            }
+        }
+
+        function testCORSManually() {
+            if (!tester) tester = initializeTester();
+            
+            const corsTest = {
+                group: 'Manual CORS Test',
+                name: 'Cross-Origin Request',
+                endpoint: '/health',
+                method: 'GET',
+                cors: true
+            };
+            
+            tester.runTest(corsTest);
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initializeTester);
+    </script>
+</body>
+</html>

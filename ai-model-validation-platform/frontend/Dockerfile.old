@@ -1,0 +1,42 @@
+FROM node:18-alpine
+
+# Install curl for healthcheck and dumb-init for proper signal handling
+RUN apk add --no-cache curl dumb-init
+
+WORKDIR /app
+
+# Set environment variables for Docker optimization
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=development
+ENV SKIP_PREFLIGHT_CHECK=true
+ENV TSC_COMPILE_ON_ERROR=true
+ENV FAST_REFRESH=true
+ENV DOCKER=true
+ENV DISABLE_GPU_CHECK=true
+ENV CI=false
+ENV WATCHPACK_POLLING=true
+ENV CHOKIDAR_USEPOLLING=true
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install dependencies with optimizations for Docker
+RUN npm ci --legacy-peer-deps --no-audit --no-fund --prefer-offline --no-optional
+
+# Copy source code
+COPY . .
+
+# Create necessary directories and set permissions
+RUN mkdir -p node_modules/.cache && \
+    chmod -R 755 node_modules/.cache
+
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:3000/ || exit 1
+
+# Use dumb-init to handle signals properly and start React dev server
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["npm", "start"]

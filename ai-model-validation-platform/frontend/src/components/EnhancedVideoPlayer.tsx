@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { TimerHandle, safeSetTimeout, safeSetInterval, safeClearInterval } from '../utils/timerUtils';
 import {
   Box,
   Paper,
@@ -42,16 +43,38 @@ import {
   getVideoErrorMessage,
   isVideoReady,
 } from '../utils/videoUtils';
-import { fixVideoUrl } from '../utils/videoUrlFixer';
+import { getDynamicVideoUrl } from '../utils/videoUtils';
+
+interface AIDetection {
+  id: string;
+  detectionId: string;
+  timestamp: number;
+  frameNumber: number;
+  confidence: number;
+  classLabel: string;
+  vruType: string;
+  boundingBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    confidence: number;
+  };
+  screenshotPath?: string;
+  screenshotZoomPath?: string;
+}
 
 interface EnhancedVideoPlayerProps {
   video: VideoFile;
   annotations: GroundTruthAnnotation[];
+  aiDetections?: AIDetection[];
   onAnnotationSelect?: (annotation: GroundTruthAnnotation) => void;
+  onDetectionSelect?: (detection: AIDetection) => void;
   onTimeUpdate?: (currentTime: number, frameNumber: number) => void;
   onCanvasClick?: (x: number, y: number, frameNumber: number, timestamp: number) => void;
   annotationMode: boolean;
   selectedAnnotation?: GroundTruthAnnotation | null;
+  selectedDetection?: AIDetection | null;
   frameRate?: number;
   autoRetry?: boolean;
   maxRetries?: number;
@@ -60,6 +83,8 @@ interface EnhancedVideoPlayerProps {
   onScreenshot?: (frameNumber: number, timestamp: number) => void;
   showDetectionControls?: boolean;
   detectionScreenshots?: Array<{frameNumber: number, timestamp: number, imageUrl: string}>;
+  showManualAnnotations?: boolean;
+  showAIDetections?: boolean;
 }
 
 interface PlaybackError {
@@ -71,11 +96,14 @@ interface PlaybackError {
 const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   video,
   annotations,
+  aiDetections = [],
   onAnnotationSelect,
+  onDetectionSelect,
   onTimeUpdate,
   onCanvasClick,
   annotationMode,
   selectedAnnotation,
+  selectedDetection,
   frameRate = 30,
   autoRetry = true,
   maxRetries = 3,
@@ -84,6 +112,8 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   onScreenshot,
   showDetectionControls = false,
   detectionScreenshots = [],
+  showManualAnnotations = true,
+  showAIDetections = true,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -115,10 +145,92 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
   // Calculate current frame number
   const currentFrame = Math.floor(currentTime * frameRate);
 
-  // Get annotations for current frame
-  const currentAnnotations = annotations.filter(
-    annotation => Math.abs(annotation.frameNumber - currentFrame) <= 1
-  );
+  // Get annotations and detections for current frame with improved filtering
+  const currentAnnotations = useMemo(() => {
+    if (!annotations || annotations.length === 0) {
+      return [];
+    }
+    
+    if (!showManualAnnotations) {
+      return [];
+    }
+    
+    const filtered = annotations.filter(annotation => {
+      if (!annotation || typeof annotation.frameNumber !== 'number') {
+        console.warn('📊 Invalid annotation in filter:', annotation);
+        return false;
+      }
+      
+      // More flexible frame matching - within 3 frames or based on timestamp
+      const frameMatch = Math.abs(annotation.frameNumber - currentFrame) <= 3;
+      const timeMatch = annotation.timestamp && 
+                       Math.abs(annotation.timestamp - currentTime) <= (3 / frameRate);
+      
+      return frameMatch || timeMatch;
+    });
+    
+    // Debug logging for annotation filtering
+    if (annotations.length > 0) {
+      console.log('📊 Annotation filter debug:', {
+        totalAnnotations: annotations.length,
+        currentFrame,
+        currentTime: currentTime.toFixed(2),
+        frameRate,
+        matchingAnnotations: filtered.length,
+        showManualAnnotations,
+        sampleAnnotations: annotations.slice(0, 3).map(a => ({
+          id: a.id,
+          frame: a.frameNumber,
+          time: a.timestamp,
+          vruType: a.vruType
+        }))
+      });
+    }
+    
+    return filtered;
+  }, [annotations, currentFrame, currentTime, frameRate, showManualAnnotations]);
+
+  // Get AI detections for current frame
+  const currentAIDetections = useMemo(() => {
+    if (!aiDetections || aiDetections.length === 0 || !showAIDetections) {
+      return [];
+    }
+    
+    const filtered = aiDetections.filter(detection => {
+      if (!detection || typeof detection.frameNumber !== 'number') {
+        console.warn('🤖 Invalid AI detection in filter:', detection);
+        return false;
+      }
+      
+      // More flexible frame matching - within 3 frames or based on timestamp
+      const frameMatch = Math.abs(detection.frameNumber - currentFrame) <= 3;
+      const timeMatch = detection.timestamp && 
+                       Math.abs(detection.timestamp - currentTime) <= (3 / frameRate);
+      
+      return frameMatch || timeMatch;
+    });
+    
+    // Debug logging for AI detection filtering
+    if (aiDetections.length > 0) {
+      console.log('🤖 AI detection filter debug:', {
+        totalDetections: aiDetections.length,
+        currentFrame,
+        currentTime: currentTime.toFixed(2),
+        frameRate,
+        matchingDetections: filtered.length,
+        showAIDetections,
+        sampleDetections: aiDetections.slice(0, 3).map(d => ({
+          id: d.id,
+          frame: d.frameNumber,
+          time: d.timestamp,
+          vruType: d.vruType,
+          screenshotPath: d.screenshotPath
+        }))
+      });
+    }
+    
+    return filtered;
+  }, [aiDetections, currentFrame, currentTime, frameRate, showAIDetections]);
 
   // Define initializeVideo first without dependencies
   const initializeVideo = useCallback(async () => {
@@ -131,7 +243,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       setBuffering(true);
 
       // Use the video URL, ensuring it's properly formatted
-      const videoUrl = fixVideoUrl(video.url, video.filename, video.id, { debug: true });
+      const videoUrl = getDynamicVideoUrl(video.id);
       if (!videoUrl) {
         throw new Error('Video URL is not available');
       }
@@ -182,7 +294,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     // Auto-retry for recoverable errors
     if (autoRetry && errorInfo.recoverable && retryCount < maxRetries) {
       const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff
-      setTimeout(() => {
+      safeSetTimeout(() => {
         setRetryCount(prev => prev + 1);
         initializeVideo();
       }, retryDelay);
@@ -195,7 +307,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     initializeVideo();
   }, [initializeVideo]);
 
-  // Draw annotations on canvas
+  // Draw annotations and AI detections on canvas with visual differentiation
   const drawAnnotations = useCallback(() => {
     const canvas = canvasRef.current;
     const videoElement = videoRef.current;
@@ -213,58 +325,136 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     canvas.width = rect.width;
     canvas.height = rect.height;
 
-    // Calculate scaling factors
-    const scaleX = rect.width / videoSize.width;
-    const scaleY = rect.height / videoSize.height;
+    // Get native video dimensions
+    const nativeWidth = videoElement.videoWidth || videoSize.width;
+    const nativeHeight = videoElement.videoHeight || videoSize.height;
 
-    if (videoSize.width === 0 || videoSize.height === 0) return;
+    if (nativeWidth === 0 || nativeHeight === 0) return;
 
-    // Draw current annotations
-    currentAnnotations.forEach(annotation => {
-      const bbox = annotation.boundingBox;
+    // Calculate scaling factors from NATIVE video coordinates to DISPLAY coordinates
+    const scaleX = rect.width / nativeWidth;
+    const scaleY = rect.height / nativeHeight;
+
+    // Helper function to draw any detection/annotation
+    const drawDetection = (item: GroundTruthAnnotation | AIDetection, source: 'manual' | 'ai', index: number) => {
+      const bbox = item.boundingBox;
       
-      // Scale bounding box to canvas size
-      const x = bbox.x * scaleX;
-      const y = bbox.y * scaleY;
-      const width = bbox.width * scaleX;
-      const height = bbox.height * scaleY;
-
-      // Set style based on annotation type and selection
-      const isSelected = selectedAnnotation?.id === annotation.id;
-      const color = getVRUColor(annotation.vruType);
+      if (!bbox || typeof bbox.x !== 'number' || typeof bbox.y !== 'number' || 
+          typeof bbox.width !== 'number' || typeof bbox.height !== 'number') {
+        console.warn(`📊 Invalid bounding box for ${source} ${index}:`, bbox);
+        return;
+      }
       
-      ctx.strokeStyle = isSelected ? '#ff0000' : color;
-      ctx.lineWidth = isSelected ? 3 : 2;
-      ctx.fillStyle = isSelected ? 'rgba(255, 0, 0, 0.1)' : `${color}20`;
+      let x, y, width, height;
+      
+      // Determine if coordinates are normalized (0-1) or absolute pixels
+      const isNormalized = bbox.x <= 1 && bbox.y <= 1 && bbox.width <= 1 && bbox.height <= 1 &&
+                          bbox.x >= 0 && bbox.y >= 0 && bbox.width >= 0 && bbox.height >= 0;
+      
+      if (isNormalized) {
+        // Convert from normalized coordinates (0-1) to display coordinates
+        x = bbox.x * rect.width;
+        y = bbox.y * rect.height;
+        width = bbox.width * rect.width;
+        height = bbox.height * rect.height;
+      } else {
+        // Convert from absolute video coordinates to display coordinates
+        x = bbox.x * scaleX;
+        y = bbox.y * scaleY;
+        width = bbox.width * scaleX;
+        height = bbox.height * scaleY;
+      }
+      
+      // Validate final coordinates are within canvas bounds
+      if (x < 0 || y < 0 || x + width > rect.width || y + height > rect.height) {
+        console.warn(`📊 ${source} ${index} outside canvas bounds - clamping to canvas`);
+        // Clamp to canvas bounds
+        x = Math.max(0, Math.min(x, rect.width - 1));
+        y = Math.max(0, Math.min(y, rect.height - 1));
+        width = Math.max(1, Math.min(width, rect.width - x));
+        height = Math.max(1, Math.min(height, rect.height - y));
+      }
+
+      // Set style based on source and selection
+      const isManualSelected = source === 'manual' && selectedAnnotation?.id === item.id;
+      const isAISelected = source === 'ai' && selectedDetection?.id === item.id;
+      const isSelected = isManualSelected || isAISelected;
+      
+      let color, strokeWidth, strokeStyle, fillOpacity;
+      
+      if (source === 'manual') {
+        color = getVRUColor(item.vruType);
+        strokeWidth = isSelected ? 3 : 2;
+        strokeStyle = isSelected ? '#ff0000' : color;
+        fillOpacity = isSelected ? '0.15' : '0.08';
+        ctx.setLineDash([]); // Solid line for manual annotations
+      } else {
+        color = getVRUColor(item.vruType);
+        strokeWidth = isSelected ? 3 : 2;
+        strokeStyle = isSelected ? '#ff4081' : '#9c27b0';
+        fillOpacity = isSelected ? '0.15' : '0.05';
+        ctx.setLineDash([8, 4]); // Dashed line for AI detections
+      }
+      
+      ctx.strokeStyle = strokeStyle;
+      ctx.lineWidth = strokeWidth;
+      ctx.fillStyle = isSelected ? 
+        (source === 'manual' ? 'rgba(255, 0, 0, 0.1)' : 'rgba(255, 64, 129, 0.1)') :
+        `${color}${Math.round(parseFloat(fillOpacity) * 255).toString(16).padStart(2, '0')}`;
 
       // Draw bounding box
       ctx.strokeRect(x, y, width, height);
       ctx.fillRect(x, y, width, height);
+      
+      // Reset line dash for text
+      ctx.setLineDash([]);
 
-      // Draw label
-      ctx.fillStyle = isSelected ? '#ff0000' : color;
+      // Draw label with source indicator
       ctx.font = '14px Arial';
-      const labelText = `${annotation.vruType} (${annotation.detectionId})`;
+      const sourcePrefix = source === 'manual' ? 'M' : 'AI';
+      const labelText = `${sourcePrefix}: ${item.vruType}${item.detectionId ? ' (' + item.detectionId + ')' : ''}`;
       const labelWidth = ctx.measureText(labelText).width;
       
-      // Label background
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      // Label background with source-specific color
+      const bgColor = source === 'manual' ? 'rgba(25, 118, 210, 0.9)' : 'rgba(156, 39, 176, 0.9)';
+      ctx.fillStyle = bgColor;
       ctx.fillRect(x, y - 20, labelWidth + 8, 18);
       
       // Label text
       ctx.fillStyle = '#ffffff';
       ctx.fillText(labelText, x + 4, y - 6);
 
-      // Draw validation indicator
-      if (annotation.validated) {
+      // Draw validation indicator for manual annotations
+      if (source === 'manual' && 'validated' in item && item.validated) {
         ctx.fillStyle = '#4caf50';
         ctx.fillRect(x + width - 20, y, 20, 20);
         ctx.fillStyle = '#ffffff';
         ctx.font = '12px Arial';
         ctx.fillText('✓', x + width - 15, y + 14);
       }
+
+      // Draw confidence indicator for AI detections
+      if (source === 'ai' && typeof item.confidence === 'number') {
+        const confidence = Math.round(item.confidence * 100);
+        ctx.fillStyle = confidence >= 80 ? '#4caf50' : confidence >= 60 ? '#ff9800' : '#f44336';
+        ctx.fillRect(x + width - 30, y, 30, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px Arial';
+        ctx.fillText(`${confidence}%`, x + width - 28, y + 14);
+      }
+    };
+
+    // Draw manual annotations first (so AI detections appear on top)
+    currentAnnotations.forEach((annotation, index) => {
+      drawDetection(annotation, 'manual', index);
     });
-  }, [currentAnnotations, selectedAnnotation, videoSize]);
+
+    // Draw AI detections second (on top of manual annotations)
+    currentAIDetections.forEach((detection, index) => {
+      drawDetection(detection, 'ai', index);
+    });
+
+  }, [currentAnnotations, currentAIDetections, selectedAnnotation, selectedDetection, videoSize]);
 
   // Handle canvas click
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -279,13 +469,19 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    // Convert to video coordinates
-    const scaleX = videoSize.width / rect.width;
-    const scaleY = videoSize.height / rect.height;
+    // Get native video dimensions
+    const nativeWidth = videoElement.videoWidth || videoSize.width;
+    const nativeHeight = videoElement.videoHeight || videoSize.height;
+
+    if (nativeWidth === 0 || nativeHeight === 0) return;
+
+    // Convert from display coordinates to NATIVE video coordinates
+    const scaleX = nativeWidth / rect.width;
+    const scaleY = nativeHeight / rect.height;
     const videoX = x * scaleX;
     const videoY = y * scaleY;
 
-    // Check if click is on existing annotation
+    // Check if click is on existing annotation (prioritize manual annotations)
     const clickedAnnotation = currentAnnotations.find(annotation => {
       const bbox = annotation.boundingBox;
       return (
@@ -296,13 +492,26 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       );
     });
 
+    // Check if click is on AI detection (if no manual annotation found)
+    const clickedDetection = !clickedAnnotation ? currentAIDetections.find(detection => {
+      const bbox = detection.boundingBox;
+      return (
+        videoX >= bbox.x &&
+        videoX <= bbox.x + bbox.width &&
+        videoY >= bbox.y &&
+        videoY <= bbox.y + bbox.height
+      );
+    }) : null;
+
     if (clickedAnnotation) {
       onAnnotationSelect?.(clickedAnnotation);
+    } else if (clickedDetection) {
+      onDetectionSelect?.(clickedDetection);
     } else {
       // Create new annotation at click position
       onCanvasClick?.(videoX, videoY, currentFrame, currentTime);
     }
-  }, [annotationMode, currentAnnotations, videoSize, currentFrame, currentTime, onAnnotationSelect, onCanvasClick]);
+  }, [annotationMode, currentAnnotations, currentAIDetections, videoSize, currentFrame, currentTime, onAnnotationSelect, onDetectionSelect, onCanvasClick]);
 
   // Get color for VRU type
   const getVRUColor = (vruType: string): string => {
@@ -350,7 +559,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       console.warn('Video seek failed:', error);
       handleVideoError(error as Error, 'play');
     } finally {
-      setTimeout(() => setBuffering(false), 500);
+      safeSetTimeout(() => setBuffering(false), 500);
     }
   }, [handleVideoError]);
 
@@ -438,12 +647,12 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     setIsDetectionRunning(true);
     setScreenshotCount(0);
     onDetectionStart?.();
-  }, [onDetectionStart, setIsDetectionRunning, setScreenshotCount]);
+  }, [onDetectionStart]);
 
   const handleDetectionStop = useCallback(() => {
     setIsDetectionRunning(false);
     onDetectionStop?.();
-  }, [onDetectionStop, setIsDetectionRunning]);
+  }, [onDetectionStop]);
 
   const handleScreenshot = useCallback(() => {
     const videoElement = videoRef.current;
@@ -465,19 +674,17 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         onScreenshot?.(currentFrame, currentTime);
       }
     }, 'image/jpeg', 0.9);
-  }, [currentFrame, currentTime, onScreenshot, setScreenshotCount]);
+  }, [currentFrame, currentTime, onScreenshot]);
 
   // Setup video event listeners
   // Add detection state effect
   useEffect(() => {
-    if (isDetectionRunning) {
-      const interval = setInterval(() => {
-        if (autoScreenshot) {
-          handleScreenshot();
-        }
+    if (isDetectionRunning && autoScreenshot) {
+      const interval: TimerHandle = safeSetInterval(() => {
+        handleScreenshot();
       }, 2000); // Screenshot every 2 seconds
 
-      return () => clearInterval(interval);
+      return () => safeClearInterval(interval);
     }
     // Return undefined when not running detection
     return undefined;
@@ -494,7 +701,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
 
     const handleLoadedMetadata = () => {
       const videoDuration = videoElement.duration;
-      console.log('🎥 Video metadata loaded - Duration:', videoDuration, 'Size:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+      // Video metadata loaded - Duration: ${videoDuration}, Size: ${videoElement.videoWidth}x${videoElement.videoHeight}
       
       // Fix for videos showing incorrect duration or failing early
       if (videoDuration && !isNaN(videoDuration) && videoDuration > 0) {
@@ -512,7 +719,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
       } else {
         console.warn('🎥 Invalid video duration detected:', videoDuration);
         // Retry with force reload
-        setTimeout(() => {
+        safeSetTimeout(() => {
           if (videoElement) {
             videoElement.currentTime = 0;
             videoElement.load();
@@ -573,7 +780,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     const handleEnded = () => {
-      console.log('🎥 Video ended at time:', videoElement.currentTime, 'of duration:', videoElement.duration);
+      // Video ended at time: ${videoElement.currentTime} of duration: ${videoElement.duration}
       setIsPlaying(false);
       
       // Stop detection if running
@@ -614,7 +821,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
     ]);
 
     return cleanupListeners;
-  }, [frameRate, onTimeUpdate, handleVideoError, autoScreenshot, handleDetectionStop, handleScreenshot, isDetectionRunning]);
+  }, [frameRate, onTimeUpdate, handleVideoError, handleDetectionStop, isDetectionRunning, autoScreenshot, handleScreenshot]);
 
   // Initialize video when component mounts or video changes
   useEffect(() => {
@@ -685,7 +892,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
               <strong>File:</strong> {video.filename || video.name || 'Unknown'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              <strong>Source:</strong> {fixVideoUrl(video.url, video.filename, video.id)}
+              <strong>Source:</strong> {getDynamicVideoUrl(video.id)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               <strong>Status:</strong> {video.status || 'Unknown'}
@@ -902,7 +1109,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                 Frame: {currentFrame} | {formatTime(currentTime)} / {formatTime(duration)}
               </Typography>
               <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                Annotations: {currentAnnotations.length}
+                Manual: {currentAnnotations.length} | AI: {currentAIDetections.length}
                 {loadProgress > 0 && loadProgress < 100 && ` | ${loadProgress.toFixed(0)}% loaded`}
               </Typography>
             </Stack>
@@ -1122,7 +1329,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
         {/* Current Annotations and Screenshots */}
         <Box sx={{ mt: 1, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: { xs: 1, sm: 2 } }}>
           {/* Annotations */}
-          {showAnnotations && currentAnnotations.length > 0 && (
+          {showAnnotations && (currentAnnotations.length > 0 || currentAIDetections.length > 0) && (
             <Box sx={{ flex: { xs: '1', md: detectionScreenshots.length > 0 ? '1' : '1' }, minWidth: 0 }}>
               <Paper sx={{ 
                 p: { xs: 1, sm: 2 }, 
@@ -1130,7 +1337,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                 borderRadius: { xs: 1, sm: 2 }
               }}>
                 <Typography variant="subtitle2" gutterBottom sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-                  Current Frame Annotations ({currentAnnotations.length})
+                  Current Frame Detections (Manual: {currentAnnotations.length}, AI: {currentAIDetections.length})
                 </Typography>
                 <Stack 
                   direction="row" 
@@ -1188,6 +1395,49 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
                       )}
                     </Box>
                   ))}
+                  
+                  {/* AI Detections */}
+                  {currentAIDetections.map(detection => (
+                    <Box
+                      key={`ai-${detection.id}`}
+                      onClick={() => onDetectionSelect?.(detection)}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: { xs: 0.5, sm: 1 },
+                        px: { xs: 1, sm: 2 },
+                        py: { xs: 0.5, sm: 1 },
+                        bgcolor: selectedDetection?.id === detection.id ? 'secondary.main' : 'white',
+                        color: selectedDetection?.id === detection.id ? 'white' : 'text.primary',
+                        border: '2px dashed',
+                        borderColor: '#9c27b0',
+                        borderRadius: { xs: 0.5, sm: 1 },
+                        cursor: 'pointer',
+                        minHeight: { xs: '36px', sm: 'auto' },
+                        touchAction: 'manipulation',
+                        '&:hover': {
+                          bgcolor: selectedDetection?.id === detection.id ? 'secondary.dark' : 'grey.100',
+                        },
+                        '&:active': {
+                          transform: 'scale(0.95)',
+                          transition: 'transform 0.1s ease'
+                        }
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: { xs: 8, sm: 12 },
+                          height: { xs: 8, sm: 12 },
+                          bgcolor: '#9c27b0',
+                          borderRadius: '50%',
+                          flexShrink: 0
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                        AI: {detection.vruType} ({Math.round(detection.confidence * 100)}%)
+                      </Typography>
+                    </Box>
+                  ))}
                 </Stack>
               </Paper>
             </Box>
@@ -1195,7 +1445,7 @@ const EnhancedVideoPlayer: React.FC<EnhancedVideoPlayerProps> = ({
           
           {/* Detection Screenshots */}
           {detectionScreenshots.length > 0 && (
-            <Box sx={{ flex: { xs: '1', md: showAnnotations && currentAnnotations.length > 0 ? '1' : '1' }, minWidth: 0 }}>
+            <Box sx={{ flex: { xs: '1', md: showAnnotations && (currentAnnotations.length > 0 || currentAIDetections.length > 0) ? '1' : '1' }, minWidth: 0 }}>
               <Paper sx={{ 
                 p: { xs: 1, sm: 2 }, 
                 bgcolor: 'grey.50',

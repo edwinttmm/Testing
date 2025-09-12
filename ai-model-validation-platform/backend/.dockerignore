@@ -1,0 +1,125 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+README*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Node modules (if any)
+node_modules/
+
+# Large files that shouldn't be in Docker
+*.zip
+*.tar.gz
+*.tar
+*.rar
+*.7z
+
+# Model files and data
+models/
+data/
+*.pkl
+*.h5
+*.pth
+*.onnx
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# ML experiment tracking
+mlruns/
+.mlflow/
+
+# Docker files (except the one being used)
+docker-compose*.yml
+Dockerfile.*
+!Dockerfile
+
+# Scripts not needed in container
+scripts/dev/
+scripts/test/
+scripts/setup/
+
+# Environment files
+.env.*
+!.env.production

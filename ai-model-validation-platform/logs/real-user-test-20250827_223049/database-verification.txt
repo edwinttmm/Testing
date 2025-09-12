@@ -1,0 +1,7 @@
+Database Records:
+Projects: 3
+Videos: 1
+Ground Truth Objects: 0
+Detection Events: 0
+Sample Project: Central Store (ID: central-store-project)
+Sample Video: 27c3473d-0d21-42d1-802a-9aa2f6e4c25a.mp4 (Status: pending)

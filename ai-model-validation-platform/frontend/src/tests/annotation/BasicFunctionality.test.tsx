@@ -112,15 +112,15 @@ describe('Basic Annotation Functionality Tests', () => {
     });
 
     it('should track canvas operations', () => {
-      testEnv.context.strokeRect(10, 10, 50, 50);
-      testEnv.context.fillRect(20, 20, 30, 30);
+      testEnv.context?.strokeRect?.(10, 10, 50, 50);
+      testEnv.context?.fillRect?.(20, 20, 30, 30);
       
-      expect(testEnv.context.strokeRect).toHaveBeenCalledWith(10, 10, 50, 50);
-      expect(testEnv.context.fillRect).toHaveBeenCalledWith(20, 20, 30, 30);
+      expect(testEnv.context?.strokeRect).toHaveBeenCalledWith(10, 10, 50, 50);
+      expect(testEnv.context?.fillRect).toHaveBeenCalledWith(20, 20, 30, 30);
     });
 
     it('should reset mocks correctly', () => {
-      testEnv.context.strokeRect(10, 10, 50, 50);
+      testEnv.context?.strokeRect?.(10, 10, 50, 50);
       
       expect(testEnv.context.strokeRect).toHaveBeenCalled();
       
@@ -142,7 +142,7 @@ describe('Basic Annotation Functionality Tests', () => {
           visible: true,
           selected: false,
         },
-      ] as AnnotationShape[];
+      ] as unknown as AnnotationShape[];
 
       expect(() => {
         render(

@@ -1,0 +1,182 @@
+[
+  {
+    "url": "http://localhost:8000/health",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "status": "healthy",
+      "message": "Test backend is running",
+      "database": "connected"
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "message": "AI Model Validation Platform Test API",
+      "status": "running"
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/projects",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "projects": [
+        {
+          "id": 1,
+          "name": "Test Project 1",
+          "description": "Automated test project",
+          "status": "active"
+        },
+        {
+          "id": 2,
+          "name": "Test Project 2",
+          "description": "Second test project",
+          "status": "active"
+        },
+        {
+          "id": 3,
+          "name": "Test Project 1756295379",
+          "description": "Automated test project",
+          "status": "active"
+        },
+        {
+          "id": 4,
+          "name": "Test Project 1756295405",
+          "description": "Automated test project",
+          "status": "active"
+        },
+        {
+          "id": 5,
+          "name": "API Test Project",
+          "description": "Testing API endpoints",
+          "status": "active"
+        },
+        {
+          "id": 6,
+          "name": "Runtime Test Project",
+          "description": "Created during runtime testing",
+          "status": "active"
+        }
+      ],
+      "count": 6
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/videos",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "videos": [
+        {
+          "id": 1,
+          "filename": "test_video.mp4",
+          "project_id": 1,
+          "file_path": "/tmp/uploads/test_video.mp4",
+          "uploaded_at": "2025-08-27 11:49:39",
+          "project_name": "Test Project 1"
+        },
+        {
+          "id": 2,
+          "filename": "test_video.mp4",
+          "project_id": 1,
+          "file_path": "/tmp/uploads/test_video.mp4",
+          "uploaded_at": "2025-08-27 11:50:05",
+          "project_name": "Test Project 1"
+        },
+        {
+          "id": 3,
+          "filename": "test.mp4",
+          "project_id": 1,
+          "file_path": "/tmp/uploads/test.mp4",
+          "uploaded_at": "2025-08-27 11:56:28",
+          "project_name": "Test Project 1"
+        },
+        {
+          "id": 4,
+          "filename": "test_video.mp4",
+          "project_id": 1,
+          "file_path": "/tmp/uploads/test_video.mp4",
+          "uploaded_at": "2025-08-27 12:04:56",
+          "project_name": "Test Project 1"
+        }
+      ],
+      "count": 4
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/dashboard/stats",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "total_projects": 6,
+      "total_videos": 4,
+      "active_sessions": 0,
+      "completed_tests": 0,
+      "system_status": "operational"
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/projects",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "id": 7,
+      "name": "API Validation Test Project",
+      "status": "created"
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/detection/models",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "models": [
+        {
+          "name": "YOLOv8n",
+          "status": "available",
+          "type": "object_detection"
+        },
+        {
+          "name": "YOLOv8s",
+          "status": "available",
+          "type": "object_detection"
+        }
+      ]
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/validation/status",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "status": "operational",
+      "models_loaded": true,
+      "detection_pipeline": "active",
+      "last_check": "2025-08-27T11:45:00Z"
+    },
+    "error": null
+  },
+  {
+    "url": "http://localhost:8000/api/videos/upload",
+    "status_code": 200,
+    "success": true,
+    "response": {
+      "id": 5,
+      "filename": "test.mp4",
+      "project_id": 1,
+      "size": 30,
+      "status": "uploaded"
+    },
+    "error": null
+  }
+]

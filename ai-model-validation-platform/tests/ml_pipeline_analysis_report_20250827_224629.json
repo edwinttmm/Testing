@@ -1,0 +1,254 @@
+{
+  "report_id": "e4ee89d6-7e4a-4c52-a6c4-4d9ad12c8f6e",
+  "timestamp": "2025-08-27T22:46:19.593327",
+  "report_type": "ML Pipeline Comprehensive Analysis",
+  "version": "1.0",
+  "sections": {
+    "architecture": {
+      "timestamp": "2025-08-27T22:46:19.593358",
+      "analysis_type": "static_code_analysis",
+      "findings": {
+        "detection_pipeline": {
+          "file_size": 51344,
+          "lines_of_code": 1187,
+          "key_components": {
+            "model_registry": true,
+            "real_yolo_wrapper": true,
+            "detection_pipeline": true,
+            "frame_processor": true,
+            "screenshot_capture": true,
+            "batch_processor": true
+          },
+          "ml_models_supported": {
+            "yolo11l": true,
+            "yolov8": true,
+            "torch_integration": true,
+            "ultralytics_integration": true
+          },
+          "vru_detection_classes": {
+            "pedestrian": true,
+            "cyclist": true,
+            "motorcyclist": true,
+            "wheelchair_user": true,
+            "scooter_rider": true
+          },
+          "advanced_features": {
+            "async_processing": true,
+            "batch_processing": true,
+            "screenshot_capture": true,
+            "performance_optimization": true,
+            "error_handling": true,
+            "confidence_thresholds": true
+          }
+        },
+        "main_application": {
+          "fastapi_integration": true,
+          "ml_auto_install": true,
+          "detection_endpoints": true,
+          "video_upload": true,
+          "socketio_support": true,
+          "health_check": true
+        }
+      }
+    },
+    "test_videos": {
+      "timestamp": "2025-08-27T22:46:19.599340",
+      "video_analysis": {
+        "total_videos": 18,
+        "video_files": [
+          {
+            "filename": "442124cc-008d-4b52-bf50-aa61dbe414cb.mp4",
+            "size_mb": 10.0,
+            "path": "backend/uploads/442124cc-008d-4b52-bf50-aa61dbe414cb.mp4"
+          },
+          {
+            "filename": "83e45e59-eff7-4509-9dae-49a7cc22c363.mp4",
+            "size_mb": 0.6798734664916992,
+            "path": "backend/uploads/83e45e59-eff7-4509-9dae-49a7cc22c363.mp4"
+          },
+          {
+            "filename": "4e13b6a2-d443-4dc2-a6df-60225e063a3c.mp4",
+            "size_mb": 0.0009860992431640625,
+            "path": "backend/uploads/4e13b6a2-d443-4dc2-a6df-60225e063a3c.mp4"
+          },
+          {
+            "filename": "c4a0f490-1513-46f0-ad05-b65fe2fb5a6f.mp4",
+            "size_mb": 2.574920654296875e-05,
+            "path": "backend/uploads/c4a0f490-1513-46f0-ad05-b65fe2fb5a6f.mp4"
+          },
+          {
+            "filename": "child-1-1-1.mp4",
+            "size_mb": 1.2040719985961914,
+            "path": "backend/uploads/child-1-1-1.mp4"
+          },
+          {
+            "filename": "e5cb8bbc-4a99-4752-b3a0-af52137e53d7.mp4",
+            "size_mb": 9.5367431640625e-07,
+            "path": "backend/uploads/e5cb8bbc-4a99-4752-b3a0-af52137e53d7.mp4"
+          },
+          {
+            "filename": "ad4d73bb-3b6a-4085-905f-0cc24e952af0.mp4",
+            "size_mb": 0.05340576171875,
+            "path": "backend/uploads/ad4d73bb-3b6a-4085-905f-0cc24e952af0.mp4"
+          },
+          {
+            "filename": "b36c0b1d-fd58-4803-83ab-6a64a3888b15.mp4",
+            "size_mb": 0.026702880859375,
+            "path": "backend/uploads/b36c0b1d-fd58-4803-83ab-6a64a3888b15.mp4"
+          },
+          {
+            "filename": "2ce04eb7-eb53-42bc-8689-3a81bb2753f5.mp4",
+            "size_mb": 0.0009937286376953125,
+            "path": "backend/uploads/2ce04eb7-eb53-42bc-8689-3a81bb2753f5.mp4"
+          },
+          {
+            "filename": "77f4187a-72ff-4c79-b6fb-9ff0a4942539.mp4",
+            "size_mb": 2.86102294921875e-05,
+            "path": "backend/uploads/77f4187a-72ff-4c79-b6fb-9ff0a4942539.mp4"
+          },
+          {
+            "filename": "e4f4e158-d4e4-4e6e-a8af-c093e7a1974a.mp4",
+            "size_mb": 2.86102294921875e-05,
+            "path": "backend/uploads/e4f4e158-d4e4-4e6e-a8af-c093e7a1974a.mp4"
+          },
+          {
+            "filename": "1081b321-e780-4273-8f68-6025c0f3cb6b.mp4",
+            "size_mb": 0.6798734664916992,
+            "path": "backend/uploads/1081b321-e780-4273-8f68-6025c0f3cb6b.mp4"
+          },
+          {
+            "filename": "8b51e952-f71a-47c5-8e29-062f06046fcf.mp4",
+            "size_mb": 2.86102294921875e-05,
+            "path": "backend/uploads/8b51e952-f71a-47c5-8e29-062f06046fcf.mp4"
+          },
+          {
+            "filename": "231db745-0d28-46ab-9082-c072babccaba.mp4",
+            "size_mb": 1.811981201171875e-05,
+            "path": "backend/uploads/231db745-0d28-46ab-9082-c072babccaba.mp4"
+          },
+          {
+            "filename": "0ac5e0e9-fbcd-40d4-b115-ad496807e29a.mp4",
+            "size_mb": 2.193450927734375e-05,
+            "path": "backend/uploads/0ac5e0e9-fbcd-40d4-b115-ad496807e29a.mp4"
+          },
+          {
+            "filename": "f7db8f73-f366-40b0-8278-6e33830ede8a.mp4",
+            "size_mb": 0.000102996826171875,
+            "path": "backend/uploads/f7db8f73-f366-40b0-8278-6e33830ede8a.mp4"
+          },
+          {
+            "filename": "c2d5f2df-cb17-4bfb-b5e3-912e18b0ff98.mp4",
+            "size_mb": 2.86102294921875e-05,
+            "path": "backend/uploads/c2d5f2df-cb17-4bfb-b5e3-912e18b0ff98.mp4"
+          },
+          {
+            "filename": "f3f4983c-9ea6-45d9-ac51-c589c54a38c0.mp4",
+            "size_mb": 0.0019397735595703125,
+            "path": "backend/uploads/f3f4983c-9ea6-45d9-ac51-c589c54a38c0.mp4"
+          }
+        ],
+        "total_size_mb": 12.648131370544434,
+        "all_test_videos": 21
+      }
+    },
+    "dependencies": {
+      "timestamp": "2025-08-27T22:46:29.268528",
+      "dependency_analysis": {
+        "backend/requirements-ml-auto.txt": {
+          "pytorch": true,
+          "ultralytics": true,
+          "opencv": true,
+          "numpy": true,
+          "pillow": true,
+          "cpu_only": true,
+          "gpu_support": false
+        },
+        "backend/requirements.txt": {
+          "pytorch": true,
+          "ultralytics": true,
+          "opencv": true,
+          "numpy": true,
+          "pillow": true,
+          "cpu_only": false,
+          "gpu_support": false
+        }
+      }
+    },
+    "api_endpoints": {
+      "timestamp": "2025-08-27T22:46:29.269492",
+      "api_analysis": {
+        "ml_endpoints": {
+          "video_upload": true,
+          "detection_processing": true,
+          "ground_truth": true,
+          "validation": true,
+          "health_check": true
+        },
+        "additional_api_files": 47
+      }
+    },
+    "performance_expectations": {
+      "timestamp": "2025-08-27T22:46:29.699879",
+      "performance_expectations": {
+        "model_loading": {
+          "yolo11n": "< 5 seconds",
+          "yolo11l": "< 15 seconds",
+          "expected_memory": "500MB - 2GB"
+        },
+        "inference_performance": {
+          "single_frame_640x640": "< 100ms (CPU), < 20ms (GPU)",
+          "batch_processing_8_frames": "< 500ms (CPU), < 100ms (GPU)",
+          "video_processing_fps": "5-15 FPS (CPU), 20-60 FPS (GPU)"
+        },
+        "detection_accuracy": {
+          "pedestrian_detection": "> 80% recall",
+          "cyclist_detection": "> 70% recall",
+          "false_positive_rate": "< 10%",
+          "confidence_threshold": "0.4-0.5 for production"
+        },
+        "system_requirements": {
+          "minimum_ram": "4GB",
+          "recommended_ram": "8GB+",
+          "cpu_cores": "4+ cores recommended",
+          "gpu": "Optional but significantly improves performance"
+        }
+      }
+    },
+    "production_readiness": {
+      "timestamp": "2025-08-27T22:46:29.699902",
+      "production_readiness": {
+        "Error handling": true,
+        "Logging": true,
+        "Health checks": true,
+        "Configuration management": true,
+        "Database integration": true,
+        "API documentation": true,
+        "overall_score": "6/6",
+        "percentage": 100.0
+      }
+    }
+  },
+  "recommendations": {
+    "timestamp": "2025-08-27T22:46:29.715229",
+    "recommendations": [
+      {
+        "priority": "HIGH",
+        "category": "Model Testing",
+        "recommendation": "Test model registry with different YOLO model sizes (nano, small, medium, large)",
+        "reason": "ModelRegistry component found - should test model loading and switching"
+      },
+      {
+        "priority": "HIGH",
+        "category": "Performance Testing",
+        "recommendation": "Test batch processing with different batch sizes (1, 4, 8, 16)",
+        "reason": "Batch processing capability detected - critical for performance"
+      },
+      {
+        "priority": "HIGH",
+        "category": "Video Processing",
+        "recommendation": "Test video processing pipeline with all 18 available videos",
+        "reason": "Found 18 test videos available for comprehensive testing"
+      }
+    ]
+  }
+}

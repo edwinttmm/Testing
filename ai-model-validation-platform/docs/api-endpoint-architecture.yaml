@@ -1,0 +1,2026 @@
+# SPARC Architecture Phase: API Endpoint Organization and Routing Architecture
+# Comprehensive OpenAPI 3.0 specification for the unified system
+
+openapi: 3.0.3
+info:
+  title: AI Model Validation Platform API
+  version: 1.0.0
+  description: |
+    Comprehensive API for video annotation, ground truth management, and ML model validation.
+    This API follows RESTful principles with comprehensive security, validation, and error handling.
+    
+    ## Architecture Principles
+    - RESTful design with clear resource hierarchies
+    - Comprehensive input validation and sanitization
+    - Multi-layer security with JWT and OAuth2
+    - Standardized error responses
+    - Rate limiting and circuit breaker patterns
+    - Comprehensive audit logging
+    
+    ## Authentication
+    All endpoints require authentication unless explicitly marked as public.
+    Supports JWT tokens and OAuth2 flows.
+    
+    ## Rate Limiting
+    - Anonymous: 100 requests/hour
+    - Authenticated users: 1000 requests/hour
+    - Premium users: 10000 requests/hour
+    
+  contact:
+    name: AI Model Validation Platform API Support
+    email: api-support@domain.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.production.domain.com/v1
+    description: Production API Server
+  - url: https://api.staging.domain.com/v1
+    description: Staging API Server
+  - url: http://localhost:8080/v1
+    description: Local Development Server
+
+# =============================================================================
+# SECURITY SCHEMES
+# =============================================================================
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+      
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.domain.com/oauth/authorize
+          tokenUrl: https://auth.domain.com/oauth/token
+          refreshUrl: https://auth.domain.com/oauth/refresh
+          scopes:
+            read: Read access to resources
+            write: Write access to resources
+            admin: Administrative access
+            
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for service-to-service authentication
+
+# =============================================================================
+# COMMON SCHEMAS
+# =============================================================================
+
+  schemas:
+    # Base response schemas
+    SuccessResponse:
+      type: object
+      required: [success, message, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operation completed successfully"
+        data:
+          type: object
+        meta:
+          $ref: '#/components/schemas/ResponseMetadata'
+          
+    ErrorResponse:
+      type: object
+      required: [success, error_code, message]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error_code:
+          type: string
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          example: "Invalid input provided"
+        details:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+          format: uuid
+        meta:
+          $ref: '#/components/schemas/ResponseMetadata'
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            field_errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
+                  value:
+                    type: string
+
+    ResponseMetadata:
+      type: object
+      properties:
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        rate_limit:
+          $ref: '#/components/schemas/RateLimit'
+        performance:
+          $ref: '#/components/schemas/Performance'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+        total_pages:
+          type: integer
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+
+    RateLimit:
+      type: object
+      properties:
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        reset:
+          type: string
+          format: date-time
+
+    Performance:
+      type: object
+      properties:
+        response_time_ms:
+          type: integer
+        db_queries:
+          type: integer
+        cache_hits:
+          type: integer
+
+    # Core domain schemas
+    User:
+      type: object
+      required: [id, username, email, role, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, annotator, validator, admin, super_admin]
+        status:
+          type: string
+          enum: [active, inactive, locked, suspended]
+        first_name:
+          type: string
+          maxLength: 255
+        last_name:
+          type: string
+          maxLength: 255
+        organization:
+          type: string
+          maxLength: 255
+        mfa_enabled:
+          type: boolean
+        last_login:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Project:
+      type: object
+      required: [id, name, owner_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 5000
+        owner_id:
+          type: string
+          format: uuid
+        parent_project_id:
+          type: string
+          format: uuid
+          nullable: true
+        project_type:
+          type: string
+          enum: [standard, research, validation, benchmark]
+        classification:
+          type: string
+          enum: [public, internal, confidential, secret]
+        status:
+          type: string
+          enum: [active, archived, suspended, deleted]
+        settings:
+          type: object
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Video:
+      type: object
+      required: [id, project_id, filename, file_path, file_size]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+          maxLength: 255
+        original_filename:
+          type: string
+          maxLength: 255
+        file_path:
+          type: string
+        file_size:
+          type: integer
+          minimum: 1
+        file_hash:
+          type: string
+          minLength: 64
+          maxLength: 64
+        mime_type:
+          type: string
+        duration:
+          type: number
+          format: float
+          minimum: 0
+        fps:
+          type: number
+          format: float
+          minimum: 0
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+        processing_status:
+          type: string
+          enum: [pending, processing, completed, failed, cancelled]
+        ground_truth_generated:
+          type: boolean
+        annotation_count:
+          type: integer
+          minimum: 0
+        validated_annotation_count:
+          type: integer
+          minimum: 0
+        quality_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        uploaded_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Annotation:
+      type: object
+      required: [id, video_id, detection_id, frame_number, timestamp, vru_type, x, y, width, height, annotator]
+      properties:
+        id:
+          type: string
+          format: uuid
+        video_id:
+          type: string
+          format: uuid
+        detection_id:
+          type: string
+          maxLength: 100
+        frame_number:
+          type: integer
+          minimum: 0
+        timestamp:
+          type: number
+          format: float
+          minimum: 0
+        end_timestamp:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+        vru_type:
+          type: string
+          enum: [pedestrian, cyclist, motorcyclist, wheelchair_user, other_vru]
+        subclass:
+          type: string
+          maxLength: 50
+        x:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        y:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        width:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        height:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        visibility:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        occluded:
+          type: boolean
+        truncated:
+          type: boolean
+        difficult:
+          type: boolean
+        validated:
+          type: boolean
+        validation_status:
+          type: string
+          enum: [pending, approved, rejected, requires_changes]
+        validation_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        notes:
+          type: string
+          maxLength: 5000
+        tags:
+          type: array
+          items:
+            type: string
+        annotator:
+          type: string
+          format: uuid
+        validator:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    GroundTruthObject:
+      type: object
+      required: [id, video_id, frame_number, timestamp, class_label, x, y, width, height, confidence]
+      properties:
+        id:
+          type: string
+          format: uuid
+        video_id:
+          type: string
+          format: uuid
+        frame_number:
+          type: integer
+          minimum: 0
+        timestamp:
+          type: number
+          format: float
+          minimum: 0
+        class_label:
+          type: string
+          maxLength: 50
+        x:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        y:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        width:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        height:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        validated:
+          type: boolean
+        difficult:
+          type: boolean
+        ml_model_name:
+          type: string
+        ml_model_version:
+          type: string
+        quality_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        created_at:
+          type: string
+          format: date-time
+
+# =============================================================================
+# API ENDPOINTS
+# =============================================================================
+
+security:
+  - bearerAuth: []
+  - oauth2: [read, write]
+
+paths:
+  # =============================================================================
+  # AUTHENTICATION ENDPOINTS
+  # =============================================================================
+  
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user with username/password and optional MFA
+      security: [] # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 255
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+                mfa_code:
+                  type: string
+                  pattern: "^[0-9]{6}$"
+                remember_me:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                          refresh_token:
+                            type: string
+                          expires_at:
+                            type: string
+                            format: date-time
+                          user:
+                            $ref: '#/components/schemas/User'
+        '202':
+          description: MFA required
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          auth_session_id:
+                            type: string
+                            format: uuid
+                          required_factors:
+                            type: array
+                            items:
+                              type: string
+                              enum: [totp, sms, email]
+        '400':
+          description: Invalid credentials or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/mfa/verify:
+    post:
+      tags: [Authentication]
+      summary: Verify MFA challenge
+      security: [] # Uses auth session ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auth_session_id, factors]
+              properties:
+                auth_session_id:
+                  type: string
+                  format: uuid
+                factors:
+                  type: object
+                  properties:
+                    totp:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          pattern: "^[0-9]{6}$"
+                    sms:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          pattern: "^[0-9]{6}$"
+      responses:
+        '200':
+          description: MFA verification successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                          refresh_token:
+                            type: string
+                          expires_at:
+                            type: string
+                            format: date-time
+                          user:
+                            $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid MFA code or session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User logout
+      description: Invalidate current session
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token:
+                            type: string
+                          refresh_token:
+                            type: string
+                          expires_at:
+                            type: string
+                            format: date-time
+
+  # =============================================================================
+  # USER MANAGEMENT ENDPOINTS
+  # =============================================================================
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      description: Get paginated list of users (admin only)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [user, annotator, validator, admin, super_admin]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, locked, suspended]
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 255
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [Users]
+      summary: Create new user
+      description: Create a new user account (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password, role]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  pattern: "^[a-zA-Z0-9_-]+$"
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 12
+                  maxLength: 255
+                role:
+                  type: string
+                  enum: [user, annotator, validator, admin]
+                first_name:
+                  type: string
+                  maxLength: 255
+                last_name:
+                  type: string
+                  maxLength: 255
+                organization:
+                  type: string
+                  maxLength: 255
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '409':
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Users]
+      summary: Update user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                  maxLength: 255
+                last_name:
+                  type: string
+                  maxLength: 255
+                organization:
+                  type: string
+                  maxLength: 255
+                role:
+                  type: string
+                  enum: [user, annotator, validator, admin]
+                status:
+                  type: string
+                  enum: [active, inactive, suspended]
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+
+    delete:
+      tags: [Users]
+      summary: Delete user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # =============================================================================
+  # PROJECT MANAGEMENT ENDPOINTS
+  # =============================================================================
+
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      description: Get paginated list of projects accessible to the user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived, suspended]
+        - name: project_type
+          in: query
+          schema:
+            type: string
+            enum: [standard, research, validation, benchmark]
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 255
+      responses:
+        '200':
+          description: Projects retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Project'
+
+    post:
+      tags: [Projects]
+      summary: Create new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                description:
+                  type: string
+                  maxLength: 5000
+                parent_project_id:
+                  type: string
+                  format: uuid
+                project_type:
+                  type: string
+                  enum: [standard, research, validation, benchmark]
+                  default: standard
+                classification:
+                  type: string
+                  enum: [public, internal, confidential, secret]
+                  default: internal
+                settings:
+                  type: object
+                metadata:
+                  type: object
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Project'
+
+  /projects/{projectId}:
+    get:
+      tags: [Projects]
+      summary: Get project by ID
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Project'
+
+    put:
+      tags: [Projects]
+      summary: Update project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                description:
+                  type: string
+                  maxLength: 5000
+                classification:
+                  type: string
+                  enum: [public, internal, confidential, secret]
+                settings:
+                  type: object
+                metadata:
+                  type: object
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Project'
+
+    delete:
+      tags: [Projects]
+      summary: Delete project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # =============================================================================
+  # VIDEO MANAGEMENT ENDPOINTS
+  # =============================================================================
+
+  /projects/{projectId}/videos:
+    get:
+      tags: [Videos]
+      summary: List videos in project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: processing_status
+          in: query
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed, cancelled]
+        - name: ground_truth_generated
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Videos retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Video'
+
+    post:
+      tags: [Videos]
+      summary: Upload video to project
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video_file]
+              properties:
+                video_file:
+                  type: string
+                  format: binary
+                metadata:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+      responses:
+        '201':
+          description: Video uploaded successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Video'
+        '400':
+          description: Invalid file or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /videos/{videoId}:
+    get:
+      tags: [Videos]
+      summary: Get video by ID
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Video retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Video'
+
+    delete:
+      tags: [Videos]
+      summary: Delete video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Video deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # =============================================================================
+  # ANNOTATION ENDPOINTS
+  # =============================================================================
+
+  /videos/{videoId}/annotations:
+    get:
+      tags: [Annotations]
+      summary: List annotations for video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: frame_number
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: vru_type
+          in: query
+          schema:
+            type: string
+            enum: [pedestrian, cyclist, motorcyclist, wheelchair_user, other_vru]
+        - name: validated
+          in: query
+          schema:
+            type: boolean
+        - name: annotator
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: start_timestamp
+          in: query
+          schema:
+            type: number
+            format: float
+            minimum: 0
+        - name: end_timestamp
+          in: query
+          schema:
+            type: number
+            format: float
+            minimum: 0
+      responses:
+        '200':
+          description: Annotations retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Annotation'
+
+    post:
+      tags: [Annotations]
+      summary: Create new annotation
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [detection_id, frame_number, timestamp, vru_type, x, y, width, height]
+              properties:
+                detection_id:
+                  type: string
+                  maxLength: 100
+                frame_number:
+                  type: integer
+                  minimum: 0
+                timestamp:
+                  type: number
+                  format: float
+                  minimum: 0
+                end_timestamp:
+                  type: number
+                  format: float
+                  minimum: 0
+                vru_type:
+                  type: string
+                  enum: [pedestrian, cyclist, motorcyclist, wheelchair_user, other_vru]
+                subclass:
+                  type: string
+                  maxLength: 50
+                x:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                y:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                width:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                height:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                confidence:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                visibility:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                occluded:
+                  type: boolean
+                  default: false
+                truncated:
+                  type: boolean
+                  default: false
+                difficult:
+                  type: boolean
+                  default: false
+                notes:
+                  type: string
+                  maxLength: 5000
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Annotation created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Annotation'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '409':
+          description: Annotation with detection_id already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /annotations/{annotationId}:
+    get:
+      tags: [Annotations]
+      summary: Get annotation by ID
+      parameters:
+        - name: annotationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Annotation retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Annotation'
+
+    put:
+      tags: [Annotations]
+      summary: Update annotation
+      parameters:
+        - name: annotationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                frame_number:
+                  type: integer
+                  minimum: 0
+                timestamp:
+                  type: number
+                  format: float
+                  minimum: 0
+                end_timestamp:
+                  type: number
+                  format: float
+                  minimum: 0
+                vru_type:
+                  type: string
+                  enum: [pedestrian, cyclist, motorcyclist, wheelchair_user, other_vru]
+                subclass:
+                  type: string
+                  maxLength: 50
+                x:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                y:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                width:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                height:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                confidence:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                visibility:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                occluded:
+                  type: boolean
+                truncated:
+                  type: boolean
+                difficult:
+                  type: boolean
+                notes:
+                  type: string
+                  maxLength: 5000
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Annotation updated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Annotation'
+
+    delete:
+      tags: [Annotations]
+      summary: Delete annotation
+      parameters:
+        - name: annotationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Annotation deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /annotations/{annotationId}/validate:
+    post:
+      tags: [Annotations]
+      summary: Validate annotation
+      parameters:
+        - name: annotationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [validation_status]
+              properties:
+                validation_status:
+                  type: string
+                  enum: [approved, rejected, requires_changes]
+                validation_score:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                validation_comments:
+                  type: string
+                  maxLength: 5000
+                validation_flags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Annotation validated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Annotation'
+
+  # =============================================================================
+  # GROUND TRUTH ENDPOINTS
+  # =============================================================================
+
+  /videos/{videoId}/ground-truth/generate:
+    post:
+      tags: [Ground Truth]
+      summary: Generate ground truth for video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confidence_threshold:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                  default: 0.3
+                target_classes:
+                  type: array
+                  items:
+                    type: string
+                  default: [pedestrian, cyclist, motorcyclist, wheelchair_user, other_vru]
+                sampling_rate:
+                  type: number
+                  format: float
+                  minimum: 0.1
+                  maximum: 30
+                  default: 1.0
+                  description: Frames per second to process
+                ml_model:
+                  type: string
+                  default: yolov8n
+      responses:
+        '202':
+          description: Ground truth generation started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          job_id:
+                            type: string
+                            format: uuid
+                          estimated_time_minutes:
+                            type: integer
+
+  /videos/{videoId}/ground-truth:
+    get:
+      tags: [Ground Truth]
+      summary: Get ground truth objects for video
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: frame_number
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: class_label
+          in: query
+          schema:
+            type: string
+        - name: validated
+          in: query
+          schema:
+            type: boolean
+        - name: min_confidence
+          in: query
+          schema:
+            type: number
+            format: float
+            minimum: 0
+            maximum: 1
+      responses:
+        '200':
+          description: Ground truth objects retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GroundTruthObject'
+
+  # =============================================================================
+  # EXPORT ENDPOINTS
+  # =============================================================================
+
+  /videos/{videoId}/export:
+    post:
+      tags: [Export]
+      summary: Export annotations or ground truth
+      parameters:
+        - name: videoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [export_format, export_type]
+              properties:
+                export_format:
+                  type: string
+                  enum: [coco, yolo, pascal_voc, csv, json]
+                export_type:
+                  type: string
+                  enum: [annotations, ground_truth, both]
+                filters:
+                  type: object
+                  properties:
+                    vru_types:
+                      type: array
+                      items:
+                        type: string
+                    validated_only:
+                      type: boolean
+                    min_confidence:
+                      type: number
+                      format: float
+                      minimum: 0
+                      maximum: 1
+                    frame_range:
+                      type: object
+                      properties:
+                        start:
+                          type: integer
+                          minimum: 0
+                        end:
+                          type: integer
+                          minimum: 0
+                options:
+                  type: object
+                  properties:
+                    include_difficult:
+                      type: boolean
+                      default: true
+                    include_occluded:
+                      type: boolean
+                      default: true
+      responses:
+        '202':
+          description: Export started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          export_id:
+                            type: string
+                            format: uuid
+                          estimated_time_minutes:
+                            type: integer
+
+  /exports/{exportId}:
+    get:
+      tags: [Export]
+      summary: Get export status and download link
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Export information retrieved successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          export_id:
+                            type: string
+                            format: uuid
+                          status:
+                            type: string
+                            enum: [pending, processing, completed, failed]
+                          progress_percentage:
+                            type: integer
+                            minimum: 0
+                            maximum: 100
+                          download_url:
+                            type: string
+                            format: url
+                          file_size:
+                            type: integer
+                          expires_at:
+                            type: string
+                            format: date-time
+                          created_at:
+                            type: string
+                            format: date-time
+
+    delete:
+      tags: [Export]
+      summary: Delete export file
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Export deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # =============================================================================
+  # SYSTEM AND MONITORING ENDPOINTS
+  # =============================================================================
+
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      description: Check system health status
+      security: [] # Public endpoint
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                  services:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [healthy, degraded, unhealthy]
+                      redis:
+                        type: string
+                        enum: [healthy, degraded, unhealthy]
+                      ml_engine:
+                        type: string
+                        enum: [healthy, degraded, unhealthy]
+
+  /metrics:
+    get:
+      tags: [System]
+      summary: Get system metrics
+      description: Get Prometheus-formatted metrics (admin only)
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # =============================================================================
+  # WEBSOCKET EVENT SPECIFICATIONS
+  # =============================================================================
+
+  /ws:
+    get:
+      tags: [WebSocket]
+      summary: WebSocket endpoint for real-time updates
+      description: |
+        WebSocket endpoint for real-time updates on:
+        - Annotation changes
+        - Ground truth generation progress
+        - Export status updates
+        - User activity notifications
+        
+        ## Connection
+        - Requires valid JWT token in query parameter or Authorization header
+        - Connection URL: `wss://api.domain.com/v1/ws?token=<jwt_token>`
+        
+        ## Event Types
+        - `annotation_created`: New annotation created
+        - `annotation_updated`: Annotation modified
+        - `annotation_deleted`: Annotation removed
+        - `ground_truth_progress`: Ground truth generation progress
+        - `ground_truth_completed`: Ground truth generation finished
+        - `export_progress`: Export progress update
+        - `export_completed`: Export finished
+        
+        ## Message Format
+        ```json
+        {
+          "event_type": "annotation_created",
+          "data": { ... },
+          "timestamp": "2025-01-01T00:00:00Z",
+          "user_id": "uuid",
+          "video_id": "uuid"
+        }
+        ```
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+            description: JWT authentication token
+      responses:
+        '101':
+          description: WebSocket connection established
+        '401':
+          description: Invalid or missing authentication token
+        '403':
+          description: Insufficient permissions
+
+# =============================================================================
+# RATE LIMITING AND CIRCUIT BREAKER CONFIGURATION
+# =============================================================================
+
+x-rate-limits:
+  anonymous:
+    - endpoint: "*"
+      limit: 100
+      window: 3600
+      scope: ip
+  authenticated:
+    - endpoint: "*"
+      limit: 1000
+      window: 3600
+      scope: user
+    - endpoint: "/videos/*/upload"
+      limit: 10
+      window: 3600
+      scope: user
+    - endpoint: "/videos/*/ground-truth/generate"
+      limit: 5
+      window: 3600
+      scope: user
+    - endpoint: "/videos/*/export"
+      limit: 20
+      window: 3600
+      scope: user
+  premium:
+    - endpoint: "*"
+      limit: 10000
+      window: 3600
+      scope: user
+
+x-circuit-breakers:
+  database:
+    failure_threshold: 5
+    recovery_timeout: 60000
+    half_open_max_calls: 3
+  ml_inference:
+    failure_threshold: 3
+    recovery_timeout: 30000
+    half_open_max_calls: 1
+  external_services:
+    failure_threshold: 10
+    recovery_timeout: 120000
+    half_open_max_calls: 5

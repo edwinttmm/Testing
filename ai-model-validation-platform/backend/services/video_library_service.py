@@ -55,7 +55,7 @@ class VideoMetadata:
 class VideoLibraryManager:
     """Centralized video lifecycle management with folder organization"""
     
-    def __init__(self, base_upload_dir: str = "/app/uploads"):
+    def __init__(self, base_upload_dir: str = "uploads"):
         self.base_upload_dir = Path(base_upload_dir)
         self.setup_folder_structure()
     
@@ -81,13 +81,35 @@ class VideoLibraryManager:
             ]
         }
         
+        # Ensure base directory exists first
+        try:
+            self.base_upload_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created base upload directory: {self.base_upload_dir}")
+        except PermissionError:
+            logger.warning(f"Permission denied creating base directory: {self.base_upload_dir}")
+            return
+        except Exception as e:
+            logger.error(f"Error creating base directory {self.base_upload_dir}: {e}")
+            return
+            
         for camera_type, categories in folder_structure.items():
             camera_dir = self.base_upload_dir / camera_type
-            camera_dir.mkdir(parents=True, exist_ok=True)
-            
-            for category in categories:
-                category_dir = camera_dir / category
-                category_dir.mkdir(exist_ok=True)
+            try:
+                camera_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created camera directory: {camera_dir}")
+                
+                for category in categories:
+                    category_dir = camera_dir / category
+                    try:
+                        category_dir.mkdir(exist_ok=True)
+                        logger.debug(f"Created category directory: {category_dir}")
+                    except Exception as e:
+                        logger.warning(f"Could not create category directory {category_dir}: {e}")
+                        
+            except PermissionError:
+                logger.warning(f"Permission denied creating camera directory: {camera_dir}")
+            except Exception as e:
+                logger.error(f"Error creating camera directory {camera_dir}: {e}")
         
         logger.info(f"Video library folder structure created at {self.base_upload_dir}")
     

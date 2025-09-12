@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-08-29T00:35:44.397573",
+  "tests": [
+    {
+      "name": "Frontend Access",
+      "status": "PASS"
+    },
+    {
+      "name": "Backend Health",
+      "status": "PASS"
+    },
+    {
+      "name": "WebSocket Test",
+      "status": "SKIPPED"
+    }
+  ],
+  "errors": [
+    "GET Projects: {\"detail\":\"Database temporarily unavailable. Please try again.\",\"status_code\":503}",
+    "Create Project: {\"detail\":\"Database temporarily unavailable. Please try again.\",\"status_code\":503}",
+    "Database: {\"detail\":\"Not Found\"}",
+    "CVAT error: HTTPConnectionPool(host='localhost', port=8080): Max retries exceeded with url: /api/server/about (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7826335f5af0>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+  ],
+  "summary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 4,
+    "error_count": 4
+  }
+}

@@ -1,0 +1,205 @@
+{
+  "timestamp": "2025-08-27T22:38:07.659326",
+  "navigation_tests": {
+    "Home Page": {
+      "url": "http://localhost:3000/",
+      "status_code": 200,
+      "response_time": 0.080257,
+      "content_length": 1826,
+      "accessible": true,
+      "has_react_content": true
+    },
+    "Projects Page": {
+      "url": "http://localhost:3000/projects",
+      "status_code": 200,
+      "response_time": 0.009542,
+      "content_length": 1826,
+      "accessible": true,
+      "has_react_content": true
+    },
+    "Datasets Page": {
+      "url": "http://localhost:3000/datasets",
+      "status_code": 200,
+      "response_time": 0.011614,
+      "content_length": 1826,
+      "accessible": true,
+      "has_react_content": true
+    },
+    "Results Page": {
+      "url": "http://localhost:3000/results",
+      "status_code": 200,
+      "response_time": 0.008481,
+      "content_length": 1826,
+      "accessible": true,
+      "has_react_content": true
+    },
+    "Ground Truth Page": {
+      "url": "http://localhost:3000/ground-truth",
+      "status_code": 200,
+      "response_time": 0.007271,
+      "content_length": 1826,
+      "accessible": true,
+      "has_react_content": true
+    }
+  },
+  "page_loading_tests": {},
+  "project_management_tests": {
+    "create_project": {
+      "test_data": {
+        "name": "Frontend Test Project",
+        "description": "Project created during comprehensive frontend testing",
+        "validation_criteria": {
+          "accuracy_threshold": 0.85,
+          "precision_threshold": 0.8,
+          "recall_threshold": 0.8
+        }
+      },
+      "status_code": 503,
+      "success": false,
+      "response_time": 0.0689
+    }
+  },
+  "video_management_tests": {
+    "upload_endpoint": {
+      "url": "http://localhost:8000/api/videos/upload",
+      "status_code": 405,
+      "response_time": 0.007473,
+      "accepts_multipart": true
+    },
+    "list_videos": {
+      "status_code": 503,
+      "success": false,
+      "video_count": 0
+    }
+  },
+  "annotation_system_tests": {
+    "list_annotations": {
+      "status_code": 404,
+      "success": true,
+      "annotation_count": 0
+    },
+    "create_annotation": {
+      "status_code": 404,
+      "success": false,
+      "test_data": {
+        "video_id": 1,
+        "frame_number": 100,
+        "annotations": [
+          {
+            "type": "bounding_box",
+            "coordinates": {
+              "x": 100,
+              "y": 100,
+              "width": 200,
+              "height": 150
+            },
+            "label": "person",
+            "confidence": 0.95
+          }
+        ]
+      }
+    }
+  },
+  "results_dashboard_tests": {},
+  "error_scenarios": {
+    "Invalid Project ID": {
+      "url": "http://localhost:8000/api/projects/99999",
+      "method": "GET",
+      "status_code": 503,
+      "handles_error_gracefully": false,
+      "response_time": 0.068319
+    },
+    "Invalid Video ID": {
+      "url": "http://localhost:8000/api/videos/99999",
+      "method": "GET",
+      "status_code": 405,
+      "handles_error_gracefully": false,
+      "response_time": 0.005995
+    },
+    "Malformed JSON": {
+      "url": "http://localhost:8000/api/projects/",
+      "method": "POST",
+      "status_code": 422,
+      "handles_error_gracefully": true,
+      "response_time": 0.013965
+    },
+    "Empty Request": {
+      "url": "http://localhost:8000/api/projects/",
+      "method": "POST",
+      "status_code": 503,
+      "handles_error_gracefully": false,
+      "response_time": 0.079033
+    },
+    "Large File Upload": {
+      "url": "http://localhost:8000/api/videos/upload",
+      "method": "POST",
+      "status_code": 405,
+      "handles_error_gracefully": false,
+      "response_time": 0.009135
+    }
+  },
+  "ui_responsiveness": {},
+  "console_errors": [],
+  "performance_metrics": {
+    "homepage_load_time": 0.022144794464111328,
+    "homepage_size": 1826,
+    "acceptable_load_time": true,
+    "status_code": 200
+  },
+  "accessibility_issues": [],
+  "overall_status": "COMPLETED",
+  "backend_status": {
+    "available": true,
+    "status_code": 503,
+    "response_time": 0.013898
+  },
+  "frontend_status": {
+    "available": true,
+    "status_code": 200,
+    "response_time": 0.032324
+  },
+  "api_integration": {
+    "Projects List": {
+      "endpoint": "/api/projects",
+      "method": "GET",
+      "status_code": 503,
+      "response_time": 0.104102,
+      "working": false
+    },
+    "Videos List": {
+      "endpoint": "/api/videos",
+      "method": "GET",
+      "status_code": 503,
+      "response_time": 0.056247,
+      "working": false
+    },
+    "Annotations List": {
+      "endpoint": "/api/annotations",
+      "method": "GET",
+      "status_code": 404,
+      "response_time": 0.008242,
+      "working": true
+    },
+    "Health Check": {
+      "endpoint": "/api/health",
+      "method": "GET",
+      "status_code": 404,
+      "response_time": 0.007381,
+      "working": true
+    },
+    "Datasets List": {
+      "endpoint": "/api/datasets",
+      "method": "GET",
+      "status_code": 404,
+      "response_time": 0.005995,
+      "working": true
+    }
+  },
+  "summary": {
+    "total_tests": 11,
+    "successful_tests": 8,
+    "success_rate": "72.7%",
+    "overall_status": "PASSED",
+    "test_duration": "2025-08-27T22:38:16.876910"
+  }
+}

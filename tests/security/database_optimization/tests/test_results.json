@@ -1,0 +1,39 @@
+{
+  "timestamp": "2025-09-09T20:50:13.250754",
+  "test_results": {
+    "test_cascade_deletes.py": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n"
+    },
+    "test_data_integrity.py": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n"
+    },
+    "test_performance_comparison.py": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n"
+    }
+  },
+  "summary": {
+    "total_tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "errors": [
+      "test_cascade_deletes.py: /usr/bin/python3: No module named pytest",
+      "test_data_integrity.py: /usr/bin/python3: No module named pytest",
+      "test_performance_comparison.py: /usr/bin/python3: No module named pytest"
+    ]
+  }
+}

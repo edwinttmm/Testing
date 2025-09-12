@@ -1,0 +1,5 @@
+2025-08-27 22:27:47,032 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "127.0.0.1", port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:27:47,036 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "localhost" (127.0.0.1), port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:27:47,041 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "172.18.65.21", port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:27:47,044 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "localhost" (127.0.0.1), port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:27:47,049 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "127.0.0.1", port 5432 failed: fe_sendauth: no password supplied

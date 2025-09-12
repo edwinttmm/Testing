@@ -1,0 +1,32 @@
+{
+  "test_session": {
+    "start_time": "2025-09-05T15:18:07.168002",
+    "end_time": "2025-09-05T15:18:07.596833",
+    "duration": null
+  },
+  "sequential_video_tests": {
+    "status": "pending",
+    "details": []
+  },
+  "frontend_integration_tests": {
+    "status": "pending",
+    "details": []
+  },
+  "automation_tests": {
+    "status": "pending",
+    "details": []
+  },
+  "specific_video_tests": {
+    "status": "error",
+    "start_time": "2025-09-05T15:18:07.457767",
+    "video_tests": [],
+    "error": "",
+    "end_time": "2025-09-05T15:18:07.596798"
+  },
+  "summary": {
+    "total_tests": 4,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 4
+  }
+}

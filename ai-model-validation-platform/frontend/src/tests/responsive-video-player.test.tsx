@@ -17,11 +17,20 @@ const theme = createTheme();
 const mockVideo: VideoFile = {
   id: 'test-video-1',
   filename: 'test-video.mp4',
+  originalName: 'test-video.mp4',
   name: 'Test Video',
+  projectId: 'project-1',
+  size: 1024000,
   url: '/test-video.mp4',
-  status: 'processed',
+  duration: 30,
+  fps: 30,
+  status: 'completed' as const,
+  processingStatus: 'completed',
+  groundTruthGenerated: false,
+  detectionCount: 0,
   uploadedAt: '2024-01-01T00:00:00Z',
-  processingStatus: 'completed'
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z'
 };
 
 const mockAnnotations: GroundTruthAnnotation[] = [
@@ -30,10 +39,16 @@ const mockAnnotations: GroundTruthAnnotation[] = [
     videoId: 'test-video-1',
     detectionId: 'det-1',
     vruType: 'pedestrian',
-    boundingBox: { x: 100, y: 100, width: 50, height: 100 },
+    boundingBox: { x: 100, y: 100, width: 50, height: 100, label: 'pedestrian', confidence: 0.85 },
     frameNumber: 30,
     timestamp: 1.0,
-    validated: true
+    occluded: false,
+    truncated: false,
+    difficult: false,
+    validated: true,
+    annotator: 'test-user',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z'
   }
 ];
 
@@ -53,15 +68,63 @@ const defaultResponsiveState = {
   }),
   getResponsiveSliderProps: () => ({
     size: 'small' as const,
-    sx: { height: 4 }
+    sx: { 
+      height: 4,
+      '& .MuiSlider-thumb': {
+        height: 20,
+        width: 20,
+        '&:hover': {
+          boxShadow: 'inherit',
+        },
+      },
+      '& .MuiSlider-valueLabel': {
+        lineHeight: 1.2,
+        fontSize: 12,
+        background: 'unset',
+        padding: 0,
+        width: 32,
+        height: 32,
+        borderRadius: '50% 50% 50% 0',
+        backgroundColor: '#52af77',
+        transformOrigin: 'bottom left',
+        transform: 'translate(50%, -100%) rotate(-45deg) scale(0)',
+        '&:before': { display: 'none' },
+        '&.MuiSlider-valueLabelOpen': {
+          transform: 'translate(50%, -100%) rotate(-45deg) scale(1)',
+        },
+        '& > *': {
+          transform: 'rotate(45deg)',
+        },
+      },
+    }
   }),
   getResponsiveButtonProps: () => ({
     size: 'small' as const,
-    sx: { minHeight: 'auto', fontSize: '0.875rem' }
+    sx: { 
+      minHeight: 'auto', 
+      minWidth: 'auto',
+      fontSize: '0.875rem',
+      touchAction: 'manipulation',
+      '&:active': {
+        transform: 'scale(0.95)',
+        transition: 'transform 0.1s'
+      },
+      '@media (prefers-reduced-motion: reduce)': {
+        '&:active': {
+          transform: 'none',
+          transition: 'none'
+        }
+      }
+    }
   }),
   getResponsiveIconButtonProps: () => ({
     size: 'small' as const,
-    sx: { padding: '8px' }
+    sx: { 
+      padding: '8px',
+      minWidth: 'auto',
+      minHeight: 'auto', 
+      touchAction: 'manipulation'
+    }
   }),
   getResponsiveLayoutProps: () => ({
     spacing: 1,
@@ -71,7 +134,25 @@ const defaultResponsiveState = {
     sx: { flexWrap: 'nowrap', gap: 1, width: 'auto' }
   }),
   getResponsiveAnnotationProps: () => ({
-    sx: { gap: 1, px: 2, py: 1, fontSize: '0.75rem' },
+    sx: { 
+      gap: 1, 
+      px: 2, 
+      py: 1, 
+      fontSize: '0.75rem',
+      minHeight: 'auto',
+      borderRadius: 1,
+      touchAction: 'manipulation',
+      '&:active': {
+        transform: 'scale(0.95)',
+        transition: 'transform 0.1s'
+      },
+      '@media (prefers-reduced-motion: reduce)': {
+        '&:active': {
+          transform: 'none',
+          transition: 'none'
+        }
+      }
+    },
     indicatorSize: 12
   }),
   handleTouchSeek: jest.fn(),
@@ -156,14 +237,22 @@ describe('Responsive Video Player Tests', () => {
             minHeight: 44, 
             fontSize: '0.8rem',
             touchAction: 'manipulation',
+            minWidth: 44,
             '&:active': {
-              transform: 'scale(0.95)'
+              transform: 'scale(0.95)',
+              transition: 'transform 0.1s'
+            },
+            '@media (prefers-reduced-motion: reduce)': {
+              '&:active': {
+                transform: 'scale(0.95)',
+                transition: 'none'
+              }
             }
           }
         }),
         getResponsiveIconButtonProps: () => ({
           size: 'medium' as const,
-          sx: { padding: '12px', minWidth: 48, minHeight: 48 }
+          sx: { padding: '12px', minWidth: 48, minHeight: 48, touchAction: 'manipulation' }
         }),
         getResponsiveSliderProps: () => ({
           size: 'medium' as const,
@@ -171,7 +260,10 @@ describe('Responsive Video Player Tests', () => {
             height: 8,
             '& .MuiSlider-thumb': {
               width: 24,
-              height: 24
+              height: 24,
+              '&:hover': {
+                boxShadow: 'inherit'
+              }
             }
           }
         })
@@ -256,7 +348,7 @@ describe('Responsive Video Player Tests', () => {
           direction: 'row' as const,
           alignItems: 'center' as const,
           justifyContent: 'flex-start' as const,
-          sx: { flexWrap: 'wrap', gap: 1 }
+          sx: { flexWrap: 'wrap', gap: 1, width: 'auto' }
         })
       });
     });
@@ -289,8 +381,16 @@ describe('Responsive Video Player Tests', () => {
             minHeight: 36,
             fontSize: '0.7rem',
             touchAction: 'manipulation',
+            borderRadius: 1,
             '&:active': {
-              transform: 'scale(0.95)'
+              transform: 'scale(0.95)',
+              transition: 'transform 0.1s'
+            },
+            '@media (prefers-reduced-motion: reduce)': {
+              '&:active': {
+                transform: 'scale(0.95)',
+                transition: 'none'
+              }
             }
           },
           indicatorSize: 8

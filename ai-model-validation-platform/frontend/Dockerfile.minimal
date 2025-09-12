@@ -1,0 +1,28 @@
+# Minimal working Dockerfile for frontend
+FROM node:20-alpine
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Set environment variables
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=development
+
+# Copy package files and install
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+# Copy source
+COPY . .
+
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Start with craco
+CMD ["sh", "-c", "npx craco start || npx react-scripts start"]

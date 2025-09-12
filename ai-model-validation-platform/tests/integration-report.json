@@ -1,0 +1,87 @@
+{
+  "summary": {
+    "total_tests": 7,
+    "passed": 7,
+    "failed": 0,
+    "warnings": 0,
+    "success_rate": "100.0%",
+    "system_status": "OPERATIONAL"
+  },
+  "test_results": [
+    {
+      "test": "Backend Health",
+      "status": "PASS",
+      "message": "\u2713 Test backend is running",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "API /",
+      "status": "PASS",
+      "message": "\u2713 Root endpoint",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "API /docs",
+      "status": "PASS",
+      "message": "\u2713 API documentation",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "API /openapi.json",
+      "status": "PASS",
+      "message": "\u2713 OpenAPI specification",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "API Endpoints",
+      "status": "PASS",
+      "message": "3/3 endpoints working",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "Frontend Access",
+      "status": "PASS",
+      "message": "\u2713 React app serving",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "Database Connection",
+      "status": "PASS",
+      "message": "\u2713 Database connected",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "File Upload",
+      "status": "PASS",
+      "message": "\u2713 Upload works at /api/videos/upload",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "Performance",
+      "status": "PASS",
+      "message": "\u2713 Good response times",
+      "details": "Backend: 0.00s, Frontend: 0.00s",
+      "timestamp": "2025-08-27 13:16:49"
+    },
+    {
+      "test": "Service Communication",
+      "status": "PASS",
+      "message": "\u2713 All services accessible",
+      "details": null,
+      "timestamp": "2025-08-27 13:16:49"
+    }
+  ],
+  "timestamp": "2025-08-27 13:16:49",
+  "environment": {
+    "backend_url": "http://localhost:8000",
+    "frontend_url": "http://localhost:3000"
+  }
+}

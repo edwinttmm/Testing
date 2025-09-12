@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Frontend API Testing</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .pass { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .fail { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; border: 1px solid #bee5eb; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>Frontend API Testing - Manual Status Issue Investigation</h1>
+    
+    <div id="results"></div>
+    
+    <script>
+        const results = document.getElementById('results');
+        
+        function addResult(title, success, details) {
+            const div = document.createElement('div');
+            div.className = 'test-result ' + (success ? 'pass' : 'fail');
+            div.innerHTML = `
+                <h3>${success ? '✅' : '❌'} ${title}</h3>
+                <pre>${JSON.stringify(details, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+        }
+        
+        function addInfo(title, details) {
+            const div = document.createElement('div');
+            div.className = 'test-result info';
+            div.innerHTML = `
+                <h3>ℹ️ ${title}</h3>
+                <pre>${JSON.stringify(details, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+        }
+        
+        async function runTests() {
+            try {
+                // Test 1: Get videos list
+                console.log('Testing /api/videos endpoint...');
+                const videosResponse = await fetch('http://localhost:8000/api/videos');
+                const videosData = await videosResponse.json();
+                
+                addResult('GET /api/videos', videosResponse.ok, {
+                    status: videosResponse.status,
+                    videosCount: videosData.videos ? videosData.videos.length : 0,
+                    data: videosData
+                });
+                
+                if (videosData.videos && videosData.videos.length > 0) {
+                    const video = videosData.videos[0];
+                    const videoId = video.id;
+                    
+                    addInfo('Video from list endpoint', {
+                        id: video.id,
+                        status: video.status,
+                        processing_status: video.processing_status,
+                        detectionCount: video.detectionCount,
+                        hasDetections: video.hasDetections
+                    });
+                    
+                    // Test 2: Get individual video
+                    console.log('Testing individual video endpoint...');
+                    const individualResponse = await fetch(`http://localhost:8000/api/videos/${videoId}`);
+                    const individualData = await individualResponse.json();
+                    
+                    addResult('GET /api/videos/{id}', individualResponse.ok, {
+                        status: individualResponse.status,
+                        data: individualData
+                    });
+                    
+                    addInfo('Video from individual endpoint', {
+                        id: individualData.id,
+                        status: individualData.status,
+                        processing_status: individualData.processing_status,
+                        detection_count: individualData.detection_count,
+                        has_detections: individualData.has_detections
+                    });
+                    
+                    // Test 3: Compare the two responses
+                    const listStatus = video.status;
+                    const individualStatus = individualData.status;
+                    
+                    if (listStatus !== individualStatus) {
+                        addResult('Status Consistency Check', false, {
+                            issue: 'Status mismatch between endpoints',
+                            listEndpointStatus: listStatus,
+                            individualEndpointStatus: individualStatus,
+                            explanation: 'This mismatch causes the frontend to show Manual status when individual endpoint returns null/undefined'
+                        });
+                    } else {
+                        addResult('Status Consistency Check', true, {
+                            listEndpointStatus: listStatus,
+                            individualEndpointStatus: individualStatus
+                        });
+                    }
+                    
+                    // Test 4: Frontend status determination logic
+                    const frontendStatus = individualData.status || 'Manual';
+                    addInfo('Frontend Status Determination', {
+                        apiReturned: individualData.status,
+                        frontendDisplays: frontendStatus,
+                        reason: individualData.status ? 'API provided status' : 'API returned null/undefined, defaulting to Manual'
+                    });
+                    
+                    // Test 5: Test detections endpoint
+                    const detectionsResponse = await fetch(`http://localhost:8000/api/videos/${videoId}/detections`);
+                    const detectionsData = await detectionsResponse.json();
+                    
+                    addResult('GET /api/videos/{id}/detections', detectionsResponse.ok, {
+                        status: detectionsResponse.status,
+                        detectionsCount: detectionsData.total_detections || 0
+                    });
+                    
+                    // Final assessment
+                    if (!individualData.status && detectionsData.total_detections > 0) {
+                        addResult('MANUAL STATUS ROOT CAUSE IDENTIFIED', false, {
+                            problem: 'Individual video endpoint missing status field',
+                            evidence: {
+                                listEndpointHasStatus: !!video.status,
+                                individualEndpointHasStatus: !!individualData.status,
+                                videoHasDetections: detectionsData.total_detections > 0,
+                                processingCompleted: individualData.processing_status === 'completed'
+                            },
+                            conclusion: 'Frontend receives null status from individual endpoint and defaults to Manual, despite video having completed processing and detections'
+                        });
+                    }
+                }
+                
+            } catch (error) {
+                addResult('API Test Error', false, {
+                    error: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+        
+        // Run tests when page loads
+        runTests();
+    </script>
+</body>
+</html>

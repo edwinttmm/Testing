@@ -1,0 +1,76 @@
+{
+  "api_tests": {
+    "/health": {
+      "status": 200,
+      "response_time_ms": 8.98,
+      "data": {
+        "status": "healthy",
+        "message": "Test backend is running",
+        "database": "connected"
+      }
+    },
+    "/api/health": {
+      "status": 404,
+      "response_time_ms": 1.23,
+      "data": {
+        "detail": "Endpoint not found: /api/health"
+      }
+    },
+    "/api/dashboard/stats": {
+      "status": 200,
+      "response_time_ms": 1.56,
+      "data": {
+        "total_projects": 5,
+        "total_videos": 4,
+        "active_sessions": 0,
+        "completed_tests": 0,
+        "system_status": "operational"
+      }
+    },
+    "create_project": {
+      "status": 200,
+      "project_id": 6
+    },
+    "list_videos": {
+      "status": 200,
+      "count": 4
+    },
+    "/api/detection/models": {
+      "status": 200,
+      "data": {
+        "models": [
+          {
+            "name": "YOLOv8n",
+            "status": "available",
+            "type": "object_detection"
+          },
+          {
+            "name": "YOLOv8s",
+            "status": "available",
+            "type": "object_detection"
+          }
+        ]
+      }
+    }
+  },
+  "performance_metrics": {
+    "/health": {
+      "avg_response_time_ms": 1.19,
+      "max_response_time_ms": 1.89,
+      "samples": 5
+    },
+    "/api/projects": {
+      "avg_response_time_ms": 1.77,
+      "max_response_time_ms": 2.03,
+      "samples": 5
+    },
+    "/api/videos": {
+      "avg_response_time_ms": 1.38,
+      "max_response_time_ms": 1.47,
+      "samples": 5
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "system_status": "healthy"
+}

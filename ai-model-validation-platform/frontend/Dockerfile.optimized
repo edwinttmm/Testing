@@ -1,0 +1,42 @@
+FROM node:18-alpine
+
+# Install only essential packages for faster build
+RUN apk add --no-cache curl && \
+    addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+WORKDIR /app
+
+# Copy package files first for better Docker layer caching
+COPY package*.json ./
+
+# Install dependencies with cache optimization
+RUN npm ci --only=production --no-audit --no-fund --prefer-offline && \
+    npm cache clean --force
+
+# Switch to non-root user
+USER nextjs
+
+# Copy source code
+COPY --chown=nextjs:nodejs . .
+
+# Set React environment variables
+ENV NODE_ENV=development \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    SKIP_PREFLIGHT_CHECK=true \
+    TSC_COMPILE_ON_ERROR=true \
+    GENERATE_SOURCEMAP=false \
+    DISABLE_ESLINT_PLUGIN=true \
+    FAST_REFRESH=false \
+    DOCKER=true \
+    DISABLE_GPU_CHECK=true
+
+EXPOSE 3000
+
+# Simple health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=2 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Start React development server
+CMD ["npm", "start"]

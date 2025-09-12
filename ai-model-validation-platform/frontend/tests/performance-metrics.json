@@ -1,0 +1,38 @@
+{
+  "benchmarks": [
+    {
+      "timestamp": "2025-08-31T01:01:03.140Z",
+      "measurements": {
+        "typeCheck": {
+          "success": false,
+          "duration": 30735,
+          "memoryUsed": 53912,
+          "errorsFound": 0
+        },
+        "linting": {
+          "success": false,
+          "duration": 20031,
+          "warningsFound": 1
+        },
+        "memory": {
+          "heapUsed": 4113264,
+          "heapTotal": 4694016,
+          "external": 1500322,
+          "rss": 33161216
+        },
+        "fileSystem": {
+          "srcSize": 2822286,
+          "srcFileCount": 249,
+          "srcSizeMB": 2.69
+        }
+      },
+      "overallScore": 70
+    }
+  ],
+  "lastUpdated": "2025-08-31T01:01:03.141Z",
+  "summary": {
+    "totalMeasurements": 1,
+    "averageScore": 70,
+    "trend": "insufficient-data"
+  }
+}

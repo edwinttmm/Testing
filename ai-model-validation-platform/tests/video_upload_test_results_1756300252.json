@@ -1,0 +1,70 @@
+{
+  "test_started": "2025-08-27T14:10:48.115608",
+  "frontend_url": "http://localhost:3000",
+  "backend_url": "http://localhost:8000",
+  "upload_tests": [
+    {
+      "test_name": "Existing Video File Found",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:48.115679",
+      "details": "Found: /home/rigade/Testing/ai-model-validation-platform/tests/test_video.mp4, Size: 0.1 KB",
+      "error": null
+    },
+    {
+      "test_name": "Project Creation for Upload",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:48.132148",
+      "details": "Created project ID: 14",
+      "error": null
+    },
+    {
+      "test_name": "Video Upload Validation",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:10:48.135728",
+      "details": "Upload rejected (422): {\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"file\"],\"msg\":\"Field required\",\"input\":null}]}",
+      "error": null
+    },
+    {
+      "test_name": "File Type Validation",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:49.143541",
+      "details": "Properly rejected non-video file",
+      "error": null
+    },
+    {
+      "test_name": "Empty File Validation",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:49.148493",
+      "details": "Properly rejected empty file",
+      "error": null
+    },
+    {
+      "test_name": "Upload 10KB",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:50.157591",
+      "details": "Processed in 0.01s, Status: 422",
+      "error": null
+    },
+    {
+      "test_name": "Upload 100KB",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:50.169573",
+      "details": "Processed in 0.01s, Status: 422",
+      "error": null
+    },
+    {
+      "test_name": "Upload 1MB",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:50.448442",
+      "details": "Processed in 0.27s, Status: 422",
+      "error": null
+    },
+    {
+      "test_name": "Concurrent Uploads",
+      "status": "PASS",
+      "timestamp": "2025-08-27T14:10:51.460518",
+      "details": "Handled 3/3 uploads successfully",
+      "error": null
+    }
+  ]
+}

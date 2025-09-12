@@ -177,9 +177,9 @@ const Projects: React.FC = () => {
                     variant="outlined"
                     size="small"
                   />
-                  {(project.accuracy ?? 0) > 0 && (
+                  {((project as any).averageAccuracy ?? 0) > 0 && (
                     <Chip
-                      label={`${project.accuracy ?? 0}% accuracy`}
+                      label={`${(project as any).averageAccuracy ?? 0}% accuracy`}
                       variant="outlined"
                       size="small"
                     />

@@ -77,7 +77,7 @@ class DatabaseOptimizer:
         """Analyze common query performance"""
         try:
             performance_queries = [
-                # Video listing query
+                # Video listing query - FIXED: Add all non-aggregate columns to GROUP BY
                 ("Video Listing", """
                     EXPLAIN QUERY PLAN 
                     SELECT v.id, v.filename, v.status, v.created_at, 
@@ -85,7 +85,7 @@ class DatabaseOptimizer:
                     FROM videos v
                     LEFT JOIN ground_truth_objects gt ON v.id = gt.video_id
                     WHERE v.project_id = ?
-                    GROUP BY v.id
+                    GROUP BY v.id, v.filename, v.status, v.created_at
                     ORDER BY v.created_at DESC
                 """),
                 

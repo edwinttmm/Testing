@@ -14,12 +14,12 @@ import { apiService } from '../services/api';
 
 // Mock API responses for testing
 const mockApiService = {
-  getProjects: jest.fn(),
-  createProject: jest.fn(),
-  getVideos: jest.fn(),
-  getAnnotations: jest.fn(),
-  getDashboardStats: jest.fn(),
-  healthCheck: jest.fn()
+  getProjects: jest.fn() as jest.MockedFunction<any>,
+  createProject: jest.fn() as jest.MockedFunction<any>,
+  getVideos: jest.fn() as jest.MockedFunction<any>,
+  getAnnotations: jest.fn() as jest.MockedFunction<any>,
+  getDashboardStats: jest.fn() as jest.MockedFunction<any>,
+  healthCheck: jest.fn() as jest.MockedFunction<any>
 };
 
 // Sample test data

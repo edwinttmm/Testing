@@ -27,14 +27,14 @@ describe('Video System Integration Tests', () => {
     status: 'completed',
     duration: 5.033333333333333,
     fps: 30,
-    resolution: '640x480',
+    // resolution: '640x480', // Not part of VideoFile interface
     size: 45678,
     fileSize: 45678,
     createdAt: '2024-08-20T09:00:00Z',
     uploadedAt: '2024-08-20T09:00:00Z',
     groundTruthGenerated: false,
     groundTruthStatus: 'pending',
-    processingStatus: 'completed',
+    processing_status: 'completed',
     detectionCount: 0
   };
 
@@ -44,22 +44,28 @@ describe('Video System Integration Tests', () => {
       videoId: 'test-video-5-04s',
       frameNumber: 30,
       timestamp: 1.0,
-      boundingBox: { x: 100, y: 100, width: 50, height: 50 },
+      boundingBox: { x: 100, y: 100, width: 50, height: 50, label: 'pedestrian', confidence: 0.85 },
       vruType: 'pedestrian',
       detectionId: 'det1',
       validated: false,
-      confidence: 0.95
+      occluded: false,
+      truncated: false,
+      difficult: false,
+      createdAt: '2024-01-01T00:00:00.000Z'
     },
     {
       id: 'ann2', 
       videoId: 'test-video-5-04s',
       frameNumber: 90,
       timestamp: 3.0,
-      boundingBox: { x: 200, y: 150, width: 60, height: 60 },
+      boundingBox: { x: 200, y: 150, width: 60, height: 60, label: 'cyclist', confidence: 0.92 },
       vruType: 'cyclist',
       detectionId: 'det2',
       validated: true,
-      confidence: 0.88
+      occluded: false,
+      truncated: false,
+      difficult: false,
+      createdAt: '2024-01-01T01:30:00.000Z'
     }
   ];
 
@@ -216,7 +222,7 @@ describe('Video System Integration Tests', () => {
   describe('Video Metadata Accuracy', () => {
     it('validates correct frame count calculation', () => {
       // For 5.033s video at 30fps, frame count should be 151
-      const expectedFrameCount = Math.floor(mockVideo.duration * mockVideo.fps);
+      const expectedFrameCount = Math.floor((mockVideo.duration ?? 0) * (mockVideo.fps ?? 30));
       expect(expectedFrameCount).toBe(151);
       
       // Frame number for last frame
@@ -224,17 +230,17 @@ describe('Video System Integration Tests', () => {
       expect(lastFrameNumber).toBe(150);
       
       // Time for last frame
-      const lastFrameTime = lastFrameNumber / mockVideo.fps;
+      const lastFrameTime = lastFrameNumber / (mockVideo.fps ?? 30);
       expect(lastFrameTime).toBeCloseTo(5.0, 1);
     });
 
     it('validates annotation frame synchronization', () => {
       // Annotation at frame 30 should be at time 1.0s
-      const frame30Time = 30 / mockVideo.fps;
+      const frame30Time = 30 / (mockVideo.fps ?? 30);
       expect(frame30Time).toBeCloseTo(1.0, 2);
       
       // Annotation at frame 90 should be at time 3.0s  
-      const frame90Time = 90 / mockVideo.fps;
+      const frame90Time = 90 / (mockVideo.fps ?? 30);
       expect(frame90Time).toBeCloseTo(3.0, 2);
     });
 

@@ -7,7 +7,7 @@
     "start": "python main.py",
     "migrate": "node scripts/migration-cli.js",
     "migrate:status": "node scripts/migration-cli.js status",
-    "migrate:analyze": "node scripts/migration-cli.js analyze", 
+    "migrate:analyze": "node scripts/migration-cli.js analyze",
     "migrate:dry-run": "node scripts/migration-cli.js dry-run",
     "migrate:execute": "node scripts/migration-cli.js execute",
     "migrate:validate": "node scripts/migration-cli.js validate",
@@ -38,5 +38,9 @@
     "localhost"
   ],
   "author": "Backend Development Team",
-  "license": "MIT"
+  "license": "MIT",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  }
 }

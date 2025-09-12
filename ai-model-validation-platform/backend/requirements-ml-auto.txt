@@ -1,6 +1,6 @@
 # Auto-generated ML requirements based on detected hardware
 # GPU detected: False (none)
-# Generated on: Linux-6.6.93+-x86_64-with-glibc2.39
+# Generated on: Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39
 
 opencv-python-headless>=4.8.0
 pillow>=10.0.0

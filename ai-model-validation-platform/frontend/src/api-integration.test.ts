@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { apiService } from '../../ai-model-validation-platform/frontend/src/services/api';
-import { DetectionConfig } from '../../ai-model-validation-platform/frontend/src/services/detectionService';
+import { apiService } from './services/api';
+import { DetectionConfig } from './services/detectionService';
 
 // Mock axios for controlled testing
 jest.mock('axios');
@@ -14,7 +14,7 @@ describe('API Integration - Detection System', () => {
     post: jest.fn(),
     put: jest.fn(),
     delete: jest.fn(),
-    defaults: { baseURL: 'http://155.138.239.131:8000', timeout: 30000 },
+    defaults: { baseURL: 'http://localhost:8000', timeout: 30000 },
     interceptors: {
       request: { use: jest.fn() },
       response: { use: jest.fn() }
@@ -24,7 +24,7 @@ describe('API Integration - Detection System', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedAxios.create.mockReturnValue(mockApiInstance as any);
+    mockedAxios.create.mockReturnValue(mockApiInstance as unknown as jest.Mocked<typeof axios>);
   });
 
   describe('Detection Pipeline API', () => {
@@ -44,7 +44,7 @@ describe('API Integration - Detection System', () => {
             detectionId: 'det-1',
             frame: 0,
             timestamp: 0,
-            vruType: 'pedestrian',
+            vruType: 'pedestrian' as const,
             x: 100,
             y: 100,
             width: 50,
@@ -184,8 +184,8 @@ describe('API Integration - Detection System', () => {
       );
 
       // Check URL enhancement
-      expect(result[0].url).toBe('http://155.138.239.131:8000/uploads/test-video-1.mp4');
-      expect(result[1].url).toBe('http://155.138.239.131:8000/uploads/test-video-2.mp4');
+      expect(result[0].url).toBe('http://localhost:8000/uploads/test-video-1.mp4');
+      expect(result[1].url).toBe('http://localhost:8000/uploads/test-video-2.mp4');
       
       // Check status mapping
       expect(result[0].status).toBe('completed');
@@ -309,10 +309,11 @@ describe('API Integration - Detection System', () => {
 
   describe('Annotation API Integration', () => {
     const mockAnnotation = {
+      videoId: 'video-123',
       detectionId: 'det-123',
       frameNumber: 5,
       timestamp: 166.67,
-      vruType: 'pedestrian',
+      vruType: 'pedestrian' as const,
       boundingBox: {
         x: 100,
         y: 100,
@@ -333,7 +334,6 @@ describe('API Integration - Detection System', () => {
       const mockResponse = [
         {
           id: 'ann-1',
-          videoId: mockVideoId,
           ...mockAnnotation
         }
       ];
@@ -353,7 +353,6 @@ describe('API Integration - Detection System', () => {
     it('should create new annotation with correct format', async () => {
       const mockResponse = {
         id: 'new-ann-123',
-        videoId: mockVideoId,
         ...mockAnnotation,
         createdAt: '2023-01-01T00:00:00Z',
         updatedAt: '2023-01-01T00:00:00Z'
@@ -520,7 +519,8 @@ describe('API Integration - Detection System', () => {
         `/api/videos/${mockVideoId}/ground-truth`
       );
 
-      expect(result.objects[0]).toMatchObject({
+      const resultWithObjects = result as { objects: Array<{ boundingBox: { x: number; y: number; width: number; height: number; confidence: number; label: string }; vruType: string; detectionId: string; frameNumber: number; timestamp: number; validated: boolean }> };
+      expect(resultWithObjects.objects[0]).toMatchObject({
         boundingBox: {
           x: 100,
           y: 100,
@@ -529,7 +529,7 @@ describe('API Integration - Detection System', () => {
           confidence: 0.95,
           label: 'person'
         },
-        vruType: 'pedestrian',
+        vruType: 'pedestrian' as const,
         detectionId: 'det-1',
         frameNumber: 0,
         timestamp: 0,
@@ -576,7 +576,8 @@ describe('API Integration - Detection System', () => {
       const result = await apiService.getGroundTruth(mockVideoId);
 
       // Should provide default values for missing fields
-      expect(result.objects[0]).toMatchObject({
+      const resultWithDefaults = result as { objects: Array<{ boundingBox: { x: number; y: number; width: number; height: number; confidence: number; label: string }; vruType: string; frameNumber: number; timestamp: number; validated: boolean; occluded: boolean; truncated: boolean; difficult: boolean }> };
+      expect(resultWithDefaults.objects[0]).toMatchObject({
         boundingBox: {
           x: 0,
           y: 0,
@@ -585,7 +586,7 @@ describe('API Integration - Detection System', () => {
           confidence: 1.0,
           label: 'person'
         },
-        vruType: 'pedestrian',
+        vruType: 'pedestrian' as const,
         frameNumber: 0,
         timestamp: 0,
         validated: false,
@@ -612,10 +613,11 @@ describe('API Integration - Detection System', () => {
 
       const result = await apiService.getGroundTruth(mockVideoId);
 
-      expect(result.objects[0].vruType).toBe('pedestrian');
-      expect(result.objects[1].vruType).toBe('cyclist');
-      expect(result.objects[2].vruType).toBe('motorcyclist');
-      expect(result.objects[3].vruType).toBe('pedestrian'); // Default fallback
+      const resultWithVruTypes = result as { objects: Array<{ vruType: string }> };
+      expect(resultWithVruTypes.objects[0].vruType).toBe('pedestrian');
+      expect(resultWithVruTypes.objects[1].vruType).toBe('cyclist');
+      expect(resultWithVruTypes.objects[2].vruType).toBe('motorcyclist');
+      expect(resultWithVruTypes.objects[3].vruType).toBe('pedestrian'); // Default fallback
     });
   });
 
@@ -654,7 +656,7 @@ describe('API Integration - Detection System', () => {
     it('should test connectivity', async () => {
       // Mock the environment config connectivity test
       const mockConnectivityTest = jest.spyOn(
-        require('../../ai-model-validation-platform/frontend/src/utils/envConfig').default,
+        require('./utils/envConfig').default,
         'testApiConnectivity'
       ).mockResolvedValue({
         connected: true,

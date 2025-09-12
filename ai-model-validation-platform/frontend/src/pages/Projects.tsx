@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useErrorHandler } from '../hooks/useErrorHandler';
+import { GridSkeleton } from '../components/ui/LoadingState';
 import {
   Box,
   Typography,
@@ -22,7 +24,6 @@ import {
   Menu,
   Alert,
   CircularProgress,
-  Skeleton,
 } from '@mui/material';
 import {
   Add,
@@ -53,6 +54,10 @@ const Projects: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { withErrorHandling, withRetry } = useErrorHandler({
+    messagePrefix: 'Projects',
+    maxRetries: 2,
+  });
   const [openDialog, setOpenDialog] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -85,11 +90,6 @@ const Projects: React.FC = () => {
     setAnchorEl(null);
     setSelectedProject(null);
   };
-
-  // Load projects on component mount
-  useEffect(() => {
-    loadProjects();
-  }, []);
 
   // Load all project videos function - defined before useEffect
   const loadAllProjectVideos = useCallback(async () => {
@@ -126,23 +126,60 @@ const Projects: React.FC = () => {
     }
   }, [projects, loadAllProjectVideos]);
 
-  const loadProjects = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const projectsData = await getProjects();
-      setProjects(projectsData);
-    } catch (error: any) {
-      console.error('Failed to load projects:', error);
-      const errorMessage = error?.message || (typeof error === 'string' ? error : 'Failed to load projects. Please try again.');
-      setError(errorMessage);
-      setProjects([]);
-    } finally {
-      setLoading(false);
+  const loadProjects = useCallback(async () => {
+    const result = await withRetry(
+      async () => {
+        setLoading(true);
+        setError(null);
+        const projectsData = await getProjects();
+        setProjects(projectsData);
+        return projectsData;
+      },
+      {
+        context: 'loading projects',
+        onRetry: (attempt) => {
+          console.log(`Retrying to load projects (attempt ${attempt})...`);
+        },
+        onError: (error) => {
+          const errorMessage = getErrorMessage(error, 'Failed to load projects. Please try again.');
+          setError(errorMessage);
+          setProjects([]);
+        }
+      }
+    );
+    
+    setLoading(false);
+    return result;
+  }, [withRetry]);
+
+  // Load projects on component mount
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  const handleFormChange = (field: keyof ProjectCreate, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
-  const validateForm = (): boolean => {
+  const resetForm = useCallback(() => {
+    setFormData({
+      name: '',
+      description: '',
+      cameraModel: '',
+      cameraView: CameraType.FRONT_FACING_VRU,
+      signalType: SignalType.GPIO
+    });
+    setFormErrors({});
+    setFormError(null);
+    setIsEditing(false);
+    setEditingProject(null);
+  }, []);
+
+  const validateForm = useCallback((): boolean => {
     const errors: {[key: string]: string} = {};
     
     if (!formData.name.trim()) {
@@ -157,67 +194,49 @@ const Projects: React.FC = () => {
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData]);
 
-  const handleFormChange = (field: keyof ProjectCreate, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    // Clear error when user starts typing
-    if (formErrors[field]) {
-      setFormErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      cameraModel: '',
-      cameraView: CameraType.FRONT_FACING_VRU,
-      signalType: SignalType.GPIO
-    });
-    setFormErrors({});
-    setFormError(null);
-    setIsEditing(false);
-    setEditingProject(null);
-  };
-
-  const handleCreateProject = async () => {
+  const handleCreateProject = useCallback(async () => {
     if (!validateForm()) {
       return;
     }
 
-    try {
-      setFormLoading(true);
-      setFormError(null);
-      
-      if (isEditing && editingProject) {
-        // Update existing project
-        const updateData: ProjectUpdate = {
-          name: formData.name,
-          description: formData.description,
-          cameraModel: formData.cameraModel,
-          cameraView: formData.cameraView,
-          signalType: formData.signalType
-        };
-        await updateProject(editingProject.id, updateData);
-      } else {
-        // Create new project
-        await createProject(formData);
+    setFormLoading(true);
+    setFormError(null);
+
+    await withErrorHandling(
+      async () => {
+        if (isEditing && editingProject) {
+          // Update existing project
+          const updateData: ProjectUpdate = {
+            name: formData.name,
+            description: formData.description,
+            cameraModel: formData.cameraModel,
+            cameraView: formData.cameraView,
+            signalType: formData.signalType
+          };
+          await updateProject(editingProject.id, updateData);
+        } else {
+          // Create new project
+          await createProject(formData);
+        }
+        
+        // Success - close dialog and refresh projects
+        setOpenDialog(false);
+        resetForm();
+        await loadProjects();
+      },
+      {
+        context: isEditing ? 'updating project' : 'creating project',
+        onError: (error) => {
+          const errorMessage = getErrorMessage(error, `Failed to ${isEditing ? 'update' : 'create'} project. Please try again.`);
+          setFormError(errorMessage);
+        }
       }
-      
-      // Success - close dialog and refresh projects
-      setOpenDialog(false);
-      resetForm();
-      await loadProjects();
-      
-    } catch (error: any) {
-      console.error('Project save error:', error);
-      const errorMessage = error?.message || (typeof error === 'string' ? error : `Failed to ${isEditing ? 'update' : 'create'} project. Please try again.`);
-      setFormError(errorMessage);
-    } finally {
-      setFormLoading(false);
-    }
-  };
+    );
+
+    setFormLoading(false);
+  }, [validateForm, isEditing, editingProject, formData, withErrorHandling, loadProjects, resetForm]);
 
   const handleEditProject = () => {
     const project = projects.find(p => p.id === selectedProject);
@@ -228,8 +247,8 @@ const Projects: React.FC = () => {
         name: project.name,
         description: project.description || '',
         cameraModel: project.cameraModel || '',
-        cameraView: project.cameraView || 'Front-facing VRU',
-        signalType: project.signalType || 'GPIO'
+        cameraView: project.cameraView || CameraType.FRONT_FACING_VRU,
+        signalType: project.signalType || SignalType.GPIO
       });
       setOpenDialog(true);
     }
@@ -254,33 +273,37 @@ const Projects: React.FC = () => {
     handleMenuClose();
   };
 
-  const handleVideoSelectionComplete = async (selectedVideos: VideoFile[]) => {
+  const handleVideoSelectionComplete = useCallback(async (selectedVideos: VideoFile[]) => {
     if (!linkingProject) return;
     
-    try {
-      setFormLoading(true);
-      setError(null);
-      
-      const videoIds = selectedVideos.map(video => video.id);
-      await linkVideosToProject(linkingProject.id, videoIds);
-      
-      // Update local project videos state
-      setProjectVideos(prev => ({
-        ...prev,
-        [linkingProject.id]: [...(prev[linkingProject.id] || []), ...selectedVideos]
-      }));
-      
-      // Refresh projects to get updated counts
-      await loadProjects();
-      
-    } catch (err: any) {
-      console.error('Failed to link videos:', err);
-      setError(getErrorMessage(err, 'Failed to link videos to project'));
-    } finally {
-      setFormLoading(false);
-      setLinkingProject(null);
-    }
-  };
+    setFormLoading(true);
+    setError(null);
+
+    await withErrorHandling(
+      async () => {
+        const videoIds = selectedVideos.map(video => video.id);
+        await linkVideosToProject(linkingProject.id, videoIds);
+        
+        // Update local project videos state
+        setProjectVideos(prev => ({
+          ...prev,
+          [linkingProject.id]: [...(prev[linkingProject.id] || []), ...selectedVideos]
+        }));
+        
+        // Refresh projects to get updated counts
+        await loadProjects();
+      },
+      {
+        context: 'linking videos to project',
+        onError: (err) => {
+          setError(getErrorMessage(err, 'Failed to link videos to project'));
+        }
+      }
+    );
+
+    setFormLoading(false);
+    setLinkingProject(null);
+  }, [linkingProject, withErrorHandling, loadProjects]);
 
   // Delete confirmation handler is now inline in the DeleteConfirmationDialog
 
@@ -350,33 +373,7 @@ const Projects: React.FC = () => {
       )}
 
       {loading ? (
-        <Grid container spacing={3}>
-          {[1, 2, 3, 4, 5, 6].map((index) => (
-            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={index}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <Skeleton variant="circular" width={24} height={24} />
-                    <Skeleton variant="text" width="60%" height={32} />
-                  </Box>
-                  <Skeleton variant="text" width="100%" height={20} sx={{ mb: 1 }} />
-                  <Skeleton variant="text" width="80%" height={20} sx={{ mb: 2 }} />
-                  <Skeleton variant="text" width="50%" height={16} sx={{ mb: 1 }} />
-                  <Skeleton variant="text" width="60%" height={16} sx={{ mb: 1 }} />
-                  <Skeleton variant="text" width="40%" height={16} sx={{ mb: 2 }} />
-                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                    <Skeleton variant="rounded" width={60} height={24} />
-                    <Skeleton variant="rounded" width={80} height={24} />
-                    <Skeleton variant="rounded" width={70} height={24} />
-                  </Box>
-                </CardContent>
-                <CardActions>
-                  <Skeleton variant="rounded" width={120} height={36} />
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+        <GridSkeleton items={6} columns={3} itemHeight={300} showActions={true} />
       ) : !error && projects.length === 0 ? (
         <Box textAlign="center" py={6}>
           <Camera sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
@@ -400,7 +397,7 @@ const Projects: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {projects.map((project) => (
-            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={project.id}>
+            <Grid item xs={12} md={6} lg={4} key={project.id}>
               <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -453,9 +450,9 @@ const Projects: React.FC = () => {
                       size="small"
                       color="primary"
                     />
-                    {(project.accuracy ?? 0) > 0 && (
+                    {(project.averageAccuracy ?? 0) > 0 && (
                       <Chip
-                        label={`${project.accuracy ?? 0}% accuracy`}
+                        label={`${project.averageAccuracy ?? 0}% accuracy`}
                         variant="outlined"
                         size="small"
                       />
@@ -558,9 +555,8 @@ const Projects: React.FC = () => {
               disabled={formLoading}
             >
               <MenuItem value={CameraType.FRONT_FACING_VRU}>Front-facing VRU</MenuItem>
-              <MenuItem value={CameraType.REAR_FACING_VRU}>Rear-facing VRU</MenuItem>
-              <MenuItem value={CameraType.IN_CAB_DRIVER_BEHAVIOR}>In-Cab Driver Behavior</MenuItem>
-              <MenuItem value={CameraType.MULTI_ANGLE_SCENARIOS}>Multi-angle</MenuItem>
+              <MenuItem value={CameraType.REAR_VIEW}>Rear-view</MenuItem>
+              <MenuItem value={CameraType.SIDE_VIEW}>Side-view</MenuItem>
             </Select>
           </FormControl>
           
@@ -573,9 +569,9 @@ const Projects: React.FC = () => {
               disabled={formLoading}
             >
               <MenuItem value={SignalType.GPIO}>GPIO</MenuItem>
-              <MenuItem value={SignalType.NETWORK_PACKET}>Network Packet</MenuItem>
-              <MenuItem value={SignalType.SERIAL}>Serial</MenuItem>
-              <MenuItem value={SignalType.CAN_BUS}>CAN Bus</MenuItem>
+              <MenuItem value={SignalType.TTL}>TTL</MenuItem>
+              <MenuItem value={SignalType.ANALOG}>Analog</MenuItem>
+              <MenuItem value={SignalType.DIGITAL}>Digital</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>

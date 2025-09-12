@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # PostgreSQL Database
   postgres:
@@ -5,9 +7,9 @@ services:
     container_name: ai_validation_postgres
     hostname: postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-vru_validation}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_change_me}
+      POSTGRES_DB: ${VRU_DATABASE_NAME}
+      POSTGRES_USER: ${VRU_DATABASE_USER}
+      POSTGRES_PASSWORD: ${VRU_DATABASE_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     ports:
       - "127.0.0.1:5432:5432"
@@ -17,7 +19,7 @@ services:
     networks:
       - vru_validation_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vru_validation}"]
+      test: ["CMD-SHELL", "pg_isready -U ${VRU_DATABASE_USER} -d ${VRU_DATABASE_NAME}"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -49,38 +51,42 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-secure_redis_password} --appendonly yes
+    command: redis-server --requirepass ${VRU_REDIS_PASSWORD} --appendonly yes
 
   # FastAPI Backend
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    build: ./backend
     container_name: ai_validation_backend
     hostname: backend
     ports:
       - "0.0.0.0:8000:8000"
     environment:
       # Security
-      - AIVALIDATION_SECRET_KEY=${AIVALIDATION_SECRET_KEY:-GENERATE_SECURE_KEY_FOR_PRODUCTION}
-      # Database - Use SQLite for development with working data
-      - AIVALIDATION_DATABASE_URL=sqlite:///./dev_database.db
-      - DATABASE_URL=sqlite:///./dev_database.db
-      # Redis
-      - AIVALIDATION_REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@redis:6379
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@redis:6379
+      - AIVALIDATION_SECRET_KEY=${VRU_SECRET_KEY}
+      - SECRET_KEY=${VRU_SECRET_KEY}
+      # Database - Unified PostgreSQL Configuration
+      - AIVALIDATION_DATABASE_URL=${VRU_DATABASE_URL}
+      - DATABASE_URL=${VRU_DATABASE_URL}
+      # Redis - Unified Redis Configuration
+      - AIVALIDATION_REDIS_URL=${VRU_REDIS_URL}
+      - REDIS_URL=${VRU_REDIS_URL}
       # API Configuration
-      - AIVALIDATION_API_PORT=8000
-      - AIVALIDATION_API_HOST=0.0.0.0
-      - AIVALIDATION_APP_ENVIRONMENT=${APP_ENV:-development}
-      # CORS Configuration for External IP Access (JSON format required)
-      - AIVALIDATION_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://155.138.239.131:3000"]
-      - ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://155.138.239.131:3000"]
-      # Legacy support
-      - API_PORT=8000
+      - AIVALIDATION_API_PORT=${VRU_API_PORT}
+      - AIVALIDATION_API_HOST=${VRU_API_HOST}
+      - AIVALIDATION_APP_ENVIRONMENT=${VRU_ENVIRONMENT}
+      - API_PORT=${VRU_API_PORT}
+      - API_HOST=${VRU_API_HOST}
+      # CORS Configuration - Unified Origins
+      - AIVALIDATION_CORS_ORIGINS=${VRU_CORS_ORIGINS}
+      - ALLOWED_ORIGINS=${VRU_CORS_ORIGINS}
       # Docker configuration
-      - AIVALIDATION_DOCKER_MODE=true
+      - AIVALIDATION_DOCKER_MODE=${VRU_DOCKER_MODE}
+      # Environment Variables
+      - NODE_ENV=${NODE_ENV}
+      - LOG_LEVEL=${LOG_LEVEL}
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -89,8 +95,8 @@ services:
       - ./backend:/app
       - ./models:/app/models
       - uploaded_videos:/app/uploads
-      # Mount the working SQLite database for persistence
-      - ./backend/dev_database.db:/app/dev_database.db
+      # Mount for PostgreSQL persistence (remove SQLite mount)
+      - postgres_migrations:/app/migrations
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -98,10 +104,7 @@ services:
       retries: 3
       start_period: 60s
     restart: unless-stopped
-    command: [
-      "sh", "-c",
-      "echo 'Using SQLite database: dev_database.db' && python -c 'import database; print(\"Database connection test passed\")' && uvicorn main:socketio_app --host 0.0.0.0 --port 8000 --reload"
-    ]
+    command: ["/app/scripts/wait-for-services.sh", "sh", "-c", "python simple_startup.py && uvicorn main:socketio_app --host 0.0.0.0 --port 8000"]
 
   # React Frontend
   frontend:
@@ -111,16 +114,15 @@ services:
     ports:
       - "0.0.0.0:3000:3000"
     environment:
-      - REACT_APP_API_URL=http://155.138.239.131:8000
-      - REACT_APP_WS_URL=ws://155.138.239.131:8000
-      - REACT_APP_SOCKETIO_URL=http://155.138.239.131:8001
-      - REACT_APP_VIDEO_BASE_URL=http://155.138.239.131:8000
-      - REACT_APP_ENVIRONMENT=${APP_ENV:-development}
-      - REACT_APP_DEBUG=${REACT_DEBUG:-false}
-      - REACT_APP_LOG_LEVEL=${REACT_LOG_LEVEL:-warning}
-      - NODE_ENV=${NODE_ENV:-development}
-      - GENERATE_SOURCEMAP=${GENERATE_SOURCEMAP:-false}
-      - CI=true
+      - REACT_APP_API_URL=${REACT_APP_API_URL}
+      - REACT_APP_WS_URL=${REACT_APP_WS_URL}
+      - REACT_APP_ML_ENGINE_URL=${REACT_APP_ML_ENGINE_URL}
+      - REACT_APP_VIDEO_BASE_URL=${REACT_APP_VIDEO_BASE_URL}
+      - REACT_APP_ENVIRONMENT=${REACT_APP_ENVIRONMENT}
+      - REACT_APP_DEBUG=${REACT_APP_DEBUG}
+      - NODE_ENV=${NODE_ENV}
+      - GENERATE_SOURCEMAP=${GENERATE_SOURCEMAP}
+      - CI=false
       - DOCKER=true
       - NODE_OPTIONS=--max_old_space_size=4096
     depends_on:
@@ -167,10 +169,28 @@ services:
       redis:
         condition: service_healthy
     environment:
-      CVAT_REDIS_HOST: redis
+      # CVAT Redis Configuration - Unified
+      CVAT_REDIS_HOST: ${VRU_REDIS_HOST}
+      CVAT_REDIS_PASSWORD: ${VRU_REDIS_PASSWORD}
+      # RQ (Redis Queue) Scheduler Configuration
+      RQ_REDIS_HOST: ${VRU_REDIS_HOST}
+      RQ_REDIS_PORT: ${VRU_REDIS_PORT}
+      RQ_REDIS_PASSWORD: ${VRU_REDIS_PASSWORD}
+      RQ_REDIS_DB: ${VRU_REDIS_DB}
+      # Additional Redis configurations
+      REDIS_HOST: ${VRU_REDIS_HOST}
+      REDIS_PORT: ${VRU_REDIS_PORT}
+      REDIS_PASSWORD: ${VRU_REDIS_PASSWORD}
+      REDIS_DB: ${VRU_REDIS_DB}
+      # Django Cache Configuration
+      DJANGO_CACHE_REDIS_URL: ${VRU_REDIS_URL}
+      # PostgreSQL Configuration
       CVAT_POSTGRES_HOST: cvat_db
       CVAT_POSTGRES_PASSWORD: cvat_password
+      # Django Configuration
       DJANGO_MODWSGI_EXTRA_ARGS: ""
+      # Debug settings for troubleshooting
+      DJANGO_LOG_LEVEL: INFO
     ports:
       - "0.0.0.0:8080:8080"
     networks:
@@ -179,9 +199,16 @@ services:
       - cvat_data:/home/django/data
       - cvat_keys:/home/django/keys
       - cvat_logs:/home/django/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/server/about"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 volumes:
   postgres_data:
+  postgres_migrations:
   redis_data:
   uploaded_videos:
   cvat_db:
@@ -198,7 +225,3 @@ networks:
       config:
         - subnet: 172.20.0.0/16
           gateway: 172.20.0.1
-    driver_opts:
-      com.docker.network.bridge.enable_icc: "true"
-      com.docker.network.bridge.enable_ip_masquerade: "true"
-      com.docker.network.driver.mtu: "1500"

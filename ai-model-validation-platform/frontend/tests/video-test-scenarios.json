@@ -1,0 +1,641 @@
+{
+  "testScenarios": {
+    "happyPath": {
+      "name": "Happy Path - Sequential Video Playback",
+      "description": "All videos play successfully in sequence with fullscreen",
+      "videos": [
+        {
+          "id": "happy-1",
+          "filename": "test_sequence_1.mp4",
+          "duration": 5,
+          "fps": 30,
+          "size": 5242880,
+          "url": "/test-videos/test_sequence_1.mp4"
+        },
+        {
+          "id": "happy-2", 
+          "filename": "test_sequence_2.mp4",
+          "duration": 8,
+          "fps": 30,
+          "size": 8388608,
+          "url": "/test-videos/test_sequence_2.mp4"
+        },
+        {
+          "id": "happy-3",
+          "filename": "test_sequence_3.mp4", 
+          "duration": 12,
+          "fps": 30,
+          "size": 12582912,
+          "url": "/test-videos/test_sequence_3.mp4"
+        }
+      ],
+      "config": {
+        "autoAdvance": true,
+        "loopPlayback": false,
+        "randomOrder": false,
+        "fullscreenEnabled": true,
+        "latencyMs": 100
+      },
+      "expectedBehavior": {
+        "totalPlaybackTime": 25000,
+        "videoTransitions": 2,
+        "fullscreenEntries": 3,
+        "completionCallback": true
+      }
+    },
+    
+    "errorScenarios": {
+      "missingVideos": {
+        "name": "Missing Video Files",
+        "description": "Handle missing or inaccessible video files gracefully",
+        "videos": [
+          {
+            "id": "missing-1",
+            "filename": "nonexistent_video.mp4",
+            "duration": 0,
+            "fps": 30,
+            "size": 0,
+            "url": "/test-videos/nonexistent_video.mp4"
+          },
+          {
+            "id": "valid-1",
+            "filename": "valid_video.mp4", 
+            "duration": 10,
+            "fps": 30,
+            "size": 10485760,
+            "url": "/test-videos/valid_video.mp4"
+          }
+        ],
+        "config": {
+          "autoAdvance": true,
+          "skipOnError": true,
+          "maxRetries": 3
+        },
+        "expectedBehavior": {
+          "errorHandling": true,
+          "skipToNextVideo": true,
+          "errorCallbacks": 1,
+          "continuePlayback": true
+        }
+      },
+      
+      "corruptedVideos": {
+        "name": "Corrupted Video Files",
+        "description": "Handle corrupted or malformed video files", 
+        "videos": [
+          {
+            "id": "corrupt-1",
+            "filename": "corrupted_video.mp4",
+            "duration": 15,
+            "fps": 30,
+            "size": 1048576,
+            "url": "/test-videos/corrupted_video.mp4",
+            "corruptionType": "header_damaged"
+          },
+          {
+            "id": "corrupt-2", 
+            "filename": "truncated_video.mp4",
+            "duration": 20,
+            "fps": 30,
+            "size": 512000,
+            "url": "/test-videos/truncated_video.mp4",
+            "corruptionType": "incomplete_file"
+          }
+        ],
+        "config": {
+          "enableRetry": true,
+          "retryAttempts": 2,
+          "retryDelay": 1000
+        },
+        "expectedBehavior": {
+          "decodeErrors": 2,
+          "retryAttempts": 4,
+          "fallbackBehavior": true,
+          "userNotification": true
+        }
+      },
+      
+      "networkIssues": {
+        "name": "Network Connectivity Problems",
+        "description": "Simulate various network issues during video loading",
+        "videos": [
+          {
+            "id": "slow-load",
+            "filename": "slow_loading_video.mp4",
+            "duration": 10,
+            "fps": 30,
+            "size": 52428800,
+            "url": "/test-videos/slow_loading_video.mp4",
+            "simulatedLatency": 5000
+          }
+        ],
+        "networkConditions": {
+          "bandwidth": "1Mbps",
+          "latency": 500,
+          "packetLoss": 0.02,
+          "jitter": 50
+        },
+        "config": {
+          "loadTimeout": 30000,
+          "enablePreloading": false
+        },
+        "expectedBehavior": {
+          "loadingIndicator": true,
+          "timeoutHandling": true,
+          "adaptiveBehavior": true
+        }
+      }
+    },
+    
+    "userInteraction": {
+      "pauseDuringPlayback": {
+        "name": "User Pauses During Playback",
+        "description": "User pauses video in middle of sequence",
+        "videos": [
+          {
+            "id": "pause-test-1", 
+            "filename": "pause_test_video_1.mp4",
+            "duration": 15,
+            "fps": 30,
+            "size": 15728640,
+            "url": "/test-videos/pause_test_video_1.mp4"
+          },
+          {
+            "id": "pause-test-2",
+            "filename": "pause_test_video_2.mp4", 
+            "duration": 20,
+            "fps": 30,
+            "size": 20971520,
+            "url": "/test-videos/pause_test_video_2.mp4"
+          }
+        ],
+        "interactions": [
+          {
+            "time": 5000,
+            "action": "pause",
+            "expectedState": "paused"
+          },
+          {
+            "time": 8000, 
+            "action": "resume",
+            "expectedState": "playing"
+          }
+        ],
+        "expectedBehavior": {
+          "pauseRespected": true,
+          "resumeFromCorrectTime": true,
+          "sequenceContinues": true
+        }
+      },
+      
+      "skipVideos": {
+        "name": "User Skips Videos",
+        "description": "User manually skips through video sequence",
+        "videos": [
+          {
+            "id": "skip-1",
+            "filename": "skip_test_1.mp4",
+            "duration": 8,
+            "fps": 30,
+            "size": 8388608,
+            "url": "/test-videos/skip_test_1.mp4"
+          },
+          {
+            "id": "skip-2", 
+            "filename": "skip_test_2.mp4",
+            "duration": 12,
+            "fps": 30,
+            "size": 12582912,
+            "url": "/test-videos/skip_test_2.mp4"
+          },
+          {
+            "id": "skip-3",
+            "filename": "skip_test_3.mp4",
+            "duration": 6,
+            "fps": 30,
+            "size": 6291456,
+            "url": "/test-videos/skip_test_3.mp4"
+          }
+        ],
+        "interactions": [
+          {
+            "time": 2000,
+            "action": "skipNext",
+            "expectedResult": "video-2"
+          },
+          {
+            "time": 4000,
+            "action": "skipNext", 
+            "expectedResult": "video-3"
+          },
+          {
+            "time": 1000,
+            "action": "skipPrevious",
+            "expectedResult": "video-2"
+          }
+        ],
+        "expectedBehavior": {
+          "navigationWorks": true,
+          "progressTracking": true,
+          "boundaryHandling": true
+        }
+      },
+      
+      "fullscreenToggle": {
+        "name": "Fullscreen Toggle During Playback",
+        "description": "User toggles fullscreen mode during video playback",
+        "videos": [
+          {
+            "id": "fullscreen-test",
+            "filename": "fullscreen_test_video.mp4",
+            "duration": 20,
+            "fps": 30,
+            "size": 20971520,
+            "url": "/test-videos/fullscreen_test_video.mp4"
+          }
+        ],
+        "interactions": [
+          {
+            "time": 3000,
+            "action": "enterFullscreen",
+            "expectedState": "fullscreen"
+          },
+          {
+            "time": 8000,
+            "action": "exitFullscreen", 
+            "expectedState": "windowed"
+          },
+          {
+            "time": 12000,
+            "action": "enterFullscreen",
+            "expectedState": "fullscreen"
+          }
+        ],
+        "expectedBehavior": {
+          "fullscreenTransitions": 3,
+          "videoNotInterrupted": true,
+          "controlsAccessible": true
+        }
+      }
+    },
+    
+    "browserCompatibility": {
+      "chrome": {
+        "name": "Chrome Browser Testing",
+        "description": "Test all features in Chrome browser environment",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "supportedFeatures": {
+          "fullscreenAPI": "requestFullscreen",
+          "videoFormats": ["mp4", "webm"],
+          "codecs": ["h264", "vp8", "vp9"],
+          "autoplay": "user-activation-required"
+        },
+        "testCases": [
+          "standardVideoPlayback",
+          "fullscreenFunctionality", 
+          "codecSupport",
+          "autoplayPolicy"
+        ]
+      },
+      
+      "firefox": {
+        "name": "Firefox Browser Testing",
+        "description": "Test all features in Firefox browser environment",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+        "supportedFeatures": {
+          "fullscreenAPI": "mozRequestFullScreen",
+          "videoFormats": ["mp4", "webm", "ogg"],
+          "codecs": ["h264", "vp8", "vp9", "av1"],
+          "autoplay": "allowed"
+        },
+        "testCases": [
+          "mozillaFullscreenAPI",
+          "webmSupport",
+          "av1Codec",
+          "autoplayBehavior"
+        ]
+      },
+      
+      "safari": {
+        "name": "Safari Browser Testing", 
+        "description": "Test all features in Safari browser environment",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+        "supportedFeatures": {
+          "fullscreenAPI": "webkitRequestFullscreen",
+          "videoFormats": ["mp4"],
+          "codecs": ["h264"],
+          "autoplay": "user-gesture-required"
+        },
+        "testCases": [
+          "webkitFullscreenAPI",
+          "h264OnlySupport",
+          "autoplayRestrictions",
+          "mobilePlaybackPolicies"
+        ]
+      },
+      
+      "edge": {
+        "name": "Edge Browser Testing",
+        "description": "Test all features in Edge browser environment", 
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59",
+        "supportedFeatures": {
+          "fullscreenAPI": "requestFullscreen",
+          "videoFormats": ["mp4", "webm"],
+          "codecs": ["h264", "vp8", "vp9"],
+          "autoplay": "user-activation-required"
+        },
+        "testCases": [
+          "modernEdgeFeatures", 
+          "legacyEdgeCompatibility",
+          "windowsOptimizations"
+        ]
+      }
+    },
+    
+    "performanceTesting": {
+      "largeVideoFiles": {
+        "name": "Large Video File Performance",
+        "description": "Test performance with large video files",
+        "videos": [
+          {
+            "id": "large-1",
+            "filename": "large_video_100mb.mp4",
+            "duration": 180,
+            "fps": 30,
+            "size": 104857600,
+            "resolution": "1920x1080",
+            "url": "/test-videos/large_video_100mb.mp4"
+          },
+          {
+            "id": "large-2",
+            "filename": "large_video_500mb.mp4", 
+            "duration": 600,
+            "fps": 30,
+            "size": 524288000,
+            "resolution": "3840x2160",
+            "url": "/test-videos/large_video_500mb.mp4"
+          }
+        ],
+        "performanceMetrics": {
+          "maxLoadTime": 30000,
+          "maxMemoryUsage": 200000000,
+          "maxCPUUsage": 80,
+          "targetFramerate": 30
+        },
+        "expectedBehavior": {
+          "progressiveLoading": true,
+          "memoryManagement": true,
+          "smoothPlayback": true
+        }
+      },
+      
+      "multipleVideoInstances": {
+        "name": "Multiple Video Instances",
+        "description": "Test performance with multiple concurrent video players",
+        "instances": 5,
+        "videosPerInstance": 3,
+        "totalVideos": 15,
+        "performanceConstraints": {
+          "maxTotalMemory": 500000000,
+          "maxConcurrentLoads": 3,
+          "resourceSharing": true
+        },
+        "expectedBehavior": {
+          "resourceContention": "managed",
+          "individualPerformance": "maintained",
+          "systemStability": true
+        }
+      },
+      
+      "memoryStressTest": {
+        "name": "Memory Stress Testing",
+        "description": "Test memory usage under stress conditions",
+        "scenario": {
+          "sequentialLoads": 50,
+          "rapidSwitching": true,
+          "memoryPressure": true
+        },
+        "memoryLimits": {
+          "warningThreshold": 100000000,
+          "criticalThreshold": 200000000,
+          "maxAllowed": 300000000
+        },
+        "expectedBehavior": {
+          "memoryLeakPrevention": true,
+          "gracefulDegradation": true,
+          "cleanupOnDestroy": true
+        }
+      }
+    },
+    
+    "labJackIntegration": {
+      "basicSynchronization": {
+        "name": "Basic LabJack Synchronization", 
+        "description": "Test basic video-LabJack data synchronization",
+        "devices": ["T7"],
+        "sampleRate": 1000,
+        "channels": ["AIN0", "AIN1", "FIO0"],
+        "synchronizationPrecision": 1,
+        "testDuration": 30,
+        "expectedBehavior": {
+          "timestampAccuracy": true,
+          "dataCorrelation": true,
+          "clockSynchronization": true
+        }
+      },
+      
+      "highSpeedAcquisition": {
+        "name": "High-Speed Data Acquisition",
+        "description": "Test high-speed LabJack data synchronization with video",
+        "devices": ["T8"],
+        "sampleRate": 50000,
+        "channels": ["AIN0", "AIN1", "AIN2", "AIN3"],
+        "synchronizationPrecision": 0.1,
+        "testDuration": 10,
+        "performanceRequirements": {
+          "maxLatency": 1,
+          "maxJitter": 0.5,
+          "dataLossThreshold": 0.001
+        },
+        "expectedBehavior": {
+          "realTimeProcessing": true,
+          "bufferManagement": true,
+          "precisionTiming": true
+        }
+      },
+      
+      "multiDeviceSynchronization": {
+        "name": "Multi-Device Synchronization",
+        "description": "Synchronize video with multiple LabJack devices",
+        "devices": ["T4", "T7", "T8"], 
+        "deviceConfigs": {
+          "T4": { "sampleRate": 10000, "channels": ["AIN0", "FIO0"] },
+          "T7": { "sampleRate": 25000, "channels": ["AIN0", "AIN1", "FIO0", "FIO1"] },
+          "T8": { "sampleRate": 50000, "channels": ["AIN0", "AIN1", "AIN2", "AIN3"] }
+        },
+        "synchronizationChallenges": {
+          "clockDrift": true,
+          "sampleRateDifferences": true,
+          "timestampAlignment": true
+        },
+        "expectedBehavior": {
+          "masterClockSync": true,
+          "dataInterleaving": true,
+          "coherentTimeline": true
+        }
+      }
+    },
+    
+    "edgeCases": {
+      "veryShortVideos": {
+        "name": "Very Short Video Files",
+        "description": "Test handling of extremely short video files",
+        "videos": [
+          {
+            "id": "short-1",
+            "filename": "very_short_0.1s.mp4",
+            "duration": 0.1,
+            "fps": 30,
+            "frames": 3
+          },
+          {
+            "id": "short-2", 
+            "filename": "single_frame.mp4",
+            "duration": 0.033,
+            "fps": 30,
+            "frames": 1
+          }
+        ],
+        "expectedBehavior": {
+          "properTransitions": true,
+          "noSkipping": true,
+          "accurateTiming": true
+        }
+      },
+      
+      "veryLongVideos": {
+        "name": "Very Long Video Files",
+        "description": "Test handling of extremely long video files",
+        "videos": [
+          {
+            "id": "long-1",
+            "filename": "very_long_3600s.mp4", 
+            "duration": 3600,
+            "fps": 30,
+            "size": 3774873600
+          }
+        ],
+        "expectedBehavior": {
+          "streamingSupport": true,
+          "seekingFunctionality": true,
+          "memoryEfficiency": true
+        }
+      },
+      
+      "unusualFrameRates": {
+        "name": "Unusual Frame Rates",
+        "description": "Test handling of non-standard frame rates",
+        "videos": [
+          {
+            "id": "fps-1",
+            "filename": "unusual_fps_23.976.mp4",
+            "duration": 10,
+            "fps": 23.976
+          },
+          {
+            "id": "fps-2",
+            "filename": "high_fps_120.mp4",
+            "duration": 5,
+            "fps": 120
+          },
+          {
+            "id": "fps-3",
+            "filename": "low_fps_15.mp4", 
+            "duration": 8,
+            "fps": 15
+          }
+        ],
+        "expectedBehavior": {
+          "accurateFrameCounting": true,
+          "properTimeCalculation": true,
+          "smoothPlayback": true
+        }
+      },
+      
+      "mixedResolutions": {
+        "name": "Mixed Video Resolutions",
+        "description": "Test handling of videos with different resolutions in sequence",
+        "videos": [
+          {
+            "id": "res-1",
+            "filename": "480p_video.mp4",
+            "duration": 5,
+            "resolution": "640x480"
+          },
+          {
+            "id": "res-2",
+            "filename": "1080p_video.mp4",
+            "duration": 5, 
+            "resolution": "1920x1080"
+          },
+          {
+            "id": "res-3",
+            "filename": "4k_video.mp4",
+            "duration": 5,
+            "resolution": "3840x2160"
+          }
+        ],
+        "expectedBehavior": {
+          "seamlessTransitions": true,
+          "adaptiveRendering": true,
+          "consistentControls": true
+        }
+      }
+    }
+  },
+  
+  "testConfiguration": {
+    "environment": {
+      "browser": "jsdom",
+      "node": "18.x",
+      "testFramework": "jest",
+      "testingLibrary": "@testing-library/react"
+    },
+    "timeouts": {
+      "default": 60000,
+      "videoLoad": 30000,
+      "fullscreenTransition": 5000,
+      "userInteraction": 10000,
+      "networkOperation": 45000
+    },
+    "mocks": {
+      "videoElement": true,
+      "fullscreenAPI": true,
+      "performanceAPI": true,
+      "networkConditions": true,
+      "labJackDevices": true
+    },
+    "coverage": {
+      "threshold": {
+        "global": {
+          "branches": 80,
+          "functions": 85,
+          "lines": 90,
+          "statements": 90
+        }
+      },
+      "collectFrom": [
+        "src/components/SequentialVideoManager.tsx",
+        "src/components/VideoAnnotationPlayer.tsx", 
+        "src/utils/videoPlaybackManager.ts",
+        "src/hooks/useVideoPlayer.ts"
+      ]
+    },
+    "reporting": {
+      "formats": ["json", "lcov", "text-summary", "html"],
+      "outputPath": "coverage/video-tests",
+      "includeMetrics": true,
+      "generateSummary": true
+    }
+  }
+}

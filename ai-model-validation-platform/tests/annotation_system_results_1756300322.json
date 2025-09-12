@@ -1,0 +1,91 @@
+{
+  "test_started": "2025-08-27T14:11:59.189098",
+  "frontend_url": "http://localhost:3000",
+  "backend_url": "http://localhost:8000",
+  "annotation_tests": [
+    {
+      "test_name": "Detection Events List",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:11:59.192927",
+      "details": "Detection events endpoint returns 404 (no data)",
+      "error": null
+    },
+    {
+      "test_name": "Ground Truth List",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:11:59.697442",
+      "details": "Ground truth endpoint returns 404 (no data)",
+      "error": null
+    },
+    {
+      "test_name": "Ground Truth Creation",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:11:59.698761",
+      "details": "Status: 404",
+      "error": null
+    },
+    {
+      "test_name": "Annotations List",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:12:00.202222",
+      "details": "Annotations endpoint returns 404 (no data)",
+      "error": null
+    },
+    {
+      "test_name": "Annotation Creation",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:12:00.203665",
+      "details": "Status: 404",
+      "error": null
+    },
+    {
+      "test_name": "Video Frame Extraction",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:12:00.716590",
+      "details": "Frame extraction endpoint not available",
+      "error": null
+    },
+    {
+      "test_name": "Validation: Missing video_id",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:12:01.219573",
+      "details": "Should reject invalid data, got: 404",
+      "error": null
+    },
+    {
+      "test_name": "Validation: Invalid bbox coordinates",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:12:01.220817",
+      "details": "Should reject invalid data, got: 404",
+      "error": null
+    },
+    {
+      "test_name": "Validation: Empty annotation data",
+      "status": "FAIL",
+      "timestamp": "2025-08-27T14:12:01.222002",
+      "details": "Should reject invalid data, got: 404",
+      "error": null
+    },
+    {
+      "test_name": "Export: General annotations export",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:12:01.725090",
+      "details": "Export endpoint not available",
+      "error": null
+    },
+    {
+      "test_name": "Export: Ground truth export",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:12:01.726390",
+      "details": "Export endpoint not available",
+      "error": null
+    },
+    {
+      "test_name": "Export: Detection events export",
+      "status": "PARTIAL",
+      "timestamp": "2025-08-27T14:12:01.727626",
+      "details": "Export endpoint not available",
+      "error": null
+    }
+  ]
+}

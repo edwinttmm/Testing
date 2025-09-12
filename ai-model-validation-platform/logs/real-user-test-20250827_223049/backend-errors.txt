@@ -1,0 +1,17 @@
+2025-08-27 22:31:12,070 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "127.0.0.1", port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:31:12,076 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "localhost" (127.0.0.1), port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:31:12,082 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "172.18.65.21", port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:31:12,087 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "localhost" (127.0.0.1), port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:31:12,095 - src.config.service_discovery - DEBUG - PostgreSQL connection test failed: connection to server at "127.0.0.1", port 5432 failed: fe_sendauth: no password supplied
+2025-08-27 22:31:13,482 - main - WARNING - Video validation failed: File too small (minimum 1024 bytes)
+2025-08-27 22:31:13,486 - main - ERROR - Unexpected database error: 400: Video validation failed: File too small (minimum 1024 bytes)
+2025-08-27 22:31:13,487 - main - WARNING - HTTP exception: Internal server error
+2025-08-27 22:31:13,521 - main - WARNING - Video validation failed: File too small (minimum 1024 bytes)
+2025-08-27 22:31:13,523 - main - ERROR - Unexpected database error: 400: Video validation failed: File too small (minimum 1024 bytes)
+2025-08-27 22:31:13,523 - main - WARNING - HTTP exception: Internal server error
+2025-08-27 22:31:13,957 - main - WARNING - Video validation failed: Cannot open video file - file may be corrupted or format unsupported
+2025-08-27 22:31:13,958 - main - ERROR - Unexpected database error: 400: Video validation failed: Cannot open video file - file may be corrupted or format unsupported
+2025-08-27 22:31:13,964 - main - WARNING - HTTP exception: Internal server error
+2025-08-27 22:31:14,377 - main - WARNING - Video validation failed: Cannot open video file - file may be corrupted or format unsupported
+2025-08-27 22:31:14,378 - main - ERROR - Unexpected database error: 400: Video validation failed: Cannot open video file - file may be corrupted or format unsupported
+2025-08-27 22:31:14,382 - main - WARNING - HTTP exception: Internal server error

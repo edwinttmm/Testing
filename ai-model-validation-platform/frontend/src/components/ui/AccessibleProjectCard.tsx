@@ -38,7 +38,7 @@ const AccessibleProjectCard: React.FC<AccessibleProjectCardProps> = ({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const getStatusColor = (status: Project['status']): "success" | "info" | "warning" | "default" => {
+  const getStatusColor = (status: ProjectStatus): "success" | "info" | "warning" | "default" => {
     switch (status) {
       case ProjectStatus.ACTIVE:
         return 'success';
@@ -76,14 +76,14 @@ const AccessibleProjectCard: React.FC<AccessibleProjectCardProps> = ({
     navigate(`/projects/${project.id}`);
   };
 
-  const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
     // Only navigate if clicking on the card itself, not on buttons
     if (event.target === event.currentTarget || (event.target as HTMLElement).closest('.card-content')) {
       navigate(`/projects/${project.id}`);
     }
   };
 
-  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       navigate(`/projects/${project.id}`);
@@ -195,12 +195,12 @@ const AccessibleProjectCard: React.FC<AccessibleProjectCardProps> = ({
             size="small"
             aria-label={`Tests completed: ${project.testsCount}`}
           />
-          {(project.accuracy ?? 0) > 0 && (
+          {(project.averageAccuracy ?? 0) > 0 && (
             <Chip
-              label={`${project.accuracy ?? 0}% accuracy`}
+              label={`${project.averageAccuracy ?? 0}% accuracy`}
               variant="outlined"
               size="small"
-              aria-label={`Model accuracy: ${project.accuracy ?? 0} percent`}
+              aria-label={`Model accuracy: ${project.averageAccuracy ?? 0} percent`}
             />
           )}
         </Box>

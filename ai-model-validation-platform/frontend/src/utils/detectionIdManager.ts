@@ -41,7 +41,7 @@ class DetectionIdManager {
   /**
    * Generate a new detection ID
    */
-  generateDetectionId(vruType: VRUType, frameNumber?: number): string {
+  generateDetectionId(vruType: VRUType, _frameNumber?: number): string {
     const vruPrefix = this.config.includeVRUType ? this.getVRUPrefix(vruType) : '';
     const key = `${this.config.prefix}_${vruPrefix}`;
     
@@ -81,11 +81,11 @@ class DetectionIdManager {
    */
   private getVRUPrefix(vruType: VRUType): string {
     const prefixes = {
-      pedestrian: 'PED',
-      cyclist: 'CYC',
-      motorcyclist: 'MOT',
-      wheelchair_user: 'WHE',
-      scooter_rider: 'SCO',
+      [VRUType.PEDESTRIAN]: 'PED',
+      [VRUType.CYCLIST]: 'CYC',
+      [VRUType.MOTORCYCLIST]: 'MOT',
+      [VRUType.WHEELCHAIR]: 'WHE',
+      [VRUType.SCOOTER]: 'SCO',
     };
     return prefixes[vruType] || 'UNK';
   }
@@ -158,11 +158,11 @@ class DetectionIdManager {
    */
   private getVRUTypeFromPrefix(prefix: string): VRUType | undefined {
     const typeMap: Record<string, VRUType> = {
-      PED: 'pedestrian',
-      CYC: 'cyclist',
-      MOT: 'motorcyclist',
-      WHE: 'wheelchair_user',
-      SCO: 'scooter_rider',
+      PED: VRUType.PEDESTRIAN,
+      CYC: VRUType.CYCLIST,
+      MOT: VRUType.MOTORCYCLIST,
+      WHE: VRUType.WHEELCHAIR,
+      SCO: VRUType.SCOOTER,
     };
     return typeMap[prefix];
   }
@@ -302,7 +302,7 @@ class DetectionIdManager {
     };
 
     // Count by type
-    const vruTypes: VRUType[] = ['pedestrian', 'cyclist', 'motorcyclist', 'wheelchair_user', 'scooter_rider'];
+    const vruTypes: VRUType[] = [VRUType.PEDESTRIAN, VRUType.CYCLIST, VRUType.MOTORCYCLIST, VRUType.WHEELCHAIR, VRUType.SCOOTER];
     vruTypes.forEach(type => {
       stats.detectionsByType[type] = trackers.filter(t => t.vruType === type).length;
     });

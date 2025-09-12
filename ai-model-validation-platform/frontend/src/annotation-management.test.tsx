@@ -1,11 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { apiService } from '../../ai-model-validation-platform/frontend/src/services/api';
-import { GroundTruthAnnotation } from '../../ai-model-validation-platform/frontend/src/services/types';
+import { apiService } from './services/api';
+import { GroundTruthAnnotation } from './services/types';
 
 // Mock the API service
-jest.mock('../../ai-model-validation-platform/frontend/src/services/api');
+jest.mock('./services/api');
 const mockApiService = apiService as jest.Mocked<typeof apiService>;
 
 // Mock annotation component (simplified version for testing)
@@ -26,8 +26,8 @@ const MockAnnotationManager: React.FC<{
       try {
         const loadedAnnotations = await mockApiService.getAnnotations(videoId);
         setAnnotations(loadedAnnotations);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load annotations');
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load annotations');
       } finally {
         setIsLoading(false);
       }
@@ -62,8 +62,8 @@ const MockAnnotationManager: React.FC<{
       const createdAnnotation = await mockApiService.createAnnotation(videoId, newAnnotation);
       setAnnotations(prev => [...prev, createdAnnotation]);
       onAnnotationCreate?.(createdAnnotation);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create annotation');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create annotation');
     }
   };
 
@@ -76,8 +76,8 @@ const MockAnnotationManager: React.FC<{
         prev.map(ann => ann.id === annotation.id ? updatedAnnotation : ann)
       );
       onAnnotationUpdate?.(updatedAnnotation);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update annotation');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update annotation');
     }
   };
 
@@ -86,8 +86,8 @@ const MockAnnotationManager: React.FC<{
       await mockApiService.deleteAnnotation(annotationId);
       setAnnotations(prev => prev.filter(ann => ann.id !== annotationId));
       onAnnotationDelete?.(annotationId);
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete annotation');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete annotation');
     }
   };
 
@@ -97,8 +97,8 @@ const MockAnnotationManager: React.FC<{
       setAnnotations(prev => 
         prev.map(ann => ann.id === annotationId ? validatedAnnotation : ann)
       );
-    } catch (err: any) {
-      setError(err.message || 'Failed to validate annotation');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to validate annotation');
     }
   };
 
@@ -572,8 +572,9 @@ describe('Annotation Display and Management', () => {
         id: 'session-123',
         videoId: mockVideoId,
         projectId: 'project-456',
-        status: 'active',
+        status: 'active' as const,
         currentFrame: 0,
+        totalFrames: 100,
         totalDetections: 10,
         validatedDetections: 3,
         createdAt: '2023-01-01T00:00:00Z',
@@ -605,8 +606,9 @@ describe('Annotation Display and Management', () => {
         id: 'session-123',
         videoId: mockVideoId,
         projectId: 'project-456',
-        status: 'active',
+        status: 'active' as const,
         currentFrame: 30,
+        totalFrames: 100,
         totalDetections: 10,
         validatedDetections: 5,
         createdAt: '2023-01-01T00:00:00Z',
@@ -661,7 +663,7 @@ describe('Annotation Display and Management', () => {
         }
       ];
 
-      mockApiService.getAnnotations.mockResolvedValue(testAnnotations as any);
+      mockApiService.getAnnotations.mockResolvedValue(testAnnotations as typeof mockAnnotations);
 
       render(<MockAnnotationManager videoId={mockVideoId} />);
 
@@ -696,7 +698,7 @@ describe('Annotation Display and Management', () => {
         }
       ];
 
-      mockApiService.getAnnotations.mockResolvedValue(invalidAnnotations as any);
+      mockApiService.getAnnotations.mockResolvedValue(invalidAnnotations as typeof mockAnnotations);
 
       render(<MockAnnotationManager videoId={mockVideoId} />);
 
@@ -710,11 +712,11 @@ describe('Annotation Display and Management', () => {
 
     it('should validate bounding box constraints', async () => {
       const constraintTests = [
-        { x: 0, y: 0, width: 50, height: 100, valid: true },
-        { x: 1870, y: 980, width: 50, height: 100, valid: true }, // Near edge
-        { x: -10, y: -10, width: 50, height: 100, valid: false }, // Negative coords
-        { x: 100, y: 100, width: -50, height: -100, valid: false }, // Negative dimensions
-        { x: 1900, y: 1000, width: 50, height: 100, valid: false } // Out of bounds (assuming 1920x1080)
+        { x: 0, y: 0, width: 50, height: 100, label: 'edge-case-1', confidence: 0.9, valid: true },
+        { x: 1870, y: 980, width: 50, height: 100, label: 'edge-case-2', confidence: 0.85, valid: true }, // Near edge
+        { x: -10, y: -10, width: 50, height: 100, label: 'invalid-1', confidence: 0.1, valid: false }, // Negative coords
+        { x: 100, y: 100, width: -50, height: -100, label: 'invalid-2', confidence: 0.1, valid: false }, // Negative dimensions
+        { x: 1900, y: 1000, width: 50, height: 100, label: 'invalid-3', confidence: 0.1, valid: false } // Out of bounds (assuming 1920x1080)
       ];
 
       for (const test of constraintTests) {
@@ -731,7 +733,7 @@ describe('Annotation Display and Management', () => {
           }
         };
 
-        mockApiService.getAnnotations.mockResolvedValue([testAnnotation] as any);
+        mockApiService.getAnnotations.mockResolvedValue([testAnnotation] as typeof mockAnnotations);
 
         render(<MockAnnotationManager videoId={mockVideoId} />);
 
@@ -772,7 +774,7 @@ describe('Annotation Display and Management', () => {
         updatedAt: new Date().toISOString()
       }));
 
-      mockApiService.getAnnotations.mockResolvedValue(largeAnnotationSet as any);
+      mockApiService.getAnnotations.mockResolvedValue(largeAnnotationSet as typeof mockAnnotations);
 
       const startTime = performance.now();
       render(<MockAnnotationManager videoId={mockVideoId} />);

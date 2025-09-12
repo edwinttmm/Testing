@@ -1,0 +1,6 @@
+Database Records:
+Projects: 2
+Videos: 0
+Ground Truth Objects: 0
+Detection Events: 0
+Sample Project: Central Store (ID: central-store-project)

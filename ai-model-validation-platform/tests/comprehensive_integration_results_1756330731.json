@@ -1,0 +1,209 @@
+{
+  "status": "completed",
+  "timestamp": "2025-08-27T22:38:51.710716",
+  "specialist": "Integration Testing Specialist",
+  "summary": {
+    "total_workflows": 5,
+    "total_tests": 19,
+    "issues_found": 3,
+    "critical_issues": 0,
+    "docker_services_healthy": false
+  },
+  "detailed_results": {
+    "test_started": "2025-08-27T22:38:50.138529",
+    "tester": "Integration Testing Specialist",
+    "scope": "Complete End-to-End User Workflows",
+    "frontend_url": "http://localhost:3000",
+    "backend_url": "http://localhost:8000",
+    "external_ip": "155.138.239.131",
+    "workflows": {
+      "New Project Workflow": [
+        {
+          "test_name": "Create Project via API",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:50.202299",
+          "details": "Failed to create project: 503",
+          "error": null,
+          "metrics": null
+        }
+      ],
+      "Annotation Workflow": [
+        {
+          "test_name": "Prerequisites",
+          "status": "SKIP",
+          "timestamp": "2025-08-27T22:38:50.203674",
+          "details": "No project/video from previous workflow",
+          "error": null,
+          "metrics": null
+        }
+      ],
+      "Analysis Workflow": [
+        {
+          "test_name": "Prerequisites",
+          "status": "SKIP",
+          "timestamp": "2025-08-27T22:38:50.203881",
+          "details": "No project from previous workflow",
+          "error": null,
+          "metrics": null
+        }
+      ],
+      "Error Scenarios": [
+        {
+          "test_name": "Large File Rejection",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:50.376924",
+          "details": "Should reject large files, got: 405",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Invalid File Type Rejection",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:50.398047",
+          "details": "Should reject invalid file types, got: 405",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Processing Status Endpoint",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:50.407879",
+          "details": "Processing status endpoint accessible",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Database Health Check",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:50.423191",
+          "details": "Health endpoint failed: 503",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Concurrent User Requests",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:50.548245",
+          "details": "Handled 0/5 concurrent requests",
+          "error": null,
+          "metrics": {
+            "concurrent_time_ms": 124.74346160888672
+          }
+        }
+      ],
+      "Docker Deployment": [
+        {
+          "test_name": "Container ai_validation_backend",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:50.641499",
+          "details": "Container ai_validation_backend not found",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Container ai_validation_frontend",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:50.725109",
+          "details": "Container ai_validation_frontend not found",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Container ai_validation_postgres",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:50.868684",
+          "details": "Container ai_validation_postgres is running",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Container ai_validation_redis",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:50.988043",
+          "details": "Container ai_validation_redis is running",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Docker Network",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:51.064905",
+          "details": "Docker network exists",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Service Discovery",
+          "status": "FAIL",
+          "timestamp": "2025-08-27T22:38:51.145992",
+          "details": "Backend cannot reach database",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Volume postgres_data",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:51.225356",
+          "details": "Volume postgres_data exists",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Volume redis_data",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:51.300621",
+          "details": "Volume redis_data exists",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Volume uploaded_videos",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:51.413324",
+          "details": "Volume uploaded_videos exists",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Logs ai_validation_backend",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:51.526384",
+          "details": "Logs available for ai_validation_backend",
+          "error": null,
+          "metrics": null
+        },
+        {
+          "test_name": "Logs ai_validation_frontend",
+          "status": "PASS",
+          "timestamp": "2025-08-27T22:38:51.618105",
+          "details": "Logs available for ai_validation_frontend",
+          "error": null,
+          "metrics": null
+        }
+      ]
+    },
+    "docker_validation": {},
+    "error_scenarios": {},
+    "performance_metrics": {},
+    "issues_found": [
+      {
+        "type": "api_error",
+        "description": "Project creation failed: 503 - {\"detail\":\"Database temporarily unavailable. Please try again.\",\"status_code\":503}",
+        "severity": "medium",
+        "timestamp": "2025-08-27T22:38:50.202753"
+      },
+      {
+        "type": "docker_deployment",
+        "description": "Container ai_validation_backend not running",
+        "severity": "high",
+        "timestamp": "2025-08-27T22:38:50.641546"
+      },
+      {
+        "type": "docker_deployment",
+        "description": "Container ai_validation_frontend not running",
+        "severity": "high",
+        "timestamp": "2025-08-27T22:38:50.725163"
+      }
+    ]
+  }
+}

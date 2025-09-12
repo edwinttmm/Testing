@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import { VideoFile, GroundTruthAnnotation } from '../services/types';
-import { fixVideoUrl } from '../utils/videoUrlFixer';
+import { getDynamicVideoUrl } from '../utils/videoUtils';
 
 interface VideoAnnotationPlayerProps {
   video: VideoFile;
@@ -28,22 +28,22 @@ interface VideoAnnotationPlayerProps {
 const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
   video,
   annotations,
-  onAnnotationSelect,
+  // _onAnnotationSelect removed - unused prop
   onTimeUpdate,
   onCanvasClick,
-  annotationMode,
+  // _annotationMode removed - unused prop
   selectedAnnotation,
   frameRate = 30,
   showDetectionControls = false,
   detectionControlsComponent,
   // Additional props for SequentialVideoManager compatibility
   onVideoEnd,
-  enableFullscreen = false,
-  syncIndicator = false,
-  onSyncRequest,
-  recordingMode = false,
-  onRecordingToggle,
-  externalTimeSync,
+  // _enableFullscreen removed - unused prop
+  // _syncIndicator removed - unused prop
+  // _onSyncRequest removed - unused prop
+  // _recordingMode removed - unused prop
+  // _onRecordingToggle removed - unused prop
+  // _externalTimeSync removed - unused prop
 }) => {
   return (
     <Box sx={{ p: 2 }}>
@@ -65,7 +65,7 @@ const VideoAnnotationPlayer: React.FC<VideoAnnotationPlayerProps> = ({
         borderRadius: 1
       }}>
         <video
-          src={fixVideoUrl(video.url, video.filename, video.id)}
+          src={getDynamicVideoUrl(video.id)}
           controls
           style={{ maxWidth: '100%', maxHeight: '100%' }}
           onTimeUpdate={(e) => {

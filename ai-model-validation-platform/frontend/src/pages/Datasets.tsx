@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useErrorHandler } from '../hooks/useErrorHandler';
+import { LoadingSkeleton, GridSkeleton } from '../components/ui/LoadingState';
 import {
   Box,
   Typography,
@@ -20,7 +22,6 @@ import {
   IconButton,
   Menu,
   Alert,
-  Skeleton,
   Stack,
   Paper,
   List,
@@ -60,6 +61,9 @@ import {
   ApiError,
   DetectionTypeBreakdown,
   DetectionTypeMetrics,
+  ChartSortValue,
+  Detection,
+  Project,
 } from '../services/types';
 import { 
   getAvailableGroundTruthVideos,
@@ -70,10 +74,16 @@ import {
   getProjects,
   runDetectionPipeline,
   getVideoDetections,
+  apiService,
 } from '../services/api';
 import EnhancedVideoPlayer from '../components/EnhancedVideoPlayer';
 import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
 import DetectionResultsPanel from '../components/DetectionResultsPanel';
+
+// Type definitions for TypeScript safety
+type VideoStatus = 'completed' | 'processing' | 'failed';
+type SortByOption = 'name' | 'date' | 'annotations' | 'duration';
+type QualityChipColor = 'success' | 'warning' | 'error' | 'default' | 'primary' | 'secondary' | 'info';
 
 // Enhanced interfaces for dataset management
 interface DatasetFilter {
@@ -111,11 +121,31 @@ interface DatasetStats {
 
 interface VideoWithAnnotations extends VideoFile {
   groundTruthAnnotations: GroundTruthAnnotation[];
+  aiDetections: AIDetection[];
   annotationCount: number;
   detectionTypes: VRUType[];
   quality?: 'high' | 'medium' | 'low';
   projectName?: string;
   thumbnail?: string;
+}
+
+interface AIDetection {
+  id: string;
+  detectionId: string;
+  timestamp: number;
+  frameNumber: number;
+  confidence: number;
+  classLabel: string;
+  vruType: string;
+  boundingBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    confidence: number;
+  };
+  screenshotPath?: string;
+  screenshotZoomPath?: string;
 }
 
 interface TabPanelProps {
@@ -141,10 +171,14 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const Datasets: React.FC = () => {
+  const { withRetry } = useErrorHandler({
+    messagePrefix: 'Dataset',
+    maxRetries: 2,
+  });
 
   // Core state
   const [videos, setVideos] = useState<VideoWithAnnotations[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -183,7 +217,7 @@ const Datasets: React.FC = () => {
   // Detection state
   const [detectionState, setDetectionState] = useState<{
     isRunning: boolean;
-    detections: any[];
+    detections: Detection[];
     progress: number;
     error: string | null;
   }>({
@@ -193,6 +227,237 @@ const Datasets: React.FC = () => {
     error: null
   });
 
+  // Load AI detections for a video by finding test sessions that used this video
+  const loadAIDetectionsForVideo = useCallback(async (videoId: string): Promise<AIDetection[]> => {
+    try {
+      console.log(`🔍 Starting AI detection load for video: ${videoId}`);
+      
+      // First, get test sessions that used this video
+      const testSessions = await withRetry(async () => {
+        const response = await apiService.get(`/api/test-sessions?video_id=${videoId}`);
+        console.log(`🔍 Test sessions API response for video ${videoId}:`, (response as any).data);
+        return (response as any).data as unknown[];
+      });
+      
+      if (!testSessions || testSessions.length === 0) {
+        console.log(`📊 No test sessions found for video ${videoId}`);
+        return [];
+      }
+      
+      console.log(`🤖 Found ${testSessions.length} test sessions for video ${videoId}:`, testSessions.map((s: any) => ({ id: s.id, session_type: s.session_type, video_id: s.video_id })));
+      
+      // Get detection events from all test sessions for this video
+      const allDetections: AIDetection[] = [];
+      
+      for (const session of testSessions) {
+        try {
+          const sessionObj = session as { id: string; session_type?: string };
+          console.log(`🔍 Loading detections for session ${sessionObj.id} (type: ${sessionObj.session_type})`);
+          const detectionsResponse = await withRetry(async () => {
+            const response = await apiService.get(`/api/test-sessions/${sessionObj.id}/detections`);
+            console.log(`🔍 Detections API response for session ${sessionObj.id}:`, (response as any).data);
+            return (response as any).data as { detections?: unknown[] };
+          });
+          
+          // The API returns an object with a detections array
+          const detections = detectionsResponse.detections || [];
+          console.log(`🤖 Session ${sessionObj.id} has ${detections.length} detections`);
+          
+          // Transform backend detection events to frontend format
+          const transformedDetections = detections.map((detection: any) => {
+            const baseUrl = 'http://localhost:8000';
+            let screenshotPath = detection.screenshot_path || detection.screenshotPath;
+            let screenshotZoomPath = detection.screenshot_zoom_path || detection.screenshotZoomPath;
+            
+            // Fix screenshot paths to be full URLs
+            if (screenshotPath && !screenshotPath.startsWith('http')) {
+              if (!screenshotPath.startsWith('/')) {
+                screenshotPath = '/' + screenshotPath;
+              }
+              screenshotPath = baseUrl + screenshotPath;
+            }
+            
+            if (screenshotZoomPath && !screenshotZoomPath.startsWith('http')) {
+              if (!screenshotZoomPath.startsWith('/')) {
+                screenshotZoomPath = '/' + screenshotZoomPath;
+              }
+              screenshotZoomPath = baseUrl + screenshotZoomPath;
+            }
+            
+            const transformedDetection = {
+              id: detection.id || `det_${Date.now()}_${Math.random()}`,
+              detectionId: detection.detection_id || detection.detectionId || detection.id,
+              timestamp: detection.timestamp || 0,
+              frameNumber: detection.frame_number || detection.frameNumber || 0,
+              confidence: detection.confidence || 0,
+              classLabel: detection.class_label || detection.classLabel || 'unknown',
+              vruType: detection.vru_type || detection.vruType || 'pedestrian',
+              boundingBox: {
+                x: detection.bounding_box?.x || 0,
+                y: detection.bounding_box?.y || 0,
+                width: detection.bounding_box?.width || 50,
+                height: detection.bounding_box?.height || 100,
+                confidence: detection.confidence || 1.0,
+              },
+              screenshotPath,
+              screenshotZoomPath,
+            };
+            
+            console.log('🤖 Transformed AI detection:', {
+              id: transformedDetection.id,
+              frameNumber: transformedDetection.frameNumber,
+              vruType: transformedDetection.vruType,
+              screenshotPath: transformedDetection.screenshotPath,
+              originalScreenshotPath: detection.screenshot_path || detection.screenshotPath
+            });
+            
+            return transformedDetection;
+          });
+          
+          allDetections.push(...transformedDetections);
+          console.log(`🤖 Added ${transformedDetections.length} detections from session ${(session as any).id}`);
+        } catch (sessionError) {
+          console.warn(`Failed to load detections from session ${(session as any).id}:`, sessionError);
+        }
+      }
+      
+      console.log(`🤖 Loaded total of ${allDetections.length} AI detections for video ${videoId}`);
+      return allDetections;
+    } catch (error) {
+      console.warn(`Failed to load AI detections for video ${videoId}:`, error);
+      return [];
+    }
+  }, [withRetry]);
+
+  // Utility function to transform API annotation data to frontend format
+  const transformAnnotationData = useCallback((rawAnnotations: any[]): GroundTruthAnnotation[] => {
+    if (!rawAnnotations || !Array.isArray(rawAnnotations)) {
+      console.warn('📊 Invalid annotations data:', rawAnnotations);
+      return [];
+    }
+    
+    console.log('📊 Starting transformation of', rawAnnotations.length, 'raw annotations');
+    console.log('📊 Sample raw annotation:', rawAnnotations[0]);
+    const transformedAnnotations: GroundTruthAnnotation[] = [];
+    
+    rawAnnotations.forEach((annotation, index) => {
+      // More comprehensive validation
+      if (!annotation || typeof annotation !== 'object') {
+        console.warn(`📊 Skipping non-object annotation at index ${index}:`, annotation);
+        return;
+      }
+      
+      // Check required fields with multiple possible names (snake_case vs camelCase)
+      const id = annotation.id;
+      const videoId = annotation.video_id || annotation.videoId;
+      const frameNumber = annotation.frame_number || annotation.frameNumber;
+      const vruType = annotation.vru_type || annotation.vruType;
+      const boundingBox = annotation.bounding_box || annotation.boundingBox;
+      
+      // More lenient validation - allow processing even with missing fields
+      if (!id) {
+        console.warn(`📊 Annotation missing ID at index ${index}, generating one:`, annotation);
+        annotation.id = `annotation_${index}_${Date.now()}`;
+      }
+      
+      if (!frameNumber && frameNumber !== 0) {
+        console.warn(`📊 Annotation missing frame number at index ${index}:`, annotation);
+        // Don't skip, use default
+        annotation.frameNumber = 0;
+      }
+      
+      if (!vruType) {
+        console.warn(`📊 Annotation missing VRU type at index ${index}:`, annotation);
+        annotation.vruType = 'pedestrian'; // Default
+      }
+      
+      if (!boundingBox) {
+        console.warn(`📊 Annotation missing bounding box at index ${index}:`, annotation);
+        // Create default bounding box
+        annotation.boundingBox = {
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          confidence: 1.0
+        };
+      }
+      
+      // Validate and fix bounding box structure
+      const bbox = annotation.boundingBox || annotation.bounding_box;
+      if (!bbox || typeof bbox !== 'object') {
+        annotation.boundingBox = {
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 100,
+          confidence: 1.0
+        };
+      } else {
+        // Fix any missing or invalid bounding box fields
+        if (typeof bbox.x !== 'number' || isNaN(bbox.x)) bbox.x = 0;
+        if (typeof bbox.y !== 'number' || isNaN(bbox.y)) bbox.y = 0;
+        if (typeof bbox.width !== 'number' || isNaN(bbox.width) || bbox.width <= 0) bbox.width = 100;
+        if (typeof bbox.height !== 'number' || isNaN(bbox.height) || bbox.height <= 0) bbox.height = 100;
+        if (typeof bbox.confidence !== 'number' || isNaN(bbox.confidence)) bbox.confidence = 1.0;
+      }
+      
+      try {
+        const transformedAnnotation: GroundTruthAnnotation = {
+          id: annotation.id || `annotation_${index}_${Date.now()}`,
+          videoId: videoId || '',
+          detectionId: annotation.detection_id || annotation.detectionId || annotation.id,
+          frameNumber: parseInt((annotation.frameNumber || annotation.frame_number || 0).toString()),
+          timestamp: annotation.timestamp || ((annotation.frameNumber || annotation.frame_number || 0) / 30),
+          endTimestamp: annotation.end_timestamp || annotation.endTimestamp,
+          vruType: (annotation.vruType || annotation.vru_type || 'pedestrian') as VRUType,
+          classLabel: annotation.vruType || annotation.vru_type || 'pedestrian',
+          boundingBox: {
+            x: parseFloat((bbox.x || 0).toString()),
+            y: parseFloat((bbox.y || 0).toString()),
+            width: parseFloat((bbox.width || 100).toString()),
+            height: parseFloat((bbox.height || 100).toString()),
+            confidence: parseFloat((bbox.confidence || annotation.confidence || 1.0).toString())
+          },
+          occluded: Boolean(annotation.occluded),
+          truncated: Boolean(annotation.truncated),
+          difficult: Boolean(annotation.difficult),
+          validationStatus: annotation.validated ? 'validated' : 'pending',
+          validated: Boolean(annotation.validated),
+          confidence: parseFloat((bbox.confidence || annotation.confidence || 1.0).toString()),
+          notes: annotation.notes || '',
+          annotator: annotation.annotator || 'system',
+          createdAt: annotation.created_at || annotation.createdAt || new Date().toISOString(),
+          updatedAt: annotation.updated_at || annotation.updatedAt
+        };
+        
+        console.log(`📊 Successfully transformed annotation ${index}:`, {
+          id: transformedAnnotation.id,
+          frameNumber: transformedAnnotation.frameNumber,
+          vruType: transformedAnnotation.vruType,
+          boundingBox: transformedAnnotation.boundingBox
+        });
+        
+        transformedAnnotations.push(transformedAnnotation);
+      } catch (error) {
+        console.error(`📊 Error transforming annotation at index ${index}:`, error, annotation);
+        // Continue processing other annotations
+      }
+    });
+    
+    console.log('📊 Successfully transformed', transformedAnnotations.length, 'annotations from', rawAnnotations.length, 'raw items');
+    
+    if (transformedAnnotations.length !== rawAnnotations.length) {
+      console.warn('📊 Annotation count mismatch:', {
+        raw: rawAnnotations.length,
+        transformed: transformedAnnotations.length,
+        dropped: rawAnnotations.length - transformedAnnotations.length
+      });
+    }
+    
+    return transformedAnnotations;
+  }, []);
+
   const calculateStats = useCallback((videosData: VideoWithAnnotations[]) => {
     const totalVideos = videosData.length;
     const totalAnnotations = videosData.reduce((sum, v) => sum + v.annotationCount, 0);
@@ -200,11 +465,11 @@ const Datasets: React.FC = () => {
     
     // Detection type breakdown
     const detectionTypeBreakdown: DetectionTypeBreakdown = {
-      pedestrian: calculateDetectionMetrics(videosData, 'pedestrian'),
-      cyclist: calculateDetectionMetrics(videosData, 'cyclist'),
-      motorcyclist: calculateDetectionMetrics(videosData, 'motorcyclist'),
-      wheelchair_user: calculateDetectionMetrics(videosData, 'wheelchair_user'),
-      scooter_rider: calculateDetectionMetrics(videosData, 'scooter_rider'),
+      pedestrian: calculateDetectionMetrics(videosData, VRUType.PEDESTRIAN),
+      cyclist: calculateDetectionMetrics(videosData, VRUType.CYCLIST),
+      motorcyclist: calculateDetectionMetrics(videosData, VRUType.MOTORCYCLIST),
+      wheelchair_user: calculateDetectionMetrics(videosData, VRUType.WHEELCHAIR),
+      scooter_rider: calculateDetectionMetrics(videosData, VRUType.SCOOTER),
       overall: calculateDetectionMetrics(videosData, null), // Overall metrics
     };
 
@@ -245,114 +510,149 @@ const Datasets: React.FC = () => {
     });
   }, []);
 
+
   const loadInitialData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    console.log('📈 Starting loadInitialData...');
 
-      console.log('📈 Loading initial dataset data...');
+    const result = await withRetry(
+      async () => {
+        setLoading(true);
+        setError(null);
 
-      // First try to get videos from ground truth endpoint, then fallback to all videos
-      let videosData: VideoFile[] = [];
-      try {
-        videosData = await getAvailableGroundTruthVideos();
-        console.log('📈 Loaded ground truth videos:', videosData.length);
-      } catch (groundTruthError) {
-        console.warn('⚠️ Ground truth videos not available, trying all videos:', groundTruthError);
+        console.log('📈 Loading initial dataset data...');
+
+        // Load videos with automatic fallback handling
+        let videosData: VideoFile[] = [];
         try {
-          const allVideosResponse = await getAllVideos();
-          videosData = allVideosResponse.videos || [];
-          console.log('📈 Loaded all videos:', videosData.length);
-        } catch (allVideosError) {
-          console.error('❌ Failed to load any videos:', allVideosError);
+          // The getAvailableGroundTruthVideos function now has built-in fallback logic
+          videosData = await getAvailableGroundTruthVideos();
+          console.log('📈 Successfully loaded videos:', videosData.length);
+        } catch (error) {
+          console.error('❌ Failed to load videos from both endpoints:', error);
+          // Set user-friendly error message
+          setError('Unable to load videos. Please check your connection and try again.');
           videosData = [];
         }
-      }
-      
-      // Also try to get projects for better project name resolution
-      let projects: any[] = [];
-      try {
-        projects = await getProjects();
-        console.log('📈 Loaded projects:', projects.length);
-      } catch (projectsError) {
-        console.warn('⚠️ Failed to load projects:', projectsError);
-      }
-      
-      // Enhance videos with annotation data and project info
-      const enhancedVideos = await Promise.all(
-        videosData.map(async (video) => {
-          try {
-            const annotations = await getAnnotations(video.id);
-            
-            // Try to resolve project name
-            let projectName = 'Unknown Project';
-            if (video.projectId) {
-              const project = projects.find(p => p.id === video.projectId);
-              if (project) {
-                projectName = project.name;
+        
+        // Also try to get projects for better project name resolution
+        let projects: Project[] = [];
+        try {
+          projects = await getProjects();
+          console.log('📈 Loaded projects:', projects.length);
+        } catch (projectsError) {
+          console.warn('⚠️ Failed to load projects:', projectsError);
+        }
+        
+        // Enhance videos with annotation data, AI detections, and project info
+        const enhancedVideos = await Promise.all(
+          videosData.map(async (video) => {
+            try {
+              // Load manual annotations (ground truth)
+              const rawAnnotations = await getAnnotations(video.id);
+              console.log(`📊 Raw annotations for video ${video.id}:`, rawAnnotations.length, 'items');
+              const annotations = transformAnnotationData(rawAnnotations);
+              console.log(`📊 Transformed annotations:`, annotations.length, 'items');
+              
+              // Load AI detections via test sessions
+              const aiDetections = await loadAIDetectionsForVideo(video.id);
+              console.log(`🤖 AI detections for video ${video.id}:`, aiDetections.length, 'items');
+              if (aiDetections.length > 0) {
+                console.log(`🤖 First AI detection:`, aiDetections[0]);
+                console.log(`🤖 AI detection screenshots:`, aiDetections.filter(d => d.screenshotPath).length, 'have screenshots');
               }
-            }
-            
-            return {
-              ...video,
-              groundTruthAnnotations: annotations,
-              annotationCount: annotations.length,
-              detectionTypes: [...new Set(annotations.map(a => a.vruType))],
-              quality: assessVideoQuality(video),
-              projectName,
-              thumbnail: generateThumbnail(video),
-            } as VideoWithAnnotations;
-          } catch (err) {
-            console.warn(`Failed to load annotations for video ${video.id}:`, err);
-            
-            // Try to resolve project name even if annotations fail
-            let projectName = 'Unknown Project';
-            if (video.projectId) {
-              const project = projects.find(p => p.id === video.projectId);
-              if (project) {
-                projectName = project.name;
+              
+              // Try to resolve project name
+              let projectName = 'Unknown Project';
+              if (video.projectId) {
+                const project = projects.find(p => p.id === video.projectId);
+                if (project) {
+                  projectName = project.name;
+                }
               }
+              
+              const videoWithAnnotations = {
+                ...video,
+                groundTruthAnnotations: annotations,
+                aiDetections: aiDetections,
+                annotationCount: annotations.length,
+                detectionTypes: [...new Set(annotations.map(a => a.vruType))],
+                quality: assessVideoQuality(video),
+                projectName,
+                thumbnail: generateThumbnail(video),
+              } as VideoWithAnnotations;
+              
+              console.log(`🎯 Created video object for ${video.id}:`, {
+                groundTruthCount: annotations.length,
+                aiDetectionCount: aiDetections.length,
+                aiDetectionsHaveScreenshots: aiDetections.filter(d => d.screenshotPath).length
+              });
+              
+              return videoWithAnnotations;
+            } catch (err) {
+              console.warn(`Failed to load annotations for video ${video.id}:`, err);
+              
+              // Try to resolve project name even if annotations fail
+              let projectName = 'Unknown Project';
+              if (video.projectId) {
+                const project = projects.find(p => p.id === video.projectId);
+                if (project) {
+                  projectName = project.name;
+                }
+              }
+              
+              return {
+                ...video,
+                groundTruthAnnotations: [],
+                aiDetections: [],
+                annotationCount: 0,
+                detectionTypes: [],
+                quality: 'medium' as const,
+                projectName,
+                thumbnail: generateThumbnail(video),
+              } as VideoWithAnnotations;
             }
-            
-            return {
-              ...video,
-              groundTruthAnnotations: [],
-              annotationCount: 0,
-              detectionTypes: [],
-              quality: 'medium' as const,
-              projectName,
-              thumbnail: generateThumbnail(video),
-            } as VideoWithAnnotations;
-          }
-        })
-      );
+          })
+        );
 
-      console.log('📈 Enhanced videos:', enhancedVideos.length, 'with annotations');
-      setVideos(enhancedVideos);
-      calculateStats(enhancedVideos);
+        console.log('📈 Enhanced videos:', enhancedVideos.length, 'with annotations');
+        setVideos(enhancedVideos);
+        calculateStats(enhancedVideos);
 
-      if (enhancedVideos.length === 0) {
-        setError('No videos found. Please upload some videos to see dataset information.');
+        if (enhancedVideos.length === 0 && videosData.length === 0) {
+          setError('No videos found. Please upload some videos to see dataset information.');
+        } else if (enhancedVideos.length === 0 && videosData.length > 0) {
+          setError('Videos were found but there was an issue loading their details. The videos may still be processing.');
+        }
+        
+        return enhancedVideos;
+      },
+      {
+        context: 'loading dataset data',
+        onRetry: (attempt) => {
+          console.log(`Retrying to load dataset data (attempt ${attempt})...`);
+        },
+        onError: (err) => {
+          const apiError = err as ApiError;
+          const errorMessage = apiError.message || 'Failed to load dataset information';
+          setError(errorMessage);
+          console.error('Failed to load dataset data:', err);
+          
+          // Set empty state but don't crash
+          setVideos([]);
+          calculateStats([]);
+        }
       }
-
-    } catch (err) {
-      const apiError = err as ApiError;
-      const errorMessage = apiError.message || 'Failed to load dataset information';
-      setError(errorMessage);
-      console.error('Failed to load dataset data:', err);
-      
-      // Set empty state but don't crash
-      setVideos([]);
-      calculateStats([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [calculateStats]);
+    );
+    
+    setLoading(false);
+    return result;
+  }, [calculateStats, withRetry, transformAnnotationData]);
 
   // Load data on component mount
   useEffect(() => {
+    console.log('📈 useEffect triggered - loading dataset data');
     loadInitialData();
-  }, [loadInitialData]);
+  }, []);
 
   const calculateDetectionMetrics = (videos: VideoWithAnnotations[], vruType: VRUType | null): DetectionTypeMetrics => {
     const relevantAnnotations = videos.flatMap(v => 
@@ -368,7 +668,10 @@ const Datasets: React.FC = () => {
       precision: 0, // Would be calculated from test results
       recall: 0, // Would be calculated from test results
       f1Score: 0, // Would be calculated from test results
-      averageConfidence: relevantAnnotations.reduce((sum, a) => sum + (a.boundingBox.confidence || 1.0), 0) / relevantAnnotations.length || 0,
+      averageConfidence: relevantAnnotations.reduce((sum, a) => {
+        const confidence = a.boundingBox?.confidence || a.confidence || 1.0;
+        return sum + confidence;
+      }, 0) / relevantAnnotations.length || 0,
     };
   };
 
@@ -390,7 +693,7 @@ const Datasets: React.FC = () => {
 
   // Filtered and sorted videos
   const filteredVideos = useMemo(() => {
-    let filtered = videos.filter(video => {
+    const filtered = videos.filter(video => {
       // Search filter
       if (searchQuery && !video.filename?.toLowerCase().includes(searchQuery.toLowerCase()) &&
           !video.projectName?.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -420,7 +723,7 @@ const Datasets: React.FC = () => {
       if (filter.maxDuration && (video.duration || 0) > filter.maxDuration) return false;
 
       // Status filter
-      if (filter.status?.length && !filter.status.includes(video.status as any)) {
+      if (filter.status?.length && !filter.status.includes(video.status as VideoStatus)) {
         return false;
       }
 
@@ -429,7 +732,7 @@ const Datasets: React.FC = () => {
 
     // Sort
     filtered.sort((a, b) => {
-      let aValue: any, bValue: any;
+      let aValue: string | number, bValue: string | number;
       
       switch (sortBy) {
         case 'name':
@@ -484,20 +787,22 @@ const Datasets: React.FC = () => {
       });
       
       // Fetch and display results
-      const detections = await getVideoDetections(selectedVideo.id);
+      const detectionsResponse = await getVideoDetections(selectedVideo.id);
+      const detections = Array.isArray(detectionsResponse) ? detectionsResponse : [];
       setDetectionState(prev => ({ 
         ...prev, 
         isRunning: false, 
-        detections,
+        detections: detections as unknown as Detection[],
         progress: 100 
       }));
       
-    } catch (error: any) {
-      console.error('Detection failed:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Detection failed';
+      console.error('Detection failed:', errorMessage);
       setDetectionState(prev => ({ 
         ...prev, 
         isRunning: false, 
-        error: error.message 
+        error: errorMessage 
       }));
     }
   }, [selectedVideo, detectionState.isRunning]);
@@ -606,7 +911,7 @@ const Datasets: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const getQualityColor = (quality?: 'high' | 'medium' | 'low') => {
+  const getQualityColor = (quality?: 'high' | 'medium' | 'low'): QualityChipColor => {
     switch (quality) {
       case 'high': return 'success';
       case 'medium': return 'warning';
@@ -618,40 +923,34 @@ const Datasets: React.FC = () => {
   if (loading) {
     return (
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Skeleton variant="text" width={200} height={40} />
-          <Skeleton variant="rectangular" width={120} height={36} />
-        </Box>
+        <LoadingSkeleton 
+          message="Loading dataset information..."
+          skeletonProps={{ 
+            lines: 2,
+            showAvatar: false,
+            showActions: false
+          }}
+          height={60}
+          sx={{ mb: 3 }}
+        />
         
         {/* Stats skeleton */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
           {[1, 2, 3, 4].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
-              <Card>
-                <CardContent>
-                  <Skeleton variant="text" width="60%" height={24} />
-                  <Skeleton variant="text" width="40%" height={48} />
-                  <Skeleton variant="text" width="80%" height={16} />
-                </CardContent>
-              </Card>
+            <Grid item xs={12} sm={6} md={3} key={i}>
+              <LoadingSkeleton 
+                skeletonProps={{ 
+                  lines: 3,
+                  showAvatar: true,
+                  showActions: false
+                }}
+                height={120}
+              />
             </Grid>
           ))}
         </Grid>
 
-        {/* Video grid skeleton */}
-        <Grid container spacing={2}>
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={i}>
-              <Card>
-                <Skeleton variant="rectangular" height={180} />
-                <CardContent>
-                  <Skeleton variant="text" width="100%" />
-                  <Skeleton variant="text" width="60%" />
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+        <GridSkeleton items={8} columns={4} itemHeight={200} showActions={false} />
       </Box>
     );
   }
@@ -715,7 +1014,7 @@ const Datasets: React.FC = () => {
       <TabPanel value={activeTab} index={0}>
         {/* Statistics Cards */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -733,7 +1032,7 @@ const Datasets: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -751,7 +1050,7 @@ const Datasets: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -769,7 +1068,7 @@ const Datasets: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -790,7 +1089,7 @@ const Datasets: React.FC = () => {
 
         {/* Detection Type Distribution */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid item xs={12} md={6}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -819,7 +1118,7 @@ const Datasets: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid item xs={12} md={6}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -854,7 +1153,7 @@ const Datasets: React.FC = () => {
               Video Quality Assessment
             </Typography>
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid item xs={12} sm={4}>
                 <Box textAlign="center">
                   <Typography variant="h3" color="success.main">
                     {stats.qualityMetrics.highQuality}
@@ -864,7 +1163,7 @@ const Datasets: React.FC = () => {
                   </Typography>
                 </Box>
               </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid item xs={12} sm={4}>
                 <Box textAlign="center">
                   <Typography variant="h3" color="warning.main">
                     {stats.qualityMetrics.mediumQuality}
@@ -874,7 +1173,7 @@ const Datasets: React.FC = () => {
                   </Typography>
                 </Box>
               </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid item xs={12} sm={4}>
                 <Box textAlign="center">
                   <Typography variant="h3" color="error.main">
                     {stats.qualityMetrics.lowQuality}
@@ -894,7 +1193,7 @@ const Datasets: React.FC = () => {
         {/* Search and Filter Controls */}
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 placeholder="Search videos..."
@@ -916,7 +1215,7 @@ const Datasets: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Stack direction="row" spacing={2} justifyContent="flex-end">
                 <Button
                   variant="outlined"
@@ -930,7 +1229,7 @@ const Datasets: React.FC = () => {
                   <Select
                     value={sortBy}
                     label="Sort by"
-                    onChange={(e) => setSortBy(e.target.value as any)}
+                    onChange={(e) => setSortBy(e.target.value as SortByOption)}
                   >
                     <MenuItem value="date">Date</MenuItem>
                     <MenuItem value="name">Name</MenuItem>
@@ -989,7 +1288,7 @@ const Datasets: React.FC = () => {
         ) : viewMode === 'grid' ? (
           <Grid container spacing={2}>
             {filteredVideos.map((video) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={video.id}>
+              <Grid item xs={12} sm={6} md={4} lg={3} key={video.id}>
                 <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <CardMedia
                     component="img"
@@ -1029,7 +1328,7 @@ const Datasets: React.FC = () => {
                       <Chip
                         label={video.quality || 'unknown'}
                         size="small"
-                        color={getQualityColor(video.quality) as any}
+                        color={getQualityColor(video.quality)}
                       />
                       <Chip
                         label={formatDuration(video.duration || 0)}
@@ -1038,9 +1337,9 @@ const Datasets: React.FC = () => {
                       />
                     </Box>
 
-                    {video.detectionTypes.length > 0 && (
+                    {video.detectionTypes && video.detectionTypes.length > 0 && (
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        {video.detectionTypes.map((type) => (
+                        {video.detectionTypes.filter(type => type && typeof type === 'string').map((type) => (
                           <Chip
                             key={type}
                             label={type.replace('_', ' ')}
@@ -1084,7 +1383,7 @@ const Datasets: React.FC = () => {
                         <Chip
                           label={video.quality || 'unknown'}
                           size="small"
-                          color={getQualityColor(video.quality) as any}
+                          color={getQualityColor(video.quality)}
                         />
                       </Box>
                     }
@@ -1134,7 +1433,7 @@ const Datasets: React.FC = () => {
         {stats.totalAnnotations > 0 ? (
           <Grid container spacing={3}>
             {Object.entries(stats.detectionTypeBreakdown).filter(([key]) => key !== 'overall').map(([vruType, metrics]) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={vruType}>
+              <Grid item xs={12} sm={6} md={4} key={vruType}>
                 <Card>
                   <CardContent>
                     <Typography variant="h6" sx={{ textTransform: 'capitalize', mb: 2 }}>
@@ -1235,7 +1534,7 @@ const Datasets: React.FC = () => {
               />
               <Chip 
                 label={selectedVideo?.quality || 'unknown'}
-                color={getQualityColor(selectedVideo?.quality) as any}
+                color={getQualityColor(selectedVideo?.quality)}
                 size="small"
               />
             </Box>
@@ -1245,24 +1544,31 @@ const Datasets: React.FC = () => {
         <DialogContent>
           {selectedVideo && (
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12, lg: 8 }}>
+              <Grid item xs={12} lg={8}>
                 <EnhancedVideoPlayer
                   video={selectedVideo}
                   annotations={selectedVideo.groundTruthAnnotations}
+                  aiDetections={selectedVideo.aiDetections}
                   onAnnotationSelect={() => {}}
+                  onDetectionSelect={(detection) => {
+                    console.log('Selected AI detection:', detection);
+                  }}
                   onTimeUpdate={() => {}}
                   onCanvasClick={() => {}}
                   annotationMode={false}
                   selectedAnnotation={null}
+                  selectedDetection={null}
                   frameRate={30}
                   autoRetry={true}
                   maxRetries={3}
+                  showManualAnnotations={true}
+                  showAIDetections={true}
                   showDetectionControls={true}
                   onDetectionStart={handleDetectionStart}
                   onDetectionStop={handleDetectionStop}
                 />
               </Grid>
-              <Grid size={{ xs: 12, lg: 4 }}>
+              <Grid item xs={12} lg={4}>
                 <Typography variant="h6" gutterBottom>
                   Video Information
                 </Typography>
@@ -1290,7 +1596,7 @@ const Datasets: React.FC = () => {
                       <Typography variant="body2">Quality:</Typography>
                       <Chip 
                         label={selectedVideo.quality || 'unknown'}
-                        color={getQualityColor(selectedVideo.quality) as any}
+                        color={getQualityColor(selectedVideo.quality)}
                         size="small"
                       />
                     </Box>
@@ -1301,9 +1607,9 @@ const Datasets: React.FC = () => {
                   Detection Types
                 </Typography>
                 <Paper sx={{ p: 2 }}>
-                  {selectedVideo.detectionTypes.length > 0 ? (
+                  {selectedVideo.detectionTypes && selectedVideo.detectionTypes.length > 0 ? (
                     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                      {selectedVideo.detectionTypes.map((type) => (
+                      {selectedVideo.detectionTypes.filter(type => type && typeof type === 'string').map((type) => (
                         <Chip
                           key={type}
                           label={type.replace('_', ' ')}
@@ -1318,10 +1624,29 @@ const Datasets: React.FC = () => {
                   )}
                 </Paper>
                 
-                {/* Detection Results */}
+                {/* Detection Results - Both Manual Annotations and AI Detections */}
                 <Box sx={{ mt: 2 }}>
                   <DetectionResultsPanel 
-                    detections={detectionState.detections}
+                    manualAnnotations={selectedVideo.groundTruthAnnotations?.map(ann => ({
+                      id: ann.id,
+                      timestamp: ann.timestamp,
+                      frameNumber: ann.frameNumber || 0,
+                      confidence: ann.boundingBox?.confidence || 1.0,
+                      classLabel: ann.vruType,
+                      vruType: ann.vruType,
+                      boundingBox: ann.boundingBox
+                    })) || []}
+                    aiDetections={selectedVideo.aiDetections?.map(det => ({
+                      id: det.id,
+                      timestamp: det.timestamp,
+                      frameNumber: det.frameNumber || 0,
+                      confidence: det.confidence,
+                      classLabel: det.classLabel,
+                      vruType: det.vruType,
+                      boundingBox: det.boundingBox,
+                      screenshotPath: det.screenshotPath,
+                      screenshotZoomPath: det.screenshotZoomPath
+                    })) || []}
                     loading={false}
                     error={detectionState.error}
                     isRunning={detectionState.isRunning}

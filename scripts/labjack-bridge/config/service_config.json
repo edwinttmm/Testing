@@ -1,0 +1,50 @@
+{
+  "service": {
+    "name": "LabJackBridgeService",
+    "display_name": "LabJack Bridge Service",
+    "description": "Provides HTTP and WebSocket API for LabJack hardware communication",
+    "host": "0.0.0.0",
+    "port": 8080,
+    "log_level": "info",
+    "auto_start": true,
+    "restart_on_failure": true
+  },
+  "labjack": {
+    "auto_discover": true,
+    "connection_timeout": 5.0,
+    "retry_attempts": 3,
+    "retry_delay": 1.0,
+    "default_resolution": 0,
+    "default_settling_time": 0,
+    "supported_devices": ["T4", "T7", "T8", "T7-Pro"]
+  },
+  "streaming": {
+    "max_scan_rate": 100000,
+    "default_scans_per_read": 100,
+    "max_buffer_size": 100000,
+    "websocket_buffer_size": 10000
+  },
+  "security": {
+    "enable_cors": true,
+    "allowed_origins": ["*"],
+    "api_key_required": false,
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 1000
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "max_file_size": "10MB",
+    "max_files": 10,
+    "log_to_console": true,
+    "log_to_file": true,
+    "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "monitoring": {
+    "health_check_interval": 30,
+    "device_status_check_interval": 10,
+    "performance_logging": true,
+    "metrics_retention_days": 7
+  }
+}

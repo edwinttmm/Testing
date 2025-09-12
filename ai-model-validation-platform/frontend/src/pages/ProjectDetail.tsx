@@ -20,6 +20,7 @@ import {
   Paper,
   Skeleton,
 } from '@mui/material';
+import type { ChipPropsColorOverrides } from '@mui/material';
 import {
   PlayArrow,
   VideoLibrary,
@@ -29,7 +30,7 @@ import {
   Link,
 } from '@mui/icons-material';
 import { apiService, getLinkedVideos, linkVideosToProject, unlinkVideoFromProject, deleteVideo } from '../services/api';
-import { Project, VideoFile, TestSession } from '../services/types';
+import { Project, VideoFile, TestSession, ChipColor } from '../services/types';
 import VideoSelectionDialog from '../components/VideoSelectionDialog';
 import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
 import UnlinkVideoConfirmationDialog from '../components/UnlinkVideoConfirmationDialog';
@@ -107,7 +108,7 @@ const ProjectDetail: React.FC = () => {
       await unlinkVideoFromProject(id, videoId);
       // Refresh project data to update video list
       await loadProjectData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Video unlink error:', err);
       setError(getErrorMessage(err, 'Failed to unlink video'));
     } finally {
@@ -127,7 +128,7 @@ const ProjectDetail: React.FC = () => {
       await deleteVideo(videoId);
       // Refresh project data to update video list
       await loadProjectData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Video delete error:', err);
       setError(getErrorMessage(err, 'Failed to delete video'));
     } finally {
@@ -193,7 +194,7 @@ const ProjectDetail: React.FC = () => {
           lastTestTime
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load project data:', err);
       setError(getErrorMessage(err, 'Failed to load project data'));
     } finally {
@@ -239,7 +240,7 @@ const ProjectDetail: React.FC = () => {
       // Refresh project data to update video list
       await loadProjectData();
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to link videos:', err);
       setError(getErrorMessage(err, 'Failed to link videos to project'));
     } finally {
@@ -271,7 +272,7 @@ const ProjectDetail: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
   
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipColor => {
     switch (status.toLowerCase()) {
       case 'active':
       case 'completed':
@@ -281,6 +282,12 @@ const ProjectDetail: React.FC = () => {
         return 'warning';
       case 'failed':
         return 'error';
+      case 'processing':
+      case 'uploading':
+        return 'info';
+      case 'cancelled':
+      case 'archived':
+        return 'secondary';
       default:
         return 'default';
     }
@@ -299,7 +306,7 @@ const ProjectDetail: React.FC = () => {
         
         <Grid container spacing={3} sx={{ mb: 3 }}>
           {[...Array(4)].map((_, index) => (
-            <Grid size={{ xs: 12, md: 3 }} key={index}>
+            <Grid item xs={12} md={3} key={index}>
               <Card>
                 <CardContent>
                   <Skeleton variant="text" width={150} height={24} />
@@ -353,7 +360,7 @@ const ProjectDetail: React.FC = () => {
       </Box>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -375,7 +382,7 @@ const ProjectDetail: React.FC = () => {
                 <strong>Status:</strong> 
                 <Chip 
                   label={project.status} 
-                  color={getStatusColor(project.status) as any} 
+                  color={getStatusColor(project.status)} 
                   size="small" 
                   sx={{ ml: 1 }}
                 />
@@ -384,7 +391,7 @@ const ProjectDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -398,14 +405,14 @@ const ProjectDetail: React.FC = () => {
               </Typography>
               <Chip 
                 label={project.status} 
-                color={getStatusColor(project.status) as any} 
+                color={getStatusColor(project.status)} 
                 size="small" 
               />
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -423,7 +430,7 @@ const ProjectDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -516,7 +523,7 @@ const ProjectDetail: React.FC = () => {
                           <Chip 
                             label={video.status} 
                             size="small" 
-                            color={getStatusColor(video.status) as any}
+                            color={getStatusColor(video.status)}
                           />
                         </Box>
                       </TableCell>
@@ -637,7 +644,7 @@ const ProjectDetail: React.FC = () => {
                         <Chip 
                           label={session.status} 
                           size="small" 
-                          color={getStatusColor(session.status) as any}
+                          color={getStatusColor(session.status)}
                         />
                       </TableCell>
                       <TableCell>
@@ -687,7 +694,7 @@ const ProjectDetail: React.FC = () => {
           </Typography>
           
           <Grid container spacing={3}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -715,7 +722,7 @@ const ProjectDetail: React.FC = () => {
                       <strong>Status:</strong> 
                       <Chip 
                         label={project.status} 
-                        color={getStatusColor(project.status) as any} 
+                        color={getStatusColor(project.status)} 
                         size="small" 
                         sx={{ ml: 1 }}
                       />
@@ -725,7 +732,7 @@ const ProjectDetail: React.FC = () => {
               </Card>
             </Grid>
             
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>

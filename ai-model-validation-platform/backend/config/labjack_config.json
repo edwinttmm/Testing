@@ -1,0 +1,57 @@
+{
+  "labjack": {
+    "mock_mode": false,
+    "default_device_type": "ANY",
+    "default_connection_type": "ANY",
+    "default_identifier": "ANY",
+    "voltage_threshold": 2.5,
+    "sample_rate": 1000,
+    "channels": [
+      "AIN0",
+      "AIN1"
+    ],
+    "installation_validated": true
+  },
+  "installation_info": {
+    "platform": "linux",
+    "mock_only": false,
+    "install_log": [
+      {
+        "step": "Python installation",
+        "success": true,
+        "details": "Python 3.12.3",
+        "timestamp": null
+      },
+      {
+        "step": "pip installation",
+        "success": true,
+        "details": "25.2",
+        "timestamp": null
+      },
+      {
+        "step": "pkg-config",
+        "success": false,
+        "details": "Install with: apt-get install pkg-config",
+        "timestamp": null
+      },
+      {
+        "step": "apt-get update",
+        "success": false,
+        "details": "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper\nsudo: a password is required\n",
+        "timestamp": null
+      },
+      {
+        "step": "LabJack Python packages",
+        "success": true,
+        "details": "labjack-ljm installed",
+        "timestamp": null
+      },
+      {
+        "step": "LabJack validation",
+        "success": false,
+        "details": "Validation error: 'NoneType' object has no attribute 'LJM_OpenS'",
+        "timestamp": null
+      }
+    ]
+  }
+}

@@ -94,7 +94,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
       setError(null);
       await onSave(project.id, formData);
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating project:', error);
       setError(getErrorMessage(error, 'Failed to update project. Please try again.'));
     }
@@ -164,7 +164,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <Select 
             label="Camera View"
             value={formData.cameraView || 'Front-facing VRU'}
-            onChange={(e: any) => handleFormChange('cameraView', e.target.value as any)}
+            onChange={(e) => handleFormChange('cameraView', e.target.value as CameraType)}
             disabled={loading}
           >
             <MenuItem value="Front-facing VRU">Front-facing VRU</MenuItem>
@@ -178,7 +178,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <Select 
             label="Signal Type"
             value={formData.signalType || 'GPIO'}
-            onChange={(e: any) => handleFormChange('signalType', e.target.value)}
+            onChange={(e) => handleFormChange('signalType', e.target.value as SignalType)}
             disabled={loading}
           >
             <MenuItem value="GPIO">GPIO</MenuItem>
@@ -192,7 +192,7 @@ const EditProjectDialog: React.FC<EditProjectDialogProps> = ({
           <Select 
             label="Status"
             value={formData.status || 'Draft'}
-            onChange={(e: any) => handleFormChange('status', e.target.value as any)}
+            onChange={(e) => handleFormChange('status', e.target.value as ProjectStatus)}
             disabled={loading}
           >
             <MenuItem value="Draft">Draft</MenuItem>

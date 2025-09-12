@@ -1,13 +1,26 @@
-import React, { useState, useEffect, ReactNode } from 'react';
+import React, { useState, useEffect, ReactNode, DependencyList } from 'react';
 import ErrorBoundary, { ErrorBoundaryProps } from './ErrorBoundary';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 
+// Type for async operation result
+type AsyncOperationResult = void | unknown;
+
+// Type guard to check if error is an Error instance
+const isError = (error: unknown): error is Error => {
+  return error instanceof Error;
+};
+
+// Type guard to check if error has a message property
+const hasMessage = (error: unknown): error is { message: string } => {
+  return typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string';
+};
+
 interface AsyncErrorBoundaryProps extends Omit<ErrorBoundaryProps, 'children'> {
   children: ReactNode;
-  asyncOperation?: () => Promise<any>;
+  asyncOperation?: () => Promise<AsyncOperationResult>;
   loadingComponent?: ReactNode;
   errorComponent?: (error: Error, retry: () => void) => ReactNode;
-  dependencies?: any[];
+  dependencies?: DependencyList;
 }
 
 const AsyncErrorBoundary = ({
@@ -21,17 +34,27 @@ const AsyncErrorBoundary = ({
   const [loading, setLoading] = useState(false);
   const [asyncError, setAsyncError] = useState<Error | null>(null);
 
-  const executeAsyncOperation = async () => {
+  const executeAsyncOperation = async (): Promise<void> => {
     if (!asyncOperation) return;
 
     try {
       setLoading(true);
       setAsyncError(null);
       await asyncOperation();
-    } catch (error) {
-      setAsyncError(error instanceof Error ? error : new Error(
-        (error as any)?.message || (typeof error === 'string' ? error : 'Unknown async error')
-      ));
+    } catch (error: unknown) {
+      let errorToSet: Error;
+      
+      if (isError(error)) {
+        errorToSet = error;
+      } else if (hasMessage(error)) {
+        errorToSet = new Error(error.message);
+      } else if (typeof error === 'string') {
+        errorToSet = new Error(error);
+      } else {
+        errorToSet = new Error('Unknown async error occurred');
+      }
+      
+      setAsyncError(errorToSet);
     } finally {
       setLoading(false);
     }
@@ -41,7 +64,7 @@ const AsyncErrorBoundary = ({
     executeAsyncOperation();
   }, dependencies);
 
-  const retry = () => {
+  const retry = (): void => {
     executeAsyncOperation();
   };
 
@@ -56,11 +79,15 @@ const AsyncErrorBoundary = ({
   );
 
   // Default error component
-  const defaultErrorComponent = (error: Error, retryFn: () => void) => (
+  const defaultErrorComponent = (error: Error, retryFn: () => void): ReactNode => (
     <Alert 
       severity="error" 
       action={
-        <button onClick={retryFn} style={{ marginLeft: '8px' }}>
+        <button 
+          type="button"
+          onClick={retryFn} 
+          style={{ marginLeft: '8px' }}
+        >
           Retry
         </button>
       }

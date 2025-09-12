@@ -32,6 +32,7 @@ import { detectionService, DetectionConfig } from '../services/detectionService'
 import { apiService } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import { generateDetectionId, createDetectionTracker } from '../utils/detectionIdManager';
+import { TypedErrorFactory } from '../types/error.types';
 
 export interface DetectionStatus {
   isRunning: boolean;
@@ -183,6 +184,7 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
               truncated: detection.truncated || false,
               difficult: detection.difficult || false,
               validated: false,
+              validationStatus: 'pending' as const,
             };
 
             const savedAnnotation = await apiService.createAnnotation(video.id, annotationPayload);
@@ -190,7 +192,7 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
 
             // Update detection tracker
             createDetectionTracker(
-              savedAnnotation.detectionId,
+              savedAnnotation.detectionId || '',
               savedAnnotation.vruType,
               savedAnnotation.frameNumber,
               savedAnnotation.timestamp,
@@ -217,8 +219,9 @@ const DetectionControls: React.FC<DetectionControlsProps> = ({
         throw new Error(detectionResult.error || 'Detection failed');
       }
 
-    } catch (error: any) {
-      const errorMessage = getErrorMessage(error, 'Detection failed');
+    } catch (error: unknown) {
+      const safeError = TypedErrorFactory.fromUnknown(error, 'Detection failed');
+      const errorMessage = getErrorMessage(safeError, 'Detection failed');
       
       updateStatus({
         stage: 'error',

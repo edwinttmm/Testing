@@ -9,6 +9,7 @@ import {
   Box,
   Typography,
   useTheme,
+  SelectChangeEvent,
 } from '@mui/material';
 import { Error as ErrorIcon } from '@mui/icons-material';
 
@@ -73,8 +74,9 @@ const AccessibleFormField: React.FC<AccessibleFormFieldProps> = ({
     onChange(newValue);
   };
 
-  const handleSelectChange = (event: any) => {
-    onChange(event.target.value);
+  const handleSelectChange = (event: SelectChangeEvent<string | number>) => {
+    const newValue = type === 'number' ? Number(event.target.value) : event.target.value;
+    onChange(newValue);
   };
 
   const handleFocus = () => {
@@ -87,7 +89,7 @@ const AccessibleFormField: React.FC<AccessibleFormFieldProps> = ({
   };
 
   // Common props for all field types - filter out undefined values
-  const commonProps: any = {
+  const commonProps: Record<string, unknown> = {
     id,
     value,
     disabled,

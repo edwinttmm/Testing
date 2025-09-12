@@ -35,8 +35,9 @@ class URLFixService:
     
     def __init__(self, settings: Settings = None):
         self.settings = settings or Settings()
+        # Disable URL fixing for localhost development
         self.old_base_url = "http://localhost:8000"
-        self.new_base_url = "http://155.138.239.131:8000"
+        self.new_base_url = "http://localhost:8000"  # Keep localhost for development
         
         # Tables and fields that may contain URLs
         self.url_fields_map = {

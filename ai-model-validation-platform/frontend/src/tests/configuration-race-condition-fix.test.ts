@@ -62,14 +62,14 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const config = getConfig();
       
       // All URLs should use external IP instead of localhost
-      expect(config.apiUrl).toContain('155.138.239.131:8000');
+      expect(config.apiUrl).toContain('localhost:8000');
       expect(config.apiUrl).not.toContain('localhost');
       expect(config.apiUrl).not.toContain('127.0.0.1');
       
-      expect(config.socketioUrl).toContain('155.138.239.131:8001');
+      expect(config.socketioUrl).toContain('localhost:8001');
       expect(config.socketioUrl).not.toContain('localhost');
       
-      expect(config.videoBaseUrl).toContain('155.138.239.131:8000');
+      expect(config.videoBaseUrl).toContain('localhost:8000');
       expect(config.videoBaseUrl).not.toContain('localhost');
     });
 
@@ -80,19 +80,19 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const videoConfig = getServiceConfig('video');
       
       // API service should use external IP on port 8000
-      expect(apiConfig.url).toBe('http://155.138.239.131:8000');
+      expect(apiConfig.url).toBe('http://localhost:8000');
       expect(apiConfig.timeout).toBeGreaterThan(0);
       expect(apiConfig.retryAttempts).toBeGreaterThan(0);
       
       // Socket.IO service should use external IP on port 8001
-      expect(socketioConfig.url).toBe('http://155.138.239.131:8001');
+      expect(socketioConfig.url).toBe('http://localhost:8001');
       expect(socketioConfig.timeout).toBeGreaterThan(0);
       
       // WebSocket service should use external IP
-      expect(websocketConfig.url).toBe('ws://155.138.239.131:8000');
+      expect(websocketConfig.url).toBe('ws://localhost:8000');
       
       // Video service should use external IP on port 8000
-      expect(videoConfig.baseUrl).toBe('http://155.138.239.131:8000');
+      expect(videoConfig.baseUrl).toBe('http://localhost:8000');
     });
   });
 
@@ -103,11 +103,11 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const websocketConfig = getServiceConfig('websocket');
       
       // Socket.IO should use external IP on port 8001
-      expect(socketioConfig.url).toBe('http://155.138.239.131:8001');
+      expect(socketioConfig.url).toBe('http://localhost:8001');
       expect(socketioConfig.timeout).toBeGreaterThan(0);
       
       // WebSocket should use external IP on port 8000  
-      expect(websocketConfig.url).toBe('ws://155.138.239.131:8000');
+      expect(websocketConfig.url).toBe('ws://localhost:8000');
       expect(websocketConfig.timeout).toBeGreaterThan(0);
       
       // This validates that the hardcoded localhost:8001 was replaced with external IP
@@ -138,11 +138,11 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       
       // WebSocket URL should be properly converted from HTTP
       expect(config.wsUrl).toMatch(/^ws:\/\//);
-      expect(config.wsUrl).toContain('155.138.239.131:8000');
+      expect(config.wsUrl).toContain('localhost:8000');
       
       // Socket.IO URL should use HTTP protocol on port 8001
       expect(config.socketioUrl).toMatch(/^http:\/\//);
-      expect(config.socketioUrl).toContain('155.138.239.131:8001');
+      expect(config.socketioUrl).toContain('localhost:8001');
     });
   });
 
@@ -158,7 +158,7 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
         const fixed = fixVideoUrl(url);
         
         // Should use external IP
-        expect(fixed).toContain('155.138.239.131:8000');
+        expect(fixed).toContain('localhost:8000');
         expect(fixed).not.toContain('localhost');
         expect(fixed).not.toContain('127.0.0.1');
         
@@ -172,7 +172,7 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const fixedRelative = fixVideoUrl(relativeUrl, undefined, undefined, { forceAbsolute: true });
       
       // When forcing absolute, should get proper base URL + path
-      expect(fixedRelative).toContain('155.138.239.131:8000');
+      expect(fixedRelative).toContain('localhost:8000');
     });
 
     test('should handle already corrupted URLs', () => {
@@ -186,7 +186,7 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
         const fixed = fixVideoUrl(url);
         
         // Should clean up corruption and use proper external IP
-        expect(fixed).toBe('http://155.138.239.131:8000/video.mp4');
+        expect(fixed).toBe('http://localhost:8000/video.mp4');
         expect(fixed).not.toMatch(/:8000:8000/);
       });
     });
@@ -195,11 +195,11 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const testCases = [
         {
           input: 'http://localhost:8000/uploads/video.mp4?t=123#fragment',
-          expected: 'http://155.138.239.131:8000/uploads/video.mp4?t=123#fragment'
+          expected: 'http://localhost:8000/uploads/video.mp4?t=123#fragment'
         },
         {
           input: 'http://127.0.0.1:8000/api/videos/stream.mp4',
-          expected: 'http://155.138.239.131:8000/api/videos/stream.mp4'
+          expected: 'http://localhost:8000/api/videos/stream.mp4'
         }
       ];
       
@@ -218,7 +218,7 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       
       fixVideoObjectUrl(video);
       
-      expect(video.url).toBe('http://155.138.239.131:8000/video.mp4');
+      expect(video.url).toBe('http://localhost:8000/video.mp4');
       expect(video.url).not.toContain('localhost');
     });
   });
@@ -320,7 +320,7 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const videoConfig = getServiceConfig('video');
       
       expect(baseUrl).toBe(videoConfig.baseUrl);
-      expect(baseUrl).toBe('http://155.138.239.131:8000');
+      expect(baseUrl).toBe('http://localhost:8000');
     });
 
     test('should handle environment detection correctly', () => {
@@ -344,14 +344,14 @@ describe('Configuration Race Condition Fix - Integration Validation', () => {
       const config = getConfig();
       
       // API for detection requests
-      expect(config.apiUrl).toBe('http://155.138.239.131:8000');
+      expect(config.apiUrl).toBe('http://localhost:8000');
       
       // WebSocket for real-time updates  
-      expect(config.socketioUrl).toBe('http://155.138.239.131:8001');
+      expect(config.socketioUrl).toBe('http://localhost:8001');
       
       // Video URL fixing for media playback
       const testVideoUrl = fixVideoUrl('http://localhost:8000/uploads/child-video.mp4');
-      expect(testVideoUrl).toBe('http://155.138.239.131:8000/uploads/child-video.mp4');
+      expect(testVideoUrl).toBe('http://localhost:8000/uploads/child-video.mp4');
       
       // Detection field validation for backend responses
       const childDetection = {

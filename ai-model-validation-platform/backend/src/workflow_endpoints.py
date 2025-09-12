@@ -71,8 +71,8 @@ class WorkflowConfigurationRequest(BaseModel):
     """Request model for workflow configuration"""
     name: str = Field(..., min_length=1, max_length=255, description="Workflow name")
     description: Optional[str] = Field("", max_length=1000, description="Workflow description")
-    priority: str = Field("normal", regex="^(low|normal|high|critical)$", description="Workflow priority")
-    execution_strategy: str = Field("adaptive", regex="^(sequential|parallel|adaptive|hybrid)$", description="Execution strategy")
+    priority: str = Field("normal", pattern="^(low|normal|high|critical)$", description="Workflow priority")
+    execution_strategy: str = Field("adaptive", pattern="^(sequential|parallel|adaptive|hybrid)$", description="Execution strategy")
     max_concurrent_tasks: int = Field(5, ge=1, le=20, description="Maximum concurrent tasks")
     timeout_minutes: int = Field(120, ge=1, le=1440, description="Workflow timeout in minutes")
     retry_attempts: int = Field(3, ge=0, le=10, description="Number of retry attempts")
@@ -96,7 +96,7 @@ class VideoAssignmentRequest(BaseModel):
 class WorkflowStatusUpdate(BaseModel):
     """Request model for workflow status updates"""
     project_id: str = Field(..., description="Project ID")
-    status: str = Field(..., regex="^(initialized|planning|resource_allocation|video_assignment|ground_truth_generation|test_configuration|execution|monitoring|analysis|validation|completed|failed|cancelled|paused)$", description="Workflow status")
+    status: str = Field(..., pattern="^(initialized|planning|resource_allocation|video_assignment|ground_truth_generation|test_configuration|execution|monitoring|analysis|validation|completed|failed|cancelled|paused)$", description="Workflow status")
     metadata: Optional[Dict[str, Any]] = Field({}, description="Additional metadata")
 
 # Response models

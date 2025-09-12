@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Error Testing - AI Validation Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .error-log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-left: 4px solid #e74c3c; }
+        .warning-log { background: #fef9e7; padding: 10px; margin: 10px 0; border-left: 4px solid #f39c12; }
+        .info-log { background: #ebf3fd; padding: 10px; margin: 10px 0; border-left: 4px solid #3498db; }
+        .test-results { max-height: 400px; overflow-y: auto; }
+        .route-test { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
+        iframe { width: 100%; height: 600px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🧪 AI Model Validation Platform - Browser Error Testing</h1>
+    <p><strong>Target:</strong> http://localhost:3000</p>
+    <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+
+    <div>
+        <button onclick="loadMainApp()">Load Main App</button>
+        <button onclick="testAllRoutes()">Test All Routes</button>
+        <button onclick="testApiCalls()">Test API Integration</button>
+        <button onclick="exportErrorReport()">Export Report</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <div id="error-summary">
+        <h2>📊 Error Summary</h2>
+        <div id="error-counts">
+            <span id="error-count">Errors: 0</span> | 
+            <span id="warning-count">Warnings: 0</span> | 
+            <span id="network-error-count">Network Errors: 0</span>
+        </div>
+    </div>
+
+    <div id="test-results" class="test-results">
+        <h2>🔍 Live Error Monitoring</h2>
+        <div id="console-logs"></div>
+    </div>
+
+    <div id="route-testing">
+        <h2>🚦 Route Testing</h2>
+        <div id="route-results"></div>
+    </div>
+
+    <iframe id="app-frame" src="about:blank" style="display: none;"></iframe>
+
+    <script>
+        let errorCount = 0;
+        let warningCount = 0;
+        let networkErrorCount = 0;
+        let allErrors = [];
+
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+
+        // Override console methods to capture errors
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+        const originalConsoleLog = console.log;
+
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            logError('error', args);
+            errorCount++;
+            updateCounts();
+        };
+
+        console.warn = function(...args) {
+            originalConsoleWarn.apply(console, args);
+            logError('warning', args);
+            warningCount++;
+            updateCounts();
+        };
+
+        // Capture unhandled errors
+        window.addEventListener('error', function(event) {
+            logError('error', [`Unhandled Error: ${event.message}`, `File: ${event.filename}:${event.lineno}:${event.colno}`, event.error]);
+            errorCount++;
+            updateCounts();
+        });
+
+        // Capture unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            logError('error', [`Unhandled Promise Rejection: ${event.reason}`]);
+            errorCount++;
+            updateCounts();
+        });
+
+        function logError(type, args) {
+            const timestamp = new Date().toISOString();
+            const errorObj = {
+                type: type,
+                timestamp: timestamp,
+                message: args.join(' '),
+                stack: args.find(arg => arg && arg.stack) ? args.find(arg => arg.stack).stack : null
+            };
+            
+            allErrors.push(errorObj);
+
+            const logDiv = document.createElement('div');
+            logDiv.className = type === 'error' ? 'error-log' : 'warning-log';
+            logDiv.innerHTML = `
+                <strong>[${timestamp}] ${type.toUpperCase()}:</strong><br>
+                ${args.join('<br>')}<br>
+                ${errorObj.stack ? `<details><summary>Stack Trace</summary><pre>${errorObj.stack}</pre></details>` : ''}
+            `;
+            
+            document.getElementById('console-logs').appendChild(logDiv);
+            document.getElementById('console-logs').scrollTop = document.getElementById('console-logs').scrollHeight;
+        }
+
+        function updateCounts() {
+            document.getElementById('error-count').textContent = `Errors: ${errorCount}`;
+            document.getElementById('warning-count').textContent = `Warnings: ${warningCount}`;
+            document.getElementById('network-error-count').textContent = `Network Errors: ${networkErrorCount}`;
+        }
+
+        function loadMainApp() {
+            logInfo('Loading main application at localhost:3000');
+            const frame = document.getElementById('app-frame');
+            frame.style.display = 'block';
+            frame.src = 'http://localhost:3000';
+            
+            // Monitor frame for errors
+            frame.onload = function() {
+                logInfo('Main app loaded successfully');
+                try {
+                    // Try to access frame content for additional error monitoring
+                    const frameWindow = frame.contentWindow;
+                    frameWindow.addEventListener('error', function(event) {
+                        logError('error', [`Frame Error: ${event.message}`, `File: ${event.filename}:${event.lineno}`]);
+                        errorCount++;
+                        updateCounts();
+                    });
+                } catch (e) {
+                    logInfo('Cannot access frame content (CORS), monitoring from parent only');
+                }
+            };
+            
+            frame.onerror = function() {
+                logError('error', ['Failed to load main application frame']);
+                errorCount++;
+                updateCounts();
+            };
+        }
+
+        function testAllRoutes() {
+            const routes = [
+                '/',
+                '/projects',
+                '/datasets',
+                '/results',
+                '/ground-truth'
+            ];
+
+            logInfo('Starting route testing...');
+            
+            routes.forEach((route, index) => {
+                setTimeout(() => {
+                    testRoute(route);
+                }, index * 2000); // Test each route with 2 second delay
+            });
+        }
+
+        function testRoute(route) {
+            logInfo(`Testing route: ${route}`);
+            
+            fetch(`http://localhost:3000${route}`)
+                .then(response => {
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'route-test';
+                    resultDiv.innerHTML = `
+                        <strong>Route: ${route}</strong><br>
+                        Status: ${response.status} ${response.statusText}<br>
+                        Content-Type: ${response.headers.get('content-type')}<br>
+                        Timestamp: ${new Date().toISOString()}
+                    `;
+                    
+                    if (response.status >= 400) {
+                        resultDiv.style.borderColor = '#e74c3c';
+                        logError('error', [`Route ${route} failed with status ${response.status}`]);
+                        errorCount++;
+                        updateCounts();
+                    } else {
+                        resultDiv.style.borderColor = '#27ae60';
+                        logInfo(`Route ${route} loaded successfully`);
+                    }
+                    
+                    document.getElementById('route-results').appendChild(resultDiv);
+                })
+                .catch(error => {
+                    logError('error', [`Network error testing route ${route}:`, error.message]);
+                    networkErrorCount++;
+                    updateCounts();
+                    
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'route-test';
+                    resultDiv.style.borderColor = '#e74c3c';
+                    resultDiv.innerHTML = `
+                        <strong>Route: ${route}</strong><br>
+                        <span style="color: #e74c3c;">Network Error: ${error.message}</span><br>
+                        Timestamp: ${new Date().toISOString()}
+                    `;
+                    document.getElementById('route-results').appendChild(resultDiv);
+                });
+        }
+
+        function testApiCalls() {
+            const apiEndpoints = [
+                '/api/health',
+                '/api/projects',
+                '/api/datasets',
+                '/api/models'
+            ];
+
+            logInfo('Testing API endpoints...');
+            
+            apiEndpoints.forEach((endpoint, index) => {
+                setTimeout(() => {
+                    testApiEndpoint(endpoint);
+                }, index * 1500);
+            });
+        }
+
+        function testApiEndpoint(endpoint) {
+            logInfo(`Testing API endpoint: ${endpoint}`);
+            
+            fetch(`http://localhost:8000${endpoint}`)
+                .then(response => response.json())
+                .then(data => {
+                    logInfo(`API ${endpoint} response:`, JSON.stringify(data, null, 2));
+                })
+                .catch(error => {
+                    logError('error', [`API ${endpoint} failed:`, error.message]);
+                    networkErrorCount++;
+                    updateCounts();
+                });
+        }
+
+        function logInfo(message) {
+            const logDiv = document.createElement('div');
+            logDiv.className = 'info-log';
+            logDiv.innerHTML = `<strong>[${new Date().toISOString()}] INFO:</strong> ${message}`;
+            document.getElementById('console-logs').appendChild(logDiv);
+            document.getElementById('console-logs').scrollTop = document.getElementById('console-logs').scrollHeight;
+        }
+
+        function exportErrorReport() {
+            const report = {
+                timestamp: new Date().toISOString(),
+                summary: {
+                    totalErrors: errorCount,
+                    totalWarnings: warningCount,
+                    totalNetworkErrors: networkErrorCount
+                },
+                errors: allErrors,
+                testEnvironment: {
+                    userAgent: navigator.userAgent,
+                    url: window.location.href,
+                    viewport: `${window.innerWidth}x${window.innerHeight}`
+                }
+            };
+
+            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `frontend-error-report-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            logInfo('Error report exported successfully');
+        }
+
+        function clearLogs() {
+            document.getElementById('console-logs').innerHTML = '';
+            document.getElementById('route-results').innerHTML = '';
+            errorCount = 0;
+            warningCount = 0;
+            networkErrorCount = 0;
+            allErrors = [];
+            updateCounts();
+            logInfo('Logs cleared - starting fresh monitoring');
+        }
+
+        // Auto-start monitoring
+        logInfo('Browser error monitoring initialized');
+        logInfo('Ready to test frontend application');
+    </script>
+</body>
+</html>

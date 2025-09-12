@@ -1,0 +1,130 @@
+{
+  "timestamp": "2025-08-28T07:36:30.673Z",
+  "workflow": {
+    "timestamp": "2025-08-28T07:36:30.541Z",
+    "workflow": {
+      "health": {
+        "status": 503,
+        "success": false,
+        "responseTime": 55,
+        "hasStatus": true,
+        "data": null
+      },
+      "listProjects": {
+        "status": 200,
+        "success": true,
+        "responseTime": 14,
+        "data": [
+          {
+            "name": "Test Project",
+            "description": "Database connection test project",
+            "cameraModel": "Test Camera",
+            "cameraView": "Front-facing VRU",
+            "lensType": "Standard",
+            "resolution": "1920x1080",
+            "frameRate": 30,
+            "signalType": "GPIO",
+            "id": "704299b9-0296-40ec-8552-ed38ce4cd5de",
+            "status": "Active",
+            "ownerId": "anonymous",
+            "createdAt": "2025-08-28T07:32:48.092920Z",
+            "updatedAt": null
+          }
+        ]
+      },
+      "createProject": {
+        "status": 200,
+        "success": true,
+        "responseTime": 23,
+        "data": {
+          "name": "Integration Test Project 1756366590611",
+          "description": "Automated integration test project",
+          "cameraModel": "Test Camera Model",
+          "cameraView": "Front-facing VRU",
+          "lensType": "Standard",
+          "resolution": "1920x1080",
+          "frameRate": 30,
+          "signalType": "GPIO",
+          "id": "204f280e-da99-45a9-a38d-5f0ff49ca987",
+          "status": "Active",
+          "ownerId": "anonymous",
+          "createdAt": "2025-08-28T07:36:30.617211Z",
+          "updatedAt": null
+        }
+      },
+      "getProject": {
+        "status": 200,
+        "success": true,
+        "responseTime": 6,
+        "data": {
+          "name": "Integration Test Project 1756366590611",
+          "description": "Automated integration test project",
+          "cameraModel": "Test Camera Model",
+          "cameraView": "Front-facing VRU",
+          "lensType": "Standard",
+          "resolution": "1920x1080",
+          "frameRate": 30,
+          "signalType": "GPIO",
+          "id": "204f280e-da99-45a9-a38d-5f0ff49ca987",
+          "status": "Active",
+          "ownerId": "anonymous",
+          "createdAt": "2025-08-28T07:36:30.617211Z",
+          "updatedAt": null
+        }
+      },
+      "listVideos": {
+        "status": 200,
+        "success": true,
+        "responseTime": 7,
+        "data": {
+          "videos": [],
+          "total": 0
+        }
+      },
+      "groundTruth": {
+        "status": 405,
+        "success": false,
+        "responseTime": 2
+      },
+      "errorHandling": {
+        "status": 500,
+        "success": false,
+        "responseTime": 6,
+        "hasErrorMessage": true
+      },
+      "frontend": {
+        "status": 200,
+        "success": true,
+        "responseTime": 4,
+        "hasReact": true,
+        "hasConfig": true,
+        "hasHtml": true
+      }
+    },
+    "success": true,
+    "errors": [],
+    "performance": {
+      "totalTime": 118,
+      "averageResponseTime": 18,
+      "slowestRequest": 55
+    },
+    "summary": {
+      "totalSteps": 8,
+      "successfulSteps": 5,
+      "failedSteps": 3,
+      "successRate": "62.5",
+      "overallSuccess": false
+    }
+  },
+  "contracts": {
+    "projectsList": {
+      "passed": true,
+      "message": "Contract compliant"
+    },
+    "videosList": {
+      "passed": true,
+      "message": "Contract compliant"
+    }
+  },
+  "overallSuccess": false
+}

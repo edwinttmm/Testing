@@ -317,7 +317,7 @@ class OptimizedDetectionPipeline:
                         "timestamp": detection.timestamp,
                         "class_label": detection.class_label,
                         "confidence": detection.confidence,
-                        "bounding_box": detection.bounding_box.to_dict(),
+                        "bounding_box": detection.bounding_box,
                         "vru_type": detection.class_label,
                         "videoId": video_id,
                         "video_id": video_id

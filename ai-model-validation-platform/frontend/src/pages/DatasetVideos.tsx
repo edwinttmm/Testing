@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   CardMedia,
-  Grid,
   Chip,
   Dialog,
   DialogTitle,
@@ -34,6 +33,7 @@ import {
   Snackbar,
   InputAdornment,
   ButtonGroup,
+  Grid,
 } from '@mui/material';
 import {
   Visibility,
@@ -195,11 +195,11 @@ const DatasetVideos: React.FC = () => {
     
     // Detection type breakdown
     const detectionTypeBreakdown: DetectionTypeBreakdown = {
-      pedestrian: calculateDetectionMetrics(videosData, 'pedestrian'),
-      cyclist: calculateDetectionMetrics(videosData, 'cyclist'),
-      motorcyclist: calculateDetectionMetrics(videosData, 'motorcyclist'),
-      wheelchair_user: calculateDetectionMetrics(videosData, 'wheelchair_user'),
-      scooter_rider: calculateDetectionMetrics(videosData, 'scooter_rider'),
+      pedestrian: calculateDetectionMetrics(videosData, VRUType.PEDESTRIAN),
+      cyclist: calculateDetectionMetrics(videosData, VRUType.CYCLIST),
+      motorcyclist: calculateDetectionMetrics(videosData, VRUType.MOTORCYCLIST),
+      wheelchair_user: calculateDetectionMetrics(videosData, VRUType.WHEELCHAIR),
+      scooter_rider: calculateDetectionMetrics(videosData, VRUType.SCOOTER),
       overall: calculateDetectionMetrics(videosData, null), // Overall metrics
     };
 
@@ -385,7 +385,7 @@ const DatasetVideos: React.FC = () => {
 
   // Filtered and sorted videos
   const filteredVideos = useMemo(() => {
-    let filtered = videos.filter(video => {
+    const filtered = videos.filter(video => {
       // Search filter
       if (searchQuery && !video.filename?.toLowerCase().includes(searchQuery.toLowerCase()) &&
           !video.projectName?.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -643,7 +643,7 @@ const DatasetVideos: React.FC = () => {
         {/* Stats skeleton */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
           {[1, 2, 3, 4].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
+            <Grid item xs={12} sm={6} md={3} key={i}>
               <Card>
                 <CardContent>
                   <Skeleton variant="text" width="60%" height={24} />
@@ -658,7 +658,7 @@ const DatasetVideos: React.FC = () => {
         {/* Video grid skeleton */}
         <Grid container spacing={2}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={i}>
+            <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
               <Card>
                 <Skeleton variant="rectangular" height={180} />
                 <CardContent>
@@ -732,7 +732,7 @@ const DatasetVideos: React.FC = () => {
       <TabPanel value={activeTab} index={0}>
         {/* Statistics Cards */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -750,7 +750,7 @@ const DatasetVideos: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -768,7 +768,7 @@ const DatasetVideos: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -786,7 +786,7 @@ const DatasetVideos: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -807,7 +807,7 @@ const DatasetVideos: React.FC = () => {
 
         {/* Detection Type Distribution */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid item xs={12} md={6}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -836,7 +836,7 @@ const DatasetVideos: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
+          <Grid item xs={12} md={6}>
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -871,7 +871,7 @@ const DatasetVideos: React.FC = () => {
               Video Quality Assessment
             </Typography>
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid item xs={12} sm={4}>
                 <Box textAlign="center">
                   <Typography variant="h3" color="success.main">
                     {stats.qualityMetrics.highQuality}
@@ -881,7 +881,7 @@ const DatasetVideos: React.FC = () => {
                   </Typography>
                 </Box>
               </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid item xs={12} sm={4}>
                 <Box textAlign="center">
                   <Typography variant="h3" color="warning.main">
                     {stats.qualityMetrics.mediumQuality}
@@ -891,7 +891,7 @@ const DatasetVideos: React.FC = () => {
                   </Typography>
                 </Box>
               </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
+              <Grid item xs={12} sm={4}>
                 <Box textAlign="center">
                   <Typography variant="h3" color="error.main">
                     {stats.qualityMetrics.lowQuality}
@@ -911,7 +911,7 @@ const DatasetVideos: React.FC = () => {
         {/* Search and Filter Controls */}
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
                 placeholder="Search videos..."
@@ -933,7 +933,7 @@ const DatasetVideos: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Stack direction="row" spacing={2} justifyContent="flex-end">
                 <Button
                   variant="outlined"
@@ -1006,7 +1006,7 @@ const DatasetVideos: React.FC = () => {
         ) : viewMode === 'grid' ? (
           <Grid container spacing={2}>
             {filteredVideos.map((video) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={video.id}>
+              <Grid item xs={12} sm={6} md={4} lg={3} key={video.id}>
                 <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <CardMedia
                     component="img"
@@ -1151,7 +1151,7 @@ const DatasetVideos: React.FC = () => {
         {stats.totalAnnotations > 0 ? (
           <Grid container spacing={3}>
             {Object.entries(stats.detectionTypeBreakdown).filter(([key]) => key !== 'overall').map(([vruType, metrics]) => (
-              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={vruType}>
+              <Grid item xs={12} sm={6} md={4} key={vruType}>
                 <Card>
                   <CardContent>
                     <Typography variant="h6" sx={{ textTransform: 'capitalize', mb: 2 }}>
@@ -1262,7 +1262,7 @@ const DatasetVideos: React.FC = () => {
         <DialogContent>
           {selectedVideo && (
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12, lg: 8 }}>
+              <Grid item xs={12} lg={8}>
                 <EnhancedVideoPlayer
                   video={selectedVideo}
                   annotations={selectedVideo.groundTruthAnnotations}
@@ -1277,7 +1277,7 @@ const DatasetVideos: React.FC = () => {
                   showDetectionControls={false}
                 />
               </Grid>
-              <Grid size={{ xs: 12, lg: 4 }}>
+              <Grid item xs={12} lg={4}>
                 {/* Manual Detection Controls */}
                 <DetectionControls
                   video={selectedVideo}

@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Box, Button, Typography, Alert, Paper } from '@mui/material';
 import { healthCheck, getProjects, createProject } from '../services/api';
 import ErrorBoundary from './ui/ErrorBoundary';
-import { ErrorFactory } from '../utils/errorTypes';
-import { CameraType, SignalType } from '../services/types';
+import { CameraType, SignalType, Project } from '../services/types';
+import { 
+  TypedErrorFactory 
+} from '../types/error.types';
 
 const ApiTestComponent: React.FC = () => {
   const [healthStatus, setHealthStatus] = useState<string>('');
-  const [projectsData, setProjectsData] = useState<any[]>([]);
+  const [projectsData, setProjectsData] = useState<Project[]>([]);
   const [createResult, setCreateResult] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
@@ -18,22 +20,28 @@ const ApiTestComponent: React.FC = () => {
       const result = await healthCheck();
       // Health check completed
       setHealthStatus(`✅ Healthy: ${result.status}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Health check error:', error);
       
       // Create proper error types for better error boundary handling
+      const safeError = TypedErrorFactory.fromUnknown(error, 'Health check failed');
       let formattedError: Error;
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        formattedError = ErrorFactory.createNetworkError(undefined, { context: 'health-check' });
-      } else if (error.response) {
-        formattedError = ErrorFactory.createApiError(error.response, error.response.data, { context: 'health-check' });
+      
+      if (safeError.name === 'TypeError' && safeError.message.includes('fetch')) {
+        formattedError = TypedErrorFactory.createNetworkError('Health check network error');
+      } else if (safeError.response) {
+        formattedError = TypedErrorFactory.createApiError(
+          safeError.message,
+          safeError.response.status,
+          { context: 'health-check' }
+        );
       } else {
-        formattedError = new Error(`Health check failed: ${error.message}`);
+        formattedError = new Error(`Health check failed: ${safeError.message}`);
       }
       
       setHealthStatus(`❌ Error: ${formattedError.message}`);
       // Re-throw to be caught by error boundary if needed
-      if (error.name === 'TypeError' || (error.response && error.response.status >= 500)) {
+      if (safeError.name === 'TypeError' || (safeError.response && safeError.response.status && safeError.response.status >= 500)) {
         throw formattedError;
       }
     } finally {
@@ -48,8 +56,9 @@ const ApiTestComponent: React.FC = () => {
       const result = await getProjects();
       // Get projects completed
       setProjectsData(result);
-    } catch (error: any) {
-      console.error('Get projects error:', error);
+    } catch (error: unknown) {
+      const safeError = TypedErrorFactory.fromUnknown(error, 'Failed to fetch projects');
+      console.error('Get projects error:', safeError);
       setProjectsData([]);
     } finally {
       setLoading(false);
@@ -70,9 +79,10 @@ const ApiTestComponent: React.FC = () => {
       const result = await createProject(testProject);
       // Create project completed
       setCreateResult(`✅ Created: ${result.name} (ID: ${result.id})`);
-    } catch (error: any) {
-      console.error('Create project error:', error);
-      setCreateResult(`❌ Error: ${error.message}`);
+    } catch (error: unknown) {
+      const safeError = TypedErrorFactory.fromUnknown(error, 'Failed to create project');
+      console.error('Create project error:', safeError);
+      setCreateResult(`❌ Error: ${safeError.message}`);
     } finally {
       setLoading(false);
     }

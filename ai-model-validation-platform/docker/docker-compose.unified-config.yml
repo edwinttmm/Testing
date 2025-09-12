@@ -1,0 +1,310 @@
+# Unified Configuration Docker Compose
+# Implements the Unified Configuration Architecture with auto-detection
+version: '3.8'
+
+services:
+  # Configuration Manager Service (Optional - for complex deployments)
+  config-manager:
+    build:
+      context: ../
+      dockerfile: docker/config-manager/Dockerfile
+    container_name: ai_validation_config_manager
+    hostname: config-manager
+    environment:
+      - ENVIRONMENT_TYPE=${ENVIRONMENT_TYPE:-development}
+      - EXTERNAL_IP=${EXTERNAL_IP:-auto-detect}
+      - CORS_AUTO_CONFIGURE=true
+      - CONFIG_VALIDATION_ENABLED=true
+    volumes:
+      - ./config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - vru_validation_network
+    ports:
+      - "8080:8080"  # Config manager API
+    command: ["python", "manage_configuration.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: ai_validation_postgres
+    hostname: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vru_validation}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_change_me}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    ports:
+      - "${POSTGRES_HOST_PORT:-127.0.0.1:5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - vru_validation_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vru_validation}"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: ai_validation_redis
+    hostname: redis
+    ports:
+      - "${REDIS_HOST_PORT:-127.0.0.1:6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vru_validation_network
+    command: redis-server --requirepass ${REDIS_PASSWORD:-secure_redis_password} --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # FastAPI Backend with Unified Configuration
+  backend:
+    build:
+      context: ../
+      dockerfile: backend/Dockerfile
+    container_name: ai_validation_backend
+    hostname: backend
+    ports:
+      - "0.0.0.0:${BACKEND_PORT:-8000}:8000"
+    environment:
+      # Unified Configuration System
+      - AIVALIDATION_APP_ENVIRONMENT=${APP_ENV:-development}
+      - AIVALIDATION_PLATFORM=docker
+      - AIVALIDATION_AUTO_CONFIGURE=true
+      
+      # Network Configuration (auto-detected if not provided)
+      - EXTERNAL_IP=${EXTERNAL_IP:-auto-detect}
+      - INTERNAL_IP=${INTERNAL_IP:-auto-detect}
+      - DOCKER_NETWORK=vru_validation_network
+      
+      # API Configuration
+      - AIVALIDATION_API_PORT=8000
+      - AIVALIDATION_API_HOST=0.0.0.0
+      
+      # Database Configuration (use PostgreSQL for production, SQLite for dev)
+      - AIVALIDATION_DATABASE_URL=${DATABASE_URL:-postgresql://postgres:secure_password_change_me@postgres:5432/vru_validation}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:secure_password_change_me@postgres:5432/vru_validation}
+      - AIVALIDATION_DATABASE_POOL_SIZE=20
+      - AIVALIDATION_DATABASE_MAX_OVERFLOW=40
+      
+      # Redis Configuration
+      - AIVALIDATION_REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-secure_redis_password}@redis:6379
+      
+      # CORS Auto-Configuration (will be auto-detected)
+      - AIVALIDATION_CORS_AUTO_DETECT=true
+      - AIVALIDATION_CORS_ADDITIONAL_ORIGINS=${ADDITIONAL_CORS_ORIGINS:-}
+      
+      # Security Configuration
+      - AIVALIDATION_SECRET_KEY=${SECRET_KEY:-GENERATE_SECURE_KEY_FOR_PRODUCTION}
+      - AIVALIDATION_SSL_ENABLED=${SSL_ENABLED:-false}
+      - AIVALIDATION_SECURITY_HEADERS_ENABLED=true
+      
+      # Feature Flags
+      - AIVALIDATION_ENABLE_MONITORING=${MONITORING_ENABLED:-true}
+      - AIVALIDATION_ENABLE_CACHING=true
+      - AIVALIDATION_ENABLE_ASYNC_PROCESSING=true
+      
+      # Logging Configuration
+      - AIVALIDATION_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - AIVALIDATION_LOG_FILE=/app/logs/backend.log
+      
+      # Docker-specific
+      - DOCKER=true
+      - COMPOSE_PROJECT_NAME=ai-validation-platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vru_validation_network
+    volumes:
+      - ../backend:/app
+      - ../models:/app/models
+      - uploaded_videos:/app/uploads
+      - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    command: [
+      "sh", "-c",
+      "echo 'Starting backend with unified configuration...' && 
+       python -c 'from src.config.unified_config import get_unified_config; import asyncio; asyncio.run(get_unified_config())' &&
+       uvicorn main:socketio_app --host 0.0.0.0 --port 8000 --reload"
+    ]
+
+  # React Frontend with Unified Configuration
+  frontend:
+    build: 
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: ai_validation_frontend
+    hostname: frontend
+    ports:
+      - "0.0.0.0:${FRONTEND_PORT:-3000}:3000"
+    environment:
+      # Runtime Configuration (will be auto-detected by public/config.js)
+      - REACT_APP_AUTO_CONFIGURE=true
+      - REACT_APP_CONFIG_VALIDATION=true
+      
+      # Environment Detection
+      - REACT_APP_ENVIRONMENT=${APP_ENV:-development}
+      - REACT_APP_PLATFORM=docker
+      
+      # Optional overrides (if auto-detection fails)
+      - REACT_APP_EXTERNAL_IP=${EXTERNAL_IP:-}
+      - REACT_APP_BACKEND_PORT=${BACKEND_PORT:-8000}
+      - REACT_APP_SOCKETIO_PORT=${SOCKETIO_PORT:-8001}
+      
+      # Feature Flags
+      - REACT_APP_DEBUG=${REACT_DEBUG:-false}
+      - REACT_APP_ANALYTICS=${ANALYTICS_ENABLED:-false}
+      - REACT_APP_MONITORING=${MONITORING_ENABLED:-true}
+      
+      # Build Configuration
+      - NODE_ENV=${NODE_ENV:-development}
+      - GENERATE_SOURCEMAP=${GENERATE_SOURCEMAP:-false}
+      - CI=true
+      - DOCKER=true
+      - NODE_OPTIONS=--max_old_space_size=4096
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - vru_validation_network
+    volumes:
+      # Mount source code for development
+      - ../frontend/src:/app/src
+      - ../frontend/public:/app/public
+      - frontend_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy (Optional - for production)
+  nginx:
+    image: nginx:alpine
+    container_name: ai_validation_nginx
+    hostname: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - EXTERNAL_IP=${EXTERNAL_IP:-localhost}
+      - SSL_ENABLED=${SSL_ENABLED:-false}
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - vru_validation_network
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+    profiles:
+      - production  # Only start in production profile
+
+  # Configuration Validator (Development helper)
+  config-validator:
+    build:
+      context: ../
+      dockerfile: docker/config-validator/Dockerfile
+    container_name: ai_validation_config_validator
+    environment:
+      - TARGET_ENVIRONMENT=${APP_ENV:-development}
+      - VALIDATION_MODE=continuous
+    volumes:
+      - ../:/app/project
+      - ./config:/app/config
+    networks:
+      - vru_validation_network
+    depends_on:
+      - backend
+      - frontend
+    command: ["python", "validate_configuration.py"]
+    profiles:
+      - development  # Only run in development
+    restart: "no"
+
+volumes:
+  postgres_data:
+    name: ai_validation_postgres_data
+  redis_data:
+    name: ai_validation_redis_data
+  uploaded_videos:
+    name: ai_validation_uploads
+  backend_logs:
+    name: ai_validation_backend_logs
+  nginx_logs:
+    name: ai_validation_nginx_logs
+  frontend_node_modules:
+    name: ai_validation_frontend_node_modules
+
+networks:
+  vru_validation_network:
+    driver: bridge
+    name: vru_validation_network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.driver.mtu: "1500"
+
+# Configuration profiles for different environments
+x-environment-configs:
+  development: &dev-config
+    profiles: ["development"]
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=DEBUG
+      - SSL_ENABLED=false
+      - MONITORING_ENABLED=false
+      - ANALYTICS_ENABLED=false
+
+  staging: &staging-config
+    profiles: ["staging"]
+    environment:
+      - APP_ENV=staging
+      - LOG_LEVEL=INFO
+      - SSL_ENABLED=true
+      - MONITORING_ENABLED=true
+      - ANALYTICS_ENABLED=false
+
+  production: &prod-config
+    profiles: ["production"]
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=WARN
+      - SSL_ENABLED=true
+      - MONITORING_ENABLED=true
+      - ANALYTICS_ENABLED=true
+      - GENERATE_SOURCEMAP=false

@@ -27,7 +27,7 @@ import {
   Error,
   VideoFile as VideoIcon,
 } from '@mui/icons-material';
-import { VideoFile } from '../services/types';
+import { VideoFile, VideoStatus } from '../services/types';
 import { getAllVideos } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -56,11 +56,11 @@ const formatDuration = (seconds?: number): string => {
 
 const getStatusIcon = (status: VideoFile['status']) => {
   switch (status) {
-    case 'completed':
+    case VideoStatus.VALIDATED:
       return <CheckCircle color="success" fontSize="small" />;
-    case 'processing':
+    case VideoStatus.PROCESSING:
       return <HourglassEmpty color="warning" fontSize="small" />;
-    case 'failed':
+    case VideoStatus.ERROR:
       return <Error color="error" fontSize="small" />;
     default:
       return <HourglassEmpty color="info" fontSize="small" />;
@@ -69,11 +69,11 @@ const getStatusIcon = (status: VideoFile['status']) => {
 
 const getStatusColor = (status: VideoFile['status']) => {
   switch (status) {
-    case 'completed':
+    case VideoStatus.VALIDATED:
       return 'success';
-    case 'processing':
+    case VideoStatus.PROCESSING:
       return 'warning';
-    case 'failed':
+    case VideoStatus.ERROR:
       return 'error';
     default:
       return 'info';
@@ -83,7 +83,7 @@ const getStatusColor = (status: VideoFile['status']) => {
 const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
   open,
   onClose,
-  projectId,
+  // _projectId removed - unused prop
   onSelectionComplete,
   selectedVideoIds = [],
 }) => {
@@ -303,7 +303,7 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
                           <Typography variant="caption" component="div">
                             Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • 
                             Duration: {formatDuration(video.duration)} • 
-                            Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
+                            Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt || new Date().toISOString()).toLocaleDateString()}
                           </Typography>
                           
                           <Box sx={{ mt: 0.5, display: 'flex', gap: 1 }}>

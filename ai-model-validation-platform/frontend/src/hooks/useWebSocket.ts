@@ -2,6 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getServiceConfig, isDebugEnabled } from '../utils/envConfig';
 import { waitForConfig, isConfigInitialized } from '../utils/configurationManager';
+import logger from '../utils/safeErrorLogger';
+import { TimerHandle, safeSetTimeout, safeClearTimeout } from '../utils/timerUtils';
 
 interface UseWebSocketOptions {
   url?: string;
@@ -11,6 +13,8 @@ interface UseWebSocketOptions {
   reconnectAttempts?: number;
   reconnectDelay?: number;
   autoConnect?: boolean;
+  disabled?: boolean;
+  requireBackendAvailable?: boolean;
 }
 
 interface UseWebSocketReturn {
@@ -22,6 +26,8 @@ interface UseWebSocketReturn {
   emit: (event: string, data?: unknown) => void;
   on: <T = unknown>(event: string, callback: (data: T) => void) => () => void;
   configReady: boolean;
+  backendAvailable: boolean;
+  disabled: boolean;
 }
 
 // WebSocket connection pool to prevent multiple connections to the same URL
@@ -31,11 +37,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const [configLoaded, setConfigLoaded] = useState(isConfigInitialized());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [backendAvailable, setBackendAvailable] = useState(false);
+  const [disabled, setDisabled] = useState(false);
   const socketRef = useRef<Socket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<TimerHandle | null>(null);
   const reconnectCountRef = useRef(0);
   const listenersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
   const scheduleReconnectRef = useRef<(() => void) | null>(null);
+  const backendCheckRef = useRef<boolean>(false);
   
   // Wait for configuration to load before getting socket config
   const [socketConfig, setSocketConfig] = useState(() => {
@@ -53,10 +62,21 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     reconnectAttempts = socketConfig.retryAttempts,
     reconnectDelay = socketConfig.retryDelay,
     autoConnect = true,
+    disabled: optionsDisabled = false,
+    requireBackendAvailable = true,
   } = options;
   
+  // Check for global WebSocket disable flag from configuration
+  const globalWebSocketDisabled = configLoaded && !socketConfig.enabled;
+  const isWebSocketDisabled = optionsDisabled || globalWebSocketDisabled;
+  
+  // Update disabled state
+  useEffect(() => {
+    setDisabled(isWebSocketDisabled);
+  }, [isWebSocketDisabled]);
+  
   if (isDebugEnabled() && configLoaded && url) {
-    console.log('🔌 WebSocket initializing with config:', {
+    logger.debug('🔌 WebSocket initializing with config:', {
       url,
       reconnectAttempts,
       reconnectDelay,
@@ -67,7 +87,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+      safeClearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
   }, []);
@@ -76,7 +96,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   useEffect(() => {
     if (!configLoaded) {
       if (isDebugEnabled()) {
-        console.log('⏳ WebSocket waiting for runtime configuration to load...');
+        logger.debug('⏳ WebSocket waiting for runtime configuration to load...');
       }
       
       waitForConfig()
@@ -85,15 +105,15 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
           const newConfig = getServiceConfig('socketio');
           setSocketConfig(newConfig);
           if (isDebugEnabled()) {
-            console.log('🔧 WebSocket configuration loaded:', newConfig);
+            logger.debug('🔧 WebSocket configuration loaded:', newConfig);
           }
         })
         .catch((err: unknown) => {
-          console.error('❌ Failed to load WebSocket configuration:', err);
+          logger.error('❌ Failed to load WebSocket configuration:', err);
           setError(new Error('Configuration loading failed'));
           // Use fallback configuration with correct production URL
           const fallbackConfig = {
-            url: 'http://155.138.239.131:8001',
+            url: 'http://localhost:8001',
             retryAttempts: 5,
             retryDelay: 1000,
             timeout: 20000
@@ -101,7 +121,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
           setSocketConfig(fallbackConfig);
           setConfigLoaded(true);
           if (isDebugEnabled()) {
-            console.log('🔧 Using fallback WebSocket configuration:', fallbackConfig);
+            logger.debug('🔧 Using fallback WebSocket configuration:', fallbackConfig);
           }
         });
     }
@@ -109,22 +129,36 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
 
   // Define connect function first, before scheduleReconnect
   const connect = useCallback(() => {
+    if (isWebSocketDisabled) {
+      if (isDebugEnabled()) {
+        logger.debug('🚫 WebSocket connection disabled, skipping connect()');
+      }
+      return;
+    }
+    
     if (!configLoaded) {
       if (isDebugEnabled()) {
-        console.log('⏳ WebSocket connect() called but configuration not ready yet');
+        logger.debug('⏳ WebSocket connect() called but configuration not ready yet');
       }
       return;
     }
 
     if (!url) {
-      console.warn('⚠️ WebSocket cannot connect: no URL configured');
+      logger.warn('⚠️ WebSocket cannot connect: no URL configured');
       setError(new Error('No WebSocket URL configured'));
+      return;
+    }
+    
+    if (requireBackendAvailable && !backendAvailable) {
+      if (isDebugEnabled()) {
+        logger.debug('🔍 WebSocket connect() called but backend not available, skipping connection');
+      }
       return;
     }
 
     if (socketRef.current?.connected) {
       if (isDebugEnabled()) {
-        console.log('ℹ️ WebSocket already connected');
+        logger.debug('ℹ️ WebSocket already connected');
       }
       return;
     }
@@ -143,7 +177,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         });
         
         if (isDebugEnabled()) {
-          console.log(`🔌 Creating new Socket.IO connection to ${url}`);
+          logger.debug(`🔌 Creating new Socket.IO connection to ${url}`);
         }
         socketPool.set(url || '', socket);
       }
@@ -158,7 +192,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         clearReconnectTimeout();
         
         if (isDebugEnabled()) {
-          console.log('✅ WebSocket connected successfully to', url);
+          logger.debug('✅ WebSocket connected successfully to', url);
         }
         
         onConnect?.();
@@ -168,7 +202,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setIsConnected(false);
         
         if (isDebugEnabled()) {
-          console.warn(`🔌 WebSocket disconnected from ${url}: ${reason}`);
+          logger.warn(`🔌 WebSocket disconnected from ${url}: ${reason}`);
         }
         
         onDisconnect?.();
@@ -176,7 +210,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         // Auto-reconnect for certain disconnect reasons
         if (reason === 'io server disconnect' || reason === 'transport close') {
           if (isDebugEnabled()) {
-            console.log('🔄 Scheduling WebSocket reconnection...');
+            logger.debug('🔄 Scheduling WebSocket reconnection...');
           }
           scheduleReconnectRef.current?.();
         }
@@ -187,7 +221,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         setError(error);
         
         if (isDebugEnabled()) {
-          console.error('❌ WebSocket connection error to', url, ':', err.message);
+          logger.error('❌ WebSocket connection error', { url, error: err.message });
         }
         
         onError?.(error);
@@ -207,7 +241,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
       setError(error);
       onError?.(error);
     }
-  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout, socketConfig.timeout, configLoaded]);
+  }, [url, onConnect, onDisconnect, onError, clearReconnectTimeout, socketConfig.timeout, configLoaded, isWebSocketDisabled, requireBackendAvailable, backendAvailable]);
 
   // Now define scheduleReconnect with connect in scope
   const scheduleReconnect = useCallback(() => {
@@ -217,7 +251,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     }
 
     clearReconnectTimeout();
-    reconnectTimeoutRef.current = setTimeout(() => {
+    reconnectTimeoutRef.current = safeSetTimeout(() => {
       reconnectCountRef.current++;
       connect();
     }, (reconnectDelay || 1000) * Math.pow(2, reconnectCountRef.current)); // Exponential backoff
@@ -248,14 +282,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
   const emit = useCallback((event: string, data?: unknown) => {
     if (socketRef.current?.connected) {
       if (isDebugEnabled()) {
-        console.log(`📡 Emitting WebSocket event: ${event}`, data);
+        logger.debug(`📡 Emitting WebSocket event: ${event}`, data);
       }
       socketRef.current.emit(event, data);
     } else {
       const message = `Cannot emit event '${event}': WebSocket not connected`;
-      console.warn(message);
+      logger.warn(message);
       if (isDebugEnabled()) {
-        console.warn('📡 WebSocket emit failed - not connected to', url);
+        logger.warn('📡 WebSocket emit failed - not connected to', url);
       }
     }
   }, [url]);
@@ -291,21 +325,121 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     };
   }, []);
 
-  // Auto-connect on mount if enabled and configuration is loaded
-  useEffect(() => {
-    if (autoConnect && configLoaded && url) {
+  // Enhanced backend availability check specifically for Socket.IO
+  const checkBackendAvailability = useCallback(async (testUrl: string): Promise<boolean> => {
+    if (isWebSocketDisabled) {
       if (isDebugEnabled()) {
-        console.log('🚀 WebSocket auto-connecting with loaded configuration to', url);
+        logger.debug('🚫 WebSocket disabled, skipping backend availability check');
+      }
+      return false;
+    }
+    
+    try {
+      // Extract the base URL for health check
+      const baseUrl = testUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://');
+      
+      // First check general health endpoint
+      const healthUrl = `${baseUrl.replace(':8001', ':8000')}/health`;
+      
+      const healthResponse = await fetch(healthUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000), // 3-second timeout
+        mode: 'cors'
+      });
+      
+      if (!healthResponse.ok) {
+        if (isDebugEnabled()) {
+          logger.debug('🔍 Backend health check failed for ' + healthUrl + ' - backend not available');
+        }
+        return false;
+      }
+      
+      // If backend is available, specifically check Socket.IO endpoint
+      const socketioHealthUrl = `${baseUrl}/socket.io/`;
+      
+      const socketResponse = await fetch(socketioHealthUrl, {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000), // Quick Socket.IO check
+        mode: 'cors'
+      });
+      
+      // Socket.IO endpoint should return something (even if it's an error about protocol)
+      const isSocketIOAvailable = socketResponse.status !== 0 && socketResponse.status < 500;
+      
+      if (isDebugEnabled()) {
+        logger.debug('🔍 Socket.IO availability check result:', {
+          url: socketioHealthUrl,
+          status: socketResponse.status,
+          available: isSocketIOAvailable
+        });
+      }
+      
+      return isSocketIOAvailable;
+      
+    } catch (error) {
+      if (isDebugEnabled()) {
+        logger.debug('🔍 Backend availability check failed for ' + testUrl + ' - will skip WebSocket connection: ' + String(error));
+      }
+      return false;
+    }
+  }, [isWebSocketDisabled]);
+
+  // Check backend availability when configuration is loaded
+  useEffect(() => {
+    if (!isWebSocketDisabled && configLoaded && url && !backendCheckRef.current) {
+      backendCheckRef.current = true;
+      
+      if (isDebugEnabled()) {
+        logger.debug('🔍 Checking backend availability for WebSocket connection to', url);
+      }
+      
+      checkBackendAvailability(url).then((isAvailable) => {
+        setBackendAvailable(isAvailable);
+        
+        if (isAvailable) {
+          if (isDebugEnabled()) {
+            logger.debug('✅ Backend is available for WebSocket connection');
+          }
+        } else {
+          if (isDebugEnabled()) {
+            logger.debug('⏭️ Backend not available, WebSocket connections will be skipped');
+          }
+          // Clear any connection errors when backend is not available
+          setError(null);
+          setIsConnected(false);
+          
+          if (process.env.NODE_ENV === 'development') {
+            logger.info('📶 Development mode: WebSocket connection skipped (backend not available)');
+          }
+        }
+      }).catch((error) => {
+        if (isDebugEnabled()) {
+          logger.debug('❌ Backend availability check error for', url, error);
+        }
+        setBackendAvailable(false);
+        setError(null); // Don't treat availability check failures as connection errors
+      });
+    }
+  }, [configLoaded, url, isWebSocketDisabled, checkBackendAvailability]);
+  
+  // Auto-connect when backend becomes available
+  useEffect(() => {
+    if (autoConnect && configLoaded && url && backendAvailable && !isWebSocketDisabled) {
+      if (isDebugEnabled()) {
+        logger.debug('🚀 WebSocket auto-connecting with loaded configuration to', url);
       }
       connect();
     }
 
+  }, [autoConnect, configLoaded, url, backendAvailable, isWebSocketDisabled, connect]);
+
+  // Cleanup effect
+  useEffect(() => {
     return () => {
       clearReconnectTimeout();
       
       // Only disconnect if we're the last component using this socket
       // In a real app, you'd want more sophisticated reference counting
-      // eslint-disable-next-line react-hooks/exhaustive-deps
       const currentListeners = listenersRef.current;
       const currentListenerCount = Array.from(currentListeners.values())
         .reduce((total, set) => total + set.size, 0);
@@ -315,7 +449,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
         socketPool.delete(url || '');
       }
     };
-  }, [autoConnect, configLoaded, url, connect, disconnect, clearReconnectTimeout]);
+  }, [disconnect, clearReconnectTimeout, url]);
 
   return {
     socket: socketRef.current,
@@ -326,6 +460,8 @@ export const useWebSocket = (options: UseWebSocketOptions = {}): UseWebSocketRet
     emit,
     on,
     configReady: configLoaded,
+    backendAvailable,
+    disabled: isWebSocketDisabled,
   };
 };
 

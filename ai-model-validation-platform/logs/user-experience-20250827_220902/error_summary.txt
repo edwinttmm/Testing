@@ -1,0 +1,21 @@
+=== COMPREHENSIVE ERROR SUMMARY ===
+Generated at: Wed Aug 27 22:11:59 BST 2025
+
+=== Backend Setup Errors ===
+
+=== Backend Runtime Errors ===
+
+=== Frontend Setup Errors ===
+
+=== Frontend Runtime Errors ===
+(node:3650) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:3650) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+Compiled with warnings.
+Search for the keywords to learn more about each warning.
+WARNING in [eslint] 
+webpack compiled with 1 warning
+
+=== TypeScript Errors ===
+
+=== Browser Console Errors ===

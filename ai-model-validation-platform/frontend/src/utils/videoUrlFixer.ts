@@ -1,3 +1,4 @@
+/// <reference path="../types/global.d.ts" />
 /**
  * Video URL Fixer Utility - Production-Ready Optimized Version
  * 
@@ -105,8 +106,8 @@ function checkMigrationState(): boolean {
   
   try {
     // Check for migration indicators
-    const config = getServiceConfig('api'); // Use 'api' config instead of non-existent 'database'
-    migrationState.isActive = (config as any)?.migrating === true || 
+    const config = getServiceConfig('api');
+    migrationState.isActive = (config as { migrating?: boolean })?.migrating === true || 
                               process.env.MIGRATION_ACTIVE === 'true' ||
                               document.cookie.includes('migration-active=true');
     migrationState.lastChecked = now;
@@ -119,7 +120,8 @@ function checkMigrationState(): boolean {
 }
 
 /**
- * Get cached video base URL with advanced TTL and fallback strategies
+ * Get cached video base URL with intelligent environment detection
+ * FIXED: Preserve localhost URLs when they should work
  */
 function getCachedVideoBaseUrl(): string {
   const now = Date.now();
@@ -131,28 +133,56 @@ function getCachedVideoBaseUrl(): string {
   
   try {
     // Try to get from service config
-    const videoConfig = getServiceConfig('api'); // Use 'api' config instead of non-existent 'video'
-    cachedVideoBaseUrl = (videoConfig as any)?.baseUrl ?? null;
+    const videoConfig = getServiceConfig('video'); // Get actual video service config
+    cachedVideoBaseUrl = (videoConfig as { baseUrl?: string })?.baseUrl ?? null;
     
-    // Fallback strategies
+    // Intelligent fallback strategies - preserve working localhost URLs
     if (!cachedVideoBaseUrl) {
-      // Production fallback
-      cachedVideoBaseUrl = 'http://155.138.239.131:8000';
-      
-      // Environment-based fallback
+      // Detect environment based on current context
       if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
+        
+        // FIXED: For local development, KEEP localhost backend URLs
+        // This allows frontend on localhost:3000 to talk to backend on localhost:8000
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
           cachedVideoBaseUrl = 'http://localhost:8000';
         }
+        // Only use external IP when frontend is accessed via external IP
+        else if (hostname === '155.138.239.131') {
+          cachedVideoBaseUrl = 'http://155.138.239.131:8000';
+        }
+        // For other hostnames, try to determine the appropriate backend URL
+        else {
+          // Check if we're in a production environment or just unknown hostname
+          // Default to localhost for development, external IP for production
+          const isProduction = process.env.NODE_ENV === 'production' || 
+                               hostname !== 'localhost' && hostname !== '127.0.0.1' && hostname !== '0.0.0.0';
+          cachedVideoBaseUrl = isProduction ? 'http://155.138.239.131:8000' : 'http://localhost:8000';
+        }
+      } else {
+        // Server-side rendering fallback - determine based on environment
+        const isProduction = process.env.NODE_ENV === 'production';
+        cachedVideoBaseUrl = isProduction ? 'http://155.138.239.131:8000' : 'http://localhost:8000';
       }
     }
     
     baseUrlCacheTimestamp = now;
     return cachedVideoBaseUrl;
   } catch (error) {
-    // Ultimate fallback
-    cachedVideoBaseUrl = 'http://155.138.239.131:8000';
+    // Ultimate fallback with smarter environment detection
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      // FIXED: Respect localhost development environment
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        cachedVideoBaseUrl = 'http://localhost:8000';
+      } else {
+        cachedVideoBaseUrl = 'http://155.138.239.131:8000';
+      }
+    } else {
+      // Default to localhost for development, production IP otherwise
+      const isProduction = process.env.NODE_ENV === 'production';
+      cachedVideoBaseUrl = isProduction ? 'http://155.138.239.131:8000' : 'http://localhost:8000';
+    }
     baseUrlCacheTimestamp = now;
     return cachedVideoBaseUrl;
   }
@@ -346,17 +376,34 @@ export function fixVideoUrl(
       if (skipValidation && url.includes('155.138.239.131')) {
         fixedUrl = url;
       }
-      // Fix localhost URLs - optimized with regex patterns
+      // Fix localhost URLs - FIXED: Only fix when actually needed
       else if (LOCALHOST_PATTERN.test(url)) {
         try {
           const urlObj = new URL(url);
           const targetUrlObj = new URL(baseUrl);
           
-          // Only replace if it's actually localhost/127.0.0.1
+          // FIXED: Only replace if source and target environments are different
+          // If we're in localhost development and URL is localhost, keep it
           if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
-            fixedUrl = `${targetUrlObj.protocol}//${targetUrlObj.host}${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
-            if (debug) {
-              console.log('🔧 fixVideoUrl fixed localhost with URL parsing:', url, '->', fixedUrl);
+            // Only change localhost URLs if the target environment is different
+            const shouldReplace = typeof window !== 'undefined' ? 
+              // In browser: only replace if frontend hostname doesn't match URL hostname
+              (window.location.hostname !== urlObj.hostname && 
+               !((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
+                 (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1'))) :
+              // In SSR: only replace if target is production
+              targetUrlObj.hostname !== urlObj.hostname;
+            
+            if (shouldReplace) {
+              fixedUrl = `${targetUrlObj.protocol}//${targetUrlObj.host}${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+              if (debug) {
+                console.log('🔧 fixVideoUrl fixed localhost with URL parsing:', url, '->', fixedUrl);
+              }
+            } else {
+              fixedUrl = url; // Keep original localhost URL
+              if (debug) {
+                console.log('🔧 fixVideoUrl preserved localhost URL:', url);
+              }
             }
           } else {
             fixedUrl = url;
@@ -370,11 +417,25 @@ export function fixVideoUrl(
               console.log('🔧 fixVideoUrl fixed corrupted URL:', url, '->', fixedUrl);
             }
           }
-          // Only fix if target host not already present
+          // Only fix if target host not already present and environments actually differ
           else if (!TARGET_HOST_PATTERN.test(url)) {
-            fixedUrl = url.replace(LOCALHOST_PATTERN, baseUrl);
-            if (debug) {
-              console.log('🔧 fixVideoUrl fixed localhost with regex:', url, '->', fixedUrl);
+            // Check if we should actually replace the URL
+            const shouldReplace = typeof window !== 'undefined' ?
+              // Don't replace if we're on localhost and target is also localhost
+              !(((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+                 baseUrl.includes('localhost'))) :
+              true; // In SSR, default to replacement
+            
+            if (shouldReplace) {
+              fixedUrl = url.replace(LOCALHOST_PATTERN, baseUrl);
+              if (debug) {
+                console.log('🔧 fixVideoUrl fixed localhost with regex:', url, '->', fixedUrl);
+              }
+            } else {
+              fixedUrl = url;
+              if (debug) {
+                console.log('🔧 fixVideoUrl preserved localhost URL (regex fallback):', url);
+              }
             }
           } else {
             fixedUrl = url;
@@ -425,9 +486,15 @@ export function fixVideoUrl(
       console.error('🔧 fixVideoUrl error:', error, 'for URL:', url);
     }
     
-    // Fallback error handling
+    // FIXED: Fallback error handling - don't break working localhost URLs
     if (url && url.includes('localhost')) {
       const baseUrl = getCachedVideoBaseUrl();
+      // Only replace if we're not in a localhost-to-localhost scenario
+      if (typeof window !== 'undefined' && 
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
+          baseUrl.includes('localhost')) {
+        return url; // Keep original localhost URL
+      }
       return url.replace(LOCALHOST_PATTERN, baseUrl);
     }
     
@@ -439,13 +506,28 @@ export function fixVideoUrl(
  * Fix video object's URL property in-place
  */
 export function fixVideoObjectUrl(
-  video: { url?: string; filename?: string; id?: string },
+  video: { url?: string; filename?: string; id?: string; file_path?: string },
   options: VideoUrlFixOptions = {}
 ): void {
   if (!video) return;
   
   const originalUrl = video.url;
-  video.url = fixVideoUrl(video.url, video.filename, video.id, options);
+  
+  // Prioritize file_path over filename for URL construction
+  if (video.file_path && !originalUrl) {
+    // Extract just the filename from the full file_path
+    const pathParts = video.file_path.split('/');
+    const actualFilename = pathParts[pathParts.length - 1];
+    const baseUrl = getCachedVideoBaseUrl();
+    video.url = `${baseUrl}/uploads/${actualFilename}`;
+    
+    if (options.debug) {
+      console.log('🔧 Using file_path for URL construction:', actualFilename, '->', video.url);
+    }
+  } else {
+    // Fallback to original logic
+    video.url = fixVideoUrl(video.url, video.filename, video.id, options);
+  }
   
   if (options.debug && originalUrl !== video.url) {
     console.log('🔧 fixVideoObjectUrl updated:', originalUrl, '->', video.url);
@@ -886,8 +968,8 @@ export function getCacheStats() {
 export async function initializeWithHooks(): Promise<void> {
   try {
     // Initialize hooks if available
-    if (typeof window !== 'undefined' && (window as any).claudeFlow) {
-      const hooks = (window as any).claudeFlow.hooks;
+    if (typeof window !== 'undefined' && window.claudeFlow?.hooks) {
+      const hooks = window.claudeFlow.hooks;
       if (hooks) {
         await hooks.notify({
           component: 'videoUrlFixer',
@@ -962,6 +1044,9 @@ export default videoUrlFixerDefault;
 
 // Auto-initialize if in browser environment
 if (typeof window !== 'undefined') {
+  // Clear cache to ensure fix takes effect
+  clearAllCaches();
+  
   // Delay initialization to allow other systems to load
   setTimeout(() => {
     initializeWithHooks().catch(error => {

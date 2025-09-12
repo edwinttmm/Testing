@@ -46,8 +46,8 @@ export const expectedProjectStructure: Project = {
   updatedAt: 'ISO date string',
   status: ProjectStatus.ACTIVE, // Using the correct enum value
   testsCount: 0,
-  accuracy: 0,
-  userId: 'string'
+  averageAccuracy: 0,
+  ownerId: 'string'
 };
 
 // Form validation tests

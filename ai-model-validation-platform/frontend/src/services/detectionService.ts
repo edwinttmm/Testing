@@ -2,6 +2,7 @@ import { GroundTruthAnnotation, DetectionUpdate, VRUType } from './types';
 import { apiService } from './api';
 import { isDebugEnabled } from '../utils/envConfig';
 import { isObject, isArray, isString, isNumber, safeGet, hasDetectionProperties, mapYoloClassToVRUType } from '../utils/typeGuards';
+import { debugDetectionData, debugBoundingBoxConversion, debugNetworkRequest } from '../utils/enhancedModeDebugger';
 
 export interface DetectionConfig {
   confidenceThreshold: number;
@@ -50,10 +51,10 @@ class DetectionService {
     this.isProcessing.set(videoId, true);
     
     try {
-      // Try backend detection with extended timeout for heavy processing
+      // Try backend detection with extended timeout for heavy processing (YOLOv8 can take 70+ seconds)
       const backendPromise = this.runBackendDetection(videoId, config);
       const timeoutPromise = new Promise<DetectionResult>((_, reject) => 
-        setTimeout(() => reject(new Error('Detection timeout - video processing taking too long')), 30000)
+        setTimeout(() => reject(new Error('Detection timeout - video processing taking too long')), 130000) // 130 seconds to handle real YOLOv8 processing
       );
       
       try {
@@ -123,14 +124,28 @@ class DetectionService {
   ): Promise<DetectionResult> {
     try {
       if (isDebugEnabled()) {
-        console.log('🔍 Running backend detection pipeline...', { videoId, config });
+        console.log('🔍 Running backend detection pipeline (real YOLOv8 AI - may take up to 70+ seconds)...', { videoId, config });
       }
+      
+      // CRITICAL DEBUG: Always log this regardless of debug mode
+      console.log('🚨 DETECTION SERVICE CALLED:', { videoId, config, timestamp: new Date().toISOString() });
       
       const response = await apiService.runDetectionPipeline(videoId, {
         confidenceThreshold: config.confidenceThreshold,
         nmsThreshold: config.nmsThreshold,
         modelName: config.modelName,
         targetClasses: config.targetClasses
+      });
+      
+      // CRITICAL DEBUG: Always log API response
+      console.log('🚨 API RESPONSE RECEIVED:', { 
+        response, 
+        responseType: typeof response,
+        responseKeys: response ? Object.keys(response) : 'null',
+        detectionsRaw: response?.detections,
+        detectionsType: typeof response?.detections,
+        detectionsLength: response?.detections?.length,
+        timestamp: new Date().toISOString() 
       });
       
       if (isDebugEnabled()) {
@@ -141,41 +156,120 @@ class DetectionService {
         throw new Error('No response received from detection pipeline');
       }
       
-      // Handle different response formats
-      const detections = response.detections || [];
+      // Handle different response formats  
+      let detections: unknown[] = response.detections || [];
+      
+      if (isDebugEnabled()) {
+        console.log('🔍 Raw backend detection response:', {
+          responseType: typeof response,
+          responseKeys: Object.keys(response),
+          detectionsType: typeof detections,
+          detectionsIsArray: Array.isArray(detections),
+          detectionsLength: Array.isArray(detections) ? detections.length : 'N/A',
+          rawResponse: response,
+          firstDetection: Array.isArray(detections) && detections.length > 0 ? detections[0] : null
+        });
+      }
+      
+      // Handle nested response formats with proper type casting
+      if (!Array.isArray(detections)) {
+        if (isObject(detections) && 'results' in detections) {
+          detections = (detections as { results: unknown[] }).results;
+        } else if (isObject(detections) && 'data' in detections) {
+          detections = (detections as { data: unknown[] }).data;
+        } else {
+          console.warn('⚠️ Detection response is not an array:', detections);
+          console.warn('⚠️ Full response structure:', response);
+          throw new Error(`Invalid detection response format: expected array, got ${typeof detections}`);
+        }
+      }
       
       if (!Array.isArray(detections)) {
-        console.warn('⚠️ Detection response is not an array:', detections);
-        throw new Error('Invalid detection response format');
+        throw new Error(`Detection data is still not an array after normalization: ${typeof detections}`);
+      }
+      
+      if (isDebugEnabled()) {
+        console.log('🔍 Pre-filtering detection data:', {
+          totalDetections: detections.length,
+          sampleDetections: detections.slice(0, 2).map((det, index) => ({
+            index,
+            type: typeof det,
+            keys: isObject(det) ? Object.keys(det) : 'N/A',
+            hasClassValue: isObject(det) ? (det.class_name || det.className || det.label || det.class || 'MISSING') : 'N/A',
+            hasConfidenceValue: isObject(det) ? det.confidence : 'N/A',
+            hasBboxValue: isObject(det) ? (det.bbox || det.boundingBox || 'MISSING') : 'N/A',
+            raw: det
+          }))
+        });
       }
       
       // Type-safe detection conversion with improved filtering
-      const validDetections = isArray(detections) ? 
-        detections.filter(hasDetectionProperties) : [];
+      const validDetections = detections.filter((det, index) => {
+        const isValid = hasDetectionProperties(det);
+        if (!isValid && isDebugEnabled()) {
+          console.log(`❌ Detection ${index} failed validation:`, det);
+        }
+        return isValid;
+      });
       
       if (isDebugEnabled()) {
         console.log('🔍 Detection filtering results:', {
           totalDetections: detections.length,
           validDetections: validDetections.length,
           filteredOut: detections.length - validDetections.length,
+          filteringPercentage: detections.length > 0 ? ((validDetections.length / detections.length) * 100).toFixed(1) + '%' : '0%',
+          sampleValidDetection: validDetections[0] || null,
+          sampleInvalidDetection: detections.find(det => !hasDetectionProperties(det)) || null
+        });
+      }
+      
+      if (validDetections.length === 0 && detections.length > 0) {
+        console.error('🚨 All detections were filtered out! Sample detection analysis:', {
           sampleDetection: detections[0],
-          allDetections: detections.slice(0, 3) // Show first 3 detections for debugging
+          detectionKeys: isObject(detections[0]) ? Object.keys(detections[0]) : 'Not an object',
+          hasConfidence: isObject(detections[0]) ? 'confidence' in detections[0] : false,
+          hasBbox: isObject(detections[0]) ? ('bbox' in detections[0] || 'boundingBox' in detections[0]) : false,
+          hasClass: isObject(detections[0]) ? ('class_name' in detections[0] || 'className' in detections[0] || 'label' in detections[0]) : false
         });
       }
       
       // Convert backend detections to annotations
       const annotations = this.convertDetectionsToAnnotations(videoId, validDetections);
       
+      // Debug detection data processing
+      debugDetectionData('backend', validDetections, annotations);
+      
+      // CRITICAL DEBUG: Always log conversion results
+      console.log('🚨 DETECTION CONVERSION RESULTS:', {
+        validDetections: validDetections.length,
+        convertedAnnotations: annotations.length,
+        sampleValidDetection: validDetections[0],
+        sampleAnnotation: annotations[0],
+        timestamp: new Date().toISOString()
+      });
+      
       if (isDebugEnabled()) {
         console.log('🎯 Converted detections to annotations:', annotations.length, 'annotations');
       }
       
-      return {
+      const result = {
         success: true,
         detections: annotations,
-        source: 'backend',
+        source: 'backend' as const,
         processingTime: response.processingTime || 0
       };
+      
+      // CRITICAL DEBUG: Always log final result
+      console.log('🚨 FINAL DETECTION RESULT:', {
+        success: result.success,
+        detectionsCount: result.detections.length,
+        source: result.source,
+        processingTime: result.processingTime,
+        sampleDetection: result.detections[0],
+        timestamp: new Date().toISOString()
+      });
+      
+      return result;
       
     } catch (error: unknown) {
       console.error('Backend detection error:', error);
@@ -209,7 +303,7 @@ class DetectionService {
     const startTime = Date.now();
     
     if (isDebugEnabled()) {
-      console.log('🚧 Running fallback detection (mock data)...');
+      console.log('🚧 Running fallback detection (mock data) - this is NOT real AI detection...');
     }
     
     // Simulate processing delay
@@ -223,7 +317,7 @@ class DetectionService {
         detectionId: `DET_PED_0001`,
         frameNumber: 30,
         timestamp: 1.0,
-        vruType: 'pedestrian',
+        vruType: VRUType.PEDESTRIAN,
         boundingBox: {
           x: 320,
           y: 240,
@@ -235,6 +329,7 @@ class DetectionService {
         occluded: false,
         truncated: false,
         difficult: false,
+        validationStatus: 'pending',
         validated: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -245,7 +340,7 @@ class DetectionService {
         detectionId: `DET_CYC_0001`,
         frameNumber: 45,
         timestamp: 1.5,
-        vruType: 'cyclist',
+        vruType: VRUType.CYCLIST,
         boundingBox: {
           x: 200,
           y: 180,
@@ -257,6 +352,7 @@ class DetectionService {
         occluded: false,
         truncated: false,
         difficult: false,
+        validationStatus: 'pending',
         validated: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -294,24 +390,74 @@ class DetectionService {
       const className = safeGet(det, 'class_name', safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person')))) as string;
       const bboxArray = safeGet(det, 'bbox', []) as number[];
       
-      // Parse bbox array [x, y, width, height] or fallback to object properties
-      let bbox = { x: 0, y: 0, width: 100, height: 100 };
+      // Parse bbox array [x, y, width, height] or [x1, y1, x2, y2] format
+      let bbox = { x: 0, y: 0, width: 100, height: 100 }; // Default fallback
+      
+      // CRITICAL DEBUG: Always log bbox data
+      console.log('🚨 BBOX PARSING DEBUG:', {
+        detectionIndex: index,
+        bboxArray,
+        bboxArrayType: typeof bboxArray,
+        bboxArrayIsArray: Array.isArray(bboxArray),
+        bboxArrayLength: Array.isArray(bboxArray) ? bboxArray.length : 'N/A',
+        detectionObject: det,
+        timestamp: new Date().toISOString()
+      });
+      
       if (Array.isArray(bboxArray) && bboxArray.length >= 4) {
+        // Check if bbox is in [x1, y1, x2, y2] format (coordinates) or [x, y, width, height] format
+        // If x2 > x1 + width assumption, likely coordinates format
+        const [val1, val2, val3, val4] = bboxArray;
+        
+        console.log('🚨 BBOX ARRAY VALUES:', { val1, val2, val3, val4 });
+        
+        if (val3 > val1 && val4 > val2 && (val3 - val1) > 10 && (val4 - val2) > 10) {
+          // Likely [x1, y1, x2, y2] coordinate format - convert to width/height
+          bbox = {
+            x: Math.round(val1),
+            y: Math.round(val2),
+            width: Math.round(val3 - val1),
+            height: Math.round(val4 - val2)
+          };
+          console.log('🚨 CONVERTED FROM COORDS:', bbox);
+        } else {
+          // Likely [x, y, width, height] format - use directly
+          bbox = {
+            x: Math.round(val1),
+            y: Math.round(val2),
+            width: Math.round(val3),
+            height: Math.round(val4)
+          };
+          console.log('🚨 USED DIRECT VALUES:', bbox);
+        }
+      } else if (isObject(bboxArray)) {
+        // Handle object format bbox
         bbox = {
-          x: bboxArray[0],
-          y: bboxArray[1], 
-          width: bboxArray[2] - bboxArray[0], // Convert from x2 to width if needed
-          height: bboxArray[3] - bboxArray[1] // Convert from y2 to height if needed
+          x: Math.round(safeGet(bboxArray, 'x', 0) as number),
+          y: Math.round(safeGet(bboxArray, 'y', 0) as number),
+          width: Math.round(safeGet(bboxArray, 'width', safeGet(bboxArray, 'w', 100)) as number),
+          height: Math.round(safeGet(bboxArray, 'height', safeGet(bboxArray, 'h', 100)) as number)
         };
+        console.log('🚨 PARSED FROM OBJECT:', bbox);
       } else {
-        // Fallback to object properties
+        // Fallback to object properties directly on detection
         bbox = {
-          x: safeGet(det, 'x', safeGet(det, 'bbox.x', 0)) as number,
-          y: safeGet(det, 'y', safeGet(det, 'bbox.y', 0)) as number,
-          width: safeGet(det, 'width', safeGet(det, 'bbox.width', 100)) as number,
-          height: safeGet(det, 'height', safeGet(det, 'bbox.height', 100)) as number
+          x: Math.round(safeGet(det, 'x', 0) as number),
+          y: Math.round(safeGet(det, 'y', 0) as number),
+          width: Math.round(safeGet(det, 'width', safeGet(det, 'w', 100)) as number),
+          height: Math.round(safeGet(det, 'height', safeGet(det, 'h', 100)) as number)
         };
+        console.log('🚨 USED DETECTION FALLBACK:', bbox);
       }
+      
+      // Debug bounding box conversion
+      debugBoundingBoxConversion(bboxArray, bbox, 'detection_to_annotation');
+      
+      // Ensure bbox values are valid numbers
+      bbox.x = isNaN(bbox.x) ? 0 : Math.max(0, bbox.x);
+      bbox.y = isNaN(bbox.y) ? 0 : Math.max(0, bbox.y);  
+      bbox.width = isNaN(bbox.width) ? 100 : Math.max(1, bbox.width);
+      bbox.height = isNaN(bbox.height) ? 100 : Math.max(1, bbox.height);
       
       return {
         id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`) as string,
@@ -331,6 +477,7 @@ class DetectionService {
         occluded: safeGet(det, 'occluded', false) as boolean,
         truncated: safeGet(det, 'truncated', false) as boolean,
         difficult: safeGet(det, 'difficult', false) as boolean,
+        validationStatus: 'pending' as const,
         validated: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()

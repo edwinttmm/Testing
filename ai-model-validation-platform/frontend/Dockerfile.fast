@@ -1,0 +1,28 @@
+FROM node:20-alpine
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+WORKDIR /app
+
+# Set environment variables for faster startup
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV NODE_ENV=development
+ENV SKIP_PREFLIGHT_CHECK=true
+ENV TSC_COMPILE_ON_ERROR=true
+ENV FAST_REFRESH=true
+
+# Copy package files
+COPY package*.json ./
+
+# Fast install without audit
+RUN npm ci --legacy-peer-deps --no-audit --no-fund
+
+# Copy source
+COPY . .
+
+EXPOSE 3000
+
+# Simple startup without TypeScript checking
+CMD ["sh", "-c", "SKIP_PREFLIGHT_CHECK=true GENERATE_SOURCEMAP=false npm start"]

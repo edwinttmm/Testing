@@ -33,8 +33,8 @@ interface EnhancedAnnotationCanvasProps {
   height: number;
   backgroundImage?: string;
   videoElement?: HTMLVideoElement;
-  onShapeClick?: (shape: AnnotationShape, event: MouseEvent) => void;
-  onCanvasClick?: (point: Point, event: MouseEvent) => void;
+  onShapeClick?: (shape: AnnotationShape, event: React.MouseEvent) => void;
+  onCanvasClick?: (point: Point, event: React.MouseEvent) => void;
   onShapeChange?: (shapes: AnnotationShape[]) => void;
   disabled?: boolean;
 }
@@ -42,11 +42,11 @@ interface EnhancedAnnotationCanvasProps {
 const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
   width,
   height,
-  backgroundImage,
+  backgroundImage: _backgroundImage,
   videoElement,
   onShapeClick,
   onCanvasClick,
-  onShapeChange,
+  onShapeChange: _onShapeChange,
   disabled = false,
 }) => {
   const { state, actions } = useAnnotation();
@@ -70,14 +70,16 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null);
 
   // Get mouse position relative to canvas
-  const getMousePos = useCallback((event: MouseEvent): Point => {
+  const getMousePos = useCallback((event: React.MouseEvent | MouseEvent): Point => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     
     const rect = canvas.getBoundingClientRect();
+    const clientX = 'clientX' in event ? event.clientX : (event as MouseEvent).clientX;
+    const clientY = 'clientY' in event ? event.clientY : (event as MouseEvent).clientY;
     const point = {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     };
     
     return actions.inverseTransformPoint(point);
@@ -196,7 +198,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
           if (!state.selectedShapeIds.includes(hitShape.id)) {
             actions.selectShapes([hitShape.id], mouseEvent.shiftKey);
           }
-          onShapeClick?.(hitShape, mouseEvent);
+          onShapeClick?.(hitShape, mouseEvent as unknown as React.MouseEvent);
           setDragStart(point);
         } else {
           if (!mouseEvent.shiftKey) {
@@ -229,7 +231,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
       
       case 'point': {
         actions.createPoint(point);
-        onCanvasClick?.(point, mouseEvent);
+        onCanvasClick?.(point, mouseEvent as unknown as React.MouseEvent);
         break;
       }
       
@@ -241,7 +243,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     }
   }, [
     disabled, getMousePos, resizeHandles, actions, state.activeToolId, state.selectedShapeIds,
-    hitTest, onShapeClick, onCanvasClick, isDrawing, state.canvasTransform, isPanning, lastPanPoint
+    hitTest, onShapeClick, onCanvasClick, isDrawing, isPanning
   ]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent) => {
@@ -272,7 +274,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
         const delta = { x: point.x - dragStart.x, y: point.y - dragStart.y };
         
         // Calculate new bounding box based on handle
-        let newBbox = { ...shape.boundingBox };
+        const newBbox = { ...shape.boundingBox };
         
         switch (activeResizeHandle) {
           case 'nw':
@@ -464,7 +466,7 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
   ]);
 
   // Double-click handler for polygon completion
-  const handleDoubleClick = useCallback((event: React.MouseEvent) => {
+  const handleDoubleClick = useCallback((_event: React.MouseEvent) => {
     if (disabled) return;
     
     if (state.activeToolId === 'polygon' && isDrawing && currentPath.length > 2) {
@@ -526,13 +528,39 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
     overlayCtx.scale(scale, scale);
     overlayCtx.translate(translateX / scale, translateY / scale);
     
-    // Draw background video frame if available
-    if (videoElement && !videoElement.paused) {
+    // Draw background video frame if available - Always draw, not just when playing
+    if (videoElement && videoElement.videoWidth > 0 && videoElement.readyState >= 2) {
       try {
-        ctx.drawImage(videoElement, 0, 0, canvas.width / scale, canvas.height / scale);
+        // Calculate aspect ratio and positioning
+        const videoAspectRatio = videoElement.videoWidth / videoElement.videoHeight;
+        const canvasAspectRatio = (canvas.width / scale) / (canvas.height / scale);
+        
+        let drawWidth = canvas.width / scale;
+        let drawHeight = canvas.height / scale;
+        let offsetX = 0;
+        let offsetY = 0;
+        
+        if (videoAspectRatio > canvasAspectRatio) {
+          drawHeight = drawWidth / videoAspectRatio;
+          offsetY = (canvas.height / scale - drawHeight) / 2;
+        } else {
+          drawWidth = drawHeight * videoAspectRatio;
+          offsetX = (canvas.width / scale - drawWidth) / 2;
+        }
+        
+        // Always draw the current frame, whether paused or playing
+        ctx.drawImage(videoElement, offsetX, offsetY, drawWidth, drawHeight);
       } catch (e) {
         // Ignore errors when video is not ready
+        console.debug('Video not ready for drawing:', e);
+        // Draw black background as fallback
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width / scale, canvas.height / scale);
       }
+    } else {
+      // Draw black background when no video available
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width / scale, canvas.height / scale);
     }
     
     // Draw grid if enabled
@@ -570,6 +598,12 @@ const EnhancedAnnotationCanvas: React.FC<EnhancedAnnotationCanvasProps> = ({
         case 'rectangle':
           if (shape.points.length >= 4) {
             const bbox = shape.boundingBox;
+            console.log(`Drawing rectangle shape ${shape.id}:`, { 
+              id: shape.id,
+              boundingBox: bbox,
+              points: shape.points,
+              label: shape.label 
+            });
             ctx.fillRect(bbox.x, bbox.y, bbox.width, bbox.height);
             ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
           }

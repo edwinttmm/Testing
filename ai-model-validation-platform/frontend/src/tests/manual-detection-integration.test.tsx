@@ -25,11 +25,12 @@ const theme = createTheme();
 const mockVideo: VideoFile = {
   id: 'test-video-id',
   filename: 'test-video.mp4',
+  originalName: 'test-video.mp4',
+  size: 1024000,
   url: 'https://example.com/test-video.mp4',
   duration: 60,
-  file_size: 1024000,
   status: 'completed',
-  created_at: new Date().toISOString(),
+  uploadedAt: new Date().toISOString(),
   projectId: 'test-project',
 };
 

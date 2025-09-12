@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-08-28T16:32:52.723287",
+  "tests": [
+    {
+      "test": "CVAT Container Status",
+      "success": true,
+      "details": "Container running",
+      "error": null
+    },
+    {
+      "test": "Overall Health Check",
+      "success": false,
+      "details": "Unexpected error during testing",
+      "error": "invalid literal for int() with base 10: 'env: \u2018|\u2019: No such file or directory'"
+    }
+  ],
+  "overall_success": false
+}

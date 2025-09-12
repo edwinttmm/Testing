@@ -40,18 +40,37 @@ python-engineio>=4.8.0
 redis==5.0.1
 
 # AI/ML dependencies - Full ML stack for complete functionality
-torch>=2.0.0
-torchvision>=0.15.0
-ultralytics==8.0.196
-opencv-python-headless==4.8.1.78
-pillow==10.1.0
-numpy==1.25.2
-scipy==1.11.4
-matplotlib==3.8.2
-pandas==2.1.4
+torch>=2.8.0
+torchvision>=0.23.0
+torchaudio>=2.8.0
+ultralytics>=8.3.0
+opencv-python>=4.12.0
+pillow>=11.0.0
+numpy>=2.2.0
+scipy>=1.16.0
+matplotlib>=3.10.0
+pandas>=2.1.4
+polars>=1.32.0
+psutil>=7.0.0
 
 # PostgreSQL Driver
 psycopg2-binary
 
-# Signal Acquisition Hardware (Optional - system will work without it)
-# labjack-ljm==1.21.0  # LabJack voltage signal acquisition - install manually if needed
+# Security & Validation Libraries (CRITICAL - required for fixes)
+bleach==6.1.0
+cryptography==41.0.7
+validators==0.22.0
+
+# Signal Acquisition Hardware (Official LabJack Library - INSTALLED)
+labjack-ljm==1.23.0  # LabJack voltage signal acquisition - official hardware integration
+
+# System Environment and Configuration
+python-decouple==3.8  # For environment variable management
+click==8.1.7  # For CLI tools and scripts
+
+# Network and Serial Communication (for signal validation)
+pyserial==3.5  # For serial communication signals
+requests==2.31.0  # Enhanced HTTP client for network signals
+
+# Mock and Testing Support for Hardware Interfaces
+responses==0.24.1  # For mocking HTTP responses in tests

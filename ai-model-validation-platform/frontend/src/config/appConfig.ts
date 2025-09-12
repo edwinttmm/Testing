@@ -76,22 +76,19 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
     if (typeof window !== 'undefined') {
       const { hostname, protocol } = window.location;
       
-      // Development defaults - Updated to use external IP
+      // Development defaults - ALWAYS use localhost for development
       if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://155.138.239.131:8000';
+        return 'http://localhost:8000';
       }
       
-      // Production server IP
-      if (hostname === '155.138.239.131') {
-        return 'http://155.138.239.131:8000';
+      // Production defaults - Use the current hostname
+      if (isProduction) {
+        return `${protocol}//${hostname}:8000`;
       }
-      
-      // Production defaults
-      return `${protocol}//${hostname}:8000`;
     }
     
-    // Fallback for server-side rendering - Updated to use external IP
-    return 'http://155.138.239.131:8000';
+    // Fallback for server-side rendering - Use localhost for development
+    return 'http://localhost:8000';
   };
   
   // Determine WebSocket URL with runtime override support
@@ -157,14 +154,14 @@ const getEnvironmentConfig = (): Partial<AppConfig> => {
 // Default configuration
 const defaultConfig: AppConfig = {
   api: {
-    baseUrl: 'http://155.138.239.131:8000',
+    baseUrl: 'http://localhost:8000',
     timeout: 30000,
     retries: 3,
     retryDelay: 1000,
   },
   
   websocket: {
-    url: 'ws://155.138.239.131:8000',
+    url: 'ws://localhost:8000',
     reconnectAttempts: 5,
     reconnectDelay: 1000,
     heartbeatInterval: 30000,

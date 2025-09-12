@@ -94,11 +94,13 @@ export interface AnnotationAction {
 
 export interface KeyboardShortcut {
   key: string;
-  ctrlKey?: boolean;
-  shiftKey?: boolean;
-  altKey?: boolean;
+  ctrlKey?: boolean | undefined;
+  shiftKey?: boolean | undefined;
+  altKey?: boolean | undefined;
+  metaKey?: boolean | undefined;
   description: string;
   action: () => void;
+  disabled?: boolean | undefined;
 }
 
 export interface ContextMenuItem {
@@ -127,7 +129,7 @@ export interface AnnotationEvent {
   type: string;
   target?: AnnotationShape;
   point?: Point;
-  originalEvent?: MouseEvent | KeyboardEvent;
+  originalEvent?: React.MouseEvent | React.KeyboardEvent | MouseEvent | KeyboardEvent;
   preventDefault?: () => void;
 }
 

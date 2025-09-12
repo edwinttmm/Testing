@@ -1,0 +1,159 @@
+{
+  "timestamp": "2025-08-27 12:50:05",
+  "summary": {
+    "timestamp": "2025-08-27 12:50:05",
+    "total_tests": 26,
+    "passed": 17,
+    "failed": 4,
+    "errors": 1,
+    "success_rate": "65.4%"
+  },
+  "test_results": {
+    "database_tests": [
+      {
+        "test": "sqlite_connectivity",
+        "status": "PASS",
+        "details": "Connected successfully, 0 tables, 0 objects"
+      },
+      {
+        "test": "postgresql_connectivity",
+        "status": "PASS",
+        "details": "Connected successfully: PostgreSQL 15.14 (Debian 15.14-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit"
+      },
+      {
+        "test": "redis_connectivity",
+        "status": "PASS",
+        "details": "Connected successfully: 7.4.5"
+      }
+    ],
+    "api_tests": [
+      {
+        "test": "GET /health",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 79"
+      },
+      {
+        "test": "GET /",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 70"
+      },
+      {
+        "test": "GET /api/videos",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 184"
+      },
+      {
+        "test": "GET /api/projects",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 300"
+      },
+      {
+        "test": "GET /api/dashboard/stats",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 107"
+      },
+      {
+        "test": "GET /api/validation/status",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 111"
+      },
+      {
+        "test": "POST /api/projects",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 60"
+      },
+      {
+        "test": "GET /api/detection/models",
+        "status": "PASS",
+        "details": "Status: 200, Response length: 144"
+      }
+    ],
+    "websocket_tests": [
+      {
+        "test": "websocket_/ws/detection",
+        "status": "FAIL",
+        "details": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'"
+      },
+      {
+        "test": "websocket_/ws/notifications",
+        "status": "FAIL",
+        "details": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'"
+      },
+      {
+        "test": "websocket_/ws/status",
+        "status": "FAIL",
+        "details": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'"
+      }
+    ],
+    "upload_tests": [
+      {
+        "test": "video_file_upload",
+        "status": "PASS",
+        "details": "Status: 200, Response: {\"id\":2,\"filename\":\"test_video.mp4\",\"project_id\":1,\"size\":1039,\"status\":\"uploaded\"}"
+      }
+    ],
+    "authentication_tests": [
+      {
+        "test": "admin_endpoint_access",
+        "status": "PASS",
+        "details": "Proper response for admin endpoint: 404"
+      },
+      {
+        "test": "cors_headers",
+        "status": "FAIL",
+        "details": "CORS headers: {}"
+      }
+    ],
+    "integration_tests": [
+      {
+        "test": "frontend_accessibility",
+        "status": "ERROR",
+        "details": "HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x703a5c794380>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+      }
+    ],
+    "performance_tests": [
+      {
+        "test": "response_time__health",
+        "status": "EXCELLENT",
+        "details": "Avg: 0.001s, Min: 0.001s, Max: 0.002s"
+      },
+      {
+        "test": "response_time__api_videos",
+        "status": "EXCELLENT",
+        "details": "Avg: 0.002s, Min: 0.002s, Max: 0.002s"
+      },
+      {
+        "test": "response_time__api_projects",
+        "status": "EXCELLENT",
+        "details": "Avg: 0.002s, Min: 0.002s, Max: 0.002s"
+      },
+      {
+        "test": "response_time__",
+        "status": "EXCELLENT",
+        "details": "Avg: 0.001s, Min: 0.001s, Max: 0.001s"
+      }
+    ],
+    "error_handling_tests": [
+      {
+        "test": "error_GET__api_videos_999999",
+        "status": "PASS",
+        "details": "Status: 404, Expected: [404]"
+      },
+      {
+        "test": "error_POST__api_videos_upload",
+        "status": "PASS",
+        "details": "Status: 422, Expected: [400, 422]"
+      },
+      {
+        "test": "error_GET__nonexistent",
+        "status": "PASS",
+        "details": "Status: 404, Expected: [404]"
+      },
+      {
+        "test": "error_POST__api_projects",
+        "status": "PASS",
+        "details": "Status: 422, Expected: [400, 422]"
+      }
+    ]
+  }
+}

@@ -18,9 +18,12 @@ class ApiCache {
 
   // Cache configurations per endpoint
   private cacheConfigs = new Map([
-    ['/api/dashboard/stats', { ttl: 30 * 1000 }], // 30 seconds for dashboard
-    ['/api/projects', { ttl: 2 * 60 * 1000 }], // 2 minutes for projects
-    ['/api/dashboard/charts', { ttl: 60 * 1000 }], // 1 minute for charts
+    ['/api/dashboard/stats', { ttl: 10 * 1000 }], // 10 seconds for dashboard (reduced for fresh data)
+    ['/api/projects', { ttl: 30 * 1000 }], // 30 seconds for projects (reduced)
+    ['/api/dashboard/charts', { ttl: 30 * 1000 }], // 30 seconds for charts (reduced)
+    ['/api/test-sessions', { ttl: 5 * 1000 }], // 5 seconds for test sessions (very fresh)
+    ['/api/test-results', { ttl: 5 * 1000 }], // 5 seconds for test results (very fresh)
+    ['/api/detection-results', { ttl: 0 }], // No cache for detection results (always fresh)
     ['health', { ttl: 60 * 1000 }], // 1 minute for health check
   ]);
 
@@ -29,7 +32,7 @@ class ApiCache {
     return `${method}:${url}:${paramStr}`;
   }
 
-  private isExpired(entry: CacheEntry<any>): boolean {
+  private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() > entry.expiresAt;
   }
 
@@ -168,6 +171,24 @@ class ApiCache {
       pendingRequests: this.pendingRequests.size,
       hitRate: valid / (valid + expired) || 0,
     };
+  }
+
+  // Convenience methods for common invalidation patterns
+  invalidateResults() {
+    this.invalidatePattern('/api/test-results');
+    this.invalidatePattern('/api/test-sessions');
+    this.invalidatePattern('/api/detection-results');
+    console.log('🗑️ Results cache invalidated');
+  }
+
+  invalidateProjects() {
+    this.invalidatePattern('/api/projects');
+    console.log('🗑️ Projects cache invalidated');
+  }
+
+  invalidateDashboard() {
+    this.invalidatePattern('/api/dashboard');
+    console.log('🗑️ Dashboard cache invalidated');
   }
 }
 

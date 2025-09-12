@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -23,7 +23,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
 
@@ -31,10 +31,28 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
+      - ENVIRONMENT=development
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/vru_validation
+      - AIVALIDATION_DATABASE_URL=postgresql://postgres:password@postgres:5432/vru_validation
+      - VRU_DATABASE_URL=postgresql://postgres:password@postgres:5432/vru_validation
       - REDIS_URL=redis://redis:6379
+      - AIVALIDATION_REDIS_URL=redis://redis:6379
+      - SECRET_KEY=development-secret-key-change-for-production
+      - AIVALIDATION_SECRET_KEY=development-secret-key-change-for-production
+      - VRU_SECRET_KEY=development-secret-key-change-for-production
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - AIVALIDATION_API_HOST=0.0.0.0
+      - AIVALIDATION_API_PORT=8000
+      - LOG_LEVEL=DEBUG
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8001
+      - AIVALIDATION_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:8001
+      - DOCKER_MODE=true
+      - AIVALIDATION_DOCKER_MODE=true
+    env_file:
+      - .env.development.simple
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,17 +66,43 @@ services:
 
   # React Frontend
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - HOST=0.0.0.0
+      - PORT=3000
+      - REACT_APP_API_URL=http://localhost:8001
+      - REACT_APP_WS_URL=ws://localhost:8001
+      - REACT_APP_VIDEO_BASE_URL=http://localhost:8001
+      - REACT_APP_ENVIRONMENT=development
+      - REACT_APP_DEBUG=true
+      - GENERATE_SOURCEMAP=false
+      - SKIP_PREFLIGHT_CHECK=true
+      - TSC_COMPILE_ON_ERROR=true
+      - DOCKER=true
+      - DISABLE_GPU_CHECK=true
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+      - WDS_SOCKET_HOST=localhost
+      - WDS_SOCKET_PORT=3000
+    env_file:
+      - .env.development.simple
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    command: npm start
+      - /app/build
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   postgres_data:

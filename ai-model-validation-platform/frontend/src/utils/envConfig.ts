@@ -1,12 +1,17 @@
 /**
  * Environment Configuration Utility
  * 
+ * BROWSER-COMPATIBLE VERSION - FIXED FOR CRITICAL COMPATIBILITY ISSUES
+ * 
  * Provides centralized environment configuration management with:
- * - Automatic environment detection
+ * - Automatic environment detection (browser-safe)
  * - Configuration validation
  * - Fallback handling
  * - Runtime connectivity checks
+ * - NO MORE "process is not defined" ERRORS
  */
+
+import { browserEnv } from './browserEnv';
 
 export type Environment = 'development' | 'production' | 'test';
 
@@ -29,6 +34,11 @@ export interface EnvironmentConfig {
   enableMockData: boolean;
   enableDebugPanels: boolean;
   enablePerformanceMonitoring: boolean;
+  
+  // WebSocket configuration
+  enableWebSocket: boolean;
+  enableSocketIO: boolean;
+  webSocketHealthCheckEnabled: boolean;
   
   // Network configuration
   apiTimeout: number;
@@ -54,8 +64,8 @@ class EnvironmentConfigManager {
   }
   
   private loadConfiguration(): EnvironmentConfig {
-    // Detect environment
-    const nodeEnv = process.env.NODE_ENV || 'development';
+    // Detect environment - BROWSER-SAFE VERSION
+    const nodeEnv = browserEnv.get('NODE_ENV', 'development');
     const environment = this.detectEnvironment(nodeEnv);
     
     // Load base configuration
@@ -74,10 +84,15 @@ class EnvironmentConfigManager {
       
       // Feature flags
       debug: this.getBooleanConfig('REACT_APP_DEBUG', environment === 'development'),
-      logLevel: this.getConfigValue('REACT_APP_LOG_LEVEL', environment === 'production' ? 'error' : 'debug') as any,
+      logLevel: this.getConfigValue('REACT_APP_LOG_LEVEL', environment === 'production' ? 'error' : 'debug') as 'debug' | 'info' | 'warn' | 'error',
       enableMockData: this.getBooleanConfig('REACT_APP_ENABLE_MOCK_DATA', false),
       enableDebugPanels: this.getBooleanConfig('REACT_APP_ENABLE_DEBUG_PANELS', environment === 'development'),
       enablePerformanceMonitoring: this.getBooleanConfig('REACT_APP_ENABLE_PERFORMANCE_MONITORING', true),
+      
+      // WebSocket configuration
+      enableWebSocket: !this.getBooleanConfig('REACT_APP_DISABLE_WEBSOCKET', false),
+      enableSocketIO: !this.getBooleanConfig('REACT_APP_DISABLE_SOCKETIO', false),
+      webSocketHealthCheckEnabled: this.getBooleanConfig('REACT_APP_WEBSOCKET_HEALTH_CHECK', true),
       
       // Network configuration
       apiTimeout: this.getNumberConfig('REACT_APP_API_TIMEOUT', environment === 'production' ? 45000 : 30000),
@@ -100,7 +115,9 @@ class EnvironmentConfigManager {
         wsUrl: config.wsUrl,
         socketioUrl: config.socketioUrl,
         videoBaseUrl: config.videoBaseUrl,
-        debug: config.debug
+        debug: config.debug,
+        enableWebSocket: config.enableWebSocket,
+        enableSocketIO: config.enableSocketIO
       });
     }
     
@@ -108,8 +125,8 @@ class EnvironmentConfigManager {
   }
   
   private detectEnvironment(nodeEnv: string): Environment {
-    // Check explicit environment override
-    const explicitEnv = process.env.REACT_APP_ENVIRONMENT;
+    // Check explicit environment override - BROWSER-SAFE VERSION
+    const explicitEnv = browserEnv.get('REACT_APP_ENVIRONMENT');
     if (explicitEnv && ['development', 'production', 'test'].includes(explicitEnv)) {
       return explicitEnv as Environment;
     }
@@ -127,8 +144,26 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultApiUrl(): string {
-    // Consistent API URL for all environments to avoid localhost:8000 vs 155.138.239.131:8000 conflicts
-    return 'http://155.138.239.131:8000';
+    // Environment-aware API URL detection
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      
+      // Local development - use localhost for local access
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+      // Docker environment - use Docker internal network - BROWSER-SAFE VERSION
+      else if (browserEnv.get('DOCKER') === 'true') {
+        return 'http://backend:8000';
+      }
+      // Use the same hostname as frontend for external access
+      else {
+        return `http://${hostname}:8000`;
+      }
+    }
+    
+    // Default to localhost for local development
+    return 'http://localhost:8000';
   }
   
   private getDefaultWsUrl(): string {
@@ -138,8 +173,26 @@ class EnvironmentConfigManager {
   }
   
   private getDefaultSocketioUrl(): string {
-    // Consistent Socket.IO URL for all environments
-    return 'http://155.138.239.131:8001';
+    // Environment-aware Socket.IO URL detection
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      
+      // Local development - use localhost for local access
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://localhost:8001';
+      }
+      // Docker environment - use Docker internal network - BROWSER-SAFE VERSION
+      else if (browserEnv.get('DOCKER') === 'true') {
+        return 'http://backend:8001';
+      }
+      // Use the same hostname as frontend for external access
+      else {
+        return `http://${hostname}:8001`;
+      }
+    }
+    
+    // Default to localhost for local development
+    return 'http://localhost:8001';
   }
   
   private getDefaultVideoBaseUrl(): string {
@@ -147,27 +200,23 @@ class EnvironmentConfigManager {
   }
   
   private getConfigValue(key: string, defaultValue: string): string {
-    const value = process.env[key];
-    return value || defaultValue;
+    // BROWSER-SAFE VERSION - Using browserEnv instead of process.env
+    return browserEnv.get(key, defaultValue);
   }
   
   private getBooleanConfig(key: string, defaultValue: boolean): boolean {
-    const value = process.env[key];
-    if (value === undefined) return defaultValue;
-    return value.toLowerCase() === 'true';
+    // BROWSER-SAFE VERSION - Using browserEnv instead of process.env
+    return browserEnv.getBoolean(key, defaultValue);
   }
   
   private getNumberConfig(key: string, defaultValue: number): number {
-    const value = process.env[key];
-    if (value === undefined) return defaultValue;
-    const parsed = parseInt(value, 10);
-    return isNaN(parsed) ? defaultValue : parsed;
+    // BROWSER-SAFE VERSION - Using browserEnv instead of process.env
+    return browserEnv.getNumber(key, defaultValue);
   }
   
   private getArrayConfig(key: string, defaultValue: string[]): string[] {
-    const value = process.env[key];
-    if (!value) return defaultValue;
-    return value.split(',').map(item => item.trim()).filter(Boolean);
+    // BROWSER-SAFE VERSION - Using browserEnv instead of process.env
+    return browserEnv.getArray(key, defaultValue);
   }
   
   private validateConfiguration(): void {
@@ -287,9 +336,9 @@ class EnvironmentConfigManager {
         return { connected: false, error, latency };
       }
       
-    } catch (error: any) {
+    } catch (error: Error | unknown) {
       const latency = Date.now() - startTime;
-      const errorMessage = error.message || 'Unknown connection error';
+      const errorMessage = (error instanceof Error ? error.message : String(error)) || 'Unknown connection error';
       console.error('❌ API connectivity test failed:', errorMessage);
       return { connected: false, error: errorMessage, latency };
     }
@@ -313,7 +362,9 @@ class EnvironmentConfigManager {
           url: this.config.wsUrl,
           timeout: this.config.wsTimeout,
           retryAttempts: this.config.connectionRetryAttempts,
-          retryDelay: this.config.connectionRetryDelay
+          retryDelay: this.config.connectionRetryDelay,
+          enabled: this.config.enableWebSocket,
+          healthCheckEnabled: this.config.webSocketHealthCheckEnabled
         };
       
       case 'socketio':
@@ -321,7 +372,9 @@ class EnvironmentConfigManager {
           url: this.config.socketioUrl,
           timeout: this.config.wsTimeout,
           retryAttempts: this.config.connectionRetryAttempts,
-          retryDelay: this.config.connectionRetryDelay
+          retryDelay: this.config.connectionRetryDelay,
+          enabled: this.config.enableSocketIO,
+          healthCheckEnabled: this.config.webSocketHealthCheckEnabled
         };
       
       case 'video':

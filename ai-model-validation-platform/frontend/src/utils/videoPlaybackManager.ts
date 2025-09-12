@@ -3,7 +3,18 @@
  * Provides robust video playback with retry logic, error recovery, and state management
  */
 
-import { safeVideoPlay, safeVideoPause, safeVideoStop, setVideoSource, cleanupVideoElement } from './videoUtils';
+import { 
+  safeVideoPlay, 
+  safeVideoPause, 
+  safeVideoStop, 
+  setVideoSourceWithFallback, 
+  generateFallbackSources, 
+  cleanupVideoElement,
+  markUserInteraction,
+  hasRecentUserGesture,
+  detectAutoplayPolicy,
+  enableUnmutedPlayback
+} from './videoUtils';
 
 export interface VideoPlaybackState {
   isPlaying: boolean;
@@ -37,7 +48,7 @@ export class VideoPlaybackManager {
   private retryCount = 0;
   private loadPromise: Promise<void> | null = null;
   private playPromise: Promise<void> | null = null;
-  private timeoutId: NodeJS.Timeout | null = null;
+  private timeoutId: ReturnType<typeof setTimeout> | null = null;
   private stateChangeCallbacks: ((state: VideoPlaybackState) => void)[] = [];
 
   constructor(config?: Partial<VideoPlaybackConfig>) {
@@ -57,7 +68,33 @@ export class VideoPlaybackManager {
     }
     
     this.videoElement = element;
-    this.setupEventListeners();
+    
+    // Wait for element to be ready before setting up listeners
+    this.waitForElementReady().then(() => {
+      this.setupEventListeners();
+    }).catch(error => {
+      console.error('Failed to setup video element:', error);
+    });
+  }
+  
+  /**
+   * Wait for video element to be ready for operations
+   */
+  private async waitForElementReady(): Promise<void> {
+    if (!this.videoElement) {
+      throw new Error('No video element to wait for');
+    }
+
+    return new Promise((resolve) => {
+      const checkReady = () => {
+        if (this.videoElement && this.videoElement.parentElement) {
+          resolve();
+        } else {
+          setTimeout(checkReady, 50); // Check again in 50ms
+        }
+      };
+      checkReady();
+    });
   }
 
   public detachVideoElement(): void {
@@ -95,8 +132,18 @@ export class VideoPlaybackManager {
         }, this.config.loadTimeout);
       });
 
-      // Attempt to load video
-      const loadPromise = setVideoSource(this.videoElement, url);
+      // Extract filename from URL for fallback sources
+      const filename = url.split('/').pop() || 'video';
+      const baseUrl = url.substring(0, url.lastIndexOf('/'));
+      
+      // Generate fallback sources with multiple formats and codecs
+      const fallbackSources = generateFallbackSources(baseUrl, filename);
+      
+      // Try main source first, then fallbacks
+      const sources = [url, ...fallbackSources];
+      
+      // Attempt to load video with fallback support
+      const loadPromise = setVideoSourceWithFallback(this.videoElement, sources);
       
       await Promise.race([loadPromise, timeoutPromise]);
       
@@ -107,16 +154,16 @@ export class VideoPlaybackManager {
       }
 
       this.updateState({ loading: false, error: null });
-      console.log('Video loaded successfully:', url);
+// Video loaded successfully
 
     } catch (error) {
-      console.error('Video load failed:', error);
+// Video load failed
       
       const playbackError = this.createPlaybackError(error as Error, 'network');
       
       if (this.config.enableAutoRetry && playbackError.recoverable && this.retryCount < this.config.retryAttempts) {
         this.retryCount++;
-        console.log(`Retrying video load (${this.retryCount}/${this.config.retryAttempts})`);
+// Retrying video load
         
         await this.delay(this.config.retryDelay * this.retryCount);
         return this.attemptLoad(url);
@@ -127,24 +174,53 @@ export class VideoPlaybackManager {
     }
   }
 
-  public async play(): Promise<boolean> {
+  public async play(userInitiated: boolean = false): Promise<boolean> {
     if (!this.videoElement) {
       console.warn('Cannot play: no video element attached');
       return false;
     }
 
+    // Enhanced readiness check with retry logic
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    while (!this.isVideoReady() && retryCount < maxRetries) {
+      // Video not ready, waiting...
+      await this.delay(500); // Wait 500ms before retry
+      retryCount++;
+    }
+
     if (!this.isVideoReady()) {
-      console.warn('Cannot play: video not ready');
+      console.warn('Cannot play: video not ready after retries');
       return false;
     }
 
     try {
       this.updateState({ buffering: true });
       
-      const result = await safeVideoPlay(this.videoElement);
+      // If this is user-initiated, mark the interaction
+      if (userInitiated) {
+        markUserInteraction();
+      }
+      
+      // Detect autoplay policy if this is the first play attempt
+      if (userInitiated) {
+        const policy = await detectAutoplayPolicy(this.videoElement);
+        
+        if (policy.requiresUserGesture && !hasRecentUserGesture()) {
+          // Autoplay requires user gesture, but no recent gesture detected
+        }
+      }
+      
+      const result = await safeVideoPlay(this.videoElement, {
+        userInitiated,
+        retryWithMuted: true
+      });
       
       if (result.success) {
-        this.updateState({ isPlaying: true, buffering: false, error: null });
+        // Don't update state here - let the 'playing' event handle it
+        // This prevents showing "playing" before video actually starts
+        this.updateState({ buffering: false, error: null });
         return true;
       } else {
         const error = this.createPlaybackError(
@@ -155,7 +231,7 @@ export class VideoPlaybackManager {
         return false;
       }
     } catch (error) {
-      console.error('Video play error:', error);
+      // Video play error
       const playbackError = this.createPlaybackError(error as Error, 'unknown');
       this.updateState({ isPlaying: false, buffering: false, error: playbackError });
       return false;
@@ -199,6 +275,26 @@ export class VideoPlaybackManager {
     }
   }
 
+  /**
+   * Attempt to enable unmuted playback (requires user interaction)
+   */
+  public async enableUnmutedPlayback(): Promise<boolean> {
+    if (!this.videoElement) return false;
+    
+    const success = await enableUnmutedPlayback(this.videoElement);
+    if (success) {
+      // Successfully enabled unmuted playback
+    }
+    return success;
+  }
+
+  /**
+   * Check if video is currently muted due to autoplay policies
+   */
+  public isMutedForAutoplay(): boolean {
+    return !!(this.videoElement?.muted && !hasRecentUserGesture());
+  }
+
   public getCurrentState(): VideoPlaybackState {
     if (!this.videoElement) {
       return {
@@ -226,10 +322,13 @@ export class VideoPlaybackManager {
   public isVideoReady(): boolean {
     return !!(
       this.videoElement &&
+      this.videoElement.parentElement && // Ensure element is in DOM
       this.videoElement.readyState >= HTMLMediaElement.HAVE_METADATA &&
       this.videoElement.duration > 0 &&
+      !isNaN(this.videoElement.duration) &&
       this.videoElement.videoWidth > 0 &&
-      this.videoElement.videoHeight > 0
+      this.videoElement.videoHeight > 0 &&
+      this.videoElement.src // Ensure source is set
     );
   }
 
@@ -253,6 +352,7 @@ export class VideoPlaybackManager {
       'canplay',
       'canplaythrough', 
       'waiting',
+      'play',
       'playing',
       'pause',
       'ended',
@@ -288,11 +388,20 @@ export class VideoPlaybackManager {
         this.updateState({ buffering: true });
         break;
         
+      case 'play':
+        // play() was called, but video might not be playing yet
+        // Video play() called
+        break;
+        
       case 'playing':
+        // Video is actually playing now
         this.updateState({ isPlaying: true, buffering: false });
         break;
         
       case 'pause':
+        this.updateState({ isPlaying: false, buffering: false });
+        break;
+        
       case 'ended':
         this.updateState({ isPlaying: false });
         break;
@@ -330,7 +439,7 @@ export class VideoPlaybackManager {
     return {
       type,
       message: error.message,
-      code: (error as any).code,
+      code: 'code' in error ? (error as unknown as { code: number }).code : undefined,
       recoverable: isRecoverable,
       timestamp: Date.now(),
     };
@@ -353,7 +462,7 @@ export class VideoPlaybackManager {
     if (this.videoElement) {
       const events = [
         'loadedmetadata', 'canplay', 'canplaythrough', 'waiting',
-        'playing', 'pause', 'ended', 'error', 'stalled', 'suspend',
+        'play', 'playing', 'pause', 'ended', 'error', 'stalled', 'suspend',
         'timeupdate', 'progress'
       ];
 

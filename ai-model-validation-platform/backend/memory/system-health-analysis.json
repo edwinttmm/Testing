@@ -1,0 +1,112 @@
+{
+  "timestamp": "2025-08-27T17:13:17.289059",
+  "analysis_type": "root_cause_system_degradation",
+  "critical_issues": {
+    "network_degraded": {
+      "redis_connection": {
+        "issue": "Error -3 connecting to redis:6379. Temporary failure in name resolution",
+        "root_cause": "Docker hostname resolution in local development",
+        "hardcoded_hostnames": [
+          "redis:6379",
+          "postgres:5432"
+        ],
+        "severity": "CRITICAL",
+        "files_affected": [
+          "health_check.py:53",
+          "src/production_deployment_config.py:102",
+          "docker-compose.yml:12",
+          "health_endpoint.py:26"
+        ]
+      },
+      "postgresql_connection": {
+        "issue": "DNS resolution failure for postgres:5432",
+        "root_cause": "Docker Compose service names used in local development",
+        "severity": "CRITICAL",
+        "database_config_conflict": {
+          "docker_expected": "postgresql://vru_user:secure_password@postgres:5432/vru_platform",
+          "local_actual": "sqlite:///./test_database.db"
+        }
+      }
+    },
+    "filesystem_degraded": {
+      "missing_directories": {
+        "issue": "Permission denied creating /app directories",
+        "missing_paths": [
+          "/app",
+          "/app/uploads", 
+          "/app/models"
+        ],
+        "root_cause": "Docker container paths expected in local environment",
+        "severity": "HIGH",
+        "health_check_locations": [
+          "health_check.py:84"
+        ]
+      },
+      "path_mismatches": {
+        "docker_paths": [
+          "/app/models/yolo11l.pt",
+          "/app/uploads",
+          "/app/data",
+          "/app/logs"
+        ],
+        "local_equivalent": [
+          "./models/",
+          "./uploads/",
+          "./data/", 
+          "./logs/"
+        ],
+        "services_affected": [
+          "video_library_service.py:58,502",
+          "detection_pipeline_service.py:418,514",
+          "fixed_detection_service.py:44"
+        ],
+        "config_files_affected": [
+          "production_config.json:12,50,55,56,57"
+        ]
+      }
+    },
+    "configuration_mismatch": {
+      "environment_detection": {
+        "issue": "Services assume Docker environment when running locally",
+        "docker_indicators": [
+          "redis://redis:6379",
+          "postgres://postgres:5432",
+          "/app/ paths"
+        ],
+        "local_config": "sqlite:///./test_database.db in .env.development",
+        "missing_env_detection": "No AIVALIDATION_DOCKER_MODE detection in service initialization"
+      }
+    }
+  },
+  "sparc_analysis": {
+    "specification": {
+      "problem": "System health checks fail due to Docker/local environment configuration mismatch",
+      "requirements": [
+        "Dynamic environment detection",
+        "Fallback configurations for local development",
+        "Path resolution based on environment",
+        "Service availability validation before connection attempts"
+      ]
+    },
+    "pseudocode": {
+      "environment_detection": [
+        "1. Check AIVALIDATION_DOCKER_MODE environment variable",
+        "2. If not set, detect based on hostname resolution",
+        "3. Set appropriate config paths and connection strings",
+        "4. Initialize services with environment-appropriate settings"
+      ],
+      "graceful_degradation": [
+        "1. Attempt Docker service connections",
+        "2. If failed, fall back to local equivalents",
+        "3. Create missing directories with proper permissions",
+        "4. Log environment mismatch warnings"
+      ]
+    },
+    "architecture_recommendations": {
+      "config_management": "Environment-aware configuration factory",
+      "service_discovery": "Health check based service availability detection",
+      "path_resolution": "Dynamic path mapping based on environment",
+      "connection_management": "Retry logic with environment-specific fallbacks"
+    }
+  }
+}

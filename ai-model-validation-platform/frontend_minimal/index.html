@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Model Validation Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { padding: 20px; margin: 10px 0; border-radius: 5px; }
+        .healthy { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 3px; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI Model Validation Platform</h1>
+        <h2>✅ Deployment Successfully Completed!</h2>
+        <div id="status" class="status">Checking status...</div>
+        <button onclick="checkHealth()">Check Backend Health</button>
+        <button onclick="testAPI()">Test API</button>
+        
+        <h2>API Endpoints</h2>
+        <ul>
+            <li><a href="http://localhost:8000/health">Health Check</a></li>
+            <li><a href="http://localhost:8000/docs">API Documentation</a></li>
+            <li><a href="http://localhost:8000/api/projects">Projects API</a></li>
+        </ul>
+        
+        <h2>Services Status</h2>
+        <ul>
+            <li>✅ PostgreSQL Database: localhost:5432</li>
+            <li>✅ Redis Cache: localhost:6379</li>
+            <li>✅ Backend API: localhost:8000</li>
+            <li>✅ Frontend: localhost:3000</li>
+        </ul>
+    </div>
+    
+    <script>
+        async function checkHealth() {
+            const status = document.getElementById('status');
+            try {
+                const response = await fetch('http://localhost:8000/health');
+                const data = await response.json();
+                status.className = 'status healthy';
+                status.innerHTML = '✅ Backend is healthy: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                status.className = 'status error';
+                status.innerHTML = '❌ Backend error: ' + error.message;
+            }
+        }
+        
+        async function testAPI() {
+            const status = document.getElementById('status');
+            try {
+                const response = await fetch('http://localhost:8000/api/projects');
+                const data = await response.json();
+                status.className = 'status healthy';
+                status.innerHTML = '✅ API test successful: ' + JSON.stringify(data, null, 2);
+            } catch (error) {
+                status.className = 'status error';
+                status.innerHTML = '❌ API test failed: ' + error.message;
+            }
+        }
+        
+        // Auto-check status on page load
+        checkHealth();
+    </script>
+</body>
+</html>

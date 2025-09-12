@@ -20,6 +20,7 @@ import {
   Security,
   Settings,
   PlayCircle,
+  CropFree,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -35,6 +36,7 @@ const AssessmentIcon = React.createElement(Assessment);
 const DatasetIcon = React.createElement(Dataset);
 const SecurityIcon = React.createElement(Security);
 const SettingsIcon = React.createElement(Settings);
+const CropFreeIcon = React.createElement(CropFree);
 const VideoLibraryPrimaryIcon = React.createElement(VideoLibrary, { color: 'primary' });
 
 const menuItems = [
@@ -43,6 +45,7 @@ const menuItems = [
   { text: 'Ground Truth', icon: VideoLibraryIcon, path: '/ground-truth' },
   { text: 'Test Execution', icon: PlayArrowIcon, path: '/test-execution' },
   { text: 'Enhanced Test', icon: PlayCircleIcon, path: '/enhanced-test-execution' },
+  { text: 'Boundary Box Demo', icon: CropFreeIcon, path: '/boundary-box-demo' },
   { text: 'Results', icon: AssessmentIcon, path: '/results' },
   { text: 'Datasets', icon: DatasetIcon, path: '/datasets' },
   { text: 'Audit Logs', icon: SecurityIcon, path: '/audit-logs' },

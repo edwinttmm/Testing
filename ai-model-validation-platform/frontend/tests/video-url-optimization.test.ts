@@ -48,7 +48,7 @@ describe('Video URL Optimization Performance Tests', () => {
       const mockVideo: VideoFile = {
         id: 'test-video-1',
         filename: 'test.mp4',
-        url: 'http://155.138.239.131:8000/uploads/test.mp4',
+        url: 'http://localhost:8000/uploads/test.mp4',
         originalName: 'test.mp4',
         fileSize: 1024,
         createdAt: new Date().toISOString(),
@@ -98,8 +98,8 @@ describe('Video URL Optimization Performance Tests', () => {
       const url2 = fixVideoUrl('test2.mp4'); // Should use cached config
       const end2 = performance.now();
 
-      expect(url1).toContain('155.138.239.131');
-      expect(url2).toContain('155.138.239.131');
+      expect(url1).toContain('localhost');
+      expect(url2).toContain('localhost');
       
       // Second call should be faster (cached config)
       expect(end2 - start2).toBeLessThanOrEqual(end1 - start1);
@@ -121,7 +121,7 @@ describe('Video URL Optimization Performance Tests', () => {
 
       // Verify URLs were fixed correctly
       testVideos.forEach(video => {
-        expect(video.url).toContain('155.138.239.131');
+        expect(video.url).toContain('localhost');
       });
     });
 
@@ -219,7 +219,7 @@ describe('Video URL Optimization Performance Tests', () => {
       const mockApiService = {
         enhanceVideoData: jest.fn().mockImplementation((video: any) => ({
           ...video,
-          url: video.url.replace('localhost', '155.138.239.131')
+          url: video.url.replace('localhost', 'localhost')
         })),
         batchEnhanceVideos: function(videos: any[]) {
           const start = performance.now();
@@ -279,7 +279,7 @@ describe('Video URL Optimization Performance Tests', () => {
         while (Date.now() - start < 1) { /* busy wait */ }
         return {
           ...video,
-          url: video.url.replace('localhost', '155.138.239.131')
+          url: video.url.replace('localhost', 'localhost')
         };
       });
 
@@ -330,7 +330,7 @@ describe('Integration Tests', () => {
     });
 
     expect(enhancedVideo).toBeTruthy();
-    expect(enhancedVideo?.url).toContain('155.138.239.131');
+    expect(enhancedVideo?.url).toContain('localhost');
     expect(enhancedVideo?.url).not.toContain('localhost');
 
     // Test caching

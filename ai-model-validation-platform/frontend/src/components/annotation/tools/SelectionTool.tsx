@@ -117,7 +117,7 @@ export const useSelectionTool = ({
       return Math.sqrt(A * A + B * B);
     }
     
-    let param = dot / lenSq;
+    const param = dot / lenSq;
 
     let xx, yy;
     if (param < 0) {
@@ -276,7 +276,7 @@ export const useSelectionTool = ({
     const originalShape = dragStartShapesRef.current[0];
     if (!originalShape) return;
 
-    let newBbox = { ...originalShape.boundingBox };
+    const newBbox = { ...originalShape.boundingBox };
     
     switch (handleId) {
       case 'nw':

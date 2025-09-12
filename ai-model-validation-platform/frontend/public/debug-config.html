@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Live Configuration Debug</title>
+    <script src="/config.js"></script>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #f0f0f0; }
+        .section { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
+        .error { color: red; }
+        .success { color: green; }
+        .warning { color: orange; }
+        pre { background: #f8f8f8; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        button { padding: 10px; margin: 5px; border: none; background: #007cba; color: white; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a87; }
+        .highlight { background: yellow; padding: 2px 4px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Live Configuration Debug Tool</h1>
+    
+    <div class="section">
+        <h2>Current Location Information</h2>
+        <div id="location-info"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Runtime Configuration</h2>
+        <div id="config-info"></div>
+    </div>
+    
+    <div class="section">
+        <h2>API Connectivity Test</h2>
+        <button onclick="testAPIConnectivity()">Test API Health</button>
+        <button onclick="testAPIProjects()">Test API Projects</button>
+        <div id="api-test-results"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Configuration Simulation</h2>
+        <label>Simulate Hostname: <input type="text" id="hostname-input" placeholder="e.g., 155.138.239.131" /></label>
+        <button onclick="simulateConfiguration()">Simulate Config</button>
+        <div id="simulation-results"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Live Network Monitoring</h2>
+        <button onclick="monitorNetworkCalls()">Start Network Monitoring</button>
+        <div id="network-monitoring"></div>
+    </div>
+
+    <script>
+        console.log('🔍 Debug page loaded, config.js should have executed');
+        
+        function displayLocationInfo() {
+            const info = {
+                hostname: window.location.hostname,
+                port: window.location.port,
+                protocol: window.location.protocol,
+                origin: window.location.origin,
+                href: window.location.href
+            };
+            
+            document.getElementById('location-info').innerHTML = 
+                '<pre>' + JSON.stringify(info, null, 2) + '</pre>';
+        }
+        
+        function displayConfigInfo() {
+            const config = window.RUNTIME_CONFIG || {};
+            const processEnv = window.process?.env || {};
+            
+            const analysis = {
+                runtimeConfig: config,
+                processEnv: Object.fromEntries(
+                    Object.entries(processEnv).filter(([key]) => key.startsWith('REACT_APP_'))
+                ),
+                apiEndpoint: config.REACT_APP_API_URL || 'NOT SET',
+                detectedIssues: []
+            };
+            
+            // Check for issues
+            if (config.REACT_APP_API_URL && config.REACT_APP_API_URL.includes('155.138.239.131')) {
+                analysis.detectedIssues.push('⚠️ API URL points to external IP instead of localhost');
+            }
+            
+            if (!config.REACT_APP_API_URL) {
+                analysis.detectedIssues.push('❌ API URL not configured');
+            }
+            
+            document.getElementById('config-info').innerHTML = 
+                '<pre>' + JSON.stringify(analysis, null, 2) + '</pre>';
+        }
+        
+        async function testAPIConnectivity() {
+            const resultsDiv = document.getElementById('api-test-results');
+            resultsDiv.innerHTML = '<p>Testing API connectivity...</p>';
+            
+            const config = window.RUNTIME_CONFIG || {};
+            const apiURL = config.REACT_APP_API_URL;
+            
+            if (!apiURL) {
+                resultsDiv.innerHTML = '<div class="error">❌ No API URL configured</div>';
+                return;
+            }
+            
+            try {
+                console.log(`Testing API at: ${apiURL}/health`);
+                const response = await fetch(`${apiURL}/health`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                const responseText = await response.text();
+                const result = {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: response.url,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    body: responseText
+                };
+                
+                resultsDiv.innerHTML = `
+                    <div class="${response.ok ? 'success' : 'error'}">
+                        ${response.ok ? '✅' : '❌'} API Health Test
+                    </div>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">❌ API Health Test Failed</div>
+                    <pre>Error: ${error.message}
+Network Error Details:
+- URL: ${apiURL}/health
+- Error Type: ${error.name}
+- This likely indicates CORS issues or server not accessible</pre>
+                `;
+            }
+        }
+        
+        async function testAPIProjects() {
+            const resultsDiv = document.getElementById('api-test-results');
+            const config = window.RUNTIME_CONFIG || {};
+            const apiURL = config.REACT_APP_API_URL;
+            
+            if (!apiURL) {
+                resultsDiv.innerHTML = '<div class="error">❌ No API URL configured</div>';
+                return;
+            }
+            
+            try {
+                console.log(`Testing API at: ${apiURL}/projects`);
+                const response = await fetch(`${apiURL}/projects`, {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                const responseText = await response.text();
+                resultsDiv.innerHTML += `
+                    <div class="${response.ok ? 'success' : 'error'}">
+                        ${response.ok ? '✅' : '❌'} API Projects Test - Status: ${response.status}
+                    </div>
+                    <pre>Response: ${responseText}</pre>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML += `
+                    <div class="error">❌ API Projects Test Failed: ${error.message}</div>
+                `;
+            }
+        }
+        
+        function simulateConfiguration() {
+            const hostname = document.getElementById('hostname-input').value;
+            if (!hostname) {
+                alert('Please enter a hostname to simulate');
+                return;
+            }
+            
+            // Simulate the config.js logic
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+            const isExternalIP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+            
+            let environment = 'development';
+            let apiHost = hostname;
+            
+            if (isLocalhost) {
+                environment = 'development';
+                apiHost = 'localhost';
+            } else if (isExternalIP) {
+                environment = 'production';
+                apiHost = hostname;  // This is the issue!
+            } else if (hostname.includes('.')) {
+                environment = hostname.includes('staging') ? 'staging' : 'production';
+                apiHost = hostname;
+            }
+            
+            const simulatedConfig = {
+                hostname: hostname,
+                isLocalhost,
+                isExternalIP,
+                detectedEnvironment: environment,
+                detectedApiHost: apiHost,
+                resultingApiUrl: `http://${apiHost}:8000`,
+                issue: isExternalIP ? '⚠️ External IP detected - will use external IP for API calls instead of localhost!' : '✅ Configuration looks correct'
+            };
+            
+            document.getElementById('simulation-results').innerHTML = 
+                '<pre>' + JSON.stringify(simulatedConfig, null, 2) + '</pre>';
+        }
+        
+        function monitorNetworkCalls() {
+            const monitorDiv = document.getElementById('network-monitoring');
+            monitorDiv.innerHTML = `
+                <p>📡 Network monitoring started...</p>
+                <p><strong>Instructions for browser monitoring:</strong></p>
+                <ol>
+                    <li>Open browser DevTools (F12)</li>
+                    <li>Go to Network tab</li>
+                    <li>Clear existing entries</li>
+                    <li>Navigate to http://localhost:3000</li>
+                    <li>Watch for API calls and check their URLs</li>
+                </ol>
+                <p class="warning">Look for calls to <span class="highlight">155.138.239.131:8000</span> instead of <span class="highlight">localhost:8000</span></p>
+            `;
+        }
+        
+        // Auto-run on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            displayLocationInfo();
+            displayConfigInfo();
+            
+            console.log('🎯 Key debugging info:');
+            console.log('Current hostname:', window.location.hostname);
+            console.log('Runtime config:', window.RUNTIME_CONFIG);
+            console.log('Process env API URL:', window.process?.env?.REACT_APP_API_URL);
+            
+            // Auto-test configuration helpers
+            if (window.configDebug) {
+                console.log('🛠️ Available debug helpers:', Object.keys(window.configDebug));
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+/// <reference path="../types/global.d.ts" />
 import React, { Component, ReactNode } from 'react';
 import {
   Box,
@@ -112,10 +113,23 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
       // Prevent default unhandled rejection behavior
       event.preventDefault();
       
-      // Create synthetic error for error boundary
-      const syntheticError = new Error(`Unhandled Promise Rejection: ${reasonStr}`);
+      // Convert ApiError objects to proper Error instances
+      let syntheticError: Error;
+      if (event.reason && typeof event.reason === 'object' && 'name' in event.reason && 'message' in event.reason) {
+        const apiError = event.reason as { name: string; message: string; status?: number };
+        syntheticError = new Error(apiError.message);
+        syntheticError.name = apiError.name;
+        if (apiError.status) {
+          (syntheticError as Error & { status: number }).status = apiError.status;
+        }
+      } else if (event.reason instanceof Error) {
+        syntheticError = event.reason;
+      } else {
+        syntheticError = new Error(`Unhandled Promise Rejection: ${reasonStr}`);
+      }
+      
       // Preserve original error details
-      (syntheticError as any).originalReason = event.reason;
+      (syntheticError as Error & { originalReason: unknown }).originalReason = event.reason;
       this.handleSyntheticError(syntheticError, 'promise-rejection');
     }
   };
@@ -294,7 +308,7 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
     return `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private serializeError(error: any): string {
+  private serializeError(error: unknown): string {
     try {
       // Handle different error types
       if (error === null) return 'null';
@@ -307,8 +321,17 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
         return `${error.name}: ${error.message}`;
       }
       
+      // Handle ApiError objects (custom error objects with name, message, status)
+      if (error && typeof error === 'object' && 'name' in error && 'message' in error) {
+        const errorObj = error as { name: string; message: string; status?: number };
+        if (errorObj.status) {
+          return `${errorObj.name} (${errorObj.status}): ${errorObj.message}`;
+        }
+        return `${errorObj.name}: ${errorObj.message}`;
+      }
+      
       // Handle objects with message property
-      if (error && typeof error === 'object' && error.message) {
+      if (error && typeof error === 'object' && 'message' in error && error.message) {
         return String(error.message);
       }
       
@@ -320,11 +343,19 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
         }
       }
       
-      // Fallback to JSON serialization
-      return JSON.stringify(error, null, 2);
+      // Fallback to JSON serialization for complex objects
+      if (error && typeof error === 'object') {
+        try {
+          return JSON.stringify(error, null, 2);
+        } catch {
+          return `[Complex Object: ${Object.keys(error as object).join(', ')}]`;
+        }
+      }
+      
+      return `[Unserializable Error: ${typeof error}]`;
     } catch (serializationError) {
       // Ultimate fallback
-      return `[Unserializable Error: ${typeof error}]`;
+      return `[Error Serialization Failed: ${typeof error}]`;
     }
   }
 
@@ -366,14 +397,14 @@ class EnhancedErrorBoundary extends Component<EnhancedErrorBoundaryProps, Enhanc
 
     try {
       // Send to error tracking service
-      if (typeof window !== 'undefined' && (window as any).errorTracker) {
-        (window as any).errorTracker.reportBatch(errors);
+      if (typeof window !== 'undefined' && window.errorTracker) {
+        window.errorTracker.reportBatch(errors);
       }
 
       // Send to analytics if available
-      if (typeof window !== 'undefined' && (window as any).analytics) {
+      if (typeof window !== 'undefined' && window.analytics) {
         errors.forEach(({ error, errorType }) => {
-          (window as any).analytics.track('error_boundary_triggered', {
+          window.analytics!.track('error_boundary_triggered', {
             errorType,
             message: error.message,
             context: this.props.context,

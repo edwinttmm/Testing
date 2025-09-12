@@ -1,0 +1,92 @@
+{
+  "success": true,
+  "session_id": "66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565",
+  "start_time": 1757495174.4328253,
+  "end_time": 1757495190.6922534,
+  "duration_seconds": 16.259428024291992,
+  "total_detections": 9,
+  "detection_events": [
+    {
+      "timestamp": 1757495176.4288974,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0001",
+      "metadata": {
+        "session_start_offset": 1.9960720539093018,
+        "detection_sequence": 1
+      }
+    },
+    {
+      "timestamp": 1757495177.9979653,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0002",
+      "metadata": {
+        "session_start_offset": 3.5651400089263916,
+        "detection_sequence": 2
+      }
+    },
+    {
+      "timestamp": 1757495178.9328375,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0003",
+      "metadata": {
+        "session_start_offset": 4.500012159347534,
+        "detection_sequence": 3
+      }
+    },
+    {
+      "timestamp": 1757495179.5356615,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0004",
+      "metadata": {
+        "session_start_offset": 5.1028361320495605,
+        "detection_sequence": 4
+      }
+    },
+    {
+      "timestamp": 1757495181.6781006,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0005",
+      "metadata": {
+        "session_start_offset": 7.245275259017944,
+        "detection_sequence": 5
+      }
+    },
+    {
+      "timestamp": 1757495182.6189854,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0006",
+      "metadata": {
+        "session_start_offset": 8.18616008758545,
+        "detection_sequence": 6
+      }
+    },
+    {
+      "timestamp": 1757495188.5301137,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0007",
+      "metadata": {
+        "session_start_offset": 14.097288370132446,
+        "detection_sequence": 7
+      }
+    },
+    {
+      "timestamp": 1757495189.6028516,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0008",
+      "metadata": {
+        "session_start_offset": 15.170026302337646,
+        "detection_sequence": 8
+      }
+    },
+    {
+      "timestamp": 1757495190.1039882,
+      "pin_state": true,
+      "detection_id": "DET_66f9c296-ee1e-4e81-b0ba-96d03fdc8c90_1757495174565_0009",
+      "metadata": {
+        "session_start_offset": 15.671162843704224,
+        "detection_sequence": 9
+      }
+    }
+  ],
+  "message": "Detection session completed - 9 events collected"
+}

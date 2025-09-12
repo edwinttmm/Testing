@@ -89,10 +89,10 @@ export interface UnifiedErrorBoundaryProps {
   connectionStatus?: 'connected' | 'disconnected' | 'connecting';
   
   // Async specific
-  asyncOperation?: () => Promise<any>;
+  asyncOperation?: () => Promise<unknown>;
   loadingComponent?: ReactNode;
   errorComponent?: (error: Error, retry: () => void) => ReactNode;
-  dependencies?: any[];
+  dependencies?: unknown[];
 }
 
 class UnifiedErrorBoundary extends Component<UnifiedErrorBoundaryProps, UnifiedErrorBoundaryState> {
@@ -135,7 +135,7 @@ class UnifiedErrorBoundary extends Component<UnifiedErrorBoundaryProps, UnifiedE
       event.preventDefault();
       
       const syntheticError = new Error(`Unhandled Promise Rejection: ${reasonStr}`);
-      (syntheticError as any).originalReason = event.reason;
+      (syntheticError as Error & { originalReason?: unknown }).originalReason = event.reason;
       this.handleSyntheticError(syntheticError, 'promise-rejection');
     }
   };
@@ -303,7 +303,7 @@ class UnifiedErrorBoundary extends Component<UnifiedErrorBoundaryProps, UnifiedE
     return `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private serializeError(error: any): string {
+  private serializeError(error: unknown): string {
     try {
       if (error === null) return 'null';
       if (error === undefined) return 'undefined';
@@ -314,8 +314,8 @@ class UnifiedErrorBoundary extends Component<UnifiedErrorBoundaryProps, UnifiedE
         return `${error.name}: ${error.message}`;
       }
       
-      if (error && typeof error === 'object' && error.message) {
-        return String(error.message);
+      if (error && typeof error === 'object' && 'message' in error) {
+        return String((error as { message: unknown }).message);
       }
       
       if (error && typeof error.toString === 'function') {
@@ -366,13 +366,13 @@ class UnifiedErrorBoundary extends Component<UnifiedErrorBoundaryProps, UnifiedE
     this.errorReportingQueue = [];
 
     try {
-      if (typeof window !== 'undefined' && (window as any).errorTracker) {
-        (window as any).errorTracker.reportBatch(errors);
+      if (typeof window !== 'undefined' && window.errorTracker) {
+        window.errorTracker.reportBatch(errors);
       }
 
-      if (typeof window !== 'undefined' && (window as any).analytics) {
+      if (typeof window !== 'undefined' && window.analytics) {
         errors.forEach(({ error, errorType }) => {
-          (window as any).analytics.track('unified_error_boundary_triggered', {
+          window.analytics!.track('unified_error_boundary_triggered', {
             errorType,
             message: error.message,
             context: this.props.context,

@@ -47,19 +47,22 @@ import {
 } from '@mui/icons-material';
 import { 
   VideoFile, 
- 
+  VideoValidationStatus,
   VRUType, 
   GroundTruthAnnotation, 
   AnnotationSession,
   BoundingBox,
  
+  RawDetectionData,
+  ImportAnnotationItem,
 } from '../services/types';
-import { apiService, getVideoDetections } from '../services/api';
+import { apiService, getVideoDetections, integrateAnnotationIntoGroundTruth } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 import { detectionService, DetectionConfig } from '../services/detectionService';
 // Removed useDetectionWebSocket - using manual detection only
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
-import AnnotationTools, { AnnotationTool } from '../components/AnnotationTools';
+import EnhancedClassicVideoPlayer from '../components/EnhancedClassicVideoPlayer';
+import AnnotationTools, { AnnotationToolDefinition } from '../components/AnnotationTools';
 import TemporalAnnotationInterface from '../components/TemporalAnnotationInterface';
 import DetectionResultsPanel from '../components/DetectionResultsPanel';
 import DetectionControls from '../components/DetectionControls';
@@ -165,17 +168,17 @@ const GroundTruth: React.FC = () => {
   const [viewDialog, setViewDialog] = useState(false);
   const [annotationMode, setAnnotationMode] = useState(false);
   const [showAnnotations, setShowAnnotations] = useState(true);
-  const [selectedTool, setSelectedTool] = useState<AnnotationTool>({
+  const [selectedTool, setSelectedTool] = useState<AnnotationToolDefinition>({
     id: 'default',
     name: 'Rectangle',
     type: 'rectangle',
     icon: <CropFree />,
     cursor: 'crosshair'
   });
-  const [selectedVRUType, setSelectedVRUType] = useState<VRUType>('pedestrian');
+  const [selectedVRUType, setSelectedVRUType] = useState<VRUType>(VRUType.PEDESTRIAN);
   
-  // Enhanced annotation mode toggle
-  const [enhancedAnnotationMode, setEnhancedAnnotationMode] = useState(false);
+  // Enhanced annotation mode toggle - Classic mode by default for reliability
+  const [enhancedAnnotationMode, setEnhancedAnnotationMode] = useState(false); // Classic mode by default for better video display
   
   // Enhanced annotation state
   const [annotationShapes, setAnnotationShapes] = useState<AnnotationShape[]>([]);
@@ -223,11 +226,12 @@ const GroundTruth: React.FC = () => {
           console.debug('Skipping null annotation');
           return false;
         }
-        if (!annotation.boundingBox) {
-          console.debug('Skipping annotation with no boundingBox:', annotation.id);
+        // Handle both camelCase (boundingBox) and snake_case (bounding_box) from API
+        const bbox = annotation.boundingBox || (annotation as any).bounding_box;
+        if (!bbox) {
+          console.debug('Skipping annotation with no bounding box data:', annotation.id);
           return false;
         }
-        const bbox = annotation.boundingBox;
         if (typeof bbox.x !== 'number' || 
             typeof bbox.y !== 'number' || 
             typeof bbox.width !== 'number' || 
@@ -246,7 +250,7 @@ const GroundTruth: React.FC = () => {
       })
       .map(annotation => {
         // Additional safety checks within map
-        const bbox = annotation.boundingBox!; // We know it exists from filter
+        const bbox = annotation.boundingBox || (annotation as any).bounding_box; // Use normalized bounding box data
         const safeConfidence = typeof bbox.confidence === 'number' && 
                               !isNaN(bbox.confidence) ? bbox.confidence : 1.0;
         
@@ -283,7 +287,7 @@ const GroundTruth: React.FC = () => {
       detectionId: `det_${shape.id}`,
       frameNumber: currentFrame,
       timestamp: currentTime,
-      vruType: (shape.label as VRUType) || 'pedestrian',
+      vruType: (shape.label as VRUType) || VRUType.PEDESTRIAN,
       boundingBox: {
         ...shape.boundingBox,
         label: shape.label || 'pedestrian',
@@ -293,6 +297,7 @@ const GroundTruth: React.FC = () => {
       truncated: false,
       difficult: false,
       validated: false,
+      validationStatus: 'pending' as const,
     }));
   }, [selectedVideo, currentFrame, currentTime]);
 
@@ -342,7 +347,7 @@ const GroundTruth: React.FC = () => {
             }
             return true;
           })
-          .map((det: any) => {
+          .map((det: RawDetectionData) => {
             // Defensive mapping with proper boundingBox validation
             const rawBbox = det.bounding_box || det.boundingBox;
             const safeBbox = {
@@ -365,6 +370,7 @@ const GroundTruth: React.FC = () => {
               occluded: det.occluded || false,
               truncated: det.truncated || false,
               difficult: det.difficult || false,
+              validationStatus: (det.validationStatus as 'pending' | 'validated' | 'rejected' | 'needs_review') || 'pending',
               validated: det.validated || false,
               createdAt: det.created_at || det.createdAt || new Date().toISOString(),
               updatedAt: det.updated_at || det.updatedAt || new Date().toISOString()
@@ -407,7 +413,7 @@ const GroundTruth: React.FC = () => {
   }, []);
 
   const handleSelectAllVideos = useCallback(() => {
-    const allVideoIds = videos.filter(v => v.status === 'completed').map(v => v.id);
+    const allVideoIds = videos.filter(v => v.status === VideoValidationStatus.VALIDATED).map(v => v.id);
     setSelectedVideoIds(new Set(allVideoIds));
   }, [videos]);
 
@@ -417,7 +423,7 @@ const GroundTruth: React.FC = () => {
 
   // Batch processing handlers
   const handleBatchProcess = useCallback(async () => {
-    const selectedVideos = videos.filter(v => selectedVideoIds.has(v.id) && v.status === 'completed');
+    const selectedVideos = videos.filter(v => selectedVideoIds.has(v.id) && (v.status === VideoValidationStatus.VALIDATED || v.status === VideoValidationStatus.VALIDATED));
     if (selectedVideos.length === 0) {
       setError('Please select at least one completed video for batch processing');
       return;
@@ -486,7 +492,7 @@ const GroundTruth: React.FC = () => {
 
   // Helper function to determine project context from videos
   const deriveProjectContext = useCallback((videos: VideoFile[]) => {
-    if (videos.length === 0) return null;
+    if (!videos || videos.length === 0) return null;
     
     // Get unique project IDs from videos
     const projectIds = [...new Set(videos.map(v => v.projectId).filter(Boolean))];
@@ -512,11 +518,13 @@ const GroundTruth: React.FC = () => {
         videoList = await apiService.getVideos(projectId);
       } else {
         // Load all videos from central store and derive project context
-        const { videos: allVideos } = await apiService.getAllVideos(false, 0, 1000);
+        const response = await apiService.getAllVideos(false, 0, 1000);
+        // Handle both old format (direct array) and new format ({videos: [...], total: number})
+        const allVideos = Array.isArray(response) ? response : (response?.videos || []);
         videoList = allVideos;
         
         // Try to derive project context from videos
-        const derivedProjectId = deriveProjectContext(allVideos);
+        const derivedProjectId = deriveProjectContext(allVideos || []);
         if (derivedProjectId && !projectId) {
           setProjectId(derivedProjectId);
           setProjectContext('video');
@@ -526,7 +534,7 @@ const GroundTruth: React.FC = () => {
         }
       }
       
-      setVideos(videoList);
+      setVideos(videoList || []);
     } catch (err) {
       const errorMsg = getErrorMessage(err, 'Backend connection failed');
       setError(`Failed to load videos: ${errorMsg}`);
@@ -539,7 +547,15 @@ const GroundTruth: React.FC = () => {
     try {
       // Use video's project context if available, otherwise use current project context
       
-      const annotationList = await apiService.getAnnotations(videoId);
+      const annotationResponse = await apiService.getAnnotations(videoId);
+      
+      // Extract annotations array from API response
+      const annotationList = Array.isArray(annotationResponse) 
+        ? annotationResponse 
+        : (annotationResponse && typeof annotationResponse === 'object' && 'annotations' in annotationResponse 
+           ? (annotationResponse as any).annotations || []
+           : []);
+      
       setAnnotations(annotationList);
       
       // Convert to shapes for enhanced annotation mode
@@ -548,16 +564,18 @@ const GroundTruth: React.FC = () => {
       
       // Import annotations into detection ID manager
       detectionIdManager.clear();
-      annotationList.forEach(annotation => {
-        createDetectionTracker(
-          annotation.detectionId,
-          annotation.vruType,
-          annotation.frameNumber,
-          annotation.timestamp,
-          annotation.boundingBox,
-          1.0
-        );
-      });
+      if (Array.isArray(annotationList)) {
+        annotationList.forEach(annotation => {
+          createDetectionTracker(
+            annotation.detectionId || '',
+            annotation.vruType,
+            annotation.frameNumber,
+            annotation.timestamp,
+            annotation.boundingBox,
+            1.0
+          );
+        });
+      }
     } catch (err) {
       console.error('Error loading annotations for video:', videoId, err);
       setAnnotations([]);
@@ -731,17 +749,19 @@ const GroundTruth: React.FC = () => {
       occluded: false,
       truncated: false,
       difficult: false,
+      validationStatus: 'pending',
       validated: false,
     };
 
     try {
       const newAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
+      await apiService.integrateAnnotationIntoGroundTruth(newAnnotation.id);
       setAnnotations(prev => [...prev, newAnnotation]);
       setSelectedAnnotation(newAnnotation);
       
       // Add to detection tracker
       createDetectionTracker(
-        newAnnotation.detectionId,
+        newAnnotation.detectionId || '',
         newAnnotation.vruType,
         newAnnotation.frameNumber,
         newAnnotation.timestamp,
@@ -983,6 +1003,7 @@ const GroundTruth: React.FC = () => {
 
     try {
       const newAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
+      await apiService.integrateAnnotationIntoGroundTruth(newAnnotation.id);
       setAnnotations(prev => [...prev, newAnnotation]);
       
       // Update shapes
@@ -1115,6 +1136,7 @@ const GroundTruth: React.FC = () => {
             if (selectedVideo) {
               try {
                 const savedAnnotation = await apiService.createAnnotation(selectedVideo.id, annotation);
+                await apiService.integrateAnnotationIntoGroundTruth(savedAnnotation.id);
                 savedAnnotations.push(savedAnnotation);
               } catch (err) {
                 console.error('Failed to save imported annotation:', err);
@@ -1128,7 +1150,7 @@ const GroundTruth: React.FC = () => {
           // Try to import as regular annotation format
           if (Array.isArray(data)) {
             const shapes = data
-              .filter((item: any) => {
+              .filter((item: ImportAnnotationItem) => {
                 // Validate import data structure
                 if (!item) return false;
                 if (item.points) return true; // Has explicit points
@@ -1137,8 +1159,8 @@ const GroundTruth: React.FC = () => {
                        typeof item.y === 'number' && 
                        (typeof item.width === 'number' || typeof item.height === 'number');
               })
-              .map((item: any) => createAnnotationShape(
-                item.type || 'rectangle',
+              .map((item: ImportAnnotationItem) => createAnnotationShape(
+                (item.type as 'rectangle' | 'polygon' | 'brush' | 'point') || 'rectangle',
                 item.points || [
                   { x: Number(item.x) || 0, y: Number(item.y) || 0 },
                   { x: (Number(item.x) || 0) + (Number(item.width) || 50), y: Number(item.y) || 0 },
@@ -1217,7 +1239,7 @@ const GroundTruth: React.FC = () => {
             Detection Configuration
           </Typography>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Model</InputLabel>
                 <Select
@@ -1231,7 +1253,7 @@ const GroundTruth: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Typography variant="caption" display="block">
                 Confidence: {detectionConfig.confidenceThreshold}
               </Typography>
@@ -1245,7 +1267,7 @@ const GroundTruth: React.FC = () => {
                 style={{ width: '100%' }}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Typography variant="caption" display="block">
                 NMS: {detectionConfig.nmsThreshold}
               </Typography>
@@ -1259,7 +1281,7 @@ const GroundTruth: React.FC = () => {
                 style={{ width: '100%' }}
               />
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Target Classes</InputLabel>
                 <Select
@@ -1333,7 +1355,7 @@ const GroundTruth: React.FC = () => {
               <Button
                 size="small"
                 onClick={handleSelectAllVideos}
-                disabled={videos.filter(v => v.status === 'completed').length === 0}
+                disabled={videos.filter(v => v.status === VideoValidationStatus.VALIDATED || v.status === VideoValidationStatus.VALIDATED).length === 0}
               >
                 Select All Completed
               </Button>
@@ -1376,7 +1398,7 @@ const GroundTruth: React.FC = () => {
 
       {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1392,7 +1414,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1408,7 +1430,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1424,7 +1446,7 @@ const GroundTruth: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 3 }}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1524,7 +1546,7 @@ const GroundTruth: React.FC = () => {
                       type="checkbox"
                       checked={selectedVideoIds.has(video.id)}
                       onChange={() => handleVideoToggleSelection(video.id)}
-                      disabled={video.status !== 'completed'}
+                      disabled={video.status !== VideoValidationStatus.VALIDATED && video.status !== 'validated'}
                     />
                   </Box>
                 )}
@@ -1536,7 +1558,7 @@ const GroundTruth: React.FC = () => {
                   primary={video.filename || video.name}
                   secondary={
                     <>
-                      Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt).toLocaleDateString()}
+                      Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploaded_at || new Date().toISOString()).toLocaleDateString()}
                       {video.projectId && (
                         <>
                           <br />
@@ -1559,7 +1581,7 @@ const GroundTruth: React.FC = () => {
                           <LinearProgress sx={{ mt: 0.5 }} />
                         </Box>
                       )}
-                      {(video.status === 'completed' || video.groundTruthGenerated) && (
+                      {((video.status === VideoValidationStatus.VALIDATED || video.status === VideoValidationStatus.VALIDATED) || video.groundTruthGenerated) && (
                         <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                           <Chip
                             label="Ready for annotation"
@@ -1582,7 +1604,7 @@ const GroundTruth: React.FC = () => {
                 
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    {video.status === 'completed' && (
+                    {(video.status === VideoValidationStatus.VALIDATED || video.status === VideoValidationStatus.VALIDATED) && (
                       <Tooltip title={
                         video.projectId || projectId 
                           ? "Start Annotation" 
@@ -1604,7 +1626,7 @@ const GroundTruth: React.FC = () => {
                         <IconButton
                           size="small"
                           onClick={() => handleProcessVideo(video)}
-                          disabled={video.status !== 'completed' || isDetectionRunning}
+                          disabled={(video.status !== VideoValidationStatus.VALIDATED && video.status !== 'validated') || isDetectionRunning}
                         >
                           <PlayArrow />
                         </IconButton>
@@ -1778,7 +1800,7 @@ const GroundTruth: React.FC = () => {
               {selectedVideo && (
                 <AnnotationProvider>
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, lg: 8 }}>
+                    <Grid item xs={12} lg={8}>
                       {!enhancedAnnotationMode && (
                         <>
                           {/* Detection Controls */}
@@ -1791,7 +1813,7 @@ const GroundTruth: React.FC = () => {
                             initialConfig={detectionConfig}
                           />
                           
-                          <VideoAnnotationPlayer
+                          <EnhancedClassicVideoPlayer
                             video={selectedVideo}
                             annotations={annotations}
                             onAnnotationSelect={setSelectedAnnotation}
@@ -1800,6 +1822,10 @@ const GroundTruth: React.FC = () => {
                             annotationMode={annotationMode}
                             selectedAnnotation={selectedAnnotation}
                             frameRate={frameRate}
+                            showDetectionControls={false}
+                            onVideoEnd={() => {
+                              console.log('Video ended');
+                            }}
                           />
                         </>
                       )}
@@ -1833,7 +1859,7 @@ const GroundTruth: React.FC = () => {
                         </>
                       )}
                     </Grid>
-                  <Grid size={{ xs: 12, lg: 4 }}>
+                  <Grid item xs={12} lg={4}>
                     <Typography variant="h6" gutterBottom>
                       Video Information
                     </Typography>
@@ -1936,10 +1962,10 @@ const GroundTruth: React.FC = () => {
 
             <TabPanel value={activeTab} index={1}>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, lg: 8 }}>
+                <Grid item xs={12} lg={8}>
                   <AnnotationProvider>
                     {selectedVideo && !enhancedAnnotationMode && (
-                      <VideoAnnotationPlayer
+                      <EnhancedClassicVideoPlayer
                         video={selectedVideo}
                         annotations={annotations}
                         onAnnotationSelect={setSelectedAnnotation}
@@ -1948,6 +1974,10 @@ const GroundTruth: React.FC = () => {
                         annotationMode={annotationMode}
                         selectedAnnotation={selectedAnnotation}
                         frameRate={frameRate}
+                        showDetectionControls={false}
+                        onVideoEnd={() => {
+                          console.log('Video ended in annotation tab');
+                        }}
                       />
                     )}
                     
@@ -1969,14 +1999,14 @@ const GroundTruth: React.FC = () => {
                     )}
                   </AnnotationProvider>
                 </Grid>
-                <Grid size={{ xs: 12, lg: 4 }}>
+                <Grid item xs={12} lg={4}>
                   <AnnotationProvider>
                     <AnnotationTools
                       selectedAnnotation={selectedAnnotation}
                       onAnnotationUpdate={handleAnnotationUpdate}
                       onAnnotationDelete={handleAnnotationDelete}
                       onAnnotationValidate={handleAnnotationValidate}
-                      onToolSelect={setSelectedTool}
+                      onToolSelect={(tool) => setSelectedTool(tool)}
                       selectedTool={selectedTool}
                       onCreateAnnotation={handleAnnotationCreate}
                       annotationMode={annotationMode}

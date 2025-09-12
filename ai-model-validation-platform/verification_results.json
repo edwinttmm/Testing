@@ -1,0 +1,97 @@
+{
+  "summary": {
+    "total_tests": 12,
+    "passed": 1,
+    "failed": 11,
+    "success_rate": 8.333333333333332,
+    "timestamp": 1756335466.4929025
+  },
+  "test_results": [
+    {
+      "test": "Health Endpoint",
+      "success": false,
+      "message": "Health check returned 503",
+      "details": "{\"status\":\"unhealthy\",\"message\":\"Critical systems down: database\",\"timestamp\":1756335466.3833282,\"architecture\":\"unified_sparc\",\"checks\":{\"traditional\":{\"database\":{\"status\":\"unhealthy\",\"database\":\"unreachable\",\"endpoint\":\"postgresql://127.0.0.1:5432\",\"discovery_method\":\"service_discovery\"},\"redis\":{\"status\":\"unhealthy\",\"redis\":\"unreachable\",\"endpoint\":\"redis://127.0.0.1:6379\",\"discovery_method\":\"service_discovery\"},\"filesystem\":{\"status\":\"healthy\",\"filesystem\":\"accessible\",\"directories\":{\"upload_directory\":{\"path\":\"./uploads\",\"exists\":true,\"writable\":true,\"readable\":true},\"log_directory\":{\"path\":\"./logs\",\"exists\":true,\"writable\":true,\"readable\":true},\"temp_directory\":{\"path\":\"/tmp\",\"exists\":true,\"writable\":true,\"readable\":true}},\"resolution_method\":\"path_resolver\"},\"network\":{\"status\":\"degraded\",\"network\":\"issues_detected\",\"services\":{\"postgres\":{\"status\":\"unavailable\",\"endpoint\":\"postgresql://127.0.0.1:5432\",\"response_time_ms\":null},\"redis\":{\"status\":\"unavailable\",\"endpoint\":\"redis://127.0.0.1:6379\",\"response_time_ms\":null}},\"discovery_method\":\"service_discovery\"}},\"unified_architecture\":{\"environment\":{\"status\":\"healthy\",\"environment\":\"detected\",\"details\":{\"environment_type\":\"wsl\",\"service_mode\":\"development\",\"is_containerized\":false,\"confidence_score\":0.46153846153846156,\"platform\":\"Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39\"}},\"service_discovery\":{\"status\":\"degraded\",\"service_discovery\":\"operational\",\"services\":{\"postgres\":{\"status\":\"unavailable\",\"endpoint\":\"postgresql://127.0.0.1:5432\",\"response_time_ms\":null},\"redis\":{\"status\":\"unavailable\",\"endpoint\":\"redis://127.0.0.1:6379\",\"response_time_ms\":null}}},\"path_resolution\":{\"status\":\"healthy\",\"path_resolution\":\"operational\",\"paths\":{\"upload_directory\":{\"path\":\"./uploads\",\"exists\":true,\"is_writable\":true,\"is_readable\":true,\"resolved_from\":\"base_path_wsl\"},\"log_directory\":{\"path\":\"./logs\",\"exists\":true,\"is_writable\":true,\"is_readable\":true,\"resolved_from\":\"base_path_wsl\"},\"data_directory\":{\"path\":\"./data\",\"exists\":true,\"is_writable\":true,\"is_readable\":true,\"resolved_from\":\"base_path_wsl\"},\"config_directory\":{\"path\":\"./config\",\"exists\":false,\"is_writable\":true,\"is_readable\":false,\"resolved_from\":\"base_path_wsl\"},\"temp_directory\":{\"path\":\"/tmp\",\"exists\":true,\"is_writable\":true,\"is_readable\":true,\"resolved_from\":\"base_path_wsl\"},\"model_directory\":{\"path\":\"./models\",\"exists\":false,\"is_writable\":true,\"is_readable\":false,\"resolved_from\":\"base_path_wsl\"},\"export_directory\":{\"path\":\"./exports\",\"exists\":true,\"is_writable\":true,\"is_readable\":true,\"resolved_from\":\"base_path_wsl\"},\"cache_directory\":{\"path\":\"./cache\",\"exists\":false,\"is_writable\":true,\"is_readable\":false,\"resolved_from\":\"base_path_wsl\"}},\"warnings\":[],\"errors\":[]},\"port_management\":{\"status\":\"degraded\",\"port_management\":\"operational\",\"available_ports\":1,\"occupied_ports\":4,\"port_conflicts\":1}}},\"system\":{\"python_version\":\"3.12.3\",\"platform\":\"Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39\",\"cpu_count\":8,\"memory\":{\"total\":8206381056,\"available\":2425069568,\"percent_used\":70.4},\"disk\":{\"total\":1081101176832,\"free\":1000954970112,\"percent_used\":2.5}},\"environment_info\":{\"detected_type\":\"wsl\",\"service_mode\":\"development\",\"is_containerized\":false,\"confidence_score\":0.46153846153846156},\"statistics\":{\"total_checks\":8,\"healthy_checks\":3,\"degraded_checks\":3,\"unhealthy_checks\":2,\"error_checks\":0}}",
+      "timestamp": 1756335466.3922346
+    },
+    {
+      "test": "System Status",
+      "success": false,
+      "message": "System status returned 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4037526
+    },
+    {
+      "test": "Form Validation - Empty Name",
+      "success": false,
+      "message": "Empty name not rejected, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4126413
+    },
+    {
+      "test": "Form Validation - Valid Project",
+      "success": false,
+      "message": "Valid project creation failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4211845
+    },
+    {
+      "test": "Annotation Endpoints - List",
+      "success": false,
+      "message": "Annotation list failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4288483
+    },
+    {
+      "test": "Annotation Endpoints - Stats",
+      "success": false,
+      "message": "Annotation stats failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4390879
+    },
+    {
+      "test": "Datasets Endpoints",
+      "success": false,
+      "message": "Datasets list failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4462411
+    },
+    {
+      "test": "Results Endpoints",
+      "success": false,
+      "message": "Results list failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4546866
+    },
+    {
+      "test": "Ground Truth Endpoints",
+      "success": false,
+      "message": "Ground truth list failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4631524
+    },
+    {
+      "test": "404 Error Handling",
+      "success": false,
+      "message": "404 returned but wrong format",
+      "details": {
+        "detail": "Not Found"
+      },
+      "timestamp": 1756335466.4707694
+    },
+    {
+      "test": "Security Headers",
+      "success": true,
+      "message": "Security headers implemented",
+      "details": "Found: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection",
+      "timestamp": 1756335466.4828513
+    },
+    {
+      "test": "API Documentation",
+      "success": false,
+      "message": "API docs failed, got 404",
+      "details": "{\"detail\":\"Not Found\"}",
+      "timestamp": 1756335466.4913666
+    }
+  ]
+}

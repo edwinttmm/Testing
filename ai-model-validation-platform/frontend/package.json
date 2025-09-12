@@ -3,46 +3,123 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@testing-library/jest-dom": "^5.16.4",
-    "@testing-library/react": "^13.3.0",
+    "@craco/craco": "^7.1.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^5.14.3",
+    "@mui/lab": "^5.0.0-alpha.137",
+    "@mui/material": "^5.18.0",
+    "@mui/system": "^5.14.5",
+    "@mui/x-date-pickers": "^6.10.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "@types/jest": "^27.5.2",
+    "@types/lodash": "^4.14.195",
     "@types/node": "^16.11.43",
     "@types/react": "^18.0.15",
     "@types/react-dom": "^18.0.6",
+    "@types/react-window": "^1.8.5",
     "axios": "^1.4.0",
+    "chart.js": "^4.5.0",
+    "date-fns": "^2.30.0",
+    "lodash": "^4.17.21",
     "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.2",
     "react-scripts": "5.0.1",
+    "react-window": "^1.8.9",
+    "recharts": "^2.7.2",
+    "socket.io-client": "^4.5.4",
     "typescript": "^4.7.4",
     "web-vitals": "^2.1.4",
-    "zod": "^3.22.4",
-    "@mui/material": "^5.14.5",
-    "@mui/icons-material": "^5.14.3",
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
-    "react-router-dom": "^6.14.2",
-    "socket.io-client": "^4.5.4",
-    "recharts": "^2.7.2",
-    "date-fns": "^2.30.0",
-    "@mui/x-date-pickers": "^6.10.0",
-    "@mui/lab": "^5.0.0-alpha.137",
-    "lodash": "^4.17.21",
-    "react-window": "^1.8.9",
-    "@types/lodash": "^4.14.195",
-    "@types/react-window": "^1.8.5"
+    "zod": "^3.22.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "SKIP_PREFLIGHT_CHECK=true DISABLE_ESLINT_PLUGIN=true TSC_COMPILE_ON_ERROR=true ESLINT_NO_DEV_ERRORS=true GENERATE_SOURCEMAP=false BROWSER=none PORT=3000 WDS_SOCKET_HOST=localhost WDS_SOCKET_PORT=0 WDS_SOCKET_PATH=/dev/null FAST_REFRESH=false node --max-old-space-size=2048 node_modules/.bin/craco start",
+    "start:dev": "npm start",
+    "start:open": "SKIP_PREFLIGHT_CHECK=true DISABLE_ESLINT_PLUGIN=true TSC_COMPILE_ON_ERROR=true ESLINT_NO_DEV_ERRORS=true GENERATE_SOURCEMAP=false PORT=3000 node --max-old-space-size=2048 node_modules/.bin/craco start",
+    "start:docker": "SKIP_PREFLIGHT_CHECK=true DISABLE_GPU_CHECK=true node --max-old-space-size=4096 node_modules/.bin/craco start",
+    "build": "node --max-old-space-size=8192 node_modules/.bin/craco build",
+    "build:dev": "NODE_OPTIONS='--max-old-space-size=4096' GENERATE_SOURCEMAP=false craco build",
+    "build:docker": "SKIP_PREFLIGHT_CHECK=true GENERATE_SOURCEMAP=false node --max-old-space-size=6144 node_modules/.bin/craco build",
+    "test": "craco test",
+    "test:docker": "craco test --watchAll=false --passWithNoTests",
     "eject": "react-scripts eject",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
+    "lint:dev": "eslint src --ext .ts,.tsx --max-warnings 50",
+    "lint:prod": "eslint src --ext .ts,.tsx -c .eslintrc.production.js --max-warnings 0 --ignore-pattern '**/*.test.*' --ignore-pattern '**/*.spec.*'",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "validate-contracts": "npm run test -- --testNamePattern='Contract'",
-    "generate-contracts": "node scripts/generate-contracts.js"
+    "generate-contracts": "node scripts/generate-contracts.js",
+    "pre-commit": "npm run lint:prod",
+    "logger-analysis": "node scripts/logger-usage-check.js",
+    "lint:analyze": "npm run lint:dev && npm run logger-analysis",
+    "typecheck": "tsc --noEmit --project .",
+    "typecheck:tests": "tsc --noEmit --project tsconfig.test.json",
+    "test:labjack": "jest tests/labjack-*.test.ts --verbose --detectOpenHandles --forceExit",
+    "test:labjack-api": "jest tests/labjack-api-validation.test.ts --verbose",
+    "test:labjack-integration": "jest tests/labjack-hardware-integration.test.ts --verbose",
+    "test:labjack-legacy": "jest tests/labjack-integration-validation.test.ts --verbose",
+    "test:labjack-all": "node -r ts-node/register tests/run-labjack-tests.ts",
+    "test:coverage": "craco test --coverage --watchAll=false",
+    "test:video": "jest tests/video-*.test.tsx --verbose --detectOpenHandles --forceExit --testTimeout=30000",
+    "test:video-comprehensive": "jest tests/video-playback-comprehensive.test.tsx --verbose --coverage",
+    "test:video-browser-compat": "jest tests/video-browser-compatibility.test.tsx --verbose",
+    "test:video-performance": "jest tests/video-performance-benchmarks.test.tsx --verbose",
+    "test:video-labjack": "jest tests/video-labjack-integration.test.tsx --verbose",
+    "test:video-all": "node -r ts-node/register tests/video-test-runner.ts",
+    "test:video-all-parallel": "node -r ts-node/register tests/video-test-runner.ts --parallel",
+    "test:video-all-coverage": "node -r ts-node/register tests/video-test-runner.ts --coverage --verbose",
+    "test:simple-video": "node -r ts-node/register src/tests/runSimpleVideoTest.ts",
+    "test:video-simple": "jest src/tests/video-sequential-simple.test.tsx --verbose --detectOpenHandles --forceExit",
+    "start:minimal": "NODE_ENV=development npx webpack serve --config webpack.minimal.js",
+    "start:nuclear": "node start-nuclear.js"
   },
   "eslintConfig": {
     "extends": [
-      "react-app"
+      "react-app",
+      "react-app/jest"
+    ],
+    "rules": {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_"
+        }
+      ],
+      "no-console": [
+        "warn",
+        {
+          "allow": [
+            "error",
+            "warn",
+            "info"
+          ]
+        }
+      ],
+      "prefer-const": "warn",
+      "no-debugger": "warn"
+    },
+    "overrides": [
+      {
+        "files": [
+          "src/**/*.{ts,tsx}"
+        ],
+        "rules": {
+          "no-console": [
+            "warn",
+            {
+              "allow": [
+                "error",
+                "warn",
+                "info"
+              ]
+            }
+          ]
+        }
+      }
     ]
   },
   "browserslist": {
@@ -59,7 +136,21 @@
   },
   "devDependencies": {
     "@types/axios": "^0.14.0",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "babel-plugin-import": "^1.13.8",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-jest": "^27.2.1",
+    "eslint-webpack-plugin": "^4.0.1",
+    "husky": "^9.1.7",
     "jest": "^27.5.1",
-    "eslint-plugin-jest": "^27.2.1"
+    "lint-staged": "^16.1.5",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0",
+    "webpack-bundle-analyzer": "^4.10.2"
   }
 }

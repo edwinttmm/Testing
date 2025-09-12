@@ -1,0 +1,27 @@
+{
+  "backend": {
+    "status": "PASS",
+    "tests": {
+      "health": "PASS",
+      "/api/projects": "PASS",
+      "/api/videos": "PASS",
+      "/api/dashboard/stats": "PASS",
+      "file_upload": "PASS"
+    }
+  },
+  "frontend": {
+    "status": "PASS",
+    "tests": {
+      "accessibility": "PASS",
+      "structure": "PASS",
+      "config": "PASS"
+    }
+  },
+  "integration": {
+    "status": "PASS",
+    "tests": {
+      "cors": "PASS",
+      "config": "PASS"
+    }
+  }
+}

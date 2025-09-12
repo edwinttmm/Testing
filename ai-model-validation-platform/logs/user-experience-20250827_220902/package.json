@@ -1,0 +1,15 @@
+{
+  "name": "user-experience-20250827_220902",
+  "version": "1.0.0",
+  "main": "browser_test.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "puppeteer": "^24.17.0"
+  }
+}

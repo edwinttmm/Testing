@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔧 Network Connectivity Fix Verification</title>
+    <script src="/config.js"></script>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #f0f0f0; }
+        .test { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; border: 1px solid #ccc; }
+        .success { background: #e8f5e8; border-color: green; }
+        .error { background: #f5e8e8; border-color: red; }
+        .warning { background: #fff3cd; border-color: orange; }
+        pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+        h1 { color: #333; }
+        button { padding: 10px; background: #007cba; color: white; border: none; border-radius: 3px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Network Connectivity Fix Verification</h1>
+    
+    <div class="test" id="config-test">
+        <h3>Configuration Test</h3>
+        <p id="config-result">Loading...</p>
+    </div>
+    
+    <div class="test" id="api-test">
+        <h3>API Connectivity Test</h3>
+        <button onclick="runAPITest()">Test API Connection</button>
+        <p id="api-result"></p>
+    </div>
+    
+    <div class="test" id="fix-verification">
+        <h3>Fix Verification</h3>
+        <p id="fix-result">Checking fix...</p>
+    </div>
+
+    <script>
+        // Test configuration is working
+        function testConfiguration() {
+            const config = window.RUNTIME_CONFIG || {};
+            const hostname = window.location.hostname;
+            const isExternalIP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+            
+            const result = {
+                currentHostname: hostname,
+                isExternalIPAccess: isExternalIP,
+                apiURL: config.REACT_APP_API_URL,
+                expectedBehavior: isExternalIP ? 'Should use localhost:8000 for API' : 'Should use localhost:8000 for API',
+                actualBehavior: config.REACT_APP_API_URL,
+                status: 'Unknown'
+            };
+            
+            // Check if fix is working
+            if (config.REACT_APP_API_URL && config.REACT_APP_API_URL.includes('localhost:8000')) {
+                result.status = '✅ FIXED - Using localhost:8000';
+                document.getElementById('config-test').className = 'test success';
+            } else if (config.REACT_APP_API_URL && config.REACT_APP_API_URL.includes('155.138.239.131:8000')) {
+                result.status = '❌ BROKEN - Using external IP';
+                document.getElementById('config-test').className = 'test error';
+            } else {
+                result.status = '⚠️ UNKNOWN - Unexpected configuration';
+                document.getElementById('config-test').className = 'test warning';
+            }
+            
+            document.getElementById('config-result').innerHTML = 
+                '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+        }
+        
+        // Test actual API connectivity
+        async function runAPITest() {
+            const apiResult = document.getElementById('api-result');
+            apiResult.innerHTML = 'Testing...';
+            
+            const config = window.RUNTIME_CONFIG || {};
+            const apiURL = config.REACT_APP_API_URL;
+            
+            try {
+                // Test health endpoint
+                const healthResponse = await fetch(`${apiURL}/health`);
+                const healthData = await healthResponse.text();
+                
+                // Test projects endpoint
+                const projectsResponse = await fetch(`${apiURL}/api/projects`);
+                const projectsData = await projectsResponse.json();
+                
+                const testResult = {
+                    healthTest: {
+                        url: `${apiURL}/health`,
+                        status: healthResponse.status,
+                        response: healthData
+                    },
+                    projectsTest: {
+                        url: `${apiURL}/api/projects`,
+                        status: projectsResponse.status,
+                        projectCount: Array.isArray(projectsData) ? projectsData.length : 'N/A'
+                    },
+                    overallStatus: (healthResponse.ok && projectsResponse.ok) ? '✅ SUCCESS' : '❌ FAILED'
+                };
+                
+                apiResult.innerHTML = '<pre>' + JSON.stringify(testResult, null, 2) + '</pre>';
+                
+                if (healthResponse.ok && projectsResponse.ok) {
+                    document.getElementById('api-test').className = 'test success';
+                } else {
+                    document.getElementById('api-test').className = 'test error';
+                }
+                
+            } catch (error) {
+                apiResult.innerHTML = `<div style="color: red;">❌ API Test Failed: ${error.message}</div>`;
+                document.getElementById('api-test').className = 'test error';
+            }
+        }
+        
+        // Verify the fix is working
+        function verifyFix() {
+            const hostname = window.location.hostname;
+            const isExternalIP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
+            const config = window.RUNTIME_CONFIG || {};
+            
+            let verification = {
+                testScenario: 'Network Configuration Fix',
+                issue: 'Frontend calling 155.138.239.131:8000 instead of localhost:8000',
+                fix: 'Modified config.js to use localhost for external IP access',
+                currentState: {}
+            };
+            
+            verification.currentState = {
+                accessedVia: hostname,
+                detectedAsExternalIP: isExternalIP,
+                configuredAPIURL: config.REACT_APP_API_URL,
+                fixWorking: config.REACT_APP_API_URL ? config.REACT_APP_API_URL.includes('localhost:8000') : false
+            };
+            
+            const isFixed = verification.currentState.fixWorking;
+            verification.status = isFixed ? '✅ FIX VERIFIED' : '❌ FIX NOT WORKING';
+            
+            document.getElementById('fix-result').innerHTML = 
+                '<pre>' + JSON.stringify(verification, null, 2) + '</pre>';
+            
+            document.getElementById('fix-verification').className = isFixed ? 'test success' : 'test error';
+        }
+        
+        // Run tests on load
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                testConfiguration();
+                verifyFix();
+            }, 500);
+        });
+        
+        console.log('🧪 Connectivity test page loaded');
+        console.log('Current hostname:', window.location.hostname);
+        console.log('Runtime config API URL:', window.RUNTIME_CONFIG?.REACT_APP_API_URL);
+    </script>
+</body>
+</html>

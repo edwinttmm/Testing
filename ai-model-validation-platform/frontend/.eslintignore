@@ -1,0 +1,35 @@
+# ESLint ignore file
+
+# Build output
+build/
+dist/
+*.min.js
+
+# Dependencies
+node_modules/
+
+# Generated files
+*.generated.ts
+*.generated.tsx
+
+# Legacy files that may need console statements
+src/legacy/
+src/vendor/
+
+# Configuration files
+public/
+*.config.js
+craco.config.js
+
+# Test fixtures
+src/**/__fixtures__/
+src/**/__mocks__/
+
+# Critical error handling (inline eslint-disable preferred)
+# src/**/emergencyLogger.ts
+
+# Temporary development files
+*.dev.ts
+*.dev.tsx
+*.debug.ts
+*.debug.tsx

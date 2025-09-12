@@ -1,4 +1,4 @@
-// Architecture-compliant enums
+// PRD-compliant enums matching GLOBAL_VARIABLES_REFERENCE.md
 export enum CameraType {
   FRONT_FACING_VRU = "Front-facing VRU",
   REAR_FACING_VRU = "Rear-facing VRU",
@@ -7,10 +7,88 @@ export enum CameraType {
 }
 
 export enum SignalType {
-  GPIO = "GPIO",
-  NETWORK_PACKET = "Network Packet",
-  SERIAL = "Serial",
-  CAN_BUS = "CAN Bus"
+  TTL = "ttl",
+  GPIO = "gpio",
+  ANALOG = "analog",
+  DIGITAL = "digital"
+}
+
+// PRD-aligned VRU types
+export enum VRUType {
+  PEDESTRIAN = "pedestrian",
+  CYCLIST = "cyclist",
+  MOTORCYCLIST = "motorcyclist",
+  WHEELCHAIR = "wheelchair_user",
+  SCOOTER = "scooter_rider"
+}
+
+// Unified video validation status system
+export enum VideoValidationStatus {
+  // Initial states
+  UPLOADED = "uploaded",
+  PROCESSING = "processing", 
+  PROCESSING_FAILED = "processing_failed",
+  
+  // Annotation states
+  ANNOTATED = "annotated",
+  
+  // Validation states
+  VALIDATING = "validating",
+  VALIDATION_FAILED = "validation_failed", 
+  VALIDATED = "validated",
+  
+  // Testing readiness
+  READY_FOR_TESTING = "ready_for_testing",
+  IN_TESTING = "in_testing",
+  TESTED = "tested",
+  
+  // Final states
+  ARCHIVED = "archived",
+  ERROR = "error"
+}
+
+// Legacy video status (for backward compatibility)
+export enum VideoStatus {
+  UPLOADED = "uploaded",
+  PROCESSING = "processing",
+  COMPLETED = "completed", 
+  VALIDATED = "validated",
+  ERROR = "error",
+  PENDING_ANNOTATION = "pending_annotation",
+  PENDING_VALIDATION = "pending_validation"
+}
+
+// Validation workflow status
+export enum ValidationStatus {
+  PENDING = "pending",
+  PROCESSING = "processing",
+  PENDING_VALIDATION = "pending_validation",
+  VALIDATING = "validating",
+  VALIDATED = "validated",
+  FAILED = "failed",
+  NEEDS_REVIEW = "needs_review"
+}
+
+// Type of validation performed
+export enum ValidationType {
+  AUTOMATIC = "automatic",
+  MANUAL = "manual", 
+  HYBRID = "hybrid"
+}
+
+// Validation result
+export enum ValidationResultType {
+  PASSED = "passed",
+  FAILED = "failed",
+  NEEDS_REVIEW = "needs_review",
+  PROCESSING = "processing"
+}
+
+// PRD-aligned test execution outcomes
+export enum DetectionOutcome {
+  PASS = "pass",
+  FAIL_HIGH_LATENCY = "fail_high_latency",
+  FAIL_MISSED_DETECTION = "fail_missed_detection"
 }
 
 export enum ProjectStatus {
@@ -32,31 +110,25 @@ export interface ApiResponse<T = unknown> {
   timestamp?: string;
 }
 
-// Project Types
+// Project Types - Updated to match backend camelCase serializers
 export interface Project {
   id: string;
   name: string;
   description?: string;
   cameraModel: string;
-  camera_model?: string; // API response alias
   cameraView: CameraType;
-  camera_view?: CameraType; // API response alias
   signalType: SignalType;
-  signal_type?: SignalType; // API response alias
   lensType?: string;
-  lens_type?: string; // API response alias
   resolution?: string;
   frameRate?: number;
-  frame_rate?: number; // API response alias
   createdAt: string;
-  created_at?: string; // API response alias
   updatedAt?: string;
-  updated_at?: string; // API response alias
   status: ProjectStatus;
   testsCount?: number;
-  accuracy?: number;
-  userId?: string;
-  owner_id?: string; // API response alias
+  videoCount?: number; // New field from backend
+  totalAnnotations?: number; // New field from backend
+  averageAccuracy?: number; // New field from backend
+  ownerId: string; // Required field from backend
 }
 
 export interface ProjectCreate {
@@ -78,56 +150,286 @@ export interface ProjectUpdate {
   [key: string]: unknown;
 }
 
-// Video Types
+// Extended Project with additional properties
+export interface ExtendedProject extends Project {
+  modelConfigurations?: ModelConfiguration[];
+  models?: ModelConfiguration[];
+}
+
+// Enhanced VideoFile interface with unified validation status system
 export interface VideoFile {
   id: string;
-  projectId: string;
   filename: string;
-  originalName: string;
-  name?: string;
-  size: number;
-  fileSize?: number;
-  file_size?: number; // API response field
+  filePath?: string;
+  fileSize: number;
+  
+  // Unified status system
+  status: VideoValidationStatus;
+  validationStatus: ValidationStatus;
+  validationType?: ValidationType;
+  validatedAt?: string;
+  validatedBy?: string;
+  
+  // HIL testing readiness
+  hilTestingReady: boolean;
+  hilTestingApprovedBy?: string;
+  hilTestingApprovedAt?: string;
+  
+  // Ground truth information
+  groundTruthGenerated: boolean;
+  groundTruthCount: number;
+  groundTruthQualityScore?: number;
+  groundTruthCompletedAt?: string;
+  
+  // Basic metadata
+  detectionCount: number;
+  annotationCount: number;
+  projectId?: string;
   duration?: number;
-  uploadedAt: string;
-  createdAt?: string;
-  created_at?: string; // API response field
-  url: string;
-  status: 'uploading' | 'processing' | 'completed' | 'failed';
-  processing_status?: 'pending' | 'processing' | 'completed' | 'failed'; // API response field
-  groundTruthStatus?: 'pending' | 'processing' | 'completed' | 'failed';
-  groundTruthGenerated?: boolean;
-  ground_truth_generated?: boolean; // API response field
-  detectionCount?: number;
-  annotations?: Annotation[];
-  // Additional properties for enhanced video handling
+  frameRate?: number;
   width?: number;
   height?: number;
+  createdAt: string;
+  updatedAt?: string;
+  // Additional compatibility fields
+  originalName?: string;
+  name?: string;
+  size?: number;
+  url?: string;
   fps?: number;
+  frame_rate?: number;
+  resolution?: string;
+  frameCount?: number;
+  processing_status?: string;
+  ground_truth_generated?: boolean;
+  groundTruthStatus?: string;
+  ground_truth_status?: string;
+  detection_count?: number;
+  validationScore?: number;
+  uploaded_at?: string;
+  created_at?: string;
+  processedAt?: string;
   bitrate?: number;
   format?: string;
   codec?: string;
+  mimeType?: string;
   thumbnailUrl?: string;
   metadata?: Record<string, unknown>;
+  annotations?: unknown[];
+  file_size?: number;
+  project_id?: number;
+  original_name?: string;
+  file_path?: string;
 }
+
+// Video Validation System Types
+
+export interface VideoValidationCriteria {
+  id: string;
+  projectId?: string; // null = global criteria
+  
+  // Ground truth quality requirements
+  minDetectionCount: number;
+  minConfidenceThreshold: number;
+  minFrameCoveragePercent: number;
+  
+  // Technical requirements
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
+  requiredResolutionMin: string;
+  minFps: number;
+  
+  // Content requirements
+  requiredVruTypes?: string[];
+  minSceneComplexityScore: number;
+  
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ValidationScores {
+  groundTruthScore?: number;
+  technicalScore?: number;
+  contentScore?: number;
+  overallScore?: number;
+}
+
+export interface VideoValidationResult {
+  id: string;
+  videoId: string;
+  validationCriteriaId?: string;
+  validationType: ValidationType;
+  overallResult: ValidationResultType;
+  scores?: ValidationScores;
+  criteriaMet?: Record<string, boolean>;
+  validationNotes?: string;
+  validatedBy?: string;
+  createdAt: string;
+  message?: string; // For async processing responses
+}
+
+export interface VideoStatusResponse {
+  videoId: string;
+  status: VideoValidationStatus;
+  validationStatus: ValidationStatus;
+  validationType?: ValidationType;
+  validatedAt?: string;
+  validatedBy?: string;
+  
+  // HIL testing readiness
+  hilTestingReady: boolean;
+  hilTestingApprovedBy?: string;
+  hilTestingApprovedAt?: string;
+  
+  // Ground truth information
+  groundTruthCount: number;
+  groundTruthQualityScore?: number;
+  
+  // Latest validation result
+  validationResult?: VideoValidationResult;
+}
+
+export interface VideoStatusTransition {
+  id: string;
+  videoId: string;
+  fromStatus: string;
+  toStatus: string;
+  transitionReason: string;
+  triggeredBy?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface ValidationQueueStatus {
+  pendingValidation: number;
+  currentlyValidating: number;
+  validationFailed: number;
+  totalInQueue: number;
+}
+
+export interface VideoValidationRequest {
+  validationType: ValidationType;
+  criteriaId?: string;
+  notes?: string;
+  
+  // For manual validation
+  manualResult?: ValidationResultType;
+  scores?: ValidationScores;
+}
+
+export interface BatchValidationRequest {
+  videoIds: string[];
+  validationType: ValidationType;
+  criteriaId?: string;
+}
+
+export interface BatchStatusUpdate {
+  videoIds: string[];
+  newStatus: VideoValidationStatus;
+  reason: string;
+  metadata?: Record<string, any>;
+}
+
+// Status transition helpers
+export interface StatusTransitionRule {
+  fromStatus: VideoValidationStatus;
+  toStatus: VideoValidationStatus;
+  requiredConditions?: string[];
+  automatic?: boolean;
+  manualOverride?: boolean;
+}
+
+// Legacy compatibility wrapper
+export interface LegacyVideoFile extends VideoFile {
+  // Map new fields to legacy names for backward compatibility
+  processingStatus: string; // Computed from status
+  processing_status?: string; // Snake case alias
+  ground_truth_generated?: boolean; // Snake case alias
+  groundTruthStatus?: string; // Computed status
+}
+
+// Status mapping utilities
+export const mapToLegacyStatus = (status: VideoValidationStatus): string => {
+  const statusMap: Record<VideoValidationStatus, string> = {
+    [VideoValidationStatus.UPLOADED]: "uploaded",
+    [VideoValidationStatus.PROCESSING]: "processing",
+    [VideoValidationStatus.PROCESSING_FAILED]: "failed",
+    [VideoValidationStatus.ANNOTATED]: "completed",
+    [VideoValidationStatus.VALIDATING]: "processing", 
+    [VideoValidationStatus.VALIDATION_FAILED]: "failed",
+    [VideoValidationStatus.VALIDATED]: "completed",
+    [VideoValidationStatus.READY_FOR_TESTING]: "completed",
+    [VideoValidationStatus.IN_TESTING]: "completed",
+    [VideoValidationStatus.TESTED]: "completed",
+    [VideoValidationStatus.ARCHIVED]: "completed",
+    [VideoValidationStatus.ERROR]: "error"
+  };
+  return statusMap[status] || "uploaded";
+};
+
+export const mapToLegacyProcessingStatus = (status: VideoValidationStatus): string => {
+  const statusMap: Record<VideoValidationStatus, string> = {
+    [VideoValidationStatus.UPLOADED]: "pending",
+    [VideoValidationStatus.PROCESSING]: "processing",
+    [VideoValidationStatus.PROCESSING_FAILED]: "failed",
+    [VideoValidationStatus.ANNOTATED]: "completed", 
+    [VideoValidationStatus.VALIDATING]: "processing",
+    [VideoValidationStatus.VALIDATION_FAILED]: "failed",
+    [VideoValidationStatus.VALIDATED]: "completed",
+    [VideoValidationStatus.READY_FOR_TESTING]: "completed",
+    [VideoValidationStatus.IN_TESTING]: "completed", 
+    [VideoValidationStatus.TESTED]: "completed",
+    [VideoValidationStatus.ARCHIVED]: "completed",
+    [VideoValidationStatus.ERROR]: "failed"
+  };
+  return statusMap[status] || "pending";
+};
 
 export interface VideoUpload {
   projectId: string;
   file: File;
 }
 
-// VRU Detection Types
-export type VRUType = 'pedestrian' | 'cyclist' | 'motorcyclist' | 'wheelchair_user' | 'scooter_rider';
-
 // Export VRUType for annotation components
 export type { VRUType as AnnotationVRUType };
 
-// WebSocket Message Types
+// GroundTruthObject interface matching GLOBAL_VARIABLES_REFERENCE.md
+export interface GroundTruthObject {
+  id: string;
+  videoId: string;
+  vruId: string;          // PRD: Persistent VRU ID
+  vruType: VRUType;
+  frameNumber: number;
+  timestampMs: number;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  confidence: number;
+  validated: boolean;
+}
+
+// WebSocket Message Types - PRD-compliant with string ISO timestamps
 export interface WebSocketMessage<T = unknown> {
   type: string;
   payload: T;
-  timestamp: number;
+  timestamp: string; // ISO timestamp string for consistency
   id?: string;
+}
+
+// Enhanced WebSocket message types for different operations
+export interface DetectionWebSocketMessage extends WebSocketMessage<DetectionEventData> {
+  type: 'detection_update' | 'detection_completed' | 'detection_failed';
+}
+
+export interface AnnotationWebSocketMessage extends WebSocketMessage<AnnotationEventData> {
+  type: 'annotation_created' | 'annotation_updated' | 'annotation_validated';
+}
+
+export interface SignalWebSocketMessage extends WebSocketMessage<SignalProcessingEventData> {
+  type: 'signal_received' | 'signal_processed' | 'signal_failed';
 }
 
 // Detection Service Types
@@ -146,32 +448,28 @@ export interface SignalData {
   metadata?: Record<string, unknown>;
 }
 
-// Annotation Types
+// Detection Types - Updated to match backend camelCase serializers
 export interface Detection {
   id: string;
-  detectionId: string;
+  videoId: string;
+  detectionId?: string;
+  inferenceSessionId?: string;
+  frameNumber: number;
   timestamp: number;
-  boundingBox: BoundingBox;
+  classId: number;
+  className: string;
   vruType: VRUType;
   confidence: number;
-  isGroundTruth: boolean;
-  notes?: string;
-  validated: boolean;
+  boundingBox: BoundingBox;
+  detectionScore?: number;
+  nmsScore?: number;
+  trackingId?: string;
+  validationStatus: 'pending' | 'validated' | 'rejected' | 'needs_review';
+  groundTruthMatchId?: string;
+  iouWithGroundTruth?: number;
+  isGroundTruth?: boolean; // Add isGroundTruth property
+  validated?: boolean; // Add validated property
   createdAt: string;
-  updatedAt?: string;
-  // Additional properties for API compatibility
-  frame?: number;
-  frameNumber?: number;
-  bbox?: BoundingBox;
-  label?: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  time?: number;
-  occluded?: boolean;
-  truncated?: boolean;
-  difficult?: boolean;
 }
 
 export interface Annotation {
@@ -185,13 +483,19 @@ export interface Annotation {
   detections: Detection[];
 }
 
+// BoundingBox - Updated to match backend camelCase serializers
 export interface BoundingBox {
   x: number;
   y: number;
   width: number;
   height: number;
-  label: string;
-  confidence: number;
+  confidence?: number;
+  // Optional label for backward compatibility
+  label?: string;
+  // Computed fields (from serializers)
+  area?: number;
+  centerX?: number;
+  centerY?: number;
 }
 
 // Enhanced Point and Shape Types for Annotation Canvas
@@ -226,27 +530,31 @@ export interface AnnotationShape {
   boundingBox: Rectangle;
   style: AnnotationStyle;
   label?: string;
-  confidence?: number;
+  confidence?: number | undefined;
   locked?: boolean;
   selected?: boolean;
   visible?: boolean;
 }
 
-// Ground Truth Annotation Types
+// Ground Truth Annotation Types - Updated to match backend camelCase serializers
 export interface GroundTruthAnnotation {
   id: string;
   videoId: string;
-  detectionId: string;
+  detectionId?: string;
   frameNumber: number;
   timestamp: number;
+  endTimestamp?: number;
   vruType: VRUType;
+  classLabel?: string;
   boundingBox: BoundingBox;
   occluded: boolean;
   truncated: boolean;
   difficult: boolean;
+  validationStatus: 'pending' | 'validated' | 'rejected' | 'needs_review';
+  validated: boolean;
+  confidence?: number;
   notes?: string;
   annotator?: string;
-  validated: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -286,9 +594,13 @@ export interface TestSession {
   createdAt?: string | Date;
   startedAt?: string;
   completedAt?: string;
-  config?: any; // Test configuration object
+  config?: TestConfiguration; // Test configuration object
   detectionEvents?: DetectionEvent[];
   metrics?: TestMetrics;
+  // Additional properties for TestExecution
+  modelConfigurations?: ModelConfiguration[];
+  models?: ModelConfiguration[];
+  modelConfigIds?: string[];
 }
 
 export interface TestSessionCreate {
@@ -297,7 +609,11 @@ export interface TestSessionCreate {
   videoIds?: string[];
   name: string;
   description?: string;
-  config?: any;
+  config?: TestConfiguration;
+  [key: string]: unknown;
+}
+
+export interface TestConfiguration {
   [key: string]: unknown;
 }
 
@@ -435,12 +751,35 @@ export interface ExportOptions {
   includeStatisticalAnalysis: boolean;
 }
 
+// Test Configuration Interface for replacing any types
+export interface TestConfiguration {
+  modelName?: string;
+  confidenceThreshold?: number;
+  detectionClasses?: VRUType[];
+  processingOptions?: {
+    batchSize?: number;
+    maxFrames?: number;
+    skipFrames?: number;
+  };
+  validationCriteria?: {
+    minAccuracy?: number;
+    minPrecision?: number;
+    minRecall?: number;
+    maxLatency?: number;
+  };
+  outputFormat?: 'json' | 'xml' | 'csv';
+  metadata?: Record<string, string | number | boolean>;
+}
+
 // Dashboard Types - Aligned with backend snake_case
 export interface DashboardStats {
-  project_count: number;
-  video_count: number;
-  test_session_count: number;
-  detection_event_count: number;
+  projectCount: number;
+  videoCount: number;
+  testSessionCount: number;
+  detectionEventCount: number;
+  averageAccuracy: number;
+  activeTests: number;
+  totalDetections: number;
 }
 
 export interface ChartData {
@@ -534,11 +873,22 @@ export interface DetectionPipelineConfig {
 
 export interface DetectionPipelineResult {
   videoId: string;
-  detections: Array<Record<string, number | string | boolean>>;
+  detections: Array<Record<string, number | string | boolean | object | null>>;
   processingTime: number;
   modelUsed: string;
   totalDetections: number;
   confidenceDistribution: Record<string, number>;
+  success?: boolean; // Optional success flag for compatibility
+  error?: string; // Optional error message for failed operations
+}
+
+// Backend response type alias for compatibility
+export interface DetectionPipelineResponse extends DetectionPipelineResult {
+  video_id?: string; // Backend snake_case field
+  processing_time?: number; // Backend snake_case field  
+  model_used?: string; // Backend snake_case field
+  total_detections?: number; // Backend snake_case field
+  confidence_distribution?: Record<string, number>; // Backend snake_case field
 }
 
 export interface EnhancedDashboardStats extends DashboardStats {
@@ -589,8 +939,96 @@ export interface ResultsFilter {
     minRecall?: number;
   };
   status?: ('completed' | 'failed' | 'running')[];
-  sortBy?: 'accuracy' | 'precision' | 'recall' | 'f1Score' | 'date' | 'name';
+  sortBy?: ResultsSortBy;
   sortOrder?: 'asc' | 'desc';
+}
+
+// Event Data Types for WebSocket handlers
+export interface DetectionEventData {
+  id?: string;
+  videoId?: string;
+  detectionId?: string;
+  timestamp?: number;
+  vruType?: VRUType;
+  confidence?: number;
+  boundingBox?: BoundingBox;
+  success?: boolean;
+  processingTime?: number;
+}
+
+export interface AnnotationEventData {
+  id?: string;
+  videoId?: string;
+  annotationId?: string;
+  detectionId?: string;
+  timestamp?: number;
+  vruType?: VRUType;
+  boundingBox?: BoundingBox;
+  validated?: boolean;
+  annotator?: string;
+}
+
+export interface SignalProcessingEventData {
+  id?: string;
+  signalType?: SignalType;
+  success?: boolean;
+  processingTime?: number;
+  timestamp?: number;
+  metadata?: Record<string, unknown>;
+}
+
+// Chart and Data Visualization Types
+export interface ChartSortValue {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+// MUI Component Type Helpers
+export type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+export type LinearProgressColor = 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+export type ResultsSortBy = 'date' | 'accuracy' | 'precision' | 'recall' | 'f1Score' | 'sessionName';
+
+// API Response Types for Raw Data
+export interface RawDetectionData {
+  id?: string;
+  detection_id?: string;
+  detectionId?: string;
+  frame_number?: number;
+  frameNumber?: number;
+  timestamp?: number;
+  vru_type?: VRUType;
+  vruType?: VRUType;
+  bounding_box?: Partial<BoundingBox>;
+  boundingBox?: Partial<BoundingBox>;
+  confidence?: number;
+  occluded?: boolean;
+  truncated?: boolean;
+  difficult?: boolean;
+  validated?: boolean;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface ImportAnnotationItem {
+  id?: string;
+  type?: string;
+  x?: number | string;
+  y?: number | string;
+  width?: number | string;
+  height?: number | string;
+  label?: string;
+  points?: Point[];
+  [key: string]: unknown;
+}
+
+export interface ModelConfiguration {
+  id: string;
+  name: string;
+  type: string;
+  parameters?: Record<string, unknown>;
+  active?: boolean;
 }
 
 // Error Types
@@ -619,4 +1057,59 @@ export class ApiError extends Error {
     // Maintain proper prototype chain for instanceof checks
     Object.setPrototypeOf(this, ApiError.prototype);
   }
+}
+
+// LabJack Types - Shared across components
+export type ConnectionMode = 'bridge' | 'direct' | 'mock' | 'auto';
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'retrying' | 'discovering' | 'testing' | 'recovery';
+
+export interface WindowsDriverInfo {
+  detected: boolean;
+  version?: string;
+  path?: string;
+  supported: boolean;
+  recommendations?: string[];
+}
+
+export interface LabJackStatus {
+  mode: ConnectionMode;
+  status: ConnectionStatus;
+  connected: boolean;
+  device_info: {
+    device_type?: string;
+    serial_number?: string;
+    ip_address?: string;
+    is_mock?: boolean;
+    bridge_host?: string;
+    bridge_port?: number;
+    firmware_version?: string;
+    hardware_version?: string;
+    calibration_date?: string;
+  };
+  streaming: boolean;
+  sample_rate: number;
+  channels: string[];
+  voltage_threshold: number;
+  last_data_time?: string;
+  error_message?: string;
+  statistics: {
+    samples_received: number;
+    errors_count: number;
+    connection_attempts: number;
+    successful_connections: number;
+    failed_connections: number;
+    last_error_time?: string;
+    uptime_start: string;
+    total_uptime: number;
+    recovery_attempts: number;
+  };
+  bridge_latency?: number;
+  bridge_health?: 'healthy' | 'degraded' | 'unhealthy';
+  windows_driver?: WindowsDriverInfo;
+  auto_discovery?: {
+    enabled: boolean;
+    last_scan?: string;
+    devices_found?: number;
+    scan_duration?: number;
+  };
 }

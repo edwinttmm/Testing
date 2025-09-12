@@ -72,7 +72,7 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
   duration,
   onFrameChange,
   onAnnotationCreate,
-  onAnnotationUpdate,
+  // _onAnnotationUpdate removed - unused prop
   onAnnotationDelete,
   onPlay,
   onPause,
@@ -112,7 +112,7 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
     const rangeMap = new Map<string, { frames: number[]; vruType: VRUType }>();
     
     annotations.forEach(annotation => {
-      const detectionId = annotation.detectionId;
+      const detectionId = annotation.detectionId || '';
       if (!rangeMap.has(detectionId)) {
         rangeMap.set(detectionId, { frames: [], vruType: annotation.vruType });
       }
@@ -201,11 +201,21 @@ const TemporalAnnotationInterface: React.FC<TemporalAnnotationInterfaceProps> = 
         frameNumber: frame,
         timestamp: frameToTimestamp(frame),
         vruType: selectedVRUType,
-        boundingBox: { x: 100, y: 100, width: 50, height: 100, label: selectedVRUType, confidence: 1.0 },
+        // TODO: Get actual bounding box coordinates from annotation creation UI
+        // For now, use placeholder coordinates that will be overridden by actual annotation data
+        boundingBox: { 
+          x: 0, 
+          y: 0, 
+          width: 0, 
+          height: 0, 
+          label: selectedVRUType, 
+          confidence: 1.0 
+        },
         occluded: false,
         truncated: false,
         difficult: false,
         validated: false,
+        validationStatus: 'pending' as const,
       });
     }
   }, [selectedVRUType, frameToTimestamp, onAnnotationCreate]);

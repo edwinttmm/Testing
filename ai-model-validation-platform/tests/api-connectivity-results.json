@@ -1,0 +1,26 @@
+{
+  "Localhost Backend": {
+    "base_url": "http://localhost:8000",
+    "health_check": false,
+    "cors_check": false,
+    "video_endpoint_check": false,
+    "errors": [
+      "Health check error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e80e2f0a780>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "CORS check error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/projects (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e80e21f4fe0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "Projects endpoint error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/projects (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e80e21f5dc0>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+    ],
+    "response_times": {}
+  },
+  "External IP Backend": {
+    "base_url": "http://155.138.239.131:8000",
+    "health_check": false,
+    "cors_check": false,
+    "video_endpoint_check": false,
+    "errors": [
+      "Health check error: HTTPConnectionPool(host='155.138.239.131', port=8000): Max retries exceeded with url: /health (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7e80e21f65a0>, 'Connection to 155.138.239.131 timed out. (connect timeout=10)'))",
+      "CORS check error: HTTPConnectionPool(host='155.138.239.131', port=8000): Max retries exceeded with url: /api/projects (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7e80e21f6d20>, 'Connection to 155.138.239.131 timed out. (connect timeout=10)'))",
+      "Projects endpoint error: HTTPConnectionPool(host='155.138.239.131', port=8000): Max retries exceeded with url: /api/projects (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7e80e21f7470>, 'Connection to 155.138.239.131 timed out. (connect timeout=10)'))"
+    ],
+    "response_times": {}
+  }
+}

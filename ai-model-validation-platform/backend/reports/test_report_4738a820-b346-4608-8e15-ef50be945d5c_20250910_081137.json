@@ -1,0 +1,107 @@
+{
+  "report_id": "3d1484ec-b298-4ce7-92d0-6bbf334aeac7",
+  "test_session_id": "4738a820-b346-4608-8e15-ef50be945d5c",
+  "generated_at": "2025-09-10T08:11:37.416960",
+  "test_session": {
+    "id": "4738a820-b346-4608-8e15-ef50be945d5c",
+    "name": "VRU Detection Latency Test - Session 1",
+    "project_name": "ADAS Front Camera v2.1 Test",
+    "started_at": "2025-09-10T07:11:37.369691",
+    "completed_at": "2025-09-10T07:11:37.369695",
+    "status": "completed",
+    "latency_threshold_ms": 100
+  },
+  "metrics": {
+    "total_events": 10,
+    "passed_events": 6,
+    "failed_events": 4,
+    "high_latency_failures": 2,
+    "missed_detections": 2,
+    "pass_rate_percent": 60.0,
+    "fail_rate_percent": 40.0,
+    "average_latency_ms": 100.625,
+    "min_latency_ms": 50.0,
+    "max_latency_ms": 220.0,
+    "latency_threshold_ms": 100,
+    "latency_distribution": {
+      "0-50ms": 1,
+      "51-100ms": 5,
+      "101-200ms": 0,
+      "201-500ms": 2,
+      "500ms+": 0
+    },
+    "test_outcome": "FAIL"
+  },
+  "success_summary": {
+    "summary_text": "6/10 detections passed with average latency of 62.5ms. Successful detections: 3 pedestrian, 3 cyclist.",
+    "passed_count": 6,
+    "total_count": 10,
+    "average_success_latency_ms": 62.5,
+    "vru_breakdown": {
+      "pedestrian": 3,
+      "cyclist": 3
+    },
+    "success_rate_percent": 60.0
+  },
+  "failure_events": [
+    {
+      "event_id": "49ef665d-bad5-4803-af37-0fadc71b17dc",
+      "video_id": "587693f5-6825-4ab4-be8f-228838defff9",
+      "timestamp": 6.0,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 210.0,
+      "threshold_ms": 100.0,
+      "labjack_timestamp": 1757488303.3696966,
+      "frame_number": 180,
+      "vru_type": "pedestrian",
+      "detection_channel": "AIN0",
+      "voltage_level": 3.3,
+      "created_at": "2025-09-10T07:11:37"
+    },
+    {
+      "event_id": "a75648d9-93d8-413d-93e0-b0ce60290be9",
+      "video_id": "587693f5-6825-4ab4-be8f-228838defff9",
+      "timestamp": 7.0,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 220.0,
+      "threshold_ms": 100.0,
+      "labjack_timestamp": 1757488304.3696966,
+      "frame_number": 210,
+      "vru_type": "cyclist",
+      "detection_channel": "AIN0",
+      "voltage_level": 3.3,
+      "created_at": "2025-09-10T07:11:37"
+    },
+    {
+      "event_id": "f00288b5-5e68-4d99-873c-9a1e960b8ee8",
+      "video_id": "587693f5-6825-4ab4-be8f-228838defff9",
+      "timestamp": 8.0,
+      "failure_type": "MISSED_DETECTION",
+      "latency_ms": null,
+      "threshold_ms": 100.0,
+      "labjack_timestamp": null,
+      "frame_number": 240,
+      "vru_type": "pedestrian",
+      "detection_channel": "AIN0",
+      "voltage_level": 0.0,
+      "created_at": "2025-09-10T07:11:37"
+    },
+    {
+      "event_id": "28bc9533-c19b-44e2-ba54-6349b0761272",
+      "video_id": "587693f5-6825-4ab4-be8f-228838defff9",
+      "timestamp": 9.0,
+      "failure_type": "MISSED_DETECTION",
+      "latency_ms": null,
+      "threshold_ms": 100.0,
+      "labjack_timestamp": null,
+      "frame_number": 270,
+      "vru_type": "cyclist",
+      "detection_channel": "AIN0",
+      "voltage_level": 0.0,
+      "created_at": "2025-09-10T07:11:37"
+    }
+  ],
+  "failure_snapshots": [],
+  "videos_tested": 1,
+  "total_events": 10
+}

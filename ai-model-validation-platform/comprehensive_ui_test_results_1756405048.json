@@ -1,0 +1,307 @@
+{
+  "success": true,
+  "timestamp": "2025-08-28T19:17:17.249818",
+  "duration_seconds": 11.029302,
+  "services_status": {
+    "frontend": true,
+    "backend": true,
+    "backend_health": false
+  },
+  "summary": {
+    "total_tests": 4,
+    "passed_tests": 4,
+    "failed_tests": 0,
+    "success_rate": 100.0
+  },
+  "api_results": {
+    "api_test_results": [
+      {
+        "endpoint": "/health",
+        "name": "Health Check",
+        "status_code": 200,
+        "response_time": 0.035592079162597656,
+        "success": true,
+        "response_data": {
+          "status": "degraded",
+          "message": "Some systems have issues but service is functional",
+          "timestamp": 1756405037.7310529,
+          "architecture": "unified_sparc",
+          "checks": {
+            "traditional": {
+              "database": {
+                "status": "healthy",
+                "database": "connected",
+                "endpoint": "postgresql://postgres:secure_password_change_me@postgres:5432/vru_validation",
+                "response_time_ms": 162.5370979309082,
+                "discovery_method": "service_discovery"
+              },
+              "redis": {
+                "status": "healthy",
+                "redis": "connected",
+                "endpoint": "redis://:secure_redis_password@redis:6379",
+                "response_time_ms": 9.473085403442383,
+                "discovery_method": "service_discovery"
+              },
+              "filesystem": {
+                "status": "healthy",
+                "filesystem": "accessible",
+                "directories": {
+                  "upload_directory": {
+                    "path": "./uploads",
+                    "exists": true,
+                    "writable": true,
+                    "readable": true
+                  },
+                  "log_directory": {
+                    "path": "./logs",
+                    "exists": true,
+                    "writable": true,
+                    "readable": true
+                  },
+                  "temp_directory": {
+                    "path": "./temp",
+                    "exists": true,
+                    "writable": true,
+                    "readable": true
+                  }
+                },
+                "resolution_method": "path_resolver"
+              },
+              "network": {
+                "status": "healthy",
+                "network": "connected",
+                "services": {
+                  "postgres": {
+                    "status": "available",
+                    "endpoint": "postgresql://postgres:secure_password_change_me@postgres:5432/vru_validation",
+                    "response_time_ms": 162.5370979309082
+                  },
+                  "redis": {
+                    "status": "available",
+                    "endpoint": "redis://:secure_redis_password@redis:6379",
+                    "response_time_ms": 9.473085403442383
+                  }
+                },
+                "discovery_method": "service_discovery"
+              }
+            },
+            "unified_architecture": {
+              "environment": {
+                "status": "healthy",
+                "environment": "detected",
+                "details": {
+                  "environment_type": "local",
+                  "service_mode": "development",
+                  "is_containerized": false,
+                  "confidence_score": 0.4166666666666667,
+                  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41"
+                }
+              },
+              "service_discovery": {
+                "status": "healthy",
+                "service_discovery": "operational",
+                "services": {
+                  "postgres": {
+                    "status": "available",
+                    "endpoint": "postgresql://postgres:secure_password_change_me@postgres:5432/vru_validation",
+                    "response_time_ms": 162.5370979309082
+                  },
+                  "redis": {
+                    "status": "available",
+                    "endpoint": "redis://:secure_redis_password@redis:6379",
+                    "response_time_ms": 9.473085403442383
+                  }
+                }
+              },
+              "path_resolution": {
+                "status": "healthy",
+                "path_resolution": "operational",
+                "paths": {
+                  "upload_directory": {
+                    "path": "./uploads",
+                    "exists": true,
+                    "is_writable": true,
+                    "is_readable": true,
+                    "resolved_from": "base_path_local"
+                  },
+                  "log_directory": {
+                    "path": "./logs",
+                    "exists": true,
+                    "is_writable": true,
+                    "is_readable": true,
+                    "resolved_from": "base_path_local"
+                  },
+                  "data_directory": {
+                    "path": "./data",
+                    "exists": true,
+                    "is_writable": true,
+                    "is_readable": true,
+                    "resolved_from": "base_path_local"
+                  },
+                  "config_directory": {
+                    "path": "./config",
+                    "exists": false,
+                    "is_writable": true,
+                    "is_readable": false,
+                    "resolved_from": "base_path_local"
+                  },
+                  "temp_directory": {
+                    "path": "./temp",
+                    "exists": true,
+                    "is_writable": true,
+                    "is_readable": true,
+                    "resolved_from": "base_path_local"
+                  },
+                  "model_directory": {
+                    "path": "./models",
+                    "exists": true,
+                    "is_writable": true,
+                    "is_readable": true,
+                    "resolved_from": "base_path_local"
+                  },
+                  "export_directory": {
+                    "path": "./exports",
+                    "exists": true,
+                    "is_writable": true,
+                    "is_readable": true,
+                    "resolved_from": "base_path_local"
+                  },
+                  "cache_directory": {
+                    "path": "./cache",
+                    "exists": false,
+                    "is_writable": true,
+                    "is_readable": false,
+                    "resolved_from": "base_path_local"
+                  }
+                },
+                "warnings": [],
+                "errors": []
+              },
+              "port_management": {
+                "status": "degraded",
+                "port_management": "operational",
+                "available_ports": 4,
+                "occupied_ports": 1,
+                "port_conflicts": 1
+              }
+            }
+          },
+          "system": {
+            "python_version": "3.11.13",
+            "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+            "cpu_count": 8,
+            "memory": {
+              "total": 8206381056,
+              "available": 1315450880,
+              "percent_used": 84.0
+            },
+            "disk": {
+              "total": 1081101176832,
+              "free": 998228660224,
+              "percent_used": 2.7
+            }
+          },
+          "environment_info": {
+            "detected_type": "local",
+            "service_mode": "development",
+            "is_containerized": false,
+            "confidence_score": 0.4166666666666667
+          },
+          "statistics": {
+            "total_checks": 8,
+            "healthy_checks": 7,
+            "degraded_checks": 1,
+            "unhealthy_checks": 0,
+            "error_checks": 0
+          }
+        },
+        "has_json": true
+      },
+      {
+        "endpoint": "/api/dashboard/stats",
+        "name": "Dashboard Stats",
+        "status_code": 200,
+        "response_time": 0.05301713943481445,
+        "success": true,
+        "response_data": {
+          "projectCount": 2,
+          "videoCount": 0,
+          "testCount": 0,
+          "totalDetections": 0,
+          "averageAccuracy": 94.2,
+          "activeTests": 0
+        },
+        "has_json": true
+      },
+      {
+        "endpoint": "/api/projects",
+        "name": "Projects API",
+        "status_code": 200,
+        "response_time": 0.035895347595214844,
+        "success": true,
+        "response_data": [
+          {
+            "name": "Central Store",
+            "description": "Central repository for uploaded videos awaiting project assignment",
+            "cameraModel": "Various",
+            "cameraView": "Multi-angle",
+            "lensType": null,
+            "resolution": null,
+            "frameRate": null,
+            "signalType": "Network Packet",
+            "id": "central-store-project",
+            "status": "Active",
+            "ownerId": "anonymous",
+            "createdAt": "2025-08-28T15:47:36.162900Z",
+            "updatedAt": null
+          },
+          {
+            "name": "Default Test Project",
+            "description": "Default project for testing and validation workflows",
+            "cameraModel": "TestCam-HD",
+            "cameraView": "Front-facing VRU",
+            "lensType": null,
+            "resolution": null,
+            "frameRate": null,
+            "signalType": "GPIO",
+            "id": "default-test-project",
+            "status": "Active",
+            "ownerId": "anonymous",
+            "createdAt": "2025-08-28T15:47:36.162900Z",
+            "updatedAt": null
+          }
+        ],
+        "has_json": true
+      },
+      {
+        "endpoint": "/api/videos",
+        "name": "Videos API",
+        "status_code": 200,
+        "response_time": 0.039968013763427734,
+        "success": true,
+        "response_data": {
+          "videos": [],
+          "total": 0
+        },
+        "has_json": true
+      }
+    ],
+    "successful_endpoints": 4,
+    "total_endpoints": 4
+  },
+  "browser_results": {
+    "error": "Browser tests failed",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "node:internal/process/promises:391\n    triggerUncaughtException(err, true /* fromPromise */);\n    ^\n\nbrowserType.launch: Executable doesn't exist at /home/rigade/.cache/ms-playwright/chromium_headless_shell-1187/chrome-linux/headless_shell\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n\u2551 Looks like Playwright Test or Playwright was just installed or updated. \u2551\n\u2551 Please run the following command to download new browsers:              \u2551\n\u2551                                                                         \u2551\n\u2551     npx playwright install                                              \u2551\n\u2551                                                                         \u2551\n\u2551 <3 Playwright Team                                                      \u2551\n\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n    at /home/rigade/Testing/ai-model-validation-platform/browser_ui_test.js:6:36\n    at Object.<anonymous> (/home/rigade/Testing/ai-model-validation-platform/browser_ui_test.js:228:3) {\n  name: 'Error'\n}\n\nNode.js v20.19.4\n"
+  },
+  "recommendations": [
+    "Implement comprehensive error boundary testing with intentional error triggers",
+    "Add automated accessibility testing using axe-core or similar tools",
+    "Create visual regression tests to catch UI changes",
+    "Add performance monitoring with Core Web Vitals tracking",
+    "Test file upload functionality with various file types and sizes",
+    "Implement cross-browser compatibility testing",
+    "Add mobile-specific touch interaction testing"
+  ]
+}

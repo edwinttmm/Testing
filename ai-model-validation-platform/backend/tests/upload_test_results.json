@@ -1,0 +1,47 @@
+{
+  "health_check": {
+    "success": false,
+    "output": "Health Status: unhealthy\n",
+    "error": "INFO:health_check:\ud83c\udfe5 Starting comprehensive unified health check...\nINFO:src.config.service_discovery:\ud83d\udd0d Discovering service: postgres (database)\nINFO:src.config.service_discovery:\ud83d\udd0d Discovering service: redis (redis)\nINFO:src.config.service_discovery:\ud83d\udd0d Discovering service: postgres (database)\nINFO:src.config.service_discovery:\ud83d\udd0d Discovering service: postgres (database)\nINFO:src.config.service_discovery:\u2705 Service redis discovered: redis://127.0.0.1:6379 (status: unavailable)\nINFO:src.config.service_discovery:\u2705 Service postgres discovered: postgresql://127.0.0.1:5432 (status: unavailable)\nINFO:src.config.service_discovery:\u2705 Service postgres discovered: postgresql://127.0.0.1:5432 (status: unavailable)\nINFO:src.config.service_discovery:\u2705 Service postgres discovered: postgresql://127.0.0.1:5432 (status: unavailable)\nINFO:health_check:\u2705 Health check completed: unhealthy (3/8 healthy)\nTraceback (most recent call last):\n  File \"<string>\", line 14, in <module>\n  File \"/usr/lib/python3.12/asyncio/runners.py\", line 194, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/asyncio/base_events.py\", line 687, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"<string>\", line 10, in main\nKeyError: 'components'\n"
+  },
+  "endpoint_availability": {
+    "success": false,
+    "output": "Backend health check: FAILED\nAPI docs: FAILED\nBackend Available: False\nDocs Available: False\n",
+    "error": ""
+  },
+  "manual_upload": {
+    "success": false,
+    "output": "Project creation failed: 500 - {\"detail\":\"Internal server error\",\"status_code\":500}\n",
+    "error": ""
+  },
+  "test_video_upload_comprehensive.py": {
+    "test_file": "test_video_upload_comprehensive.py",
+    "description": "Comprehensive Upload Functionality Tests",
+    "success": false,
+    "duration": 0.05340385437011719,
+    "return_code": 1,
+    "stdout": "",
+    "stderr": "/usr/bin/python3: No module named pytest\n",
+    "timestamp": "2025-08-29T14:58:55.583332"
+  },
+  "test_upload_error_handling.py": {
+    "test_file": "test_upload_error_handling.py",
+    "description": "Upload Error Handling and Recovery Tests",
+    "success": false,
+    "duration": 0.04768180847167969,
+    "return_code": 1,
+    "stdout": "",
+    "stderr": "/usr/bin/python3: No module named pytest\n",
+    "timestamp": "2025-08-29T14:58:55.631248"
+  },
+  "test_upload_performance.py": {
+    "test_file": "test_upload_performance.py",
+    "description": "Upload Performance and Load Tests",
+    "success": false,
+    "duration": 0.04703378677368164,
+    "return_code": 1,
+    "stdout": "",
+    "stderr": "/usr/bin/python3: No module named pytest\n",
+    "timestamp": "2025-08-29T14:58:55.678560"
+  }
+}

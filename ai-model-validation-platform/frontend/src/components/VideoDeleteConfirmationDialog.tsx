@@ -30,7 +30,7 @@ import {
   ExpandMore,
   ExpandLess,
 } from '@mui/icons-material';
-import { VideoFile } from '../services/types';
+import { VideoFile, VideoStatus } from '../services/types';
 
 interface VideoDeleteConfirmationDialogProps {
   open: boolean;
@@ -186,7 +186,7 @@ const VideoDeleteConfirmationDialog: React.FC<VideoDeleteConfirmationDialogProps
                 <Chip 
                   label={video.status} 
                   size="small" 
-                  color={video.status === 'completed' ? 'success' : video.status === 'processing' ? 'warning' : 'default'}
+                  color={video.status === VideoStatus.VALIDATED ? 'success' : video.status === VideoStatus.PROCESSING ? 'warning' : 'default'}
                 />
                 {video.duration && (
                   <Chip 

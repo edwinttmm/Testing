@@ -452,14 +452,12 @@ async def get_annotation_session(
 async def get_available_ground_truth_videos(
     db: Session = Depends(get_db)
 ):
-    """Get videos available for linking (not linked to any project)"""
+    """Get all videos (for ground truth display)"""
     from models import Video
-    # Find videos that are not linked to any project
-    linked_video_ids = db.query(VideoProjectLink.video_id).distinct().all()
-    linked_video_ids = [vid[0] for vid in linked_video_ids]
-    
-    available_videos = db.query(Video).filter(~Video.id.in_(linked_video_ids)).all()
-    return available_videos
+    # Return ALL videos, not just unlinked ones
+    # This is used by the Datasets page to show all available videos
+    all_videos = db.query(Video).all()
+    return all_videos
 
 async def link_videos_to_project(
     project_id: str,

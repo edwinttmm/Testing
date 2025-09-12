@@ -1,0 +1,99 @@
+{
+  "test_started": "2025-08-27T22:40:16.631960",
+  "environment": "docker_mixed",
+  "tests": [
+    {
+      "test": "Docker ai_validation_postgres",
+      "status": "PASS",
+      "details": "Container running: running",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:16.713638"
+    },
+    {
+      "test": "Docker ai_validation_redis",
+      "status": "PASS",
+      "details": "Container running: running",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:16.788026"
+    },
+    {
+      "test": "Frontend Access",
+      "status": "PASS",
+      "details": "Frontend accessible on port 3001",
+      "metrics": {
+        "response_time_ms": 13.550758361816406
+      },
+      "timestamp": "2025-08-27T22:40:16.802300"
+    },
+    {
+      "test": "Backend Health Check",
+      "status": "DEGRADED",
+      "details": "Service unavailable (database issue)",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:16.894371"
+    },
+    {
+      "test": "Backend Projects API",
+      "status": "DEGRADED",
+      "details": "Service unavailable (database issue)",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:16.965172"
+    },
+    {
+      "test": "Backend Dashboard API",
+      "status": "DEGRADED",
+      "details": "Service unavailable (database issue)",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.009661"
+    },
+    {
+      "test": "PostgreSQL Internal",
+      "status": "PASS",
+      "details": "Database queries working inside container",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.394977"
+    },
+    {
+      "test": "Redis Internal",
+      "status": "FAIL",
+      "details": "Redis not responding: NOAUTH Authentication required.\n\n",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.679741"
+    },
+    {
+      "test": "Docker Network",
+      "status": "FAIL",
+      "details": "Network not found",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.742840"
+    },
+    {
+      "test": "Mixed Env - Host Frontend",
+      "status": "PASS",
+      "details": "Frontend running on host port 3001",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.747936"
+    },
+    {
+      "test": "Mixed Env - Host Backend",
+      "status": "PASS",
+      "details": "Backend running on host port 8000",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.755793"
+    },
+    {
+      "test": "Mixed Env - Docker PostgreSQL",
+      "status": "PASS",
+      "details": "Database in container",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.871422"
+    },
+    {
+      "test": "Mixed Env - Docker Redis",
+      "status": "PASS",
+      "details": "Cache in container",
+      "metrics": null,
+      "timestamp": "2025-08-27T22:40:17.985653"
+    }
+  ]
+}

@@ -107,18 +107,19 @@ class WebSocketService {
         
         // Development environment (localhost) - Updated to use external IP
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          return 'http://155.138.239.131:8001'; // Socket.IO port
+          return 'http://localhost:8000'; // Backend API port
         }
         
         // Handle production server - configurable via environment
-        if (hostname === '155.138.239.131' || hostname.includes('production-domain')) {
+        if (hostname === 'localhost' || hostname.includes('production-domain')) {
           const isSecure = window.location.protocol === 'https:';
           const httpProtocol = isSecure ? 'https:' : 'http:';
           return `${httpProtocol}//${hostname}:8001`; // Socket.IO port
         }
         
         // Generic fallback for other environments
-        return `${protocol.replace('ws', 'http')}//${hostname}:8001`;
+        const httpProtocol = protocol === 'wss:' ? 'https:' : 'http:';
+        return `${httpProtocol}//${hostname}:8001`;
       };
 
       this.url = getWebSocketUrl()!;
@@ -133,7 +134,7 @@ class WebSocketService {
     } catch (error) {
       console.error('❌ Failed to initialize WebSocket URL:', error);
       // Use fallback URL
-      this.url = 'http://155.138.239.131:8001';
+      this.url = 'http://localhost:8001';
       this.urlResolved = true;
       console.log('🔧 Using fallback WebSocket URL:', this.url);
       
@@ -177,15 +178,27 @@ class WebSocketService {
           reconnection: this.options.reconnection !== false,
           reconnectionAttempts: this.options.reconnectionAttempts || 10,
           reconnectionDelay: this.options.reconnectionDelay || 1000,
+          randomizationFactor: 0.5,
+          autoConnect: true,
+          upgrade: true,
+          rememberUpgrade: true,
+          pingTimeout: 60000,
+          pingInterval: 25000,
+          // Enhanced for HIL testing reliability
+          forceNew: false,
+          withCredentials: false
         });
 
         // Connection success
         this.socket.on('connect', () => {
-          console.log('✅ WebSocket connected to', this.url);
+          console.log('✅ Socket.IO connected to', this.url);
           this.connectionState = 'connected';
           this.metrics.lastConnected = new Date();
           this.metrics.isStable = true;
           this.lastError = null;
+          
+          // Subscribe to general updates immediately after connection
+          this.socket?.emit('subscribe_to_updates', { type: 'general' });
           
           this.startHeartbeat();
           this.notifySubscribers('connection', { status: 'connected', metrics: this.metrics });
@@ -194,18 +207,22 @@ class WebSocketService {
 
         // Connection error
         this.socket.on('connect_error', (error) => {
-          logWebSocketError('Connection failed', error, { function: 'connect_error', url: this.url });
+          logWebSocketError('Socket.IO connection failed', error, { function: 'connect_error', url: this.url });
           this.connectionState = 'error';
           this.lastError = error;
           this.metrics.isStable = false;
           
           this.notifySubscribers('connection', { status: 'error', error: error.message });
-          reject(error);
+          
+          // Only reject on first connection attempt, let reconnection handle retries
+          if (this.metrics.connectionAttempts === 1) {
+            reject(error);
+          }
         });
 
         // Disconnection
         this.socket.on('disconnect', (reason) => {
-          safeConsoleWarn('WebSocket disconnected', reason, { function: 'disconnect', component: 'websocket-service', url: this.url });
+          safeConsoleWarn('Socket.IO disconnected', reason, { function: 'disconnect', component: 'websocket-service', url: this.url });
           this.connectionState = 'disconnected';
           this.metrics.lastDisconnected = new Date();
           this.metrics.isStable = false;
@@ -213,25 +230,35 @@ class WebSocketService {
           this.stopHeartbeat();
           this.notifySubscribers('connection', { status: 'disconnected', reason });
 
-          // Attempt reconnection if it wasn't intentional
-          if (reason !== 'io client disconnect' && this.options.reconnection) {
+          // Enhanced reconnection logic for HIL testing
+          const shouldReconnect = [
+            'io server disconnect',
+            'transport close',
+            'transport error',
+            'ping timeout'
+          ].includes(reason);
+          
+          if (shouldReconnect && this.options.reconnection) {
             this.scheduleReconnection();
           }
         });
 
-        // Reconnection attempt
-        this.socket.on('reconnect_attempt', (attempt) => {
-          console.log(`🔄 WebSocket reconnection attempt ${attempt}/${this.options.reconnectionAttempts} to ${this.url}`);
+        // Handle Socket.IO specific reconnection events
+        this.socket.on('reconnecting', (attempt) => {
+          console.log(`🔄 Socket.IO reconnection attempt ${attempt}/${this.options.reconnectionAttempts} to ${this.url}`);
           this.metrics.reconnectCount++;
           this.notifySubscribers('connection', { status: 'reconnecting', attempt });
         });
 
         // Successful reconnection
         this.socket.on('reconnect', (attempt) => {
-          console.log(`✅ WebSocket reconnected to ${this.url} after ${attempt} attempts`);
+          console.log(`✅ Socket.IO reconnected to ${this.url} after ${attempt} attempts`);
           this.connectionState = 'connected';
           this.metrics.lastConnected = new Date();
           this.metrics.isStable = true;
+          
+          // Re-subscribe to updates after reconnection
+          this.socket?.emit('subscribe_to_updates', { type: 'general' });
           
           this.startHeartbeat();
           this.notifySubscribers('connection', { status: 'reconnected', attempts: attempt });
@@ -239,11 +266,32 @@ class WebSocketService {
 
         // Failed to reconnect
         this.socket.on('reconnect_failed', () => {
-          logWebSocketError('Failed to reconnect after all attempts', 'Maximum reconnection attempts exceeded', { function: 'reconnect_failed', url: this.url });
+          logWebSocketError('Socket.IO failed to reconnect after all attempts', 'Maximum reconnection attempts exceeded', { function: 'reconnect_failed', url: this.url });
           this.connectionState = 'error';
           this.metrics.isStable = false;
           
           this.notifySubscribers('connection', { status: 'reconnect_failed' });
+        });
+        
+        // Handle server heartbeat for HIL testing
+        this.socket.on('heartbeat_ping', (data) => {
+          console.log('💓 Received heartbeat ping from server');
+          this.socket?.emit('heartbeat_pong', { timestamp: Date.now(), ...data });
+        });
+        
+        // Handle pong responses
+        this.socket.on('pong', (data) => {
+          console.log('🏓 Received pong from server', data);
+        });
+        
+        // Handle subscription confirmations
+        this.socket.on('subscription_confirmed', (data) => {
+          console.log('✅ Subscription confirmed:', data);
+        });
+        
+        // Handle subscription errors
+        this.socket.on('subscription_error', (data) => {
+          console.error('❌ Subscription error:', data);
         });
 
         // Handle all incoming messages
@@ -330,8 +378,8 @@ class WebSocketService {
     
     this.heartbeatTimer = setInterval(() => {
       if (this.connectionState === 'connected' && this.socket) {
-        console.log('💓 WebSocket heartbeat to', this.url);
-        this.socket.emit('ping', { timestamp: Date.now() });
+        console.log('💓 Socket.IO heartbeat ping to', this.url);
+        this.socket.emit('ping', { timestamp: Date.now(), client_id: this.socket.id });
       }
     }, this.options.heartbeatInterval);
   }
@@ -356,7 +404,7 @@ class WebSocketService {
     }
   }
 
-  // Public subscription methods
+  // Public subscription methods for Socket.IO events
   subscribe<T = unknown>(eventType: string, callback: (data: T) => void): () => void {
     if (!this.subscribers.has(eventType)) {
       this.subscribers.set(eventType, new Set());
@@ -364,7 +412,12 @@ class WebSocketService {
     
     this.subscribers.get(eventType)!.add(callback as (data: unknown) => void);
     
-    console.log(`🔔 Subscribed to WebSocket event: ${eventType} on ${this.url}`);
+    console.log(`🔔 Subscribed to Socket.IO event: ${eventType} on ${this.url}`);
+    
+    // Also subscribe on the socket if connected
+    if (this.socket && this.connectionState === 'connected') {
+      this.socket.on(eventType, callback as (data: unknown) => void);
+    }
 
     // Return unsubscribe function
     return () => {
@@ -375,29 +428,35 @@ class WebSocketService {
           this.subscribers.delete(eventType);
         }
       }
-      console.log(`🔕 Unsubscribed from WebSocket event: ${eventType} on ${this.url}`);
+      
+      // Remove from socket too
+      if (this.socket) {
+        this.socket.off(eventType, callback as (data: unknown) => void);
+      }
+      
+      console.log(`🔕 Unsubscribed from Socket.IO event: ${eventType} on ${this.url}`);
     };
   }
 
   // Send message to server
   emit<T = unknown>(eventType: string, data?: T): boolean {
     if (this.connectionState !== 'connected' || !this.socket) {
-      safeConsoleWarn(`Cannot emit ${eventType}: WebSocket not connected`, { connectionState: this.connectionState, hasSocket: !!this.socket, url: this.url }, { function: 'emit', eventType });
+      safeConsoleWarn(`Cannot emit ${eventType}: Socket.IO not connected`, { connectionState: this.connectionState, hasSocket: !!this.socket, url: this.url }, { function: 'emit', eventType });
       return false;
     }
 
     // Validate data before sending
     if (data !== undefined && !isValidWebSocketData(data)) {
-      console.warn(`⚠️ Invalid data for WebSocket emit [${eventType}] to ${this.url}:`, data);
+      console.warn(`⚠️ Invalid data for Socket.IO emit [${eventType}] to ${this.url}:`, data);
       return false;
     }
 
     try {
-      console.log(`📤 WebSocket emit [${eventType}] to ${this.url}:`, data);
+      console.log(`📤 Socket.IO emit [${eventType}] to ${this.url}:`, data);
       this.socket.emit(eventType, data);
       return true;
     } catch (error) {
-      logWebSocketError(`Emit failed for ${eventType}`, error, { function: 'emit', eventType, url: this.url });
+      logWebSocketError(`Socket.IO emit failed for ${eventType}`, error, { function: 'emit', eventType, url: this.url });
       return false;
     }
   }

@@ -1,26 +1,45 @@
-import os
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"  # Disable OpenEXR support
-import cv2
-import numpy as np
-from typing import List, Dict, Any
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-import os
+"""
+Ground Truth Service - PRD Module 1: Annotation Validation
+Manages VRU ground truth annotations and validation
+"""
+
 import logging
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 # Optional ML dependencies - make them optional for Docker environments without ML packages
 try:
+    import os
+    os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"  # Disable OpenEXR support
+    import cv2
+    import numpy as np
     from ultralytics import YOLO
     import torch
     ML_AVAILABLE = True
+    CV2_AVAILABLE = True
 except ImportError as e:
+    cv2 = None
+    np = None
     YOLO = None
     torch = None
     ML_AVAILABLE = False
+    CV2_AVAILABLE = False
     logging.warning(f"ML dependencies not available: {e}. Using fallback mode.")
 
 logger = logging.getLogger(__name__)
+
+# Import path management utilities  
+try:
+    from src.utils.path_utils import (
+        get_path_manager, resolve_upload_path, migrate_legacy_path, 
+        ensure_path_exists, is_safe_path
+    )
+    PATH_UTILS_AVAILABLE = True
+except ImportError:
+    PATH_UTILS_AVAILABLE = False
+    logger.warning("Path utilities not available - using basic path handling")
 
 from database import SessionLocal
 from crud import create_ground_truth_object, update_video_status, get_video
@@ -97,13 +116,47 @@ class GroundTruthService:
         try:
             logger.info(f"🚀 Starting ground truth processing for video {video_id} at {video_file_path}")
             
-            # Check if video file exists
+            # Resolve video file path using path manager
             import os
-            if not os.path.exists(video_file_path):
-                logger.error(f"❌ Video file not found: {video_file_path}")
+            resolved_path = video_file_path
+            
+            # Try to use path utilities if available
+            if PATH_UTILS_AVAILABLE:
+                try:
+                    from src.utils.path_utils import get_path_manager, resolve_upload_path
+                    path_manager = get_path_manager()
+                    resolved_path = resolve_upload_path(video_file_path)
+                    logger.info(f"🔍 Resolved path: {video_file_path} → {resolved_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Path utilities failed, using original path: {e}")
+                    resolved_path = video_file_path
+            else:
+                # Fallback: try both relative and absolute paths
+                if not os.path.isabs(video_file_path):
+                    # Try relative to current directory
+                    if os.path.exists(video_file_path):
+                        resolved_path = video_file_path
+                    # Try relative to project root
+                    elif os.path.exists(os.path.join(os.getcwd(), video_file_path)):
+                        resolved_path = os.path.join(os.getcwd(), video_file_path)
+                    # Try in uploads directory
+                    elif os.path.exists(os.path.join("uploads", os.path.basename(video_file_path))):
+                        resolved_path = os.path.join("uploads", os.path.basename(video_file_path))
+                    # Try absolute path from project root
+                    else:
+                        resolved_path = os.path.abspath(video_file_path)
+            
+            # Check if resolved video file exists
+            if not os.path.exists(resolved_path):
+                logger.error(f"❌ Video file not found: {resolved_path} (original: {video_file_path})")
+                logger.error(f"❌ Current working directory: {os.getcwd()}")
+                logger.error(f"❌ Searched paths: [{video_file_path}, {resolved_path}]")
                 processing_guard.complete_processing(video_id, success=False)
                 update_video_status(db, video_id, "failed")
                 return
+            
+            logger.info(f"✅ Found video file: {resolved_path}")
+            video_file_path = resolved_path  # Use resolved path for processing
             
             # Update video status to processing
             video = get_video(db, video_id)
@@ -143,9 +196,21 @@ class GroundTruthService:
                         height=detection["height"],
                         confidence=detection["confidence"],
                         validated=detection.get("validated", True),
-                        difficult=detection.get("difficult", False)
+                        difficult=detection.get("difficult", False),
+                        screenshot_path=detection.get("screenshot_path"),
+                        screenshot_zoom_path=detection.get("screenshot_zoom_path")
                     )
                     detection_count += 1
+                    if detection.get("screenshot_path"):
+                        # Log with path validation
+                        screenshot_path = detection['screenshot_path']
+                        if self.path_manager and PATH_UTILS_AVAILABLE:
+                            if self.path_manager.is_safe_path(screenshot_path):
+                                logger.info(f"📸 Ground truth screenshot saved: {screenshot_path}")
+                            else:
+                                logger.warning(f"⚠️ Screenshot path may be unsafe: {screenshot_path}")
+                        else:
+                            logger.info(f"📸 Ground truth screenshot saved: {screenshot_path}")
                 except Exception as e:
                     logger.error(f"❌ Failed to store detection: {str(e)}")
                     continue
@@ -155,11 +220,11 @@ class GroundTruthService:
             # Update video status and mark ground truth as generated
             video = get_video(db, video_id)
             if video:
-                video.status = "completed"
+                video.status = "validated"  # Changed from "completed" to "validated"
                 video.processing_status = "completed"
                 video.ground_truth_generated = True
                 db.commit()
-                logger.info(f"✅ Ground truth processing completed for video {video_id} with {detection_count} detections")
+                logger.info(f"✅ Ground truth processing completed for video {video_id} with {detection_count} detections - status set to 'validated'")
             
             # Mark processing as completed
             processing_guard.complete_processing(video_id, success=True)
@@ -228,6 +293,11 @@ class GroundTruthService:
                             # Get bounding box coordinates
                             x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                             
+                            # Generate screenshot for this detection
+                            screenshot_path, screenshot_zoom_path = self._generate_screenshot(
+                                frame, x1, y1, x2, y2, frame_count, self.vru_classes[class_id]
+                            )
+                            
                             detection = {
                                 "frame_number": frame_count,
                                 "timestamp": timestamp,
@@ -238,7 +308,9 @@ class GroundTruthService:
                                 "height": float(y2 - y1),
                                 "confidence": confidence,
                                 "validated": True,  # Mark AI detections as validated ground truth
-                                "difficult": False  # YOLO confident detections are not difficult
+                                "difficult": False,  # YOLO confident detections are not difficult
+                                "screenshot_path": screenshot_path,
+                                "screenshot_zoom_path": screenshot_zoom_path
                             }
                             detections.append(detection)
         
@@ -248,6 +320,63 @@ class GroundTruthService:
         except Exception as e:
             logger.error(f"Error processing video {video_path}: {e}")
             return []
+    
+    def _generate_screenshot(self, frame, x1, y1, x2, y2, frame_number, class_label):
+        """Generate screenshots for ground truth detection"""
+        import uuid
+        
+        try:
+            # Create screenshots directory with proper path resolution
+            screenshots_dir = "screenshots"
+            if PATH_UTILS_AVAILABLE:
+                try:
+                    from src.utils.path_utils import get_path_manager
+                    path_manager = get_path_manager()
+                    screenshots_dir = str(path_manager.screenshots_dir)
+                except Exception as e:
+                    logger.warning(f"⚠️ Path manager failed for screenshots, using default: {e}")
+            
+            os.makedirs(screenshots_dir, exist_ok=True)
+            
+            # Generate unique detection ID
+            detection_id = str(uuid.uuid4())
+            
+            # Full frame screenshot with bounding box
+            screenshot_frame = frame.copy()
+            cv2.rectangle(screenshot_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 3)
+            cv2.putText(screenshot_frame, f"{class_label} ({frame_number})", 
+                       (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            
+            full_screenshot_path = os.path.join(screenshots_dir, f"ground_truth_{detection_id}.jpg")
+            cv2.imwrite(full_screenshot_path, screenshot_frame)
+            
+            # Zoomed screenshot of detection area with padding
+            padding = 20
+            x1_crop = max(0, int(x1) - padding)
+            y1_crop = max(0, int(y1) - padding)
+            x2_crop = min(frame.shape[1], int(x2) + padding)
+            y2_crop = min(frame.shape[0], int(y2) + padding)
+            
+            cropped_frame = frame[y1_crop:y2_crop, x1_crop:x2_crop]
+            
+            # Draw bounding box on cropped frame
+            adjusted_x1 = int(x1) - x1_crop
+            adjusted_y1 = int(y1) - y1_crop
+            adjusted_x2 = int(x2) - x1_crop
+            adjusted_y2 = int(y2) - y1_crop
+            
+            cv2.rectangle(cropped_frame, (adjusted_x1, adjusted_y1), (adjusted_x2, adjusted_y2), (0, 255, 0), 2)
+            cv2.putText(cropped_frame, class_label, (adjusted_x1, adjusted_y1 - 5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            
+            zoom_screenshot_path = os.path.join(screenshots_dir, f"ground_truth_{detection_id}_zoom.jpg")
+            cv2.imwrite(zoom_screenshot_path, cropped_frame)
+            
+            return full_screenshot_path, zoom_screenshot_path
+            
+        except Exception as e:
+            logger.error(f"Failed to generate screenshot: {e}")
+            return None, None
     
     def get_ground_truth(self, video_id: str) -> GroundTruthResponse:
         """Get ground truth data for a video"""

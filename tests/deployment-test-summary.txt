@@ -1,0 +1,59 @@
+=== DEPLOYMENT TEST SUMMARY ===
+Timestamp: 2025-08-27 12:50:05
+Total Tests: 26
+Passed: 17
+Failed: 4
+Errors: 1
+Success Rate: 65.4%
+
+=== DATABASE TESTS ===
+  sqlite_connectivity: PASS
+  postgresql_connectivity: PASS
+  redis_connectivity: PASS
+
+=== API TESTS ===
+  GET /health: PASS
+  GET /: PASS
+  GET /api/videos: PASS
+  GET /api/projects: PASS
+  GET /api/dashboard/stats: PASS
+  GET /api/validation/status: PASS
+  POST /api/projects: PASS
+  GET /api/detection/models: PASS
+
+=== WEBSOCKET TESTS ===
+  websocket_/ws/detection: FAIL
+    Details: BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'
+  websocket_/ws/notifications: FAIL
+    Details: BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'
+  websocket_/ws/status: FAIL
+    Details: BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'
+
+=== UPLOAD TESTS ===
+  video_file_upload: PASS
+
+=== AUTHENTICATION TESTS ===
+  admin_endpoint_access: PASS
+  cors_headers: FAIL
+    Details: CORS headers: {}
+
+=== INTEGRATION TESTS ===
+  frontend_accessibility: ERROR
+    Details: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x703a5c794380>: Failed to establish a new connection: [Errno 111] Connection refused'))
+
+=== PERFORMANCE TESTS ===
+  response_time__health: EXCELLENT
+    Details: Avg: 0.001s, Min: 0.001s, Max: 0.002s
+  response_time__api_videos: EXCELLENT
+    Details: Avg: 0.002s, Min: 0.002s, Max: 0.002s
+  response_time__api_projects: EXCELLENT
+    Details: Avg: 0.002s, Min: 0.002s, Max: 0.002s
+  response_time__: EXCELLENT
+    Details: Avg: 0.001s, Min: 0.001s, Max: 0.001s
+
+=== ERROR HANDLING TESTS ===
+  error_GET__api_videos_999999: PASS
+  error_POST__api_videos_upload: PASS
+  error_GET__nonexistent: PASS
+  error_POST__api_projects: PASS
+

@@ -1,0 +1,35 @@
+{
+  "baseline": {
+    "timestamp": "2025-08-31T00:56:45.317Z",
+    "files": {
+      "ts": 105,
+      "tsx": 115,
+      "total": 220,
+      "components": 68,
+      "services": 12,
+      "utils": 47
+    },
+    "typeCheck": {
+      "success": false,
+      "errorCount": 0,
+      "errors": [],
+      "duration": 0,
+      "output": "spawnSync /bin/sh ETIMEDOUT"
+    },
+    "lint": {
+      "success": false,
+      "warningCount": 1,
+      "warnings": [
+        "> eslint src --ext .ts,.tsx --max-warnings 50"
+      ],
+      "duration": 0,
+      "output": "\n> ai-validation-platform-frontend@0.1.0 lint:dev\n> eslint src --ext .ts,.tsx --max-warnings 50\n\n"
+    },
+    "totalErrors": 0,
+    "totalWarnings": 1,
+    "buildAttempted": false
+  },
+  "lastValidation": null,
+  "agentFeedback": {},
+  "lastUpdated": "2025-08-31T00:56:45.317Z"
+}

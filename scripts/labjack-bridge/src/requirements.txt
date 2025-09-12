@@ -1,0 +1,25 @@
+# LabJack Bridge Service Requirements
+
+# Core dependencies
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+pydantic>=2.5.0
+aiofiles>=23.2.1
+
+# Windows service dependencies
+pywin32>=306
+pywin32-ctypes>=0.2.2
+
+# LabJack dependencies
+labjack-ljm>=1.21.0
+
+# Additional utilities
+python-multipart>=0.0.6
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Development dependencies (optional)
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+httpx>=0.25.2

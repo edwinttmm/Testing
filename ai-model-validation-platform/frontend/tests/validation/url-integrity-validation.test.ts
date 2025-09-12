@@ -35,7 +35,7 @@ describe('URL Integrity - Stability and Consistency', () => {
       const expectedUrl = fixResults[0];
       fixResults.forEach((result, index) => {
         expect(result).toBe(expectedUrl);
-        expect(result).toContain('155.138.239.131:8000');
+        expect(result).toContain('localhost:8000');
         expect(result).not.toContain('localhost');
         expect(result).not.toContain(':8000:8000');
       });
@@ -56,7 +56,7 @@ describe('URL Integrity - Stability and Consistency', () => {
     const results = await Promise.all(promises);
 
     // All results should be identical
-    const expectedResult = 'http://155.138.239.131:8000/uploads/test-video.mp4';
+    const expectedResult = 'http://localhost:8000/uploads/test-video.mp4';
     results.forEach(result => {
       expect(result).toBe(expectedResult);
     });
@@ -68,19 +68,19 @@ describe('URL Integrity - Stability and Consistency', () => {
     const complexUrls = [
       {
         input: 'http://localhost:8000/uploads/path/to/video.mp4?v=1&t=30#fragment',
-        expected: 'http://155.138.239.131:8000/uploads/path/to/video.mp4?v=1&t=30#fragment'
+        expected: 'http://localhost:8000/uploads/path/to/video.mp4?v=1&t=30#fragment'
       },
       {
         input: 'http://localhost:8000/uploads/video%20with%20spaces.mp4',
-        expected: 'http://155.138.239.131:8000/uploads/video%20with%20spaces.mp4'
+        expected: 'http://localhost:8000/uploads/video%20with%20spaces.mp4'
       },
       {
         input: 'http://localhost:8000/uploads/video-with-special-chars-éñ中文.mp4',
-        expected: 'http://155.138.239.131:8000/uploads/video-with-special-chars-éñ中文.mp4'
+        expected: 'http://localhost:8000/uploads/video-with-special-chars-éñ中文.mp4'
       },
       {
         input: 'http://localhost:8000/uploads/very-long-filename-with-many-characters-that-might-cause-issues.mp4',
-        expected: 'http://155.138.239.131:8000/uploads/very-long-filename-with-many-characters-that-might-cause-issues.mp4'
+        expected: 'http://localhost:8000/uploads/very-long-filename-with-many-characters-that-might-cause-issues.mp4'
       }
     ];
 
@@ -124,7 +124,7 @@ describe('URL Integrity - Stability and Consistency', () => {
       
       // Should produce a valid URL
       expect(isVideoUrlValid(result)).toBe(true);
-      expect(result).toContain('155.138.239.131:8000');
+      expect(result).toContain('localhost:8000');
       expect(result).not.toContain('localhost');
       expect(result).not.toContain(':8000:8000');
       
@@ -159,7 +159,7 @@ describe('URL Integrity - Stability and Consistency', () => {
       const result = fixVideoUrl(input);
       const resultUrl = new URL(result);
       
-      expect(resultUrl.hostname).toBe('155.138.239.131');
+      expect(resultUrl.hostname).toBe('localhost');
       expect(resultUrl.port).toBe('8000');
       expect(resultUrl.pathname).toBe(expectedPath);
       
@@ -194,7 +194,7 @@ describe('URL Integrity - Edge Cases and Error Handling', () => {
     const protocolTests = [
       {
         input: 'https://localhost:8000/uploads/video.mp4',
-        expected: 'http://155.138.239.131:8000/uploads/video.mp4' // Should convert to http
+        expected: 'http://localhost:8000/uploads/video.mp4' // Should convert to http
       },
       {
         input: 'ftp://localhost:8000/uploads/video.mp4',
@@ -215,9 +215,9 @@ describe('URL Integrity - Edge Cases and Error Handling', () => {
 
   test('should validate URL accessibility and format', () => {
     const testUrls = [
-      'http://155.138.239.131:8000/uploads/video.mp4',
-      'http://155.138.239.131:8000/uploads/another-video.avi',
-      'http://155.138.239.131:8000/api/videos/stream/123'
+      'http://localhost:8000/uploads/video.mp4',
+      'http://localhost:8000/uploads/another-video.avi',
+      'http://localhost:8000/api/videos/stream/123'
     ];
 
     testUrls.forEach(url => {
@@ -228,7 +228,7 @@ describe('URL Integrity - Edge Cases and Error Handling', () => {
       
       const urlObj = new URL(url);
       expect(urlObj.protocol).toMatch(/^https?:$/);
-      expect(urlObj.hostname).toBe('155.138.239.131');
+      expect(urlObj.hostname).toBe('localhost');
       expect(urlObj.port).toBe('8000');
       
       console.log(`✅ URL validation passed: ${url}`);
@@ -237,7 +237,7 @@ describe('URL Integrity - Edge Cases and Error Handling', () => {
 
   test('should handle batch operations with mixed data quality', () => {
     const mixedQualityVideos = [
-      { id: '1', url: 'http://155.138.239.131:8000/uploads/good.mp4', filename: 'good.mp4' },
+      { id: '1', url: 'http://localhost:8000/uploads/good.mp4', filename: 'good.mp4' },
       { id: '2', url: 'http://localhost:8000/uploads/needs-fix.mp4', filename: 'needs-fix.mp4' },
       { id: '3', url: '', filename: 'empty-url.mp4' }, // Empty URL, should use filename
       { id: '4', url: 'http://localhost:8000:8000/uploads/corrupted.mp4', filename: 'corrupted.mp4' },
@@ -282,8 +282,8 @@ describe('URL Integrity - Cache and Performance Validation', () => {
     expect(secondCacheStats.cacheAge).toBeGreaterThanOrEqual(firstCacheStats.cacheAge);
     
     // URLs should be consistently formatted
-    expect(firstUrl).toBe('http://155.138.239.131:8000/uploads/video1.mp4');
-    expect(secondUrl).toBe('http://155.138.239.131:8000/uploads/video2.mp4');
+    expect(firstUrl).toBe('http://localhost:8000/uploads/video1.mp4');
+    expect(secondUrl).toBe('http://localhost:8000/uploads/video2.mp4');
     
     console.log('✅ Cache consistency verified');
   });
@@ -299,7 +299,7 @@ describe('URL Integrity - Cache and Performance Validation', () => {
     
     // Operations should still work without cache
     const result = fixVideoUrl('http://localhost:8000/uploads/video.mp4');
-    expect(result).toBe('http://155.138.239.131:8000/uploads/video.mp4');
+    expect(result).toBe('http://localhost:8000/uploads/video.mp4');
     
     // Cache should be repopulated
     expect(getCacheStats().hasCachedUrl).toBe(true);
@@ -317,7 +317,7 @@ describe('URL Integrity - Cache and Performance Validation', () => {
         ? `http://127.0.0.1:8000/uploads/stress-video-${i}.mp4`
         : i % 4 === 2
         ? `/uploads/stress-video-${i}.mp4`
-        : `http://155.138.239.131:8000/uploads/stress-video-${i}.mp4`, // Already correct
+        : `http://localhost:8000/uploads/stress-video-${i}.mp4`, // Already correct
       filename: `stress-video-${i}.mp4`
     }));
 
@@ -345,7 +345,7 @@ describe('URL Integrity - Cache and Performance Validation', () => {
     const sampleSize = Math.min(100, stressTestSize);
     for (let i = 0; i < sampleSize; i++) {
       const video = stressTestVideos[i];
-      expect(video.url).toContain('155.138.239.131:8000');
+      expect(video.url).toContain('localhost:8000');
       expect(video.url).not.toContain('localhost');
       expect(video.url).not.toContain(':8000:8000');
     }
@@ -384,7 +384,7 @@ describe('URL Integrity - Production Scenario Validation', () => {
     realWorldPatterns.forEach(pattern => {
       const result = fixVideoUrl(pattern);
       
-      expect(result).toContain('155.138.239.131:8000');
+      expect(result).toContain('localhost:8000');
       expect(result).not.toContain('localhost');
       expect(result).not.toContain(':8000:8000');
       expect(isVideoUrlValid(result)).toBe(true);
@@ -403,7 +403,7 @@ describe('URL Integrity - Production Scenario Validation', () => {
     // Simulate API response with mixed URL formats (what might be returned from a real backend)
     const mockApiResponse = [
       { id: '1', name: 'video1.mp4', url: 'http://localhost:8000/uploads/video1.mp4' },
-      { id: '2', name: 'video2.mp4', url: 'http://155.138.239.131:8000/uploads/video2.mp4' }, // Already correct
+      { id: '2', name: 'video2.mp4', url: 'http://localhost:8000/uploads/video2.mp4' }, // Already correct
       { id: '3', name: 'video3.mp4', url: '/uploads/video3.mp4' }, // Relative
       { id: '4', name: 'video4.mp4', url: '' }, // Empty, should use name
       { id: '5', name: 'video5.mp4', url: null }, // Null

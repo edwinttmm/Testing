@@ -1,0 +1,5 @@
+{
+  "connection_status": "error",
+  "response_time_ms": 0,
+  "error": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'"
+}

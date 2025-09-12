@@ -1,0 +1,577 @@
+{
+  "user_experience_test_schedule": {
+    "version": "1.0",
+    "created": "2025-08-27",
+    "description": "Comprehensive UX test schedule for AI Model Validation Platform",
+    
+    "test_phases": [
+      {
+        "phase": "1_system_initialization",
+        "duration": "10 minutes",
+        "description": "Test system startup and basic connectivity",
+        "tests": [
+          {
+            "test_id": "SYS_001",
+            "name": "Backend Server Startup",
+            "description": "Start backend server and verify all services initialize correctly",
+            "steps": [
+              "Navigate to /backend directory",
+              "Run 'python main.py'",
+              "Monitor console output for errors",
+              "Verify server starts on port 8000",
+              "Check /health endpoint returns 200",
+              "Log all startup messages and errors"
+            ],
+            "expected_outcome": "Server starts without errors, health check passes",
+            "error_scenarios": [
+              "Import errors - missing dependencies",
+              "Database connection failures",
+              "Port conflicts",
+              "Environment variable issues"
+            ],
+            "monitoring_points": [
+              "Console output during startup",
+              "Database connection logs", 
+              "FastAPI initialization logs",
+              "ML model loading logs"
+            ]
+          },
+          {
+            "test_id": "SYS_002", 
+            "name": "Frontend Application Startup",
+            "description": "Start React frontend and verify compilation success",
+            "steps": [
+              "Navigate to /frontend directory",
+              "Run 'npm install' if needed",
+              "Run 'npm start'",
+              "Monitor console for TypeScript errors",
+              "Verify app starts on port 3000",
+              "Check browser console for JavaScript errors"
+            ],
+            "expected_outcome": "React app compiles and starts without errors",
+            "error_scenarios": [
+              "TypeScript compilation errors",
+              "Missing npm dependencies",
+              "Import/export resolution issues",
+              "Webpack configuration problems"
+            ],
+            "monitoring_points": [
+              "NPM install output",
+              "TypeScript compiler output",
+              "Webpack dev server logs",
+              "Browser console errors"
+            ]
+          }
+        ]
+      },
+      
+      {
+        "phase": "2_navigation_testing",
+        "duration": "15 minutes", 
+        "description": "Test all page navigation and routing functionality",
+        "tests": [
+          {
+            "test_id": "NAV_001",
+            "name": "Projects Page Navigation",
+            "description": "Navigate to Projects page and test all functionality",
+            "steps": [
+              "Open browser to http://localhost:3000",
+              "Click on 'Projects' in navigation",
+              "Monitor network requests in dev tools",
+              "Check console for JavaScript errors",
+              "Verify page loads completely",
+              "Test 'Create New Project' button",
+              "Monitor API calls to backend"
+            ],
+            "expected_outcome": "Projects page loads, API calls succeed, no console errors",
+            "error_scenarios": [
+              "404 routing errors",
+              "API endpoint failures",
+              "Component rendering errors",
+              "State management issues"
+            ],
+            "monitoring_points": [
+              "Browser console errors",
+              "Network tab in dev tools",
+              "React component errors",
+              "API response status codes"
+            ]
+          },
+          {
+            "test_id": "NAV_002",
+            "name": "Datasets Page Navigation", 
+            "description": "Navigate to Datasets page and test functionality",
+            "steps": [
+              "Navigate to /datasets page",
+              "Monitor page load performance",
+              "Check data loading from backend",
+              "Test filtering and search features",
+              "Verify table/grid rendering",
+              "Monitor memory usage"
+            ],
+            "expected_outcome": "Datasets page loads with data, filters work correctly",
+            "error_scenarios": [
+              "Data fetching failures",
+              "Infinite loading states",
+              "Table rendering issues",
+              "Memory leaks"
+            ],
+            "monitoring_points": [
+              "API data fetching logs",
+              "Component re-render cycles",
+              "Memory usage in dev tools",
+              "Performance metrics"
+            ]
+          },
+          {
+            "test_id": "NAV_003",
+            "name": "Results Page Navigation",
+            "description": "Navigate to Results page and verify data visualization",
+            "steps": [
+              "Navigate to /results page",
+              "Check chart/graph rendering",
+              "Test data export functionality",
+              "Verify pagination if applicable",
+              "Monitor API calls for results data"
+            ],
+            "expected_outcome": "Results display correctly, charts render, exports work",
+            "error_scenarios": [
+              "Chart library errors",
+              "Data formatting issues",
+              "Export failures",
+              "Pagination errors"
+            ],
+            "monitoring_points": [
+              "Chart rendering logs",
+              "Data transformation errors",
+              "Export API calls",
+              "UI component errors"
+            ]
+          },
+          {
+            "test_id": "NAV_004",
+            "name": "Ground Truth Page Navigation",
+            "description": "Test Ground Truth management page functionality",
+            "steps": [
+              "Navigate to /ground-truth page",
+              "Test annotation interface loading",
+              "Verify video player functionality",
+              "Check annotation tools",
+              "Monitor WebSocket connections"
+            ],
+            "expected_outcome": "Ground truth page loads, annotation tools work",
+            "error_scenarios": [
+              "Video player initialization failures",
+              "Annotation tool errors",
+              "WebSocket connection issues",
+              "Canvas rendering problems"
+            ],
+            "monitoring_points": [
+              "Video player console logs",
+              "WebSocket connection status",
+              "Canvas API errors",
+              "Annotation data flow"
+            ]
+          }
+        ]
+      },
+      
+      {
+        "phase": "3_core_functionality_testing",
+        "duration": "20 minutes",
+        "description": "Test core user workflows and feature functionality",
+        "tests": [
+          {
+            "test_id": "FUNC_001",
+            "name": "Project Creation Workflow",
+            "description": "Complete project creation from start to finish",
+            "steps": [
+              "Click 'Create New Project' button",
+              "Fill in project form fields",
+              "Submit form and monitor API call",
+              "Verify project appears in projects list",
+              "Check database entry creation",
+              "Test project details view"
+            ],
+            "expected_outcome": "Project created successfully, appears in list, details accessible",
+            "error_scenarios": [
+              "Form validation failures",
+              "API submission errors",
+              "Database constraint violations",
+              "UI state update issues"
+            ],
+            "monitoring_points": [
+              "Form validation messages",
+              "API request/response logs",
+              "Database operation logs",
+              "UI state changes"
+            ]
+          },
+          {
+            "test_id": "FUNC_002",
+            "name": "Video Upload Pipeline",
+            "description": "Test complete video upload and processing workflow",
+            "steps": [
+              "Select video file for upload",
+              "Monitor upload progress indicator",
+              "Verify file validation checks",
+              "Check server-side processing",
+              "Verify video appears in video library",
+              "Test video player functionality"
+            ],
+            "expected_outcome": "Video uploads successfully, processes correctly, plays in interface",
+            "error_scenarios": [
+              "File size/format validation errors",
+              "Upload timeout issues",
+              "Server processing failures",
+              "Video codec compatibility issues"
+            ],
+            "monitoring_points": [
+              "File upload progress",
+              "Server-side processing logs",
+              "Video metadata extraction",
+              "Storage location verification"
+            ]
+          },
+          {
+            "test_id": "FUNC_003",
+            "name": "ML Detection Pipeline",
+            "description": "Test machine learning detection on uploaded video",
+            "steps": [
+              "Select video for ML processing",
+              "Configure detection parameters",
+              "Start detection pipeline",
+              "Monitor processing progress",
+              "Verify detection results display",
+              "Check result accuracy and format"
+            ],
+            "expected_outcome": "ML detection completes, results display correctly",
+            "error_scenarios": [
+              "ML model loading failures",
+              "GPU/CPU processing errors",
+              "Memory overflow during processing",
+              "Result parsing/display errors"
+            ],
+            "monitoring_points": [
+              "ML model initialization logs",
+              "GPU/CPU usage metrics",
+              "Processing pipeline status",
+              "Result data structure"
+            ]
+          },
+          {
+            "test_id": "FUNC_004",
+            "name": "Manual Annotation Workflow", 
+            "description": "Test manual annotation creation and editing",
+            "steps": [
+              "Open video in annotation interface",
+              "Create bounding box annotations",
+              "Add labels and metadata",
+              "Save annotations to database",
+              "Verify annotations persist",
+              "Test annotation editing"
+            ],
+            "expected_outcome": "Annotations created, saved, and editable successfully",
+            "error_scenarios": [
+              "Canvas drawing errors",
+              "Annotation data serialization issues",
+              "Database save failures",
+              "Coordinate calculation errors"
+            ],
+            "monitoring_points": [
+              "Canvas API operations",
+              "Annotation data validation",
+              "Database transaction logs",
+              "Coordinate precision checks"
+            ]
+          }
+        ]
+      },
+      
+      {
+        "phase": "4_real_time_features_testing",
+        "duration": "10 minutes",
+        "description": "Test WebSocket and real-time functionality",
+        "tests": [
+          {
+            "test_id": "RT_001",
+            "name": "WebSocket Connection Testing",
+            "description": "Test real-time communication features",
+            "steps": [
+              "Establish WebSocket connection",
+              "Monitor connection status",
+              "Send test messages",
+              "Verify message delivery",
+              "Test connection recovery",
+              "Monitor for memory leaks"
+            ],
+            "expected_outcome": "WebSocket connects reliably, messages transmit correctly",
+            "error_scenarios": [
+              "Connection establishment failures",
+              "Message delivery issues",
+              "Connection drops",
+              "Authentication problems"
+            ],
+            "monitoring_points": [
+              "WebSocket connection logs",
+              "Message transmission logs",
+              "Connection heartbeat status",
+              "Error recovery mechanisms"
+            ]
+          },
+          {
+            "test_id": "RT_002",
+            "name": "Real-time Progress Updates",
+            "description": "Test progress updates during long-running operations",
+            "steps": [
+              "Start ML detection process",
+              "Monitor real-time progress updates",
+              "Verify progress bar accuracy",
+              "Test cancellation functionality",
+              "Check final completion status"
+            ],
+            "expected_outcome": "Progress updates in real-time, completion status accurate",
+            "error_scenarios": [
+              "Progress update delays",
+              "Inaccurate progress reporting",
+              "Cancellation failures",
+              "Status synchronization issues"
+            ],
+            "monitoring_points": [
+              "Progress update frequency",
+              "Status message accuracy",
+              "UI responsiveness",
+              "Backend process monitoring"
+            ]
+          }
+        ]
+      },
+      
+      {
+        "phase": "5_error_scenarios_testing",
+        "duration": "15 minutes", 
+        "description": "Deliberately trigger error scenarios and test error handling",
+        "tests": [
+          {
+            "test_id": "ERR_001",
+            "name": "Network Failure Handling",
+            "description": "Test behavior when backend becomes unavailable",
+            "steps": [
+              "Stop backend server while frontend running",
+              "Attempt API operations",
+              "Monitor error messages displayed",
+              "Test retry mechanisms",
+              "Restart backend and verify recovery"
+            ],
+            "expected_outcome": "Graceful error handling, appropriate user messages, automatic recovery",
+            "error_scenarios": [
+              "Unhandled promise rejections",
+              "Missing error boundaries",
+              "Poor error messages",
+              "Failed recovery attempts"
+            ],
+            "monitoring_points": [
+              "Error boundary activation",
+              "User-facing error messages",
+              "Retry mechanism triggers",
+              "Recovery success rates"
+            ]
+          },
+          {
+            "test_id": "ERR_002",
+            "name": "Invalid File Upload Testing",
+            "description": "Test handling of invalid or corrupted files",
+            "steps": [
+              "Attempt to upload non-video files",
+              "Upload corrupted video files",
+              "Upload files exceeding size limits",
+              "Verify validation error messages",
+              "Check server error handling"
+            ],
+            "expected_outcome": "Invalid files rejected with clear error messages",
+            "error_scenarios": [
+              "Server crashes on invalid files",
+              "Unclear validation messages",
+              "Memory leaks from failed uploads",
+              "Security vulnerabilities"
+            ],
+            "monitoring_points": [
+              "File validation logs",
+              "Error message clarity",
+              "Server stability metrics",
+              "Memory usage patterns"
+            ]
+          },
+          {
+            "test_id": "ERR_003",
+            "name": "Database Connection Failure",
+            "description": "Test behavior when database becomes unavailable",
+            "steps": [
+              "Simulate database disconnection",
+              "Attempt database operations",
+              "Monitor error handling",
+              "Test connection recovery",
+              "Verify data integrity"
+            ],
+            "expected_outcome": "Database errors handled gracefully, recovery mechanisms work",
+            "error_scenarios": [
+              "Application crashes",
+              "Data corruption",
+              "Poor error messages",
+              "Failed recovery"
+            ],
+            "monitoring_points": [
+              "Database connection status",
+              "Transaction rollback logs",
+              "Error recovery attempts",
+              "Data consistency checks"
+            ]
+          }
+        ]
+      },
+      
+      {
+        "phase": "6_performance_testing",
+        "duration": "10 minutes",
+        "description": "Test system performance under various conditions",
+        "tests": [
+          {
+            "test_id": "PERF_001",
+            "name": "Large File Upload Performance",
+            "description": "Test system behavior with large video files",
+            "steps": [
+              "Upload large video file (>100MB)",
+              "Monitor upload progress and speed",
+              "Check memory usage during upload",
+              "Verify processing performance",
+              "Test concurrent uploads"
+            ],
+            "expected_outcome": "Large files handled efficiently without memory issues",
+            "error_scenarios": [
+              "Memory exhaustion",
+              "Timeout errors",
+              "Poor performance",
+              "Server instability"
+            ],
+            "monitoring_points": [
+              "Memory usage graphs",
+              "Upload speed metrics",
+              "CPU utilization",
+              "Server response times"
+            ]
+          },
+          {
+            "test_id": "PERF_002",
+            "name": "Multiple User Simulation",
+            "description": "Test concurrent user interactions",
+            "steps": [
+              "Simulate multiple browser sessions",
+              "Perform concurrent operations",
+              "Monitor resource usage",
+              "Check response times",
+              "Verify data consistency"
+            ],
+            "expected_outcome": "System handles concurrent users without performance degradation",
+            "error_scenarios": [
+              "Resource contention",
+              "Database locks",
+              "Memory leaks",
+              "Race conditions"
+            ],
+            "monitoring_points": [
+              "Concurrent connection counts",
+              "Database query performance",
+              "Memory allocation patterns",
+              "Response time distributions"
+            ]
+          }
+        ]
+      }
+    ],
+    
+    "monitoring_configuration": {
+      "logging_levels": {
+        "backend": "DEBUG",
+        "frontend": "INFO", 
+        "database": "INFO",
+        "websocket": "DEBUG"
+      },
+      "metrics_collection": {
+        "performance_metrics": true,
+        "error_tracking": true,
+        "user_behavior": true,
+        "system_resources": true
+      },
+      "alert_thresholds": {
+        "response_time_ms": 5000,
+        "error_rate_percent": 5,
+        "memory_usage_percent": 90,
+        "cpu_usage_percent": 85
+      }
+    },
+    
+    "reporting_requirements": {
+      "real_time_dashboard": {
+        "test_progress": true,
+        "error_counts": true,
+        "performance_metrics": true,
+        "system_health": true
+      },
+      "detailed_reports": {
+        "error_analysis": true,
+        "performance_analysis": true,
+        "user_journey_analysis": true,
+        "recommendations": true
+      },
+      "deliverables": [
+        "Executive summary report",
+        "Detailed technical error log",
+        "Performance benchmark report", 
+        "User experience assessment",
+        "Recommended fixes and improvements"
+      ]
+    },
+    
+    "tools_and_technologies": {
+      "monitoring_tools": [
+        "Browser Developer Tools",
+        "Chrome Performance Profiler",
+        "React Developer Tools", 
+        "FastAPI automatic documentation",
+        "Database query logs",
+        "System resource monitors"
+      ],
+      "testing_frameworks": [
+        "Custom Python test suite",
+        "Jest for frontend testing",
+        "Selenium for browser automation",
+        "API testing tools",
+        "WebSocket testing utilities"
+      ]
+    },
+    
+    "success_criteria": {
+      "critical_requirements": [
+        "Backend server starts without critical errors",
+        "Frontend application compiles and renders",
+        "Core user workflows complete successfully",
+        "API endpoints respond correctly",
+        "Database operations complete successfully"
+      ],
+      "performance_requirements": [
+        "Page load times under 3 seconds",
+        "API response times under 2 seconds", 
+        "File upload handles files up to 500MB",
+        "ML processing completes within reasonable time",
+        "No memory leaks during extended use"
+      ],
+      "user_experience_requirements": [
+        "Clear error messages for all failure scenarios",
+        "Intuitive navigation and workflows",
+        "Responsive design across devices",
+        "Reliable real-time updates",
+        "Consistent UI/UX patterns"
+      ]
+    }
+  }
+}

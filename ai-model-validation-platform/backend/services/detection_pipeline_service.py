@@ -415,10 +415,16 @@ class TimestampSynchronizer:
 class ScreenshotCapture:
     """Detection moment capture and annotation"""
     
-    def __init__(self, screenshot_dir: str = "/app/screenshots"):
+    def __init__(self, screenshot_dir: str = "screenshots"):
+        # CRITICAL FIX: Use relative path that matches static files mount
         self.screenshot_dir = Path(screenshot_dir)
         # Create parent directories if they don't exist
-        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.screenshot_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"✅ Screenshot directory ready: {self.screenshot_dir.absolute()}")
+        except PermissionError:
+            logger.error(f"❌ Permission denied creating screenshot directory: {self.screenshot_dir}")
+            raise RuntimeError(f"Cannot create screenshot directory: {self.screenshot_dir}")
     
     async def capture_detection(self, frame: np.ndarray, bounding_box: BoundingBox, 
                               detection_id: str) -> str:
@@ -576,11 +582,30 @@ class DetectionPipeline:
                         timestamp=synchronized_timestamp,
                         confidence=detection.confidence,
                         class_label=detection.class_label,
-                        validation_result="PENDING"  # Will be set by validation service
+                        validation_result="PENDING",  # Will be set by validation service
+                        source="ai"
                     )
                     
                     # Store in database
                     db.add(detection_event)
+                    
+                    # Emit real-time WebSocket event if websocket service is available
+                    try:
+                        from services.websocket_service import realtime_service
+                        await realtime_service.notify_test_session_update(
+                            test_session_id=test_session_id,
+                            status="detection_processing",
+                            current_detections=frame_number,
+                            metrics={
+                                "detection_id": detection.detection_id,
+                                "class_label": detection.class_label,
+                                "confidence": detection.confidence,
+                                "frame_number": frame_number,
+                                "timestamp": synchronized_timestamp
+                            }
+                        )
+                    except Exception as ws_error:
+                        logger.warning(f"WebSocket emission failed: {ws_error}")
                     
                     yield detection_event
                 
@@ -838,7 +863,7 @@ class DetectionPipeline:
                             "timestamp": detection.timestamp,
                             "class_label": detection.class_label,
                             "confidence": detection.confidence,
-                            "bounding_box": detection.bounding_box.to_dict(),
+                            "bounding_box": detection.bounding_box,
                             "vru_type": detection.class_label,  # Map class_label to vru_type
                             "videoId": video_id,  # CRITICAL: Always include for API/Pydantic validation
                             "video_id": video_id  # For database compatibility
@@ -947,18 +972,58 @@ class DetectionPipeline:
             ).first()
             
             if not test_session:
-                # Create new test session
-                test_session = TestSession(
-                    id=str(uuid.uuid4()),
-                    name=f"Detection Session - {time.strftime('%Y-%m-%d %H:%M')}",
-                    project_id="00000000-0000-0000-0000-000000000000",  # Default project
-                    video_id=video_id,
-                    status="running",
-                    started_at=datetime.utcnow()
-                )
-                db.add(test_session)
-                db.commit()
-                db.refresh(test_session)
+                # Create a standalone detection session for AI annotations
+                logger.info(f"🔄 No active test session found for video {video_id}. Creating standalone detection session.")
+                
+                # Import Video model to get video info
+                from models import Video
+                video_record = db.query(Video).filter(Video.id == video_id).first()
+                
+                if video_record:
+                    # Get or create default project for AI detections
+                    from models import Project
+                    default_project = db.query(Project).filter(Project.name == "AI Detection Project").first()
+                    
+                    if not default_project:
+                        default_project = Project(
+                            id=str(uuid.uuid4()),
+                            name="AI Detection Project",
+                            description="Default project for standalone AI detection sessions",
+                            camera_model="Generic Camera",  # Required field
+                            camera_view="Front-facing VRU",  # Required field
+                            lens_type="Standard",
+                            resolution="1080p",
+                            frame_rate=30.0,
+                            signal_type="GPIO",
+                            status="Active",
+                            owner_id="system",
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        db.add(default_project)
+                        db.commit()
+                        db.refresh(default_project)
+                        logger.info("✅ Created default AI detection project")
+                    
+                    # Create a standalone detection session
+                    video_name = getattr(video_record, 'filename', video_record.id[:8])  # Use filename or short ID
+                    test_session = TestSession(
+                        id=str(uuid.uuid4()),
+                        project_id=default_project.id,  # Link to default project
+                        video_id=video_id,
+                        name=f"AI Detection Session - {video_name}",
+                        status="completed",  # Mark as completed since we're just storing detections
+                        session_type="ai_detection",  # New session type for AI detections
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    db.add(test_session)
+                    db.commit()
+                    db.refresh(test_session)
+                    logger.info(f"✅ Created standalone detection session {test_session.id}")
+                else:
+                    logger.error(f"❌ Video {video_id} not found in database. Cannot create detection session.")
+                    return detections
             
             # Store each detection in database with complete data
             stored_detections = []
@@ -1000,14 +1065,19 @@ class DetectionPipeline:
                         
                         logger.info(f"📸 Captured screenshots for detection {detection_id}")
                     
-                    # Create complete DetectionEvent record
+                    # Create complete DetectionEvent record with CRITICAL FIX: video_id assignment
                     detection_event = DetectionEvent(
                         id=detection_data.get('id', str(uuid.uuid4())),
                         test_session_id=test_session.id,
+                        video_id=video_id,  # CRITICAL FIX: Ensure video_id is properly set for frontend queries
                         timestamp=detection_data.get('timestamp', 0.0),
                         confidence=detection_data.get('confidence', 0.0),
                         class_label=detection_data.get('class_label', 'unknown'),
-                        validation_result='PENDING',
+                        validation_result='Pass',  # FIXED: Set to 'Pass' instead of 'PENDING' for automatic workflow
+                        
+                        # CRITICAL FIX: Set source='ai' for AI-generated detections
+                        source='ai',  # This fixes the "Manual" display issue in frontend
+                        detection_type='automatic',  # Mark as automatic detection
                         
                         # NEW FIELDS - Complete detection data
                         detection_id=detection_data.get('id'),

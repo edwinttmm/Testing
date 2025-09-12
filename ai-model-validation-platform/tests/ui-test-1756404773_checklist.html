@@ -1,0 +1,994 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI/UX Manual Testing Checklist</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+        .category { margin-bottom: 30px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+        .category-header { background: #e3f2fd; padding: 15px; font-weight: bold; font-size: 1.2em; }
+        .test-item { padding: 20px; border-bottom: 1px solid #eee; }
+        .test-item:last-child { border-bottom: none; }
+        .test-header { display: flex; justify-content: between; align-items: center; margin-bottom: 10px; }
+        .test-id { background: #666; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; }
+        .priority { padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: white; }
+        .priority.high { background: #d32f2f; }
+        .priority.medium { background: #f57c00; }
+        .priority.low { background: #388e3c; }
+        .steps { margin: 10px 0; }
+        .steps li { margin: 5px 0; }
+        .checkbox-container { display: flex; align-items: center; margin-top: 15px; }
+        .checkbox-container input { margin-right: 10px; transform: scale(1.2); }
+        .notes { width: 100%; margin-top: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .summary { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        @media print { body { font-size: 12px; } .notes { min-height: 30px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎯 UI/UX Manual Testing Checklist</h1>
+        <div class="summary">
+            <strong>Session ID:</strong> ui-test-1756404773<br>
+            <strong>Created:</strong> 2025-08-28T19:12:53.971595<br>
+            <strong>Total Tests:</strong> 26<br>
+            <strong>Categories:</strong> navigation, forms_interaction, data_display, file_operations, error_handling, responsive_design, accessibility, performance
+        </div>
+        <p><strong>Instructions:</strong> For each test, follow the steps and check the box when complete. 
+        Add notes about any issues found or observations.</p>
+    </div>
+
+    <div class="category">
+        <div class="category-header">
+            📋 Navigation (4 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">nav-001</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Dashboard Navigation</h3>
+            <p><strong>Description:</strong> Navigate to dashboard and verify all widgets load</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Click on Dashboard in sidebar</li><li>Verify page loads without errors</li><li>Check all stats cards display data</li><li>Verify charts render correctly</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Dashboard loads with all widgets showing data</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-001-pass">
+                <label for="nav-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-001-fail">
+                <label for="nav-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-001-skip">
+                <label for="nav-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">nav-002</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Projects Page Navigation</h3>
+            <p><strong>Description:</strong> Navigate to projects page and test functionality</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Click on Projects in sidebar</li><li>Verify projects list loads</li><li>Check Create Project button is available</li><li>Test project card interactions</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Projects page loads with project list and controls</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-002-pass">
+                <label for="nav-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-002-fail">
+                <label for="nav-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-002-skip">
+                <label for="nav-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">nav-003</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Ground Truth Navigation</h3>
+            <p><strong>Description:</strong> Test ground truth page navigation</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Navigate to Ground Truth page</li><li>Verify video library loads</li><li>Check annotation tools are available</li><li>Test video player functionality</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Ground truth page loads with video library and tools</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-003-pass">
+                <label for="nav-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-003-fail">
+                <label for="nav-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-003-skip">
+                <label for="nav-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">nav-004</span>
+                    <span class="priority low">LOW</span>
+                </div>
+            </div>
+            <h3>Settings Navigation</h3>
+            <p><strong>Description:</strong> Navigate to settings and verify configuration options</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Click on Settings in sidebar</li><li>Verify settings categories load</li><li>Check configuration options are editable</li><li>Test save functionality</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Settings page loads with editable configurations</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-004-pass">
+                <label for="nav-004-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-004-fail">
+                <label for="nav-004-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="nav-004-skip">
+                <label for="nav-004-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 Forms Interaction (3 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">form-001</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Project Creation Form</h3>
+            <p><strong>Description:</strong> Test project creation form validation and submission</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Click 'Create New Project' button</li><li>Fill out project name field</li><li>Select camera type from dropdown</li><li>Choose signal type</li><li>Click Create button</li><li>Verify project appears in list</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> New project created successfully with form validation</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-001-pass">
+                <label for="form-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-001-fail">
+                <label for="form-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-001-skip">
+                <label for="form-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">form-002</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Video Upload Form</h3>
+            <p><strong>Description:</strong> Test video file upload functionality</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Navigate to video upload area</li><li>Click upload button or drag-drop zone</li><li>Select a valid video file (.mp4)</li><li>Verify upload progress indicator</li><li>Check uploaded video appears in library</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Video uploads successfully with progress feedback</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-002-pass">
+                <label for="form-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-002-fail">
+                <label for="form-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-002-skip">
+                <label for="form-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">form-003</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Form Validation</h3>
+            <p><strong>Description:</strong> Test form validation for required fields</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Try to submit forms with empty required fields</li><li>Check for validation error messages</li><li>Verify field highlighting for errors</li><li>Test invalid data format inputs</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Clear validation messages appear for invalid inputs</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-003-pass">
+                <label for="form-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-003-fail">
+                <label for="form-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="form-003-skip">
+                <label for="form-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 Data Display (4 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">data-001</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Dashboard Statistics</h3>
+            <p><strong>Description:</strong> Verify dashboard stats display correctly</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Open dashboard page</li><li>Check project count accuracy</li><li>Verify video count matches actual videos</li><li>Check test session statistics</li><li>Verify accuracy percentage display</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> All statistics display accurate, current data</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-001-pass">
+                <label for="data-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-001-fail">
+                <label for="data-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-001-skip">
+                <label for="data-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">data-002</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Project List Display</h3>
+            <p><strong>Description:</strong> Test projects list data display</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Navigate to Projects page</li><li>Verify all projects are listed</li><li>Check project metadata displays correctly</li><li>Test sorting functionality</li><li>Verify search/filter works</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Projects display with correct metadata and controls</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-002-pass">
+                <label for="data-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-002-fail">
+                <label for="data-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-002-skip">
+                <label for="data-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">data-003</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Video Library Display</h3>
+            <p><strong>Description:</strong> Test video library data presentation</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Go to video library section</li><li>Verify videos display with thumbnails</li><li>Check video metadata (duration, size, etc.)</li><li>Test video filtering options</li><li>Verify pagination if applicable</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Videos display with correct metadata and controls</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-003-pass">
+                <label for="data-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-003-fail">
+                <label for="data-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-003-skip">
+                <label for="data-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">data-004</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Test Results Display</h3>
+            <p><strong>Description:</strong> Verify test results and analytics display</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Navigate to Results page</li><li>Check test session results display</li><li>Verify charts and graphs render</li><li>Test result filtering and sorting</li><li>Check export functionality</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Test results display with charts and export options</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-004-pass">
+                <label for="data-004-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-004-fail">
+                <label for="data-004-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="data-004-skip">
+                <label for="data-004-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 File Operations (3 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">file-001</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Video Upload</h3>
+            <p><strong>Description:</strong> Test video file upload end-to-end</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Prepare test video files (various formats)</li><li>Use drag-and-drop upload</li><li>Monitor upload progress</li><li>Verify file validation (reject invalid files)</li><li>Check uploaded files appear in library</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Videos upload successfully with progress tracking</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-001-pass">
+                <label for="file-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-001-fail">
+                <label for="file-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-001-skip">
+                <label for="file-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">file-002</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Annotation Export</h3>
+            <p><strong>Description:</strong> Test annotation data export functionality</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Create some annotations on videos</li><li>Navigate to export options</li><li>Select export format (JSON/CSV/etc.)</li><li>Download exported file</li><li>Verify exported data completeness</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Annotations export successfully in selected format</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-002-pass">
+                <label for="file-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-002-fail">
+                <label for="file-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-002-skip">
+                <label for="file-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">file-003</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>File Management</h3>
+            <p><strong>Description:</strong> Test file deletion and management</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Select a video file to delete</li><li>Click delete button</li><li>Confirm deletion in dialog</li><li>Verify file removed from library</li><li>Check database consistency</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Files can be deleted safely with confirmation</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-003-pass">
+                <label for="file-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-003-fail">
+                <label for="file-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="file-003-skip">
+                <label for="file-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 Error Handling (3 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">error-001</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Network Error Handling</h3>
+            <p><strong>Description:</strong> Test behavior when backend is unavailable</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Disconnect backend/network</li><li>Try to perform actions in frontend</li><li>Check error messages displayed</li><li>Verify retry mechanisms</li><li>Test recovery when connection restored</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Graceful error handling with clear user feedback</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-001-pass">
+                <label for="error-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-001-fail">
+                <label for="error-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-001-skip">
+                <label for="error-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">error-002</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Invalid File Upload</h3>
+            <p><strong>Description:</strong> Test error handling for invalid files</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Try uploading non-video files</li><li>Upload extremely large files</li><li>Upload corrupted video files</li><li>Check error messages are clear</li><li>Verify system remains stable</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Clear error messages for invalid uploads</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-002-pass">
+                <label for="error-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-002-fail">
+                <label for="error-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-002-skip">
+                <label for="error-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">error-003</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Browser Error Recovery</h3>
+            <p><strong>Description:</strong> Test recovery from JavaScript errors</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Intentionally cause JS errors (if possible)</li><li>Check error boundary behavior</li><li>Verify app doesn't completely crash</li><li>Test refresh/retry options</li><li>Check error reporting</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> App recovers gracefully from errors</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-003-pass">
+                <label for="error-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-003-fail">
+                <label for="error-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="error-003-skip">
+                <label for="error-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 Responsive Design (3 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">resp-001</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Mobile Layout</h3>
+            <p><strong>Description:</strong> Test UI on mobile viewport</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Resize browser to mobile dimensions (375px)</li><li>Check sidebar collapses properly</li><li>Verify navigation works on mobile</li><li>Test touch interactions</li><li>Check text readability</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> UI adapts properly to mobile viewport</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-001-pass">
+                <label for="resp-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-001-fail">
+                <label for="resp-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-001-skip">
+                <label for="resp-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">resp-002</span>
+                    <span class="priority low">LOW</span>
+                </div>
+            </div>
+            <h3>Tablet Layout</h3>
+            <p><strong>Description:</strong> Test UI on tablet viewport</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Resize browser to tablet dimensions (768px)</li><li>Check layout adapts appropriately</li><li>Test navigation and interactions</li><li>Verify content remains accessible</li><li>Check video player responsiveness</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> UI works well on tablet-sized screens</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-002-pass">
+                <label for="resp-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-002-fail">
+                <label for="resp-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-002-skip">
+                <label for="resp-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">resp-003</span>
+                    <span class="priority low">LOW</span>
+                </div>
+            </div>
+            <h3>Desktop Layout Scaling</h3>
+            <p><strong>Description:</strong> Test UI at various desktop sizes</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Test at 1920x1080 resolution</li><li>Test at 1366x768 resolution</li><li>Check ultra-wide monitor compatibility</li><li>Verify content doesn't get too stretched</li><li>Test window resizing behavior</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> UI scales properly across desktop resolutions</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-003-pass">
+                <label for="resp-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-003-fail">
+                <label for="resp-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="resp-003-skip">
+                <label for="resp-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 Accessibility (3 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">a11y-001</span>
+                    <span class="priority high">HIGH</span>
+                </div>
+            </div>
+            <h3>Keyboard Navigation</h3>
+            <p><strong>Description:</strong> Test complete keyboard navigation</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Use only Tab/Shift+Tab to navigate</li><li>Verify all interactive elements are reachable</li><li>Check focus indicators are visible</li><li>Test Enter/Space for button activation</li><li>Verify skip links work properly</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> All functionality accessible via keyboard</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-001-pass">
+                <label for="a11y-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-001-fail">
+                <label for="a11y-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-001-skip">
+                <label for="a11y-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">a11y-002</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Screen Reader Compatibility</h3>
+            <p><strong>Description:</strong> Test with screen reader software</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Enable screen reader (NVDA/JAWS/VoiceOver)</li><li>Navigate through main pages</li><li>Check form label announcements</li><li>Verify heading structure</li><li>Test image alt text</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Content is properly announced by screen readers</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-002-pass">
+                <label for="a11y-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-002-fail">
+                <label for="a11y-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-002-skip">
+                <label for="a11y-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">a11y-003</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Color Contrast</h3>
+            <p><strong>Description:</strong> Verify color contrast meets WCAG standards</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Use color contrast analyzer tool</li><li>Check text against backgrounds</li><li>Verify interactive element states</li><li>Test error message visibility</li><li>Check chart/graph accessibility</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> All colors meet WCAG AA contrast requirements</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-003-pass">
+                <label for="a11y-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-003-fail">
+                <label for="a11y-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="a11y-003-skip">
+                <label for="a11y-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="category">
+        <div class="category-header">
+            📋 Performance (3 tests)
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">perf-001</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Initial Page Load</h3>
+            <p><strong>Description:</strong> Measure initial page load performance</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Clear browser cache</li><li>Navigate to application</li><li>Measure time to interactive</li><li>Check for loading indicators</li><li>Verify progressive loading</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Page loads within 3 seconds on fast connection</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-001-pass">
+                <label for="perf-001-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-001-fail">
+                <label for="perf-001-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-001-skip">
+                <label for="perf-001-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">perf-002</span>
+                    <span class="priority medium">MEDIUM</span>
+                </div>
+            </div>
+            <h3>Large File Handling</h3>
+            <p><strong>Description:</strong> Test performance with large video files</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Upload large video file (>50MB)</li><li>Monitor memory usage</li><li>Check upload progress feedback</li><li>Verify browser doesn't freeze</li><li>Test video playback performance</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Large files handled efficiently without freezing</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-002-pass">
+                <label for="perf-002-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-002-fail">
+                <label for="perf-002-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-002-skip">
+                <label for="perf-002-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+
+        <div class="test-item">
+            <div class="test-header">
+                <div>
+                    <span class="test-id">perf-003</span>
+                    <span class="priority low">LOW</span>
+                </div>
+            </div>
+            <h3>Multiple Tab Performance</h3>
+            <p><strong>Description:</strong> Test performance with multiple browser tabs</p>
+            <div class="steps">
+                <strong>Test Steps:</strong>
+                <ol>
+<li>Open application in multiple tabs</li><li>Perform actions in different tabs</li><li>Monitor memory usage</li><li>Check for memory leaks</li><li>Verify WebSocket connections</li>
+                </ol>
+            </div>
+            <p><strong>Expected Result:</strong> Application performs well across multiple tabs</p>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-003-pass">
+                <label for="perf-003-pass">✅ Test Passed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-003-fail">
+                <label for="perf-003-fail">❌ Test Failed</label>
+            </div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="perf-003-skip">
+                <label for="perf-003-skip">⏭️ Test Skipped</label>
+            </div>
+            
+            <textarea class="notes" placeholder="Notes, observations, or issues found..." rows="3"></textarea>
+        </div>
+</div>
+    <div class="summary" style="margin-top: 40px;">
+        <h3>📊 Test Summary</h3>
+        <p>Complete this section after finishing all tests:</p>
+        <div>
+            <strong>Tests Passed:</strong> _____ / 26<br>
+            <strong>Tests Failed:</strong> _____<br>
+            <strong>Tests Skipped:</strong> _____<br>
+            <strong>Overall Success Rate:</strong> _____%
+        </div>
+        <div style="margin-top: 15px;">
+            <strong>Key Issues Found:</strong><br>
+            <textarea class="notes" rows="5" placeholder="List the most important issues that need to be addressed..."></textarea>
+        </div>
+        <div style="margin-top: 15px;">
+            <strong>Recommendations:</strong><br>
+            <textarea class="notes" rows="5" placeholder="Recommendations for UI/UX improvements..."></textarea>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-save to localStorage
+        document.addEventListener('change', function(e) {
+            if (e.target.type === 'checkbox' || e.target.tagName === 'TEXTAREA') {
+                const sessionId = 'ui-test-1756404773';
+                const key = `ui-test-${sessionId}`;
+                const data = JSON.parse(localStorage.getItem(key) || '{}');
+                
+                if (e.target.type === 'checkbox') {
+                    data[e.target.id] = e.target.checked;
+                } else {
+                    data[e.target.className + '-' + Math.random()] = e.target.value;
+                }
+                
+                localStorage.setItem(key, JSON.stringify(data));
+            }
+        });
+        
+        // Restore from localStorage
+        window.addEventListener('load', function() {
+            const sessionId = 'ui-test-1756404773';
+            const key = `ui-test-${sessionId}`;
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            
+            Object.keys(data).forEach(key => {
+                const element = document.getElementById(key);
+                if (element && element.type === 'checkbox') {
+                    element.checked = data[key];
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+        

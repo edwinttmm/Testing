@@ -1,0 +1,137 @@
+{
+  "success": true,
+  "session_id": "test_session_001",
+  "start_time": 1757367434.063037,
+  "end_time": 1757367457.1979744,
+  "duration_seconds": 23.134937524795532,
+  "total_detections": 14,
+  "detection_events": [
+    {
+      "timestamp": 1757367434.8804874,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0001",
+      "metadata": {
+        "session_start_offset": 0.8174505233764648,
+        "detection_sequence": 1
+      }
+    },
+    {
+      "timestamp": 1757367438.90998,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0002",
+      "metadata": {
+        "session_start_offset": 4.846943140029907,
+        "detection_sequence": 2
+      }
+    },
+    {
+      "timestamp": 1757367441.5128205,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0003",
+      "metadata": {
+        "session_start_offset": 7.449783563613892,
+        "detection_sequence": 3
+      }
+    },
+    {
+      "timestamp": 1757367441.5259469,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0004",
+      "metadata": {
+        "session_start_offset": 7.462909936904907,
+        "detection_sequence": 4
+      }
+    },
+    {
+      "timestamp": 1757367442.8887906,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0005",
+      "metadata": {
+        "session_start_offset": 8.825753688812256,
+        "detection_sequence": 5
+      }
+    },
+    {
+      "timestamp": 1757367443.5736117,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0006",
+      "metadata": {
+        "session_start_offset": 9.51057481765747,
+        "detection_sequence": 6
+      }
+    },
+    {
+      "timestamp": 1757367444.115805,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0007",
+      "metadata": {
+        "session_start_offset": 10.052767992019653,
+        "detection_sequence": 7
+      }
+    },
+    {
+      "timestamp": 1757367447.5639088,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0008",
+      "metadata": {
+        "session_start_offset": 13.500871896743774,
+        "detection_sequence": 8
+      }
+    },
+    {
+      "timestamp": 1757367448.6140103,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0009",
+      "metadata": {
+        "session_start_offset": 14.550973415374756,
+        "detection_sequence": 9
+      }
+    },
+    {
+      "timestamp": 1757367449.4617124,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0010",
+      "metadata": {
+        "session_start_offset": 15.398675441741943,
+        "detection_sequence": 10
+      }
+    },
+    {
+      "timestamp": 1757367450.2038267,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0011",
+      "metadata": {
+        "session_start_offset": 16.14078974723816,
+        "detection_sequence": 11
+      }
+    },
+    {
+      "timestamp": 1757367453.5427911,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0012",
+      "metadata": {
+        "session_start_offset": 19.479754209518433,
+        "detection_sequence": 12
+      }
+    },
+    {
+      "timestamp": 1757367455.8646722,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0013",
+      "metadata": {
+        "session_start_offset": 21.801635265350342,
+        "detection_sequence": 13
+      }
+    },
+    {
+      "timestamp": 1757367456.2339416,
+      "pin_state": true,
+      "detection_id": "DET_test_session_001_0014",
+      "metadata": {
+        "session_start_offset": 22.170904636383057,
+        "detection_sequence": 14
+      }
+    }
+  ],
+  "message": "Detection session completed - 14 events collected"
+}

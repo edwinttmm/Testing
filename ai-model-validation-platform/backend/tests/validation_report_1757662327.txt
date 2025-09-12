@@ -1,0 +1,33 @@
+================================================================================
+🔍 COMPREHENSIVE SYSTEM VALIDATION REPORT
+================================================================================
+Generated: 2025-09-12 08:32:07
+Total Tests: 6
+
+📊 SUMMARY STATISTICS:
+   ✅ Passed: 4
+   ❌ Failed: 2
+   ⏱️  Total Time: 20.24s
+   📈 Success Rate: 66.7%
+
+📋 DETAILED RESULTS:
+----------------------------------------
+✅ Essential Imports              | PASSED     | 0.69s
+✅ Configuration Validity         | PASSED     | 0.00s
+✅ Database Connectivity          | PASSED     | 0.00s
+❌ Backend Server Availability    | FAILED     | 10.59s
+✅ Services Availability          | PASSED     | 0.00s
+❌ API Endpoints Basic            | FAILED     | 8.95s
+
+🔧 SYSTEM STATUS ANALYSIS:
+----------------------------------------
+🟡 SYSTEM STATUS: PARTIAL - Some issues detected, manual review needed
+
+💡 RECOMMENDATIONS:
+----------------------------------------
+   • Verify server dependencies and configuration
+   • Review API endpoint implementations and routing
+
+================================================================================
+END VALIDATION REPORT
+================================================================================

@@ -104,7 +104,7 @@ describe('Performance Monitoring - URL Processing', () => {
     
     const metrics = monitor.endTest('single-url-fix');
     
-    expect(result).toBe('http://155.138.239.131:8000/uploads/test-video.mp4');
+    expect(result).toBe('http://localhost:8000/uploads/test-video.mp4');
     expect(metrics.duration).toBeLessThan(1); // Should be sub-millisecond
     
     console.log(`✅ Single URL fix completed in ${metrics.duration.toFixed(3)}ms`);
@@ -212,7 +212,7 @@ describe('Performance Monitoring - API Operations', () => {
       data: Array.from({ length: 100 }, (_, i) => ({
         id: `video-${i}`,
         name: `video-${i}.mp4`,
-        url: `http://155.138.239.131:8000/uploads/video-${i}.mp4`,
+        url: `http://localhost:8000/uploads/video-${i}.mp4`,
         filename: `video-${i}.mp4`
       })),
       status: 200
@@ -235,11 +235,11 @@ describe('Performance Monitoring - API Operations', () => {
 
   test('should measure video URL validation performance', async () => {
     const testUrls = [
-      'http://155.138.239.131:8000/uploads/video1.mp4',
-      'http://155.138.239.131:8000/uploads/video2.mp4',
-      'http://155.138.239.131:8000/uploads/video3.mp4',
-      'http://155.138.239.131:8000/uploads/video4.mp4',
-      'http://155.138.239.131:8000/uploads/video5.mp4'
+      'http://localhost:8000/uploads/video1.mp4',
+      'http://localhost:8000/uploads/video2.mp4',
+      'http://localhost:8000/uploads/video3.mp4',
+      'http://localhost:8000/uploads/video4.mp4',
+      'http://localhost:8000/uploads/video5.mp4'
     ];
 
     const mockAxios = jest.mocked(axios);
@@ -267,7 +267,7 @@ describe('Performance Monitoring - API Operations', () => {
   });
 
   test('should measure streaming performance simulation', async () => {
-    const streamingUrl = 'http://155.138.239.131:8000/uploads/large-video.mp4';
+    const streamingUrl = 'http://localhost:8000/uploads/large-video.mp4';
     
     const mockAxios = jest.mocked(axios);
     
@@ -334,21 +334,21 @@ describe('Performance Monitoring - Frontend Rendering', () => {
     
     for (let i = 0; i < 100; i++) {
       const video = document.createElement('video');
-      video.src = `http://155.138.239.131:8000/uploads/video-${i}.mp4`;
+      video.src = `http://localhost:8000/uploads/video-${i}.mp4`;
       video.preload = 'metadata';
       videoElements.push(video);
     }
     
     // Update all sources
     videoElements.forEach((video, i) => {
-      video.src = `http://155.138.239.131:8000/uploads/updated-video-${i}.mp4`;
+      video.src = `http://localhost:8000/uploads/updated-video-${i}.mp4`;
     });
     
     const metrics = monitor.endTest('dom-manipulation');
 
     expect(videoElements).toHaveLength(100);
     videoElements.forEach(video => {
-      expect(video.src).toContain('155.138.239.131:8000');
+      expect(video.src).toContain('localhost:8000');
     });
 
     // DOM operations should be fast
@@ -368,7 +368,7 @@ describe('Performance Monitoring - Frontend Rendering', () => {
       const videoData = Array.from({ length: videosPerComponent }, (_, i) => ({
         id: `video-${render}-${i}`,
         name: `video-${render}-${i}.mp4`,
-        url: `http://155.138.239.131:8000/uploads/video-${render}-${i}.mp4`
+        url: `http://localhost:8000/uploads/video-${render}-${i}.mp4`
       }));
       
       // Simulate processing video data for rendering
@@ -405,7 +405,7 @@ describe('Performance Monitoring - Frontend Rendering', () => {
 
     expect(results).toHaveLength(20);
     results.forEach(result => {
-      expect(result).toContain('155.138.239.131:8000');
+      expect(result).toContain('localhost:8000');
     });
 
     // Async operations should complete quickly

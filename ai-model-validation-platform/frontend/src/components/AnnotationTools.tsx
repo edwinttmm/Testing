@@ -37,8 +37,8 @@ interface AnnotationToolsProps {
   onAnnotationUpdate?: (annotation: Partial<GroundTruthAnnotation>) => void;
   onAnnotationDelete?: (annotationId: string) => void;
   onAnnotationValidate?: (annotationId: string, validated: boolean) => void;
-  onToolSelect?: (tool: AnnotationTool) => void;
-  selectedTool?: AnnotationTool;
+  onToolSelect?: (tool: AnnotationToolDefinition) => void;
+  selectedTool?: AnnotationToolDefinition | null;
   onCreateAnnotation?: (vruType: VRUType, boundingBox?: Partial<BoundingBox>) => void;
   annotationMode: boolean;
   onAnnotationModeToggle?: (enabled: boolean) => void;
@@ -48,7 +48,7 @@ interface AnnotationToolsProps {
   timestamp: number;
 }
 
-export interface AnnotationTool {
+export interface AnnotationToolDefinition {
   id: string;
   name: string;
   type: 'rectangle' | 'polygon' | 'circle' | 'point';
@@ -56,7 +56,7 @@ export interface AnnotationTool {
   cursor: string;
 }
 
-const ANNOTATION_TOOLS: AnnotationTool[] = [
+const ANNOTATION_TOOLS: AnnotationToolDefinition[] = [
   {
     id: 'rectangle',
     name: 'Rectangle',
@@ -81,11 +81,11 @@ const ANNOTATION_TOOLS: AnnotationTool[] = [
 ];
 
 const VRU_TYPES: Array<{ value: VRUType; label: string; color: string }> = [
-  { value: 'pedestrian', label: 'Pedestrian', color: '#2196f3' },
-  { value: 'cyclist', label: 'Cyclist', color: '#4caf50' },
-  { value: 'motorcyclist', label: 'Motorcyclist', color: '#ff9800' },
-  { value: 'wheelchair_user', label: 'Wheelchair User', color: '#9c27b0' },
-  { value: 'scooter_rider', label: 'Scooter Rider', color: '#ff5722' },
+  { value: VRUType.PEDESTRIAN, label: 'Pedestrian', color: '#2196f3' },
+  { value: VRUType.CYCLIST, label: 'Cyclist', color: '#4caf50' },
+  { value: VRUType.MOTORCYCLIST, label: 'Motorcyclist', color: '#ff9800' },
+  { value: VRUType.WHEELCHAIR, label: 'Wheelchair User', color: '#9c27b0' },
+  { value: VRUType.SCOOTER, label: 'Scooter Rider', color: '#ff5722' },
 ];
 
 const AnnotationTools: React.FC<AnnotationToolsProps> = ({
@@ -105,7 +105,7 @@ const AnnotationTools: React.FC<AnnotationToolsProps> = ({
 }) => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notes, setNotes] = useState(selectedAnnotation?.notes || '');
-  const [selectedVRUType, setSelectedVRUType] = useState<VRUType>('pedestrian');
+  const [selectedVRUType, setSelectedVRUType] = useState<VRUType>(VRUType.PEDESTRIAN);
 
   // Update notes when selected annotation changes
   React.useEffect(() => {
@@ -114,7 +114,7 @@ const AnnotationTools: React.FC<AnnotationToolsProps> = ({
     }
   }, [selectedAnnotation]);
 
-  const handleToolSelect = useCallback((tool: AnnotationTool) => {
+  const handleToolSelect = useCallback((tool: AnnotationToolDefinition) => {
     onToolSelect?.(tool);
   }, [onToolSelect]);
 

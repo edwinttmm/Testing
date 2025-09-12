@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .video-container { margin: 20px 0; padding: 20px; border: 1px solid #ccc; }
+        .status { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .error { background: #ffe6e6; color: #d00; }
+        .success { background: #e6ffe6; color: #060; }
+        video { max-width: 100%; height: auto; }
+        .test-info { margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Video Format & Playback Debug Test</h1>
+    
+    <div class="test-info">
+        <h3>Browser Support Check</h3>
+        <div id="codec-support"></div>
+    </div>
+
+    <!-- Test 1: Backend MP4 Video -->
+    <div class="video-container">
+        <h3>Test 1: Backend MP4 Video (ae8e974b-0533-4cab-959a-493793e00328.mp4)</h3>
+        <div class="status" id="status1">Testing...</div>
+        <video id="video1" controls preload="metadata" style="width: 400px;">
+            <source src="http://localhost:8000/uploads/ae8e974b-0533-4cab-959a-493793e00328.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+
+    <!-- Test 2: Second Backend Video -->
+    <div class="video-container">
+        <h3>Test 2: Backend MP4 Video (child-1-1-1.mp4)</h3>
+        <div class="status" id="status2">Testing...</div>
+        <video id="video2" controls preload="metadata" style="width: 400px;">
+            <source src="http://localhost:8000/uploads/child-1-1-1.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </source>
+        </video>
+    </div>
+
+    <!-- Test 3: Known Working Video for Comparison -->
+    <div class="video-container">
+        <h3>Test 3: Public Working Video (for comparison)</h3>
+        <div class="status" id="status3">Testing...</div>
+        <video id="video3" controls preload="metadata" style="width: 400px;">
+            <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+
+    <!-- Test 4: Direct File URL Test -->
+    <div class="video-container">
+        <h3>Test 4: Direct URL Test</h3>
+        <div id="url-test-results"></div>
+        <button onclick="testDirectUrls()">Test Direct URLs</button>
+    </div>
+
+    <script>
+        // Test codec support
+        function testCodecSupport() {
+            const video = document.createElement('video');
+            const codecs = [
+                'video/mp4; codecs="avc1.42E01E"',  // H.264 Baseline
+                'video/mp4; codecs="avc1.4D401E"',  // H.264 Main
+                'video/mp4; codecs="avc1.64001E"',  // H.264 High
+                'video/webm; codecs="vp8"',         // VP8
+                'video/webm; codecs="vp9"',         // VP9
+                'video/ogg; codecs="theora"'        // Theora
+            ];
+
+            const supportDiv = document.getElementById('codec-support');
+            let html = '<ul>';
+            
+            codecs.forEach(codec => {
+                const support = video.canPlayType(codec);
+                const status = support === 'probably' ? '✅ Full' : 
+                              support === 'maybe' ? '⚠️ Partial' : '❌ None';
+                html += `<li><strong>${codec}</strong>: ${status} (${support})</li>`;
+            });
+            
+            html += '</ul>';
+            supportDiv.innerHTML = html;
+        }
+
+        // Test video events
+        function setupVideoTest(videoId, statusId) {
+            const video = document.getElementById(videoId);
+            const status = document.getElementById(statusId);
+            
+            let events = [];
+
+            video.addEventListener('loadstart', () => {
+                events.push('🔄 Load started');
+                updateStatus(status, events, 'info');
+            });
+
+            video.addEventListener('loadedmetadata', () => {
+                events.push(`✅ Metadata loaded - Duration: ${video.duration}s, ${video.videoWidth}x${video.videoHeight}`);
+                updateStatus(status, events, 'success');
+            });
+
+            video.addEventListener('loadeddata', () => {
+                events.push('✅ First frame loaded');
+                updateStatus(status, events, 'success');
+            });
+
+            video.addEventListener('canplay', () => {
+                events.push('✅ Can start playing');
+                updateStatus(status, events, 'success');
+            });
+
+            video.addEventListener('canplaythrough', () => {
+                events.push('✅ Can play through without buffering');
+                updateStatus(status, events, 'success');
+            });
+
+            video.addEventListener('error', (e) => {
+                const error = video.error;
+                let errorMsg = '❌ Error: ';
+                switch(error.code) {
+                    case error.MEDIA_ERR_ABORTED:
+                        errorMsg += 'Playback aborted';
+                        break;
+                    case error.MEDIA_ERR_NETWORK:
+                        errorMsg += 'Network error';
+                        break;
+                    case error.MEDIA_ERR_DECODE:
+                        errorMsg += 'Decode error (unsupported format/codec)';
+                        break;
+                    case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                        errorMsg += 'Source not supported';
+                        break;
+                    default:
+                        errorMsg += 'Unknown error';
+                        break;
+                }
+                events.push(errorMsg);
+                updateStatus(status, events, 'error');
+            });
+
+            video.addEventListener('stalled', () => {
+                events.push('⚠️ Download stalled');
+                updateStatus(status, events, 'info');
+            });
+
+            video.addEventListener('waiting', () => {
+                events.push('⚠️ Waiting for data');
+                updateStatus(status, events, 'info');
+            });
+        }
+
+        function updateStatus(statusElement, events, type) {
+            statusElement.innerHTML = events.join('<br>');
+            statusElement.className = `status ${type}`;
+        }
+
+        // Test direct URLs
+        async function testDirectUrls() {
+            const urls = [
+                'http://localhost:8000/uploads/ae8e974b-0533-4cab-959a-493793e00328.mp4',
+                'http://localhost:8000/uploads/child-1-1-1.mp4'
+            ];
+
+            const resultsDiv = document.getElementById('url-test-results');
+            let html = '<h4>URL Accessibility Test:</h4><ul>';
+
+            for (const url of urls) {
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    const contentType = response.headers.get('content-type');
+                    const contentLength = response.headers.get('content-length');
+                    const acceptRanges = response.headers.get('accept-ranges');
+                    
+                    html += `<li><strong>${url}</strong><br>`;
+                    html += `Status: ${response.status} ${response.statusText}<br>`;
+                    html += `Content-Type: ${contentType}<br>`;
+                    html += `Content-Length: ${contentLength} bytes<br>`;
+                    html += `Accept-Ranges: ${acceptRanges}<br>`;
+                    html += `✅ Accessible</li>`;
+                } catch (error) {
+                    html += `<li><strong>${url}</strong><br>❌ Error: ${error.message}</li>`;
+                }
+            }
+
+            html += '</ul>';
+            resultsDiv.innerHTML = html;
+        }
+
+        // Initialize tests
+        document.addEventListener('DOMContentLoaded', () => {
+            testCodecSupport();
+            setupVideoTest('video1', 'status1');
+            setupVideoTest('video2', 'status2');
+            setupVideoTest('video3', 'status3');
+            
+            // Auto-test URLs after a short delay
+            setTimeout(testDirectUrls, 1000);
+        });
+    </script>
+</body>
+</html>

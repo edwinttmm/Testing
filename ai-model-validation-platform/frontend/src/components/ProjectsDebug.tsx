@@ -14,8 +14,9 @@ const ProjectsDebug: React.FC = () => {
     try {
       const health = await healthCheck();
       setApiHealth(health.status);
-    } catch (error: any) {
-      setApiHealth(`Error: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setApiHealth(`Error: ${errorMessage}`);
     }
   };
 
@@ -25,8 +26,9 @@ const ProjectsDebug: React.FC = () => {
       setError(null);
       const projectsData = await getProjects();
       setProjects(projectsData);
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

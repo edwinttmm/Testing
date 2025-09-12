@@ -1,0 +1,114 @@
+{
+  "timestamp": "2025-08-27T22:40:04.101921",
+  "browser_tests": {},
+  "form_interactions": {
+    "invalid_project_form": {
+      "status_code": 503,
+      "validates_required_fields": false,
+      "response_time": 0.073977
+    },
+    "valid_project_form": {
+      "status_code": 503,
+      "form_accepted": false,
+      "response_time": 0.022573,
+      "response_has_id": false
+    },
+    "video_upload": {
+      "status_code": 405,
+      "upload_accepted": false,
+      "response_time": 0.00294,
+      "file_size_bytes": 3600,
+      "multipart_supported": true
+    }
+  },
+  "ui_components": {
+    "homepage": {
+      "html_length": 1826,
+      "has_react_root": true,
+      "has_title": true,
+      "has_meta_viewport": true,
+      "has_manifest": true,
+      "has_favicon": true,
+      "responsive_design": true
+    },
+    "react_integration": {
+      "react_indicators_found": 1,
+      "total_indicators": 4,
+      "react_app_detected": false,
+      "build_artifacts_present": true
+    },
+    "error_handling": {
+      "Non-existent project": {
+        "status_code": 503,
+        "handles_gracefully": false,
+        "response_time": 0.020493,
+        "has_error_message": true
+      },
+      "Invalid JSON": {
+        "status_code": 422,
+        "handles_gracefully": true,
+        "response_time": 0.002527,
+        "has_error_message": true
+      },
+      "Unauthorized access": {
+        "status_code": 404,
+        "handles_gracefully": true,
+        "response_time": 0.002604,
+        "has_error_message": true
+      },
+      "Large file upload": {
+        "status_code": 405,
+        "handles_gracefully": false,
+        "response_time": 0.007616,
+        "has_error_message": true
+      }
+    }
+  },
+  "user_workflows": {
+    "complete_workflow": {
+      "steps": {
+        "step1_create_project": {
+          "success": false,
+          "status_code": 503,
+          "response_time": 0.024653
+        }
+      },
+      "successful_steps": 0,
+      "total_steps": 1,
+      "success_rate": "0.0%",
+      "workflow_functional": false
+    }
+  },
+  "console_errors": [],
+  "screenshots_taken": [],
+  "accessibility_tests": {
+    "checks": {
+      "has_lang_attribute": true,
+      "has_meta_viewport": true,
+      "has_title": true,
+      "has_headings": false,
+      "has_alt_attributes": false,
+      "has_semantic_elements": false,
+      "has_aria_labels": false,
+      "has_skip_links": false,
+      "color_contrast_comments": false
+    },
+    "score": 3,
+    "total_checks": 9,
+    "accessibility_percentage": "33.3%",
+    "meets_basic_standards": false
+  },
+  "overall_status": "COMPLETED",
+  "summary": {
+    "total_tests": 20,
+    "successful_tests": 9,
+    "success_rate": "45.0%",
+    "overall_status": "FAILED",
+    "test_categories": {
+      "ui_components": 3,
+      "form_interactions": 3,
+      "user_workflows": 1,
+      "accessibility_tests": 1
+    }
+  }
+}

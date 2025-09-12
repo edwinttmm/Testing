@@ -59,7 +59,7 @@ describe('WebSocket Service Contracts - London School TDD', () => {
       
       // Verify connection contract
       expect(mockIo).toHaveBeenCalledWith(
-        'http://155.138.239.131:8001',
+        'http://localhost:8001',
         expect.objectContaining({
           auth: { token },
           transports: expect.arrayContaining(['websocket', 'polling']),

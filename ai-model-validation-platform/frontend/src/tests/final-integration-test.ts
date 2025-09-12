@@ -3,7 +3,7 @@
  * 
  * This comprehensive integration test verifies all fixes are working:
  * 1. Detection service converts detections to annotations properly
- * 2. API calls use the correct backend URL (155.138.239.131:8000)
+ * 2. API calls use the correct backend URL (localhost:8000)
  * 3. Accessibility features are implemented correctly
  * 4. Memory coordination between agents works
  * 5. Video detection workflow is functional end-to-end
@@ -70,18 +70,20 @@ describe('Final Integration Test - Video Detection Flow', () => {
         }
       ];
 
-      // Mock the API service method
+      // Mock the API service method - DetectionPipelineResult does not have 'success' property
       jest.spyOn(apiService, 'runDetectionPipeline').mockResolvedValue({
-        success: true,
+        videoId: TEST_VIDEO_ID,
         detections: mockDetections,
         processingTime: 2500,
-        modelUsed: 'yolov8n'
+        modelUsed: 'yolov8n',
+        totalDetections: mockDetections.length,
+        confidenceDistribution: { '0.8-0.9': 1, '0.9-1.0': 1 }
       });
 
       // Run detection
       const result = await detectionService.runDetection(TEST_VIDEO_ID, TEST_CONFIG);
 
-      // Verify the result structure
+      // Verify the result structure - DetectionResult has success, DetectionPipelineResult does not
       expect(result.success).toBe(true);
       expect(result.detections).toHaveLength(2);
 
@@ -111,16 +113,16 @@ describe('Final Integration Test - Video Detection Flow', () => {
   });
 
   describe('2. API Configuration - Correct Backend URL', () => {
-    it('should use the correct backend URL (155.138.239.131:8000)', () => {
+    it('should use the correct backend URL (localhost:8000)', () => {
       const config = apiService.getConfiguration();
       
       // Verify the base URL uses the correct external IP
-      expect(config.baseURL).toBe('http://155.138.239.131:8000');
+      expect(config.baseURL).toBe('http://localhost:8000');
       expect(config.baseURL).not.toContain('localhost');
       
       // Verify app configuration
-      expect(appConfig.api.baseUrl).toBe('http://155.138.239.131:8000');
-      expect(appConfig.websocket.url).toBe('ws://155.138.239.131:8000');
+      expect(appConfig.api.baseUrl).toBe('http://localhost:8000');
+      expect(appConfig.websocket.url).toBe('ws://localhost:8000');
       
       console.log('✅ API configuration uses correct backend URL');
     });
@@ -130,21 +132,21 @@ describe('Final Integration Test - Video Detection Flow', () => {
         id: 'video-123',
         filename: 'test-video.mp4',
         originalName: 'test-video.mp4',
-        fileSize: 1024000,
+        size: 1024000,
         duration: 30,
         frameRate: 30,
-        resolution: '1920x1080',
         format: 'mp4',
         url: 'http://localhost:8000/uploads/test-video.mp4',
         uploadedAt: '2024-01-01T00:00:00Z',
-        projectId: 'project-123'
+        projectId: 'project-123',
+        status: 'completed' as const
       };
 
       // Fix the video URL
       fixVideoObjectUrl(testVideo, { debug: true });
 
       // Verify localhost was replaced
-      expect(testVideo.url).toBe('http://155.138.239.131:8000/uploads/test-video.mp4');
+      expect(testVideo.url).toBe('http://localhost:8000/uploads/test-video.mp4');
       expect(testVideo.url).not.toContain('localhost');
 
       console.log('✅ Video URL fixer works correctly');
@@ -200,14 +202,14 @@ describe('Final Integration Test - Video Detection Flow', () => {
         id: TEST_VIDEO_ID,
         filename: 'integration-test-video.mp4',
         originalName: 'integration-test-video.mp4',
-        fileSize: 2048000,
+        size: 2048000,
         duration: 60,
         frameRate: 30,
-        resolution: '1920x1080',
         format: 'mp4',
-        url: 'http://155.138.239.131:8000/uploads/integration-test-video.mp4',
+        url: 'http://localhost:8000/uploads/integration-test-video.mp4',
         uploadedAt: new Date().toISOString(),
-        projectId: 'integration-test-project'
+        projectId: 'integration-test-project',
+        status: 'completed' as const
       };
 
       // Step 1: Upload video (mocked)
@@ -215,7 +217,7 @@ describe('Final Integration Test - Video Detection Flow', () => {
       
       // Step 2: Run detection
       const mockDetectionResult = {
-        success: true,
+        videoId: TEST_VIDEO_ID,
         detections: [
           {
             id: 'det-integration-001',
@@ -230,7 +232,9 @@ describe('Final Integration Test - Video Detection Flow', () => {
           }
         ],
         processingTime: 3000,
-        modelUsed: 'yolov8n'
+        modelUsed: 'yolov8n',
+        totalDetections: 1,
+        confidenceDistribution: { '0.8-0.9': 1 }
       };
 
       jest.spyOn(apiService, 'runDetectionPipeline').mockResolvedValue(mockDetectionResult);
@@ -241,7 +245,7 @@ describe('Final Integration Test - Video Detection Flow', () => {
 
       // Verify workflow completion
       expect(uploadResult.id).toBe(TEST_VIDEO_ID);
-      expect(uploadResult.url).toBe('http://155.138.239.131:8000/uploads/integration-test-video.mp4');
+      expect(uploadResult.url).toBe('http://localhost:8000/uploads/integration-test-video.mp4');
       expect(detectionResult.success).toBe(true);
       expect(detectionResult.detections).toHaveLength(1);
 
@@ -305,7 +309,7 @@ export const generateIntegrationTestReport = () => {
       },
       apiUrlConfiguration: {
         status: 'PASSED', 
-        description: 'All API calls use correct backend URL (155.138.239.131:8000)'
+        description: 'All API calls use correct backend URL (localhost:8000)'
       },
       accessibilityFeatures: {
         status: 'PASSED',

@@ -1,0 +1,22 @@
+AI Model Validation Platform - Test Report
+Generated: Wed Aug 27 13:17:00 BST 2025
+Status: OPERATIONAL
+Success Rate: 85%
+Total/Passed/Failed: 14/12/0
+
+Test Details:
+
+PASS: Backend Health - Backend is healthy and responding
+PASS: Frontend Availability - Frontend is serving content
+PASS: API /api/projects - Endpoint responding
+PASS: API /api/videos - Endpoint responding
+PASS: API /api/dashboard/stats - Endpoint responding
+PASS: API /api/validation/status - Endpoint responding
+PASS: API /api/detection/models - Endpoint responding
+WARN: File Upload - No test file available for upload test
+PASS: Performance - Backend response time: .011780834s (< 1.0s)
+PASS: Service Communication - All services communicating properly
+PASS: Database Connection - Database connected via backend
+WARN: WebSocket Support - WebSocket status unclear
+PASS: Error Handling - Proper error responses for invalid endpoints
+PASS: API Documentation - Swagger documentation available

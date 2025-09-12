@@ -6,6 +6,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import EnhancedTestExecution from '../pages/EnhancedTestExecution';
 import VideoAnnotationPlayer from '../components/VideoAnnotationPlayer';
 import SequentialVideoManager from '../components/SequentialVideoManager';
+import { VideoFile } from '../services/types';
 
 // Mock API service
 jest.mock('../services/api', () => ({
@@ -18,13 +19,24 @@ jest.mock('../services/api', () => ({
 }));
 
 // Mock WebSocket
-global.WebSocket = jest.fn().mockImplementation(() => ({
-  readyState: 1,
-  send: jest.fn(),
-  close: jest.fn(),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-}));
+class MockWebSocket {
+  static readonly CLOSED = 3;
+  static readonly CLOSING = 2;
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  
+  readyState = 1;
+  send = jest.fn();
+  close = jest.fn();
+  addEventListener = jest.fn();
+  removeEventListener = jest.fn();
+  
+  constructor(url: string, protocols?: string | string[]) {
+    // Mock constructor
+  }
+}
+
+(global as any).WebSocket = MockWebSocket;
 
 const theme = createTheme();
 
@@ -59,27 +71,60 @@ const mockProjects = [
 const mockVideos = [
   {
     id: 'video1',
+    projectId: '1',
     filename: 'test_video_1.mp4',
+    originalName: 'test_video_1.mp4',
     name: 'Test Video 1',
+    size: 1024000,
     url: 'http://155.138.239.131:8001/uploads/test_video_1.mp4',
     duration: 30,
-    status: 'processed'
+    fps: 30,
+    resolution: '1920x1080',
+    status: 'completed' as const,
+    processingStatus: 'completed' as const,
+    groundTruthGenerated: true,
+    detectionCount: 0,
+    uploadedAt: '2023-12-01T10:00:00Z',
+    createdAt: '2023-12-01T10:00:00Z',
+    updatedAt: '2023-12-01T10:00:00Z'
   },
   {
     id: 'video2',
+    projectId: '1',
     filename: 'test_video_2.mp4',
+    originalName: 'test_video_2.mp4',
     name: 'Test Video 2',
+    size: 2048000,
     url: 'http://155.138.239.131:8001/uploads/test_video_2.mp4',
     duration: 45,
-    status: 'processed'
+    fps: 30,
+    resolution: '1920x1080',
+    status: 'completed' as const,
+    processingStatus: 'completed' as const,
+    groundTruthGenerated: true,
+    detectionCount: 0,
+    uploadedAt: '2023-12-01T11:00:00Z',
+    createdAt: '2023-12-01T11:00:00Z',
+    updatedAt: '2023-12-01T11:00:00Z'
   },
   {
     id: 'video3',
+    projectId: '1',
     filename: 'test_video_3.mp4',
+    originalName: 'test_video_3.mp4',
     name: 'Test Video 3',
+    size: 3072000,
     url: 'http://155.138.239.131:8001/uploads/test_video_3.mp4',
     duration: 60,
-    status: 'processed'
+    fps: 30,
+    resolution: '1920x1080',
+    status: 'completed' as const,
+    processingStatus: 'completed' as const,
+    groundTruthGenerated: true,
+    detectionCount: 0,
+    uploadedAt: '2023-12-01T12:00:00Z',
+    createdAt: '2023-12-01T12:00:00Z',
+    updatedAt: '2023-12-01T12:00:00Z'
   }
 ];
 
@@ -127,7 +172,6 @@ describe('Enhanced Test Execution Integration Tests', () => {
   });
 
   test('project selection and configuration flow', async () => {
-    const user = userEvent.setup();
     
     render(
       <TestWrapper>
@@ -142,14 +186,13 @@ describe('Enhanced Test Execution Integration Tests', () => {
 
     // Change project selection
     const projectSelect = screen.getByLabelText('Project');
-    await user.click(projectSelect);
+    await userEvent.click(projectSelect);
     
     // Should show project options
     expect(screen.getByText('Test Project 2')).toBeInTheDocument();
   });
 
   test('latency configuration', async () => {
-    const user = userEvent.setup();
     
     render(
       <TestWrapper>
@@ -161,8 +204,8 @@ describe('Enhanced Test Execution Integration Tests', () => {
     expect(latencyInput).toHaveValue(100); // Default value
 
     // Change latency
-    await user.clear(latencyInput);
-    await user.type(latencyInput, '250');
+    await userEvent.clear(latencyInput);
+    await userEvent.type(latencyInput, '250');
     
     expect(latencyInput).toHaveValue(250);
   });
@@ -188,8 +231,7 @@ describe('Enhanced Test Execution Integration Tests', () => {
     });
   });
 
-  test('test configuration dialog', async () => {
-    const user = userEvent.setup();
+  test('configuration dialog', async () => {
     
     render(
       <TestWrapper>
@@ -199,7 +241,7 @@ describe('Enhanced Test Execution Integration Tests', () => {
 
     // Open test config dialog
     const configButton = screen.getByText('Test Config');
-    await user.click(configButton);
+    await userEvent.click(configButton);
 
     // Check dialog opens
     expect(screen.getByText('Test Configuration')).toBeInTheDocument();
@@ -216,13 +258,12 @@ describe('Enhanced Test Execution Integration Tests', () => {
 
     // Close dialog
     const cancelButton = screen.getByText('Cancel');
-    await user.click(cancelButton);
+    await userEvent.click(cancelButton);
     
     expect(screen.queryByText('Test Configuration')).not.toBeInTheDocument();
   });
 
   test('sequential playback state management', async () => {
-    const user = userEvent.setup();
     
     render(
       <TestWrapper>
@@ -244,10 +285,21 @@ describe('VideoAnnotationPlayer Enhanced Features', () => {
   const mockVideo = {
     id: 'test-video',
     filename: 'test.mp4',
+    originalName: 'test.mp4',
     name: 'Test Video',
+    projectId: 'test-project-id',
+    size: 1000,
     url: 'http://155.138.239.131:8001/uploads/test.mp4',
     duration: 30,
-    status: 'processed'
+    fps: 30,
+    resolution: '1920x1080',
+    status: 'completed' as const,
+    processingStatus: 'completed' as const,
+    groundTruthGenerated: false,
+    detectionCount: 0,
+    uploadedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   test('renders with fullscreen capability', () => {
@@ -333,18 +385,40 @@ describe('SequentialVideoManager Features', () => {
     {
       id: 'video1',
       filename: 'test1.mp4',
+      originalName: 'test1.mp4',
       name: 'Test Video 1',
+      projectId: 'project-1',
+      size: 1024000,
       url: 'http://155.138.239.131:8001/uploads/test1.mp4',
       duration: 30,
-      status: 'processed'
+      fps: 30,
+      resolution: '1920x1080',
+      status: 'completed' as const,
+      processingStatus: 'completed' as const,
+      groundTruthGenerated: false,
+      detectionCount: 0,
+      uploadedAt: '2023-12-01T10:00:00Z',
+      createdAt: '2023-12-01T10:00:00Z',
+      updatedAt: '2023-12-01T10:00:00Z'
     },
     {
       id: 'video2',
       filename: 'test2.mp4',
+      originalName: 'test2.mp4',
       name: 'Test Video 2',
+      projectId: 'project-1',
+      size: 2048000,
       url: 'http://155.138.239.131:8001/uploads/test2.mp4',
       duration: 45,
-      status: 'processed'
+      fps: 30,
+      resolution: '1920x1080',
+      status: 'completed' as const,
+      processingStatus: 'completed' as const,
+      groundTruthGenerated: false,
+      detectionCount: 0,
+      uploadedAt: '2023-12-01T10:00:00Z',
+      createdAt: '2023-12-01T10:00:00Z',
+      updatedAt: '2023-12-01T10:00:00Z'
     }
   ];
 
@@ -352,7 +426,7 @@ describe('SequentialVideoManager Features', () => {
     render(
       <TestWrapper>
         <SequentialVideoManager
-          videos={mockVideos}
+          videos={mockVideos as VideoFile[]}
           autoAdvance={true}
           loopPlayback={false}
         />
@@ -373,7 +447,6 @@ describe('SequentialVideoManager Features', () => {
 
   test('navigation between videos', async () => {
     const mockVideoChange = jest.fn();
-    const user = userEvent.setup();
     
     render(
       <TestWrapper>
@@ -387,7 +460,7 @@ describe('SequentialVideoManager Features', () => {
 
     // Click next button
     const nextButton = screen.getByRole('button', { name: /next video/i });
-    await user.click(nextButton);
+    await userEvent.click(nextButton);
 
     // Should call onVideoChange with next video
     expect(mockVideoChange).toHaveBeenCalledWith(mockVideos[1], 1);
@@ -409,7 +482,6 @@ describe('SequentialVideoManager Features', () => {
   });
 
   test('view mode switching', async () => {
-    const user = userEvent.setup();
     
     render(
       <TestWrapper>
@@ -422,7 +494,7 @@ describe('SequentialVideoManager Features', () => {
 
     // Switch to list view
     const listViewButton = screen.getByRole('button', { name: /show video list/i });
-    await user.click(listViewButton);
+    await userEvent.click(listViewButton);
 
     // Should show video list
     expect(screen.getByText('Video Sequence (2 videos)')).toBeInTheDocument();
@@ -433,7 +505,6 @@ describe('SequentialVideoManager Features', () => {
 
 describe('Integration Test: Full Enhanced Workflow', () => {
   test('complete sequential playback workflow', async () => {
-    const user = userEvent.setup();
     
     // Mock the full API flow
     const { apiService } = require('../services/api');
@@ -456,20 +527,20 @@ describe('Integration Test: Full Enhanced Workflow', () => {
 
     // Configure latency
     const latencyInput = screen.getByLabelText('Latency (ms)');
-    await user.clear(latencyInput);
-    await user.type(latencyInput, '500');
+    await userEvent.clear(latencyInput);
+    await userEvent.type(latencyInput, '500');
 
     // Open test configuration
     const configButton = screen.getByText('Test Config');
-    await user.click(configButton);
+    await userEvent.click(configButton);
 
     // Enable external sync
     const syncSwitch = screen.getByRole('checkbox', { name: /sync external signals/i });
-    await user.click(syncSwitch);
+    await userEvent.click(syncSwitch);
 
     // Save configuration
     const saveButton = screen.getByText('Save Configuration');
-    await user.click(saveButton);
+    await userEvent.click(saveButton);
 
     // Note: Video selection and start sequential would require more complex mocking
     // of the VideoSelectionDialog and WebSocket connections
@@ -501,11 +572,22 @@ describe('Enhanced Test Execution Performance', () => {
   test('handles large video lists efficiently', () => {
     const largeVideoList = Array.from({ length: 100 }, (_, i) => ({
       id: `video${i}`,
+      projectId: '1',
       filename: `test_video_${i}.mp4`,
+      originalName: `test_video_${i}.mp4`,
       name: `Test Video ${i}`,
+      size: 1024000 + i * 100000,
       url: `http://155.138.239.131:8001/uploads/test_video_${i}.mp4`,
       duration: 30 + i,
-      status: 'processed'
+      fps: 30,
+      resolution: '1920x1080',
+      status: 'completed' as const,
+      processingStatus: 'completed' as const,
+      groundTruthGenerated: true,
+      detectionCount: 0,
+      uploadedAt: '2023-12-01T10:00:00Z',
+      createdAt: '2023-12-01T10:00:00Z',
+      updatedAt: '2023-12-01T10:00:00Z'
     }));
 
     const startTime = performance.now();

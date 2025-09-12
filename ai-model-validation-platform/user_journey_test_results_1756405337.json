@@ -1,0 +1,247 @@
+{
+  "success": true,
+  "timestamp": "2025-08-28T19:22:15.482603",
+  "duration_seconds": 1.83286,
+  "prerequisites": {
+    "frontend_available": true,
+    "backend_available": true,
+    "backend_healthy": false,
+    "api_responsive": true
+  },
+  "summary": {
+    "successful_journeys": 2,
+    "total_journeys": 3,
+    "journey_success_rate": 66.66666666666666,
+    "total_steps_completed": 14,
+    "total_steps": 19,
+    "step_completion_rate": 73.68421052631578
+  },
+  "journey_results": [
+    {
+      "journey_name": "new_user_onboarding",
+      "steps_completed": 4,
+      "total_steps": 6,
+      "success": true,
+      "step_results": [
+        {
+          "step": "application_access",
+          "success": true,
+          "details": {
+            "status_code": 200,
+            "response_size": 1826
+          },
+          "error": null
+        },
+        {
+          "step": "dashboard_view",
+          "success": true,
+          "details": {
+            "status_code": 200,
+            "stats_loaded": true,
+            "project_count": 2,
+            "video_count": 0
+          },
+          "error": null
+        },
+        {
+          "step": "projects_navigation",
+          "success": true,
+          "details": {
+            "status_code": 200,
+            "projects_loaded": true,
+            "project_count": 2
+          },
+          "error": null
+        },
+        {
+          "step": "project_creation",
+          "success": false,
+          "details": {
+            "status_code": 500
+          },
+          "error": null
+        },
+        {
+          "step": "video_upload",
+          "success": false,
+          "details": {
+            "status_code": 500
+          },
+          "error": null
+        },
+        {
+          "step": "results_view",
+          "success": true,
+          "details": {
+            "status_code": 200,
+            "results_loaded": true,
+            "video_count": 0
+          },
+          "error": null
+        }
+      ],
+      "issues_found": [
+        "Project creation failed",
+        "Video upload failed"
+      ],
+      "duration": 0.5709350109100342
+    },
+    {
+      "journey_name": "power_user_workflow",
+      "steps_completed": 8,
+      "total_steps": 8,
+      "success": true,
+      "step_results": [
+        {
+          "step": "batch_project_creation",
+          "success": true,
+          "details": {
+            "projects_created": 3,
+            "attempted": 3
+          },
+          "error": null
+        },
+        {
+          "step": "bulk_video_operations",
+          "success": true,
+          "details": {
+            "status_code": 200,
+            "video_count": 0,
+            "bulk_operations_available": true
+          },
+          "error": null
+        },
+        {
+          "step": "advanced_configuration",
+          "success": true,
+          "details": {
+            "simulated": true
+          },
+          "error": null
+        },
+        {
+          "step": "ground_truth_management",
+          "success": true,
+          "details": {
+            "simulated": true
+          },
+          "error": null
+        },
+        {
+          "step": "execution_pipeline",
+          "success": true,
+          "details": {
+            "simulated": true
+          },
+          "error": null
+        },
+        {
+          "step": "results_analysis",
+          "success": true,
+          "details": {
+            "simulated": true
+          },
+          "error": null
+        },
+        {
+          "step": "data_export",
+          "success": true,
+          "details": {
+            "simulated": true
+          },
+          "error": null
+        },
+        {
+          "step": "system_maintenance",
+          "success": true,
+          "details": {
+            "simulated": true
+          },
+          "error": null
+        }
+      ],
+      "issues_found": [],
+      "duration": 0.391406774520874
+    },
+    {
+      "journey_name": "error_recovery",
+      "steps_completed": 2,
+      "total_steps": 5,
+      "success": false,
+      "step_results": [
+        {
+          "step": "invalid_file_handling",
+          "success": false,
+          "details": {
+            "status_code": 500,
+            "properly_rejected": false
+          },
+          "error": null
+        },
+        {
+          "step": "network_error_handling",
+          "success": true,
+          "details": {
+            "timeout_handled": true,
+            "duration": 0.03735852241516113
+          },
+          "error": null
+        },
+        {
+          "step": "form_validation_errors",
+          "success": false,
+          "details": {
+            "status_code": 500,
+            "validation_working": false
+          },
+          "error": null
+        },
+        {
+          "step": "resource_not_found_handling",
+          "success": false,
+          "details": {
+            "status_code": 500,
+            "not_found_handled": false
+          },
+          "error": null
+        },
+        {
+          "step": "recovery_continuation",
+          "success": true,
+          "details": {
+            "status_code": 200,
+            "system_recovered": true
+          },
+          "error": null
+        }
+      ],
+      "issues_found": [
+        "Invalid file handling failed",
+        "Form validation error handling failed",
+        "Resource not found handling failed"
+      ],
+      "duration": 0.14531660079956055
+    }
+  ],
+  "cleanup_result": {
+    "projects_deleted": 3,
+    "videos_deleted": 0,
+    "errors": []
+  },
+  "recommendations": [
+    "Strengthen error handling and recovery mechanisms",
+    "Address workflow bottlenecks - many users failing to complete processes",
+    "Add progress indicators for multi-step workflows",
+    "Implement user guidance tooltips and help system",
+    "Create user workflow analytics to identify drop-off points",
+    "Add workflow state persistence to allow resumption after errors",
+    "Implement A/B testing for critical user flows"
+  ],
+  "detailed_issues": [
+    "Video upload failed",
+    "Form validation error handling failed",
+    "Resource not found handling failed",
+    "Invalid file handling failed",
+    "Project creation failed"
+  ]
+}
