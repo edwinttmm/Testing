@@ -86,11 +86,25 @@
     
     // Security Configuration
     REACT_APP_CSP_ENABLED: (environment === 'production').toString(),
-    REACT_APP_SECURITY_HEADERS: (environment !== 'development').toString()
+    REACT_APP_SECURITY_HEADERS: (environment !== 'development').toString(),
+
+    // Optional: service token for trusted internal use; can also be provided via localStorage('api_token')
+    REACT_APP_API_TOKEN: 'st_v1_0t7C9mQ2wX5pL8rS1uV4yB7dE0gH3kN6qT9zA2fJ5mR8xC1vD4pF7sG0jK3n'
   };
   
   // Apply Runtime Configuration
   window.RUNTIME_CONFIG = config;
+
+  // If a token exists in localStorage (dev convenience), surface it via runtime config
+  try {
+    const lsToken = localStorage.getItem('api_token') || localStorage.getItem('access_token');
+    if (lsToken) {
+      window.RUNTIME_CONFIG.REACT_APP_API_TOKEN = lsToken;
+      process.env.REACT_APP_API_TOKEN = lsToken;
+    }
+  } catch (e) {
+    // ignore
+  }
   
   // Ensure process.env exists for compatibility
   if (typeof process === 'undefined') {

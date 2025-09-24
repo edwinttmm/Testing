@@ -89,7 +89,7 @@ class Project(Base):
     resolution = Column(String)
     frame_rate = Column(Integer)
     signal_type = Column(String, nullable=False)  # 'GPIO', 'Network Packet', 'Serial'
-    status = Column(String, default="Active", index=True)  # 'Active', 'Completed', 'Draft' - Index for filtering
+    status = Column(String, default="active", index=True)  # standardized lowercase values: 'active', 'completed', 'draft', etc.
     owner_id = Column(String(36), nullable=True, default="anonymous", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)  # Index for time-based queries
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -230,6 +230,19 @@ class TestSession(Base):
     calibration_timestamp = Column(Float, nullable=True)  # Timestamp of last timing calibration
     timing_validation_status = Column(String, default="pending", index=True)  # 'pending', 'passed', 'failed'
     hil_compliance_verified = Column(Boolean, default=False, index=True)  # HIL timing requirements verified
+    
+    # VIDEO TIMING SYNCHRONIZATION FIELDS FOR HIL TESTS
+    video_playback_start_time = Column(Float, nullable=True, index=True)  # Unix timestamp when video playback started
+    video_playback_start_time_ns = Column(String, nullable=True, index=True)  # Nanosecond precision video start timestamp
+    hil_timing_enabled = Column(Boolean, default=True, index=True)  # Whether HIL timing synchronization is enabled
+    video_timing_sync_status = Column(String, default="pending", index=True)  # 'pending', 'synced', 'failed'
+    
+    # T0-T1 INTEGRATION FIELDS FOR PRECISE PRESENTATION DELAY MEASUREMENT
+    command_start_timestamp = Column(Float, nullable=True, index=True)  # T0: Precise command start timestamp
+    command_start_timestamp_ns = Column(String, nullable=True, index=True)  # T0: Nanosecond precision command timestamp
+    presentation_delay_ms = Column(Float, nullable=True, index=True)  # T1-T0: Presentation delay in milliseconds
+    presentation_delay_ns = Column(String, nullable=True, index=True)  # T1-T0: Nanosecond precision delay
+    presentation_delay_quality = Column(String, nullable=True, index=True)  # 'high', 'medium', 'low'
 
     project = relationship("Project", back_populates="test_sessions")
     detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
@@ -257,7 +270,6 @@ class DetectionEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
     # ENHANCED PRECISION TIMING FIELDS - HIL VALIDATION
-    latency_ms = Column(Float, nullable=True, index=True)  # Calculated latency between signal and detection
     latency_ns = Column(String, nullable=True)  # Nanosecond precision latency (stored as string for precision)
     labjack_timestamp = Column(Float, nullable=True, index=True)  # LabJack detection timestamp
     labjack_timestamp_ns = Column(String, nullable=True)  # Nanosecond precision LabJack timestamp
@@ -276,6 +288,22 @@ class DetectionEvent(Base):
     sync_point_reference = Column(String, nullable=True)  # Reference to timing sync point
     drift_compensated = Column(Boolean, default=False)  # Whether drift compensation was applied
     timing_interpolated = Column(Boolean, default=False)  # Whether timestamp was interpolated
+    
+    # VIDEO TIMING SYNCHRONIZATION FIELDS FOR HIL GROUND TRUTH MATCHING
+    video_relative_timestamp = Column(Float, nullable=True, index=True)  # Timestamp relative to video start (seconds)
+    video_relative_timestamp_ns = Column(String, nullable=True)  # Nanosecond precision video-relative timestamp
+    actual_latency_ms = Column(Float, nullable=True, index=True)  # Actual measured latency from video start (milliseconds)
+    video_frame_number = Column(Integer, nullable=True, index=True)  # Video frame number corresponding to detection time
+    timing_sync_quality = Column(String, default="unknown", index=True)  # Quality: 'high', 'medium', 'low', 'unknown'
+    
+    # T3 YOLO DETECTION TIMING FIELDS - Phase 2 Implementation
+    t3_detection_timestamp = Column(Float, nullable=True, index=True)  # T3: Precise YOLO detection timestamp
+    t3_detection_timestamp_ns = Column(String, nullable=True, index=True)  # T3: Nanosecond precision YOLO detection timestamp
+    t3_monotonic_timestamp_ns = Column(String, nullable=True)  # T3: Monotonic clock timestamp for drift compensation
+    t3_processing_time_ms = Column(Float, nullable=True)  # T3: YOLO inference processing time
+    t3_yolo_confidence = Column(Float, nullable=True, index=True)  # T3: YOLO detection confidence score
+    t3_model_version = Column(String, nullable=True)  # T3: YOLO model version used for detection
+    t3_detection_quality = Column(String, default="unknown", index=True)  # T3: Detection quality assessment
     
     # LEGACY AI FIELDS (deprecated but kept for backward compatibility)
     confidence = Column(Float, index=True)  # Index for confidence-based filtering (deprecated for LabJack)
@@ -329,12 +357,22 @@ class DetectionEvent(Base):
         Index('idx_detection_video_validation', 'video_id', 'validation_result'),  # FIXED: Added video validation queries
         
         # LABJACK TIMING SPECIFIC INDEXES
-        Index('idx_detection_latency_validation', 'latency_ms', 'validation_result'),  # Latency analysis
+        Index('idx_detection_latency_validation', 'actual_latency_ms', 'validation_result'),  # Latency analysis
         Index('idx_detection_labjack_timestamp', 'labjack_timestamp'),  # LabJack timing queries
-        Index('idx_detection_session_latency', 'test_session_id', 'latency_ms'),  # Session latency analysis
+        Index('idx_detection_session_latency', 'test_session_id', 'actual_latency_ms'),  # Session latency analysis
         Index('idx_detection_video_start_time', 'video_start_time'),  # Video timing reference
         Index('idx_detection_labjack_voltage', 'labjack_voltage'),  # Voltage analysis
-        Index('idx_detection_session_labjack_validation', 'test_session_id', 'validation_result', 'latency_ms'),  # Complex LabJack queries
+        Index('idx_detection_session_labjack_validation', 'test_session_id', 'validation_result', 'actual_latency_ms'),  # Complex LabJack queries
+        
+        # T3 YOLO DETECTION SPECIFIC INDEXES - Phase 2 Implementation
+        Index('idx_detection_t3_timestamp', 't3_detection_timestamp'),  # T3 YOLO detection timing queries
+        Index('idx_detection_t3_timestamp_ns', 't3_detection_timestamp_ns'),  # T3 nanosecond precision queries
+        Index('idx_detection_t3_confidence', 't3_yolo_confidence'),  # T3 YOLO confidence analysis
+        Index('idx_detection_t3_quality', 't3_detection_quality'),  # T3 detection quality filtering
+        Index('idx_detection_session_t3_timestamp', 'test_session_id', 't3_detection_timestamp'),  # Session T3 analysis
+        Index('idx_detection_t3_model_version', 't3_model_version'),  # T3 model tracking
+        Index('idx_detection_t3_processing_time', 't3_processing_time_ms'),  # T3 performance analysis
+        Index('idx_detection_t3_confidence_quality', 't3_yolo_confidence', 't3_detection_quality'),  # T3 quality metrics
         
         # LEGACY INDEXES (for backward compatibility)
         Index('idx_detection_timestamp_confidence', 'timestamp', 'confidence'),

@@ -70,5 +70,5 @@ export interface VideoPlaylistItem extends VideoFile {
 }
 
 // Re-export VideoFile from services/types if needed
-import { VideoFile } from '../services/types';
-export { VideoFile };
+import type { VideoFile } from '../services/types';
+export type { VideoFile };

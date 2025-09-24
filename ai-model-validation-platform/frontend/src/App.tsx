@@ -23,6 +23,7 @@ const AnnotationValidation = lazy(() => import('./pages/AnnotationValidation'));
 const TestExecution = lazy(() => import('./pages/TestExecution'));
 const HILTestExecutionPRD = lazy(() => import('./pages/HILTestExecutionPRD'));
 const Results = lazy(() => import('./pages/Results'));
+const HILResults = lazy(() => import('./pages/HILResults'));
 const Datasets = lazy(() => import('./pages/Datasets'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -223,6 +224,13 @@ const App: React.FC = () => {
                         <EnhancedErrorBoundary level="page" context="results" enableRecovery={true}>
                           <Suspense fallback={<LoadingFallback message="Loading Results..." />}>
                             <Results />
+                          </Suspense>
+                        </EnhancedErrorBoundary>
+                      } />
+                      <Route path="/results/:sessionId" element={
+                        <EnhancedErrorBoundary level="page" context="hil-results" enableRecovery={true}>
+                          <Suspense fallback={<LoadingFallback message="Loading HIL Results..." />}>
+                            <HILResults />
                           </Suspense>
                         </EnhancedErrorBoundary>
                       } />

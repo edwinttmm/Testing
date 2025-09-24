@@ -1045,10 +1045,10 @@ class DetectionPipeline:
                         # Create bounding box object for screenshot capture
                         bbox_data = detection_data.get('bounding_box', {})
                         bbox = BoundingBox(
-                            x=bbox_data.get('x', 0),
-                            y=bbox_data.get('y', 0),
-                            width=bbox_data.get('width', 0),
-                            height=bbox_data.get('height', 0)
+                            x=getattr(bbox_data, 'x', bbox_data.get('x', 0) if hasattr(bbox_data, 'get') else 0),
+                            y=getattr(bbox_data, 'y', bbox_data.get('y', 0) if hasattr(bbox_data, 'get') else 0),
+                            width=getattr(bbox_data, 'width', bbox_data.get('width', 0) if hasattr(bbox_data, 'get') else 0),
+                            height=getattr(bbox_data, 'height', bbox_data.get('height', 0) if hasattr(bbox_data, 'get') else 0)
                         )
                         
                         detection_id = detection_data.get('id', str(uuid.uuid4()))
@@ -1085,10 +1085,10 @@ class DetectionPipeline:
                         vru_type=detection_data.get('vru_type', detection_data.get('class_label')),
                         
                         # Bounding box coordinates
-                        bounding_box_x=bbox_data.get('x', 0),
-                        bounding_box_y=bbox_data.get('y', 0),
-                        bounding_box_width=bbox_data.get('width', 0),
-                        bounding_box_height=bbox_data.get('height', 0),
+                        bounding_box_x=getattr(bbox_data, 'x', bbox_data.get('x', 0) if hasattr(bbox_data, 'get') else 0),
+                        bounding_box_y=getattr(bbox_data, 'y', bbox_data.get('y', 0) if hasattr(bbox_data, 'get') else 0),
+                        bounding_box_width=getattr(bbox_data, 'width', bbox_data.get('width', 0) if hasattr(bbox_data, 'get') else 0),
+                        bounding_box_height=getattr(bbox_data, 'height', bbox_data.get('height', 0) if hasattr(bbox_data, 'get') else 0),
                         
                         # Visual evidence paths
                         screenshot_path=screenshot_path,

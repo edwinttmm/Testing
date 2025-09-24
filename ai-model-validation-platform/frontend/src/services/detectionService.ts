@@ -388,7 +388,10 @@ class DetectionService {
       
       // Handle backend response format with class_name and bbox array
       const className = safeGet(det, 'class_name', safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person')))) as string;
-      const bboxArray = safeGet(det, 'bbox', []) as number[];
+      // Prefer standard keys: bbox (array) or bounding_box/boundingBox (object)
+      const bboxSource = (safeGet(det, 'bbox', undefined) as unknown) ??
+                         (safeGet(det, 'bounding_box', undefined) as unknown) ??
+                         (safeGet(det, 'boundingBox', undefined) as unknown) ?? [];
       
       // Parse bbox array [x, y, width, height] or [x1, y1, x2, y2] format
       let bbox = { x: 0, y: 0, width: 100, height: 100 }; // Default fallback
@@ -396,18 +399,19 @@ class DetectionService {
       // CRITICAL DEBUG: Always log bbox data
       console.log('🚨 BBOX PARSING DEBUG:', {
         detectionIndex: index,
-        bboxArray,
-        bboxArrayType: typeof bboxArray,
-        bboxArrayIsArray: Array.isArray(bboxArray),
-        bboxArrayLength: Array.isArray(bboxArray) ? bboxArray.length : 'N/A',
+        bboxSource,
+        bboxSourceType: typeof bboxSource,
+        bboxSourceIsArray: Array.isArray(bboxSource),
+        bboxSourceIsObject: isObject(bboxSource),
+        bboxArrayLength: Array.isArray(bboxSource) ? (bboxSource as unknown[]).length : 'N/A',
         detectionObject: det,
         timestamp: new Date().toISOString()
       });
       
-      if (Array.isArray(bboxArray) && bboxArray.length >= 4) {
+      if (Array.isArray(bboxSource) && bboxSource.length >= 4) {
         // Check if bbox is in [x1, y1, x2, y2] format (coordinates) or [x, y, width, height] format
         // If x2 > x1 + width assumption, likely coordinates format
-        const [val1, val2, val3, val4] = bboxArray;
+        const [val1, val2, val3, val4] = bboxSource as number[];
         
         console.log('🚨 BBOX ARRAY VALUES:', { val1, val2, val3, val4 });
         
@@ -430,13 +434,13 @@ class DetectionService {
           };
           console.log('🚨 USED DIRECT VALUES:', bbox);
         }
-      } else if (isObject(bboxArray)) {
+      } else if (isObject(bboxSource)) {
         // Handle object format bbox
         bbox = {
-          x: Math.round(safeGet(bboxArray, 'x', 0) as number),
-          y: Math.round(safeGet(bboxArray, 'y', 0) as number),
-          width: Math.round(safeGet(bboxArray, 'width', safeGet(bboxArray, 'w', 100)) as number),
-          height: Math.round(safeGet(bboxArray, 'height', safeGet(bboxArray, 'h', 100)) as number)
+          x: Math.round(safeGet(bboxSource, 'x', 0) as number),
+          y: Math.round(safeGet(bboxSource, 'y', 0) as number),
+          width: Math.round(safeGet(bboxSource, 'width', safeGet(bboxSource, 'w', 100)) as number),
+          height: Math.round(safeGet(bboxSource, 'height', safeGet(bboxSource, 'h', 100)) as number)
         };
         console.log('🚨 PARSED FROM OBJECT:', bbox);
       } else {
@@ -451,7 +455,7 @@ class DetectionService {
       }
       
       // Debug bounding box conversion
-      debugBoundingBoxConversion(bboxArray, bbox, 'detection_to_annotation');
+      debugBoundingBoxConversion(bboxSource as unknown, bbox, 'detection_to_annotation');
       
       // Ensure bbox values are valid numbers
       bbox.x = isNaN(bbox.x) ? 0 : Math.max(0, bbox.x);

@@ -1,0 +1,38 @@
+{
+  "test_results": {
+    "endpoint_exists": {
+      "passed": false,
+      "status_code": 499,
+      "response_time_ms": 12.575,
+      "content_length": 32
+    },
+    "ground_truth_comparison": {
+      "passed": false,
+      "error": "HTTP 499"
+    },
+    "gt_events_count": {
+      "passed": false,
+      "error": "HTTP 499"
+    },
+    "timing_synchronization": {
+      "passed": false,
+      "error": "HTTP 499"
+    },
+    "detection_events_timing": {
+      "passed": false,
+      "error": "HTTP 499"
+    },
+    "video_timing": {
+      "passed": false,
+      "error": "HTTP 499"
+    }
+  },
+  "summary": {
+    "total_tests": 6,
+    "passed_tests": 0,
+    "pass_rate": 0.0,
+    "overall_result": "FAIL"
+  },
+  "critical_fix_validated": false,
+  "timestamp": "2025-09-23T14:48:38.461870"
+}

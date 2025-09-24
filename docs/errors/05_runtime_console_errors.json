@@ -1,0 +1,247 @@
+{
+  "timestamp": "2025-09-14T19:35:00.000Z",
+  "analysisType": "runtime_console_errors",
+  "platform": "ADAS Camera HIL Testing Platform",
+  "applications": {
+    "frontend": {
+      "status": "running",
+      "port": 3000,
+      "technology": "React + CRACO",
+      "buildMode": "development"
+    },
+    "backend": {
+      "status": "running", 
+      "port": 8000,
+      "technology": "FastAPI + Python",
+      "environment": "development"
+    }
+  },
+  "summary": {
+    "totalErrors": 18,
+    "criticalErrors": 6,
+    "warnings": 12,
+    "networkFailures": 2,
+    "systemFunctional": false,
+    "overallScore": "30%"
+  },
+  "criticalErrors": [
+    {
+      "category": "hardware_integration",
+      "severity": "critical",
+      "component": "LabJack Service",
+      "error": "No LabJack support available - hardware integration impossible",
+      "impact": "HIL testing completely disabled",
+      "reproducible": true,
+      "solution": "pip install labjack-ljm"
+    },
+    {
+      "category": "ai_detection",
+      "severity": "critical", 
+      "component": "YOLO Detection Pipeline",
+      "error": "No module named 'ultralytics'. Using fallback mode",
+      "impact": "Core AI detection functionality disabled",
+      "reproducible": true,
+      "solution": "pip install ultralytics torch"
+    },
+    {
+      "category": "api_failure",
+      "severity": "critical",
+      "component": "Projects API",
+      "error": "Internal server error on /api/projects",
+      "httpStatus": 500,
+      "impact": "Cannot manage projects",
+      "reproducible": true,
+      "testCommand": "curl http://localhost:8000/api/projects"
+    },
+    {
+      "category": "import_error",
+      "severity": "critical", 
+      "component": "Timing Precision Service",
+      "error": "cannot import name 'TimingPrecision' from 'services.precision_timing_service'",
+      "impact": "Precision timing functionality broken",
+      "reproducible": true,
+      "solution": "Fix import statement or implement missing class"
+    },
+    {
+      "category": "import_error",
+      "severity": "critical",
+      "component": "LabJack Error Handler", 
+      "error": "cannot import name 'get_error_handler_service' from 'services.labjack_error_handler'",
+      "impact": "Error handling for LabJack operations broken",
+      "reproducible": true,
+      "solution": "Implement missing error handler service"
+    },
+    {
+      "category": "security",
+      "severity": "critical",
+      "component": "Application Configuration",
+      "error": "Using default secret key - change for production!",
+      "impact": "Security vulnerability in authentication",
+      "reproducible": true,
+      "solution": "Generate secure secret key"
+    }
+  ],
+  "warnings": [
+    {
+      "category": "build_system",
+      "severity": "warning",
+      "component": "ESLint Plugin",
+      "error": "Cannot find ESLint plugin (ESLintWebpackPlugin)",
+      "impact": "Code quality checks disabled"
+    },
+    {
+      "category": "deprecated_api", 
+      "severity": "warning",
+      "component": "Webpack Dev Server",
+      "error": "onAfterSetupMiddleware option is deprecated",
+      "impact": "Future compatibility issues"
+    },
+    {
+      "category": "deprecated_api",
+      "severity": "warning", 
+      "component": "FastAPI Events",
+      "error": "on_event is deprecated, use lifespan event handlers instead",
+      "impact": "Future compatibility issues"
+    },
+    {
+      "category": "missing_dependency",
+      "severity": "warning",
+      "component": "Ground Truth Service",
+      "error": "ML dependencies not available - ground truth generation disabled",
+      "impact": "Cannot generate ground truth data"
+    }
+  ],
+  "networkFailures": [
+    {
+      "url": "http://localhost:8000/api/projects",
+      "method": "GET",
+      "status": 500,
+      "statusText": "Internal Server Error",
+      "response": "{\"detail\":\"Internal server error\"}",
+      "timestamp": "2025-09-14T19:32:00.000Z",
+      "category": "api_endpoint_failure"
+    }
+  ],
+  "performanceIssues": [
+    {
+      "category": "memory_usage",
+      "component": "Node.js Frontend",
+      "issue": "Development build with max-old-space-size=2048",
+      "impact": "High memory usage",
+      "recommendation": "Use production build"
+    },
+    {
+      "category": "bundle_size",
+      "component": "Webpack Bundle", 
+      "issue": "Development build with eval-source-map",
+      "impact": "Large bundle size and slow loading",
+      "recommendation": "Enable production optimizations"
+    },
+    {
+      "category": "service_polling",
+      "component": "Windows LabJack Bridge",
+      "issue": "Continuous polling every 15-20 seconds",
+      "impact": "Unnecessary resource usage", 
+      "recommendation": "Implement event-driven communication"
+    }
+  ],
+  "workflowTests": {
+    "projectManagement": {
+      "status": "partially_functional",
+      "frontendUI": "expected_to_work",
+      "backendAPI": "failing",
+      "blockingIssues": ["API internal server errors"]
+    },
+    "videoUpload": {
+      "status": "critical_failure", 
+      "frontendUI": "expected_to_work",
+      "processingPipeline": "disabled",
+      "blockingIssues": ["Missing ML dependencies", "YOLO detection disabled"]
+    },
+    "detectionPipeline": {
+      "status": "critical_failure",
+      "aiDetection": "disabled", 
+      "fallbackMode": "available",
+      "blockingIssues": ["Missing ultralytics", "No YOLO model"]
+    },
+    "realtimeMonitoring": {
+      "status": "partially_functional",
+      "websocketServer": "initialized",
+      "clientConnection": "untested",
+      "blockingIssues": ["Hardware integration failure"]
+    },
+    "labjackIntegration": {
+      "status": "complete_failure",
+      "hardwareLibrary": "missing",
+      "serviceMock": "available",
+      "blockingIssues": ["No LabJack LJM library", "Hardware unavailable"]
+    }
+  },
+  "browserCompatibility": {
+    "tested": false,
+    "reason": "Playwright installation timeout",
+    "manualTesting": {
+      "htmlLoading": "confirmed_working",
+      "bundleLoading": "confirmed_working", 
+      "configSystem": "advanced_system_detected"
+    },
+    "expectedIssues": [
+      "Console errors from API failures",
+      "Network request timeouts",
+      "JavaScript exceptions from missing backend services"
+    ]
+  },
+  "systemHealth": {
+    "frontend": {
+      "score": 70,
+      "status": "functional_with_warnings",
+      "issues": ["Build warnings", "Deprecated dependencies"]
+    },
+    "backend": {
+      "score": 40,
+      "status": "critical_issues",
+      "issues": ["Missing dependencies", "Service failures", "Import errors"]
+    },
+    "integration": {
+      "score": 0,
+      "status": "non_functional", 
+      "issues": ["Hardware integration disabled", "AI detection disabled"]
+    },
+    "overall": {
+      "score": 30,
+      "status": "requires_immediate_attention",
+      "priority": "CRITICAL"
+    }
+  },
+  "recommendations": {
+    "immediate": [
+      "Install LabJack dependencies: pip install labjack-ljm",
+      "Install ML dependencies: pip install ultralytics torch", 
+      "Fix backend import errors",
+      "Resolve API internal server errors"
+    ],
+    "high_priority": [
+      "Configure secure secret keys",
+      "Fix ESLint plugin configuration",
+      "Update deprecated FastAPI patterns"
+    ],
+    "performance": [
+      "Enable production builds",
+      "Optimize webpack configuration", 
+      "Reduce service polling frequency"
+    ]
+  },
+  "testEvidence": {
+    "backendLogs": "captured_15_minutes",
+    "frontendConfiguration": "comprehensive_analysis_completed",
+    "apiTesting": "manual_curl_testing_completed",
+    "networkAnalysis": "http_response_analysis_completed"
+  },
+  "nextSteps": [
+    "Install missing Python dependencies",
+    "Fix import errors in backend services",
+    "Test browser functionality after fixes",
+    "Perform comprehensive UI testing with Playwright",
+    "Validate hardware integration capabilities"
+  ]
+}

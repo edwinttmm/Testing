@@ -91,12 +91,12 @@ def create_annotation_response(annotation: Annotation) -> Dict[str, Any]:
         "endTimestamp": annotation.end_timestamp,
         "vruType": annotation.vru_type,
         "boundingBox": {
-            "x": annotation.bounding_box.get("x", 0),
-            "y": annotation.bounding_box.get("y", 0),
-            "width": annotation.bounding_box.get("width", 0),
-            "height": annotation.bounding_box.get("height", 0),
-            "confidence": annotation.bounding_box.get("confidence"),
-            "label": annotation.bounding_box.get("label")
+            "x": getattr(annotation.bounding_box, 'x', annotation.bounding_box.get("x", 0) if hasattr(annotation.bounding_box, 'get') else 0),
+            "y": getattr(annotation.bounding_box, 'y', annotation.bounding_box.get("y", 0) if hasattr(annotation.bounding_box, 'get') else 0),
+            "width": getattr(annotation.bounding_box, 'width', annotation.bounding_box.get("width", 0) if hasattr(annotation.bounding_box, 'get') else 0),
+            "height": getattr(annotation.bounding_box, 'height', annotation.bounding_box.get("height", 0) if hasattr(annotation.bounding_box, 'get') else 0),
+            "confidence": getattr(annotation.bounding_box, 'confidence', annotation.bounding_box.get("confidence") if hasattr(annotation.bounding_box, 'get') else None),
+            "label": getattr(annotation.bounding_box, 'label', annotation.bounding_box.get("label") if hasattr(annotation.bounding_box, 'get') else None)
         },
         "occluded": annotation.occluded,
         "truncated": annotation.truncated,

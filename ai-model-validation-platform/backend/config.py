@@ -46,11 +46,12 @@ class Settings(BaseSettings):
     cors_origins: List[str] = [
         "http://localhost:3000",  # Frontend port
         "http://127.0.0.1:3000",  # Alternative localhost
-        "http://localhost:8001",  # Backend port
-        "http://127.0.0.1:8001"   # Alternative localhost
+        "http://localhost:8000",  # Backend port (corrected from 8001 to 8000)
+        "http://127.0.0.1:8000"   # Alternative localhost
     ]
     cors_credentials: bool = True
-    cors_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    # Include PATCH to support update endpoints (e.g., /videos/{id}/validate)
+    cors_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     cors_headers: List[str] = ["*"]
     
     # File upload settings
@@ -78,6 +79,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str = os.getenv('VRU_JWT_SECRET_KEY', os.getenv('AIVALIDATION_JWT_SECRET_KEY', os.getenv('JWT_SECRET_KEY', secret_key)))
     jwt_algorithm: str = os.getenv('AIVALIDATION_JWT_ALGORITHM', 'HS256')
     jwt_expire_minutes: int = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '30'))
+
+    # Shared service-token auth (for trusted internal use, no sign-ins)
+    service_token: Optional[str] = os.getenv('SERVICE_TOKEN')
+    service_user_id: str = os.getenv('SERVICE_USER_ID', 'system-engineer')
+    service_user_name: str = os.getenv('SERVICE_USER_NAME', 'system_engineer')
+    service_user_email: str = os.getenv('SERVICE_USER_EMAIL', 'system_engineer@local')
     
     # Security Headers
     security_headers_enabled: bool = os.getenv('AIVALIDATION_SECURITY_HEADERS_ENABLED', 'true').lower() == 'true'
@@ -190,6 +197,7 @@ def create_directories(settings: Settings) -> None:
     """Create necessary directories"""
     directories = [
         settings.upload_directory,
+        settings.screenshots_directory,
         "logs",
         "data"
     ]

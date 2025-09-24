@@ -27,7 +27,8 @@ import {
   Error,
   VideoFile as VideoIcon,
 } from '@mui/icons-material';
-import { VideoFile, VideoStatus } from '../services/types';
+import { VideoFile, VideoStatus, VideoValidationStatus } from '../services/types';
+import { convertValidationStatusToVideoStatus, isStatusEquivalent } from '../utils/videoStatusUtils';
 import { getAllVideos } from '../services/api';
 import { getErrorMessage } from '../utils/errorUtils';
 
@@ -55,7 +56,8 @@ const formatDuration = (seconds?: number): string => {
 };
 
 const getStatusIcon = (status: VideoFile['status']) => {
-  switch (status) {
+  const convertedStatus = convertValidationStatusToVideoStatus(status);
+  switch (convertedStatus) {
     case VideoStatus.VALIDATED:
       return <CheckCircle color="success" fontSize="small" />;
     case VideoStatus.PROCESSING:
@@ -68,7 +70,8 @@ const getStatusIcon = (status: VideoFile['status']) => {
 };
 
 const getStatusColor = (status: VideoFile['status']) => {
-  switch (status) {
+  const convertedStatus = convertValidationStatusToVideoStatus(status);
+  switch (convertedStatus) {
     case VideoStatus.VALIDATED:
       return 'success';
     case VideoStatus.PROCESSING:
@@ -303,7 +306,7 @@ const VideoSelectionDialog: React.FC<VideoSelectionDialogProps> = ({
                           <Typography variant="caption" component="div">
                             Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • 
                             Duration: {formatDuration(video.duration)} • 
-                            Uploaded: {new Date(video.created_at || video.createdAt || video.uploadedAt || new Date().toISOString()).toLocaleDateString()}
+                            Uploaded: {new Date(video.created_at || video.createdAt || video.uploaded_at || video.createdAt || new Date().toISOString()).toLocaleDateString()}
                           </Typography>
                           
                           <Box sx={{ mt: 0.5, display: 'flex', gap: 1 }}>

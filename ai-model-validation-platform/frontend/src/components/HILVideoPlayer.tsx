@@ -53,6 +53,7 @@ interface HILVideoPlayerProps {
   onNextVideo: () => void;
   onPreviousVideo: () => void;
   onToggleFullScreen: () => void;
+  onVideoStart?: (videoElement: HTMLVideoElement) => void;
   
   // Optional test session info
   testStartTime?: Date;
@@ -70,6 +71,7 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
   onNextVideo,
   onPreviousVideo,
   onToggleFullScreen,
+  onVideoStart,
   testStartTime,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -129,7 +131,11 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
   
   const handleVideoPlay = useCallback(() => {
     setIsPlaying(true);
-  }, []);
+    // Notify parent component that video has started for timing measurement
+    if (onVideoStart && videoRef.current) {
+      onVideoStart(videoRef.current);
+    }
+  }, [onVideoStart]);
   
   const handleVideoPause = useCallback(() => {
     setIsPlaying(false);

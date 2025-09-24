@@ -84,6 +84,15 @@ class SessionCompletionService:
                     self.logger.info(f"Session {session_id} already completed")
                     return True
                 
+                # Before marking completed, ensure LabJack monitoring is stopped
+                try:
+                    # Lazy import to avoid circulars
+                    from services.labjack_monitor_manager import stop_labjack_monitoring
+                    await stop_labjack_monitoring()
+                    self.logger.info(f"Stopped LabJack monitoring for session {session_id}")
+                except Exception as e:
+                    self.logger.warning(f"Could not stop LabJack monitoring: {e}")
+
                 # Update session to completed
                 session.status = "completed"
                 session.completed_at = datetime.now(timezone.utc)
@@ -118,6 +127,25 @@ class SessionCompletionService:
                     del self.completion_tasks[session_id]
                 
                 self.logger.info(f"Successfully completed session {session_id}")
+
+                # Optional: trigger TS compute-results if configured
+                try:
+                    import os, requests
+                    ts_url = os.getenv('TS_INGEST_URL') or os.getenv('TS_INGEST_ENDPOINT')
+                    service_token = os.getenv('SERVICE_TOKEN')
+                    tol = int(os.getenv('TS_COMPUTE_TOLERANCE_MS', '100'))
+                    thr = int(os.getenv('TS_COMPUTE_THRESHOLD_MS', '100'))
+                    if ts_url and service_token:
+                        endpoint = f"{ts_url.rstrip('/')}/labjack/compute-results/{session_id}"
+                        headers = {"X-Service-Token": service_token, "Content-Type": "application/json"}
+                        payload = {"toleranceMs": tol, "maxLatencyMs": thr}
+                        try:
+                            requests.post(endpoint, json=payload, headers=headers, timeout=2.0)
+                            self.logger.info(f"Triggered TS compute-results for session {session_id} (tol={tol}ms, thr={thr}ms)")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to trigger TS compute-results: {e}")
+                except Exception:
+                    pass
                 return True
                 
             finally:

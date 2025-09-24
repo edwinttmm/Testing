@@ -81,6 +81,23 @@ class AuthService:
     
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Verify JWT token and return payload"""
+        # 1) Accept shared service token for trusted internal usage
+        try:
+            if settings.service_token and token == settings.service_token:
+                # Minimal payload used by endpoints (id is sufficient)
+                return {
+                    "id": settings.service_user_id,
+                    "username": settings.service_user_name,
+                    "email": settings.service_user_email,
+                    "role": "engineer",
+                    "iat": None,
+                    "exp": None,
+                }
+        except Exception:
+            # Fall through to JWT path
+            pass
+
+        # 2) Standard JWT verification
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
             return payload

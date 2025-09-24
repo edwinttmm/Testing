@@ -1,0 +1,1491 @@
+{
+  "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5",
+  "validation_type": "enhanced_latency_with_timing_correction",
+  "timing_correction_summary": {
+    "video_startup_delay_ms": 17.75,
+    "average_latency_correction_ms": 4018.82,
+    "latency_improvement": {
+      "average_apparent_ms": 3604035.7885666382,
+      "average_real_ms": 3600016.968977757,
+      "improvement_ms": 4018.8195888814516,
+      "improvement_percentage": 0.11150887018465977
+    },
+    "methodology": "Corrects for video startup delay to reveal true detection latency"
+  },
+  "detection_statistics": {
+    "total_detections": 39,
+    "original_results": {
+      "average_apparent_latency_ms": 3604035.789,
+      "description": "Original latency calculations (incorrect due to video startup delay)"
+    },
+    "corrected_results": {
+      "passed_detections": 0,
+      "failed_detections": 39,
+      "pass_rate": 0.0,
+      "average_real_latency_ms": 3600016.969,
+      "median_real_latency_ms": 3600007.711,
+      "description": "Corrected latency calculations (accounts for video startup delay)"
+    }
+  },
+  "validation_quality": {
+    "detections_matching_processing_time": 0,
+    "percentage_matching_expected": 0.0,
+    "average_confidence_score": 0.2,
+    "timing_quality_distribution": {
+      "poor": 39
+    },
+    "expected_processing_time_range_ms": [
+      50,
+      100
+    ]
+  },
+  "session_info": {
+    "project_name": "Unknown Project",
+    "operator": "System",
+    "start_time": "2025-09-23T10:39:45.192155",
+    "end_time": "2025-09-23T10:39:51.665147",
+    "duration_seconds": 6.5,
+    "status": "completed"
+  },
+  "video_timing": {
+    "startup_delay_ms": 17.75,
+    "timing_sync_status": "synced",
+    "timing_accuracy_ns": 1000.0,
+    "fps": 24.0,
+    "duration": 5.041666666666667,
+    "filename": "Child_20250917_141812.mp4"
+  },
+  "hardware_status": {
+    "labjack_connected": true,
+    "model": "T7",
+    "serial_number": "Unknown",
+    "sampling_rate_hz": 1000,
+    "active_channels": [
+      "AIN0",
+      "AIN1"
+    ]
+  },
+  "detection_events": [
+    {
+      "event_id": "6e596d6f-6efe-4e97-979a-711cc8f36eed",
+      "frame_number": 0,
+      "video_relative_timestamp": 2.6314239501953125,
+      "video_frame_number": 63,
+      "detection_time": "2025-09-23T11:39:47.841330",
+      "labjack_trigger_time": "2025-09-23T11:39:47.841330",
+      "original_latency": {
+        "apparent_latency_ms": 3602649.175,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599923.091,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 2631.4,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3602649.2,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.225210189819336,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "99fddec8-55b6-4314-9878-3aa591b266ea",
+      "frame_number": 0,
+      "video_relative_timestamp": 2.710631847381592,
+      "video_frame_number": 65,
+      "detection_time": "2025-09-23T11:39:47.920538",
+      "labjack_trigger_time": "2025-09-23T11:39:47.920538",
+      "original_latency": {
+        "apparent_latency_ms": 3602728.383,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600002.299,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 2710.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3602728.4,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.273232936859131,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "e566bc22-828d-4a93-9ab7-a047d270cc4b",
+      "frame_number": 0,
+      "video_relative_timestamp": 2.836663007736206,
+      "video_frame_number": 68,
+      "detection_time": "2025-09-23T11:39:48.046569",
+      "labjack_trigger_time": "2025-09-23T11:39:48.046569",
+      "original_latency": {
+        "apparent_latency_ms": 3602854.414,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599919.996,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 2836.7,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3602854.4,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.212672233581543,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "a37a2e44-44b7-4a73-8e28-de8af262b8d9",
+      "frame_number": 0,
+      "video_relative_timestamp": 2.889901876449585,
+      "video_frame_number": 69,
+      "detection_time": "2025-09-23T11:39:48.099808",
+      "labjack_trigger_time": "2025-09-23T11:39:48.099808",
+      "original_latency": {
+        "apparent_latency_ms": 3602907.653,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599973.235,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 2889.9,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3602907.7,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.242242813110352,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "2e78a761-272f-4452-8ab9-3aceeda824ea",
+      "frame_number": 0,
+      "video_relative_timestamp": 2.9905757904052734,
+      "video_frame_number": 71,
+      "detection_time": "2025-09-23T11:39:48.200482",
+      "labjack_trigger_time": "2025-09-23T11:39:48.200482",
+      "original_latency": {
+        "apparent_latency_ms": 3603008.327,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600073.909,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 2990.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603008.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.228758811950684,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "700da042-3537-4dc1-8b0f-3a72076d4e14",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.0420539379119873,
+      "video_frame_number": 73,
+      "detection_time": "2025-09-23T11:39:48.251960",
+      "labjack_trigger_time": "2025-09-23T11:39:48.251960",
+      "original_latency": {
+        "apparent_latency_ms": 3603059.805,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599917.054,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3042.1,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603059.8,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.229862689971924,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "c8837939-a7b6-4101-a725-efdfaa367e3c",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.1040358543395996,
+      "video_frame_number": 74,
+      "detection_time": "2025-09-23T11:39:48.313942",
+      "labjack_trigger_time": "2025-09-23T11:39:48.313942",
+      "original_latency": {
+        "apparent_latency_ms": 3603121.787,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599979.036,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3104.0,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603121.8,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.224737167358398,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "96df1fef-495e-404a-bae1-98fdf083fabf",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.1760568618774414,
+      "video_frame_number": 76,
+      "detection_time": "2025-09-23T11:39:48.385963",
+      "labjack_trigger_time": "2025-09-23T11:39:48.385963",
+      "original_latency": {
+        "apparent_latency_ms": 3603193.808,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600051.057,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3176.1,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603193.8,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.252730846405029,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "c5f5be5d-5e61-4dc7-9d0d-72f4d84e3b0b",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.2320399284362793,
+      "video_frame_number": 77,
+      "detection_time": "2025-09-23T11:39:48.441946",
+      "labjack_trigger_time": "2025-09-23T11:39:48.441946",
+      "original_latency": {
+        "apparent_latency_ms": 3603249.791,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599898.707,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3232.0,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603249.8,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.224184989929199,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "69101e99-b10a-4bb5-8df2-f5d9bdf963ca",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.293813943862915,
+      "video_frame_number": 79,
+      "detection_time": "2025-09-23T11:39:48.503720",
+      "labjack_trigger_time": "2025-09-23T11:39:48.503720",
+      "original_latency": {
+        "apparent_latency_ms": 3603311.565,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599960.481,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3293.8,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603311.6,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.19705867767334,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "c972218a-e219-4e14-ad43-358bb6e30630",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.3576347827911377,
+      "video_frame_number": 80,
+      "detection_time": "2025-09-23T11:39:48.567541",
+      "labjack_trigger_time": "2025-09-23T11:39:48.567541",
+      "original_latency": {
+        "apparent_latency_ms": 3603375.386,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600024.302,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3357.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603375.4,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.259275436401367,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "ccba851c-5eaa-4aa8-8195-3d26e7282e0a",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.4097578525543213,
+      "video_frame_number": 81,
+      "detection_time": "2025-09-23T11:39:48.619664",
+      "labjack_trigger_time": "2025-09-23T11:39:48.619664",
+      "original_latency": {
+        "apparent_latency_ms": 3603427.509,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600076.425,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3409.8,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603427.5,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.286007404327393,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "dc7e8f4c-97ae-4556-a71c-3b422bf1c46a",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.533517837524414,
+      "video_frame_number": 84,
+      "detection_time": "2025-09-23T11:39:48.743424",
+      "labjack_trigger_time": "2025-09-23T11:39:48.743424",
+      "original_latency": {
+        "apparent_latency_ms": 3603551.269,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599991.851,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3533.5,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603551.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.232543468475342,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "854b7902-e3e8-4952-90e5-24f55c79aabb",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.5835678577423096,
+      "video_frame_number": 86,
+      "detection_time": "2025-09-23T11:39:48.793474",
+      "labjack_trigger_time": "2025-09-23T11:39:48.793474",
+      "original_latency": {
+        "apparent_latency_ms": 3603601.319,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600041.901,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3583.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603601.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.2102274894714355,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "16446640-1afe-4bbe-835e-61e9616318d7",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.705838918685913,
+      "video_frame_number": 88,
+      "detection_time": "2025-09-23T11:39:48.915745",
+      "labjack_trigger_time": "2025-09-23T11:39:48.915745",
+      "original_latency": {
+        "apparent_latency_ms": 3603723.59,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599955.839,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3705.8,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603723.6,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.258565902709961,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "719e99f1-f395-401a-9852-c7c3c1f9101b",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.8167128562927246,
+      "video_frame_number": 91,
+      "detection_time": "2025-09-23T11:39:49.026619",
+      "labjack_trigger_time": "2025-09-23T11:39:49.026619",
+      "original_latency": {
+        "apparent_latency_ms": 3603834.464,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600066.713,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3816.7,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603834.5,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.227102756500244,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "7022ad5e-cfbc-48be-af1a-bef630b0a0b7",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.8753859996795654,
+      "video_frame_number": 93,
+      "detection_time": "2025-09-23T11:39:49.085292",
+      "labjack_trigger_time": "2025-09-23T11:39:49.085292",
+      "original_latency": {
+        "apparent_latency_ms": 3603893.137,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599917.053,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3875.4,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603893.1,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.314316749572754,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "fc17b03c-b1fd-4dd4-80a9-8d4dfd584a9e",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.93179988861084,
+      "video_frame_number": 94,
+      "detection_time": "2025-09-23T11:39:49.141706",
+      "labjack_trigger_time": "2025-09-23T11:39:49.141706",
+      "original_latency": {
+        "apparent_latency_ms": 3603949.551,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599973.467,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3931.8,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3603949.6,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.225131511688232,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "ec3eb224-99c8-4ee9-9ffb-0b6078e0b31b",
+      "frame_number": 0,
+      "video_relative_timestamp": 3.992335796356201,
+      "video_frame_number": 95,
+      "detection_time": "2025-09-23T11:39:49.202242",
+      "labjack_trigger_time": "2025-09-23T11:39:49.202242",
+      "original_latency": {
+        "apparent_latency_ms": 3604010.087,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600034.003,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 3992.3,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604010.1,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.192011833190918,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "7717fcf2-e79c-49ab-bc36-a4756f1698b2",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.061587810516357,
+      "video_frame_number": 97,
+      "detection_time": "2025-09-23T11:39:49.271494",
+      "labjack_trigger_time": "2025-09-23T11:39:49.271494",
+      "original_latency": {
+        "apparent_latency_ms": 3604079.339,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600103.255,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4061.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604079.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.2667670249938965,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "37ca980a-0dcf-4be7-886a-0eb533168e94",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.1315648555755615,
+      "video_frame_number": 99,
+      "detection_time": "2025-09-23T11:39:49.341471",
+      "labjack_trigger_time": "2025-09-23T11:39:49.341471",
+      "original_latency": {
+        "apparent_latency_ms": 3604149.316,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599964.898,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4131.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604149.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.273154258728027,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "9708a6d7-c627-4550-b8a1-1c6d291c05e6",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.195346832275391,
+      "video_frame_number": 100,
+      "detection_time": "2025-09-23T11:39:49.405253",
+      "labjack_trigger_time": "2025-09-23T11:39:49.405253",
+      "original_latency": {
+        "apparent_latency_ms": 3604213.098,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600028.68,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4195.3,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604213.1,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.230099201202393,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "9c107208-e990-41f8-96a0-e46bbc3ef37a",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.263031005859375,
+      "video_frame_number": 102,
+      "detection_time": "2025-09-23T11:39:49.472937",
+      "labjack_trigger_time": "2025-09-23T11:39:49.472937",
+      "original_latency": {
+        "apparent_latency_ms": 3604280.782,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600096.364,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4263.0,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604280.8,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.219848155975342,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "a1fc5d68-9505-456b-97bf-b16e64808b45",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.32431697845459,
+      "video_frame_number": 103,
+      "detection_time": "2025-09-23T11:39:49.534223",
+      "labjack_trigger_time": "2025-09-23T11:39:49.534223",
+      "original_latency": {
+        "apparent_latency_ms": 3604342.068,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599949.317,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4324.3,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604342.1,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.240586757659912,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "93ae26c5-e596-4195-8896-dead99da01d3",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.382710933685303,
+      "video_frame_number": 105,
+      "detection_time": "2025-09-23T11:39:49.592617",
+      "labjack_trigger_time": "2025-09-23T11:39:49.592617",
+      "original_latency": {
+        "apparent_latency_ms": 3604400.462,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600007.711,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4382.7,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604400.5,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.255648136138916,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "aace2390-a48d-4fca-bd37-a22465339f3a",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.43973183631897,
+      "video_frame_number": 106,
+      "detection_time": "2025-09-23T11:39:49.649638",
+      "labjack_trigger_time": "2025-09-23T11:39:49.649638",
+      "original_latency": {
+        "apparent_latency_ms": 3604457.483,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600064.732,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4439.7,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604457.5,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.237275123596191,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "08830e90-aeee-4632-8c78-6067cc27c03a",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.506718873977661,
+      "video_frame_number": 108,
+      "detection_time": "2025-09-23T11:39:49.716625",
+      "labjack_trigger_time": "2025-09-23T11:39:49.716625",
+      "original_latency": {
+        "apparent_latency_ms": 3604524.47,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599923.386,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4506.7,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604524.5,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.210700511932373,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "59d67e04-4d76-48ee-88f1-4813e678dc02",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.571557998657227,
+      "video_frame_number": 109,
+      "detection_time": "2025-09-23T11:39:49.781464",
+      "labjack_trigger_time": "2025-09-23T11:39:49.781464",
+      "original_latency": {
+        "apparent_latency_ms": 3604589.309,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599988.225,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4571.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604589.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.236722946166992,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "07237840-8bfc-4fb1-bdbc-bd6df1284bb8",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.6272149085998535,
+      "video_frame_number": 111,
+      "detection_time": "2025-09-23T11:39:49.837121",
+      "labjack_trigger_time": "2025-09-23T11:39:49.837121",
+      "original_latency": {
+        "apparent_latency_ms": 3604644.966,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600043.882,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4627.2,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604645.0,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.270788669586182,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "82ae0379-198a-488a-94bd-3bf72f867be1",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.744606971740723,
+      "video_frame_number": 113,
+      "detection_time": "2025-09-23T11:39:49.954513",
+      "labjack_trigger_time": "2025-09-23T11:39:49.954513",
+      "original_latency": {
+        "apparent_latency_ms": 3604762.358,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599952.94,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4744.6,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604762.4,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.2555694580078125,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "531e9213-49e8-4747-b62f-d90240f81d76",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.799713850021362,
+      "video_frame_number": 115,
+      "detection_time": "2025-09-23T11:39:50.009620",
+      "labjack_trigger_time": "2025-09-23T11:39:50.009620",
+      "original_latency": {
+        "apparent_latency_ms": 3604817.465,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600008.047,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4799.7,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604817.5,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.243504524230957,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "b3c3556f-30f8-4255-866a-db66ded9f24f",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.8574278354644775,
+      "video_frame_number": 116,
+      "detection_time": "2025-09-23T11:39:50.067334",
+      "labjack_trigger_time": "2025-09-23T11:39:50.067334",
+      "original_latency": {
+        "apparent_latency_ms": 3604875.179,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600065.761,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4857.4,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604875.2,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.271734714508057,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "e7526c44-3aea-41ba-b517-7e52adb8ae4a",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.908529996871948,
+      "video_frame_number": 117,
+      "detection_time": "2025-09-23T11:39:50.118436",
+      "labjack_trigger_time": "2025-09-23T11:39:50.118436",
+      "original_latency": {
+        "apparent_latency_ms": 3604926.281,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599908.53,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4908.5,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604926.3,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.31502628326416,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "c53dff31-a5b6-44d9-90ca-307182a4c325",
+      "frame_number": 0,
+      "video_relative_timestamp": 4.97543478012085,
+      "video_frame_number": 119,
+      "detection_time": "2025-09-23T11:39:50.185341",
+      "labjack_trigger_time": "2025-09-23T11:39:50.185341",
+      "original_latency": {
+        "apparent_latency_ms": 3604993.186,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3599975.435,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 4975.4,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3604993.2,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.258881568908691,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "38345d7c-0ebf-43f4-8d7a-006d6c29cbce",
+      "frame_number": 0,
+      "video_relative_timestamp": 5.041423797607422,
+      "video_frame_number": 120,
+      "detection_time": "2025-09-23T11:39:50.251330",
+      "labjack_trigger_time": "2025-09-23T11:39:50.251330",
+      "original_latency": {
+        "apparent_latency_ms": 3605059.175,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600041.424,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 5041.4,
+        "frame_timing_variance_ms": 3600017.8,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3605059.2,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.249576568603516,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "c7d06c07-3ae3-4f04-bac9-953c4f06fcb9",
+      "frame_number": 0,
+      "video_relative_timestamp": 5.041666666666667,
+      "video_frame_number": 121,
+      "detection_time": "2025-09-23T11:39:50.317295",
+      "labjack_trigger_time": "2025-09-23T11:39:50.317295",
+      "original_latency": {
+        "apparent_latency_ms": 3605125.14,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600107.389,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 5041.7,
+        "frame_timing_variance_ms": 3600083.5,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3605125.1,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.3010687828063965,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "90203b10-1e27-42c3-91a4-0057ffd91482",
+      "frame_number": 0,
+      "video_relative_timestamp": 5.041666666666667,
+      "video_frame_number": 121,
+      "detection_time": "2025-09-23T11:39:50.368332",
+      "labjack_trigger_time": "2025-09-23T11:39:50.368332",
+      "original_latency": {
+        "apparent_latency_ms": 3605176.177,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600158.426,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 5041.7,
+        "frame_timing_variance_ms": 3600134.5,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3605176.2,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.271261692047119,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "4fb1ce85-9ddc-4c98-849d-3b610c485049",
+      "frame_number": 0,
+      "video_relative_timestamp": 5.041666666666667,
+      "video_frame_number": 121,
+      "detection_time": "2025-09-23T11:39:50.430006",
+      "labjack_trigger_time": "2025-09-23T11:39:50.430006",
+      "original_latency": {
+        "apparent_latency_ms": 3605237.851,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600220.1,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 5041.7,
+        "frame_timing_variance_ms": 3600196.2,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3605237.9,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.236013412475586,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    },
+    {
+      "event_id": "1e18ab47-24f5-41fc-9d85-59fd82a6c6f7",
+      "frame_number": 0,
+      "video_relative_timestamp": 5.041666666666667,
+      "video_frame_number": 121,
+      "detection_time": "2025-09-23T11:39:50.482780",
+      "labjack_trigger_time": "2025-09-23T11:39:50.482780",
+      "original_latency": {
+        "apparent_latency_ms": 3605290.625,
+        "description": "Original calculation (includes video startup delay)"
+      },
+      "corrected_latency": {
+        "real_latency_ms": 3600272.874,
+        "description": "Corrected calculation (accounts for video startup delay)"
+      },
+      "measured_breakdown": {
+        "system_processing_ms": 5041.7,
+        "frame_timing_variance_ms": 3600249.0,
+        "initial_startup_effect_ms": 0.0,
+        "camera_processing_note": "Cannot measure camera internal delays directly",
+        "total_measured_latency_ms": 3605290.6,
+        "measurement_source": "labjack_hardware_timestamps",
+        "measurement_method": "direct_hardware_measurement_only"
+      },
+      "timing_synchronization": {
+        "timing_quality": "poor",
+        "confidence_score": 0.2,
+        "ground_truth_available": true
+      },
+      "voltage_level": 4.223317623138428,
+      "channel": "AIN0",
+      "validation_result": "PENDING",
+      "result": "fail",
+      "threshold_ms": 100,
+      "session_id": "b7481a7d-b4d2-4425-afe1-235c7b29a8b5"
+    }
+  ],
+  "ground_truth_comparison": {
+    "ground_truth_events_available": 24,
+    "total_detections": 39,
+    "matching_methodology": "Time-based matching within 1000ms tolerance",
+    "timing_synchronization_results": {
+      "events_with_matches": 39,
+      "average_confidence_score": 0.2,
+      "timing_quality_distribution": {
+        "poor": 39
+      }
+    }
+  },
+  "export_info": {
+    "export_timestamp": "2025-09-23T13:42:21.686863",
+    "calculation_methodology": "Uses TimingSynchronizationCalculator to correct for video startup delays",
+    "formula": "real_latency = detection_system_time - (video_start_system_time + gt_video_time)"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "test_execution": {
+    "timestamp": "2025-09-15T15:28:07.904629",
+    "platform": "LabJack T7 ADAS HIL Testing Platform",
+    "environment": {
+      "python_version": "3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]",
+      "working_directory": "/home/rigade"
+    }
+  },
+  "test_results": {
+    "basic_connectivity": {
+      "test_name": "basic_connectivity",
+      "timestamp": "2025-09-15T15:28:07.892026",
+      "results": {
+        "connection": {
+          "success": true,
+          "time_ms": 0.1010510022751987,
+          "device_info": {
+            "mock": true,
+            "device_type": "T7-MOCK"
+          }
+        },
+        "analog_read": {
+          "success": true,
+          "time_ms": 10.638659994583577,
+          "channels": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "sample_values": [
+            2.5120402451699784,
+            2.499938821512227,
+            2.4857058794632434,
+            2.5191969446976676
+          ]
+        },
+        "gpio_trigger": {
+          "success": true,
+          "time_ms": 0.25159701181109995,
+          "pulse_width_us": 100
+        },
+        "performance_metrics": {
+          "connection_time": 0.0,
+          "read_latency_us": [],
+          "write_latency_us": [],
+          "error_count": 0
+        },
+        "diagnostic": {
+          "timestamp": "2025-09-15T15:28:07.903696",
+          "tests": {
+            "connection": "PASS",
+            "analog_read": "PASS",
+            "gpio_trigger": "PASS",
+            "timing_precision": "PASS"
+          },
+          "overall_status": "PASS",
+          "issues": []
+        }
+      },
+      "success": true,
+      "errors": []
+    }
+  },
+  "summary": {
+    "total_test_suites": 1,
+    "passed_suites": 1,
+    "failed_suites": 0,
+    "overall_success": true
+  }
+}

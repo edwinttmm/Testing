@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError, TimeoutError
 from sqlalchemy import func, select, delete, text
-from typing import List, Optional, AsyncIterator
+from typing import List, Optional, AsyncIterator, Dict, Any
+import asyncio
 from pydantic import ValidationError
 from datetime import datetime, timezone
 import threading
@@ -16,6 +17,7 @@ import os
 import aiofiles
 import tempfile
 import uuid
+import statistics
 from pathlib import Path
 from contextlib import asynccontextmanager
 from config import settings, setup_logging, create_directories, validate_environment
@@ -29,6 +31,11 @@ from constants import CENTRAL_STORE_PROJECT_ID, CENTRAL_STORE_PROJECT_NAME, CENT
 from database import SessionLocal, engine, get_db
 from models import Base, Project, Video, TestSession, DetectionEvent, GroundTruthObject
 from models import Annotation, AnnotationSession, VideoProjectLink, TestResult, DetectionComparison
+try:
+    from api_ground_truth_matching import router as ground_truth_router
+except ImportError:
+    ground_truth_router = None
+    logger.warning("Ground truth matching API not available")
 from schemas import (
     ProjectCreate, ProjectResponse, ProjectUpdate,
     VideoUploadResponse, GroundTruthResponse,
@@ -202,6 +209,219 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning(f"⚠️ Database initialization warning (continuing): {e}")
     
+    # Minimal migrations for SQLite to ensure expected columns exist
+    try:
+        with engine.connect() as conn:
+            # Check for session_type column in test_sessions
+            cols = conn.execute(text("PRAGMA table_info('test_sessions')")).fetchall()
+            col_names = {row[1] for row in cols}
+            def add_col_if_missing(table: str, name: str, type_sql: str):
+                if name not in col_names and table == 'test_sessions':
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {type_sql}"))
+                    logger.info(f"🛠️ Added missing column {table}.{name}")
+
+            # Ensure expected columns for enhanced timing/session fields
+            add_col_if_missing('test_sessions', 'session_type', "TEXT DEFAULT 'user_created'")
+            add_col_if_missing('test_sessions', 'latency_threshold_ms', "INTEGER DEFAULT 100")
+            add_col_if_missing('test_sessions', 'video_start_timestamp', "REAL")
+            add_col_if_missing('test_sessions', 'video_start_timestamp_ns', "TEXT")
+            add_col_if_missing('test_sessions', 'precision_timing_enabled', "INTEGER DEFAULT 1")
+            add_col_if_missing('test_sessions', 'timing_accuracy_ns', "REAL")
+            add_col_if_missing('test_sessions', 'drift_compensation_active', "INTEGER DEFAULT 0")
+            add_col_if_missing('test_sessions', 'frame_sync_enabled', "INTEGER DEFAULT 0")
+            add_col_if_missing('test_sessions', 'sync_point_id', "TEXT")
+            add_col_if_missing('test_sessions', 'calibration_timestamp', "REAL")
+            add_col_if_missing('test_sessions', 'timing_validation_status', "TEXT DEFAULT 'pending'")
+            add_col_if_missing('test_sessions', 'hil_compliance_verified', "INTEGER DEFAULT 0")
+            # Additional HIL timing fields used by routers/test_sessions and enhanced results
+            add_col_if_missing('test_sessions', 'video_playback_start_time', "REAL")
+            add_col_if_missing('test_sessions', 'video_playback_start_time_ns', "TEXT")
+            add_col_if_missing('test_sessions', 'hil_timing_enabled', "INTEGER DEFAULT 1")
+            add_col_if_missing('test_sessions', 'video_timing_sync_status', "TEXT DEFAULT 'pending'")
+            add_col_if_missing('test_sessions', 'command_start_timestamp', "REAL")
+            add_col_if_missing('test_sessions', 'command_start_timestamp_ns', "TEXT")
+            add_col_if_missing('test_sessions', 'presentation_delay_ms', "REAL")
+            add_col_if_missing('test_sessions', 'presentation_delay_ns', "TEXT")
+            add_col_if_missing('test_sessions', 'presentation_delay_quality', "TEXT")
+
+            # Ground truth table: ensure tracking_id and frame_number exist
+            gt_cols = conn.execute(text("PRAGMA table_info('ground_truth_objects')")).fetchall()
+            gt_col_names = {row[1] for row in gt_cols}
+            if 'tracking_id' not in gt_col_names:
+                conn.execute(text("ALTER TABLE ground_truth_objects ADD COLUMN tracking_id TEXT"))
+                logger.info("🛠️ Added missing column ground_truth_objects.tracking_id")
+            if 'frame_number' not in gt_col_names:
+                conn.execute(text("ALTER TABLE ground_truth_objects ADD COLUMN frame_number INTEGER"))
+                logger.info("🛠️ Added missing column ground_truth_objects.frame_number")
+
+            # Detection events table: ensure critical columns exist
+            de_cols = conn.execute(text("PRAGMA table_info('detection_events')")).fetchall()
+            de_col_names = {row[1] for row in de_cols}
+            def add_de_col(name: str, type_sql: str):
+                if name not in de_col_names:
+                    conn.execute(text(f"ALTER TABLE detection_events ADD COLUMN {name} {type_sql}"))
+                    logger.info(f"🛠️ Added missing column detection_events.{name}")
+
+            # Required for joins
+            add_de_col('video_id', 'TEXT')
+
+            # ENHANCED PRECISION TIMING FIELDS - HIL VALIDATION
+            add_de_col('latency_ns', 'TEXT')
+            add_de_col('labjack_timestamp', 'REAL')
+            add_de_col('labjack_timestamp_ns', 'TEXT')
+            add_de_col('video_start_time', 'REAL')
+            add_de_col('video_start_time_ns', 'TEXT')
+            add_de_col('timing_accuracy_ns', 'REAL')
+            add_de_col('frame_accurate_timestamp', 'REAL')
+            add_de_col('labjack_voltage', 'REAL')
+            add_de_col('latency_threshold_ms', 'REAL')
+            add_de_col('latency_result', 'TEXT')
+            add_de_col('voltage_level', 'REAL')
+            add_de_col('detection_channel', 'TEXT')
+
+            # PRECISION TIMING METADATA
+            add_de_col('monotonic_timestamp_ns', 'TEXT')
+            add_de_col('sync_point_reference', 'TEXT')
+            add_de_col('drift_compensated', 'INTEGER')
+            add_de_col('timing_interpolated', 'INTEGER')
+
+            # VIDEO TIMING SYNCHRONIZATION FIELDS
+            add_de_col('video_relative_timestamp', 'REAL')
+            add_de_col('video_relative_timestamp_ns', 'TEXT')
+            add_de_col('actual_latency_ms', 'REAL')
+            add_de_col('video_frame_number', 'INTEGER')
+            add_de_col('timing_sync_quality', 'TEXT')
+
+            # T3 YOLO DETECTION TIMING FIELDS - Phase 2
+            add_de_col('t3_detection_timestamp', 'REAL')
+            add_de_col('t3_detection_timestamp_ns', 'TEXT')
+            add_de_col('t3_monotonic_timestamp_ns', 'TEXT')
+            add_de_col('t3_processing_time_ms', 'REAL')
+            add_de_col('t3_yolo_confidence', 'REAL')
+            add_de_col('t3_model_version', 'TEXT')
+            add_de_col('t3_detection_quality', 'TEXT')
+
+            # LEGACY AI FIELDS / NEW STORAGE FIELDS
+            add_de_col('confidence', 'REAL')
+            add_de_col('class_label', 'TEXT')
+            add_de_col('detection_id', 'TEXT')
+            add_de_col('frame_number', 'INTEGER')
+            add_de_col('vru_type', 'TEXT')
+            add_de_col('bounding_box_x', 'REAL')
+            add_de_col('bounding_box_y', 'REAL')
+            add_de_col('bounding_box_width', 'REAL')
+            add_de_col('bounding_box_height', 'REAL')
+            add_de_col('screenshot_path', 'TEXT')
+            add_de_col('screenshot_zoom_path', 'TEXT')
+            add_de_col('processing_time_ms', 'REAL')
+            add_de_col('model_version', 'TEXT')
+            add_de_col('source', 'TEXT')
+            add_de_col('detection_type', 'TEXT')
+            # Backfill detection_events.video_id from related test_sessions when possible
+            try:
+                conn.execute(text(
+                    """
+                    UPDATE detection_events
+                    SET video_id = (
+                        SELECT video_id FROM test_sessions
+                        WHERE test_sessions.id = detection_events.test_session_id
+                    )
+                    WHERE video_id IS NULL OR video_id = ''
+                    """
+                ))
+                logger.info("🛠️ Backfilled detection_events.video_id from test_sessions")
+            except Exception as e:
+                logger.warning(f"Backfill of detection_events.video_id skipped: {e}")
+
+            # Ensure validation results table exists (used by dashboard/deletion paths)
+            tbl = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='video_validation_results'"))
+            if not tbl.fetchone():
+                conn.execute(text(
+                    """
+                    CREATE TABLE IF NOT EXISTS video_validation_results (
+                        id TEXT PRIMARY KEY,
+                        video_id TEXT NOT NULL,
+                        validation_criteria_id TEXT,
+                        validation_type TEXT,
+                        overall_result TEXT,
+                        ground_truth_score REAL,
+                        technical_score REAL,
+                        content_score REAL,
+                        overall_score REAL,
+                        criteria_met TEXT,
+                        validation_notes TEXT,
+                        validated_by TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                ))
+                # Helpful indexes
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_validation_result_video ON video_validation_results(video_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_validation_result_type ON video_validation_results(validation_type)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_validation_result_overall ON video_validation_results(overall_result)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_validation_result_score ON video_validation_results(overall_score)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_validation_result_created ON video_validation_results(created_at)"))
+                logger.info("🛠️ Created missing table video_validation_results with indexes")
+
+            # Ensure video status transitions table exists (referenced in some flows)
+            tbl2 = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='video_status_transitions'"))
+            if not tbl2.fetchone():
+                conn.execute(text(
+                    """
+                    CREATE TABLE IF NOT EXISTS video_status_transitions (
+                        id TEXT PRIMARY KEY,
+                        video_id TEXT NOT NULL,
+                        from_status TEXT NOT NULL,
+                        to_status TEXT NOT NULL,
+                        transition_reason TEXT NOT NULL,
+                        triggered_by TEXT,
+                        transition_metadata TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                ))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_status_transition_video ON video_status_transitions(video_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_status_transition_video_time ON video_status_transitions(video_id, created_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_status_transition_from_to ON video_status_transitions(from_status, to_status)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_status_transition_created ON video_status_transitions(created_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_status_transition_reason ON video_status_transitions(transition_reason)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS idx_status_transition_triggered_by ON video_status_transitions(triggered_by)"))
+                logger.info("🛠️ Created missing table video_status_transitions with indexes")
+
+            # Ensure test_results table has all expected columns
+            tr_cols = conn.execute(text("PRAGMA table_info('test_results')")).fetchall()
+            tr_col_names = {row[1] for row in tr_cols}
+            def add_tr_col(name: str, type_sql: str):
+                if name not in tr_col_names:
+                    conn.execute(text(f"ALTER TABLE test_results ADD COLUMN {name} {type_sql}"))
+                    logger.info(f"🛠️ Added missing column test_results.{name}")
+
+            add_tr_col('pass_rate', 'REAL')
+            add_tr_col('avg_latency_ms', 'REAL')
+            add_tr_col('max_latency_ms', 'REAL')
+            add_tr_col('min_latency_ms', 'REAL')
+            add_tr_col('median_latency_ms', 'REAL')
+            add_tr_col('std_dev_latency_ms', 'REAL')
+            add_tr_col('total_detections', 'INTEGER')
+            add_tr_col('passed_detections', 'INTEGER')
+            add_tr_col('failed_detections', 'INTEGER')
+            add_tr_col('threshold_ms', 'INTEGER')
+            add_tr_col('latency_distribution', 'TEXT')
+            add_tr_col('validation_type', 'TEXT')
+            add_tr_col('test_duration_seconds', 'REAL')
+            add_tr_col('detection_rate_hz', 'REAL')
+            add_tr_col('accuracy', 'REAL')
+            add_tr_col('precision', 'REAL')
+            add_tr_col('recall', 'REAL')
+            add_tr_col('f1_score', 'REAL')
+            add_tr_col('true_positives', 'INTEGER')
+            add_tr_col('false_positives', 'INTEGER')
+            add_tr_col('false_negatives', 'INTEGER')
+            add_tr_col('statistical_analysis', 'TEXT')
+            add_tr_col('confidence_intervals', 'TEXT')
+    except Exception as e:
+        logger.warning(f"SQLite migration check failed or not needed: {e}")
+    
     # Log startup completion
     logger.info("✅ Application startup completed successfully")
     logger.info("Application started", extra={
@@ -229,6 +449,7 @@ app = FastAPI(
     debug=settings.api_debug,
     lifespan=lifespan
 )
+app.state.settings = settings
 
 # Configure logging (fallback if lifespan fails)
 setup_logging(settings)
@@ -366,6 +587,14 @@ try:
 except ImportError as e:
     logger.error(f"❌ Failed to include Dashboard API: {e}")
     
+# Include Validation Criteria Router (admin)
+try:
+    from routers.validation_criteria import router as validation_router
+    app.include_router(validation_router)
+    logger.info("✅ Validation Criteria API routes included")
+except ImportError as e:
+    logger.error(f"❌ Failed to include Validation Criteria API: {e}")
+    
 # Include enhanced test execution routers
 # PRD Module 1.1 & 1.2: Video Ingestion Pipeline
 app.include_router(video_ingestion_router)  # Video ingestion with real YOLO detection
@@ -470,11 +699,12 @@ async def get_videos_with_ground_truth(
             "message": "No videos with ground truth annotations found"
         }
 
-# Video validation endpoints
+# Video validation endpoints - DISABLED due to route conflicts with main.py endpoints
+# The video validation functionality is handled directly in main.py with both PATCH and POST support
 try:
-    from api.video_validation import router as video_validation_router
-    app.include_router(video_validation_router)
-    logger.info("✅ Video validation endpoints loaded")
+    # from api.video_validation import router as video_validation_router
+    # app.include_router(video_validation_router)
+    logger.info("✅ Video validation endpoints handled in main.py (router disabled to prevent conflicts)")
 except Exception as e:
     logger.error(f"❌ Failed to load video validation endpoints: {e}")
 
@@ -502,6 +732,43 @@ try:
 except ImportError as e:
     print(f"⚠️ Enhanced Results API endpoints not available: {e}")
 
+# Include HIL Results API router
+try:
+    from src.api.hil_results_endpoints import router as hil_results_router
+    app.include_router(hil_results_router)
+    print("✅ HIL Test Results API endpoints registered at /api/test-sessions")
+    
+    # Enhanced HIL Results with Timing Synchronization Correction
+    from src.api.enhanced_hil_results_endpoints import router as enhanced_hil_router
+    app.include_router(enhanced_hil_router)
+    print("✅ Enhanced HIL Test Results with Timing Correction API endpoints registered at /api/enhanced-hil")
+except ImportError as e:
+    print(f"⚠️ HIL Results API endpoints not available: {e}")
+
+# Video Presentation Timing Measurement API
+try:
+    from api_video_presentation_timing import router as video_timing_router
+    app.include_router(video_timing_router)
+    print("✅ Video Presentation Timing Measurement API registered at /api/video-timing")
+except ImportError as e:
+    print(f"⚠️ Video Presentation Timing API not available: {e}")
+
+# Include HIL Testing API router with ground truth comparison and screenshots
+try:
+    from routers.hil_testing import router as hil_testing_router
+    app.include_router(hil_testing_router)
+    print("✅ HIL Testing API with ground truth comparison and screenshots registered at /api/hil")
+except ImportError as e:
+    print(f"⚠️ HIL Testing API endpoints not available: {e}")
+
+# Include Latency Analysis API router for latency decomposition
+try:
+    from routers.latency_analysis import router as latency_analysis_router
+    app.include_router(latency_analysis_router, prefix="/api/latency-analysis", tags=["latency-analysis"])
+    print("✅ Latency Analysis API router loaded for camera vs system overhead separation")
+except ImportError as e:
+    print(f"⚠️ Latency Analysis API router not available: {e}")
+
 # Include LabJack API router
 try:
     from src.labjack_api_endpoints import router as labjack_router
@@ -510,6 +777,28 @@ try:
     app.include_router(labjack_timing_router)
     print("✅ LabJack API endpoints registered at /api/labjack")
     print("✅ LabJack Timing endpoints registered at /api/labjack")
+    
+    # Include NEW Standalone LabJack Monitoring API
+    try:
+        from api.labjack_monitor_api import router as labjack_monitor_router
+        from api.labjack_monitor_api import startup_monitor_service, shutdown_monitor_service
+        app.include_router(labjack_monitor_router)
+        
+        # Add startup/shutdown hooks for monitoring service
+        @app.on_event("startup")
+        async def startup_monitoring():
+            await startup_monitor_service()
+        
+        @app.on_event("shutdown")
+        async def shutdown_monitoring():
+            await shutdown_monitor_service()
+        
+        print("✅ Standalone LabJack Monitoring API registered at /api/v1/labjack-monitor")
+        print("    - Process control: /api/v1/labjack-monitor/process/*")
+        print("    - Session control: /api/v1/labjack-monitor/session/*")
+        print("    - Status & health: /api/v1/labjack-monitor/status")
+    except ImportError as monitor_e:
+        print(f"⚠️ Standalone LabJack Monitoring API not available: {monitor_e}")
     
     # Add WebSocket endpoint for LabJack streaming that matches frontend expectation
     from fastapi import WebSocket, WebSocketDisconnect
@@ -729,13 +1018,17 @@ try:
     timing_service = initialize_precision_timing_service()
     logger.info("✅ Precision timing service initialized")
     
-    # Initialize real LabJack hardware service
+    # Initialize real LabJack hardware service (lazy initialization - no connection)
     from services.real_labjack_service import initialize_real_labjack_service
-    labjack_initialized = initialize_real_labjack_service()
-    if labjack_initialized:
-        logger.info("✅ Real LabJack hardware service connected")
-    else:
-        logger.warning("⚠️ LabJack hardware not detected - service available for connection")
+    try:
+        # Initialize without auto-connection to prevent device claiming during startup
+        labjack_initialized = initialize_real_labjack_service(auto_connect=False)
+        if labjack_initialized:
+            logger.info("✅ Real LabJack hardware service initialized (lazy connection)")
+        else:
+            logger.warning("⚠️ LabJack hardware service initialization failed")
+    except Exception as e:
+        logger.warning(f"⚠️ LabJack hardware service error: {e}")
     
     # Initialize COMPREHENSIVE LabJack hardware services - CRITICAL P0 FUNCTIONALITY
     try:
@@ -743,8 +1036,8 @@ try:
         from services.video_hardware_sync_service import get_video_hardware_sync_service
         from services.labjack_error_handler import get_error_handler_service
         
-        # Initialize core hardware service
-        hardware_initialized = initialize_hardware_service()
+        # Initialize core hardware service - override WSL check since USB passthrough is working
+        hardware_initialized = initialize_hardware_service(force_wsl_connection=True)
         if hardware_initialized:
             logger.info("✅ CRITICAL: LabJack hardware service fully initialized")
         else:
@@ -1111,8 +1404,12 @@ async def list_projects(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    projects = get_projects(db=db, user_id="anonymous", skip=skip, limit=limit)
-    return projects
+    try:
+        return get_projects(db=db, user_id="anonymous", skip=skip, limit=limit)
+    except (SQLAlchemyError, OperationalError) as e:
+        logger.error(f"Database error listing projects: {e}")
+        # Degrade gracefully so the frontend can render without crashing
+        return []
 
 @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
 async def get_project_detail(
@@ -1463,6 +1760,18 @@ async def upload_video(
         actual_filename = os.path.basename(final_file_path)
         
         # Create database record with actual file size and metadata
+        # Normalize resolution into a string (e.g., "1920x1080")
+        resolution_value = None
+        if video_metadata:
+            res = video_metadata.get('resolution')
+            if isinstance(res, (list, tuple)) and len(res) >= 2:
+                try:
+                    resolution_value = f"{int(res[0])}x{int(res[1])}"
+                except Exception:
+                    resolution_value = f"{res[0]}x{res[1]}"
+            elif isinstance(res, str):
+                resolution_value = res
+
         video_record = Video(
             id=str(uuid.uuid4()),
             filename=actual_filename,  # Store actual filename that matches the file on disk
@@ -1474,7 +1783,7 @@ async def upload_video(
             project_id=project_id,
             duration=video_metadata.get('duration') if video_metadata else None,
             fps=video_metadata.get('fps') if video_metadata else None,
-            resolution=video_metadata.get('resolution') if video_metadata else None
+            resolution=resolution_value
         )
         
         db.add(video_record)
@@ -1484,7 +1793,8 @@ async def upload_video(
         # Update video record with metadata
         if video_metadata:
             video_record.duration = video_metadata.get('duration')
-            video_record.resolution = video_metadata.get('resolution')
+            # Already normalized above
+            video_record.resolution = resolution_value
             db.commit()
             db.refresh(video_record)
         
@@ -1737,9 +2047,9 @@ async def link_videos_to_project(
             )
         
         # Update videos to link them to the project (from central store)
+        # Link videos regardless of current project assignment
         updated_count = db.query(Video).filter(
-            Video.id.in_(video_ids),
-            Video.project_id == CENTRAL_STORE_PROJECT_ID  # Only link videos from central store
+            Video.id.in_(video_ids)
         ).update(
             {Video.project_id: project_id},
             synchronize_session=False
@@ -1976,10 +2286,71 @@ async def get_ground_truth(
         ground_truth_objects = db.query(GroundTruthObject).filter(
             GroundTruthObject.video_id == video_id
         ).all()
+
+        # Load detection events with screenshots to reuse for visual evidence
+        try:
+            from pathlib import Path
+            detections_with_shots = db.query(DetectionEvent).filter(
+                DetectionEvent.video_id == video_id,
+                DetectionEvent.screenshot_path.isnot(None)
+            ).all()
+
+            # Prepare a simple access structure by timestamp
+            det_list = [
+                {
+                    'timestamp': float(getattr(d, 'timestamp') or 0.0),
+                    'frame_number': getattr(d, 'frame_number', None),
+                    'screenshot_path': getattr(d, 'screenshot_path', None),
+                    'screenshot_zoom_path': getattr(d, 'screenshot_zoom_path', None)
+                }
+                for d in detections_with_shots
+            ]
+            # Build frame_number -> detection map for exact matches
+            det_by_frame = {d['frame_number']: d for d in det_list if d.get('frame_number') is not None}
+        except Exception:
+            det_list = []
+            det_by_frame = {}
         
         # Convert to response format
         objects = []
         for obj in ground_truth_objects:
+            # Attempt to find detection event screenshot by frame match first, else fallback to nearest timestamp
+            screenshot_path = None
+            screenshot_zoom_path = None
+            if det_list:
+                try:
+                    # Prefer frame_number exact match
+                    matched = None
+                    if obj.frame_number is not None:
+                        fn = obj.frame_number
+                        if fn in det_by_frame:
+                            matched = det_by_frame[fn]
+                        elif (fn - 1) in det_by_frame:
+                            matched = det_by_frame[fn - 1]
+                        elif (fn + 1) in det_by_frame:
+                            matched = det_by_frame[fn + 1]
+                    else:
+                        # Fallback to nearest timestamp within 1s
+                        t = float(obj.timestamp or 0.0)
+                        best = None
+                        best_dt = 10**9
+                        for d in det_list:
+                            dt = abs(d['timestamp'] - t)
+                            if dt < best_dt:
+                                best = d
+                                best_dt = dt
+                        if best is not None and best_dt <= 1.0:
+                            matched = best
+
+                    if matched is not None:
+                        # Build web-served path from file path
+                        if matched.get('screenshot_zoom_path'):
+                            screenshot_zoom_path = f"/screenshots/{Path(matched['screenshot_zoom_path']).name}"
+                        if matched.get('screenshot_path'):
+                            screenshot_path = f"/screenshots/{Path(matched['screenshot_path']).name}"
+                except Exception:
+                    pass
+
             objects.append({
                 "id": obj.id,
                 "frame_number": obj.frame_number,
@@ -1994,7 +2365,11 @@ async def get_ground_truth(
                     "confidence": obj.confidence or 1.0
                 },
                 "validated": obj.validated,
-                "difficult": obj.difficult or False
+                "difficult": obj.difficult or False,
+                # Reused visual evidence from detection events if available
+                "screenshot_path": screenshot_zoom_path or screenshot_path,
+                "raw_screenshot_path": screenshot_path,
+                "has_visual_evidence": bool(screenshot_path or screenshot_zoom_path)
             })
         
         # Determine status based on ground truth availability
@@ -2145,11 +2520,57 @@ async def create_video_annotation(
             raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
         
         # Create annotation record with all required fields - FIXED: Avoid video_id conflict
-        # Extract data from annotation object but exclude video_id to avoid duplicate parameter error
-        annotation_data = annotation.dict() if hasattr(annotation, 'dict') else annotation.model_dump()
+        # Extract data from annotation object using snake_case keys regardless of Pydantic version
+        if hasattr(annotation, 'model_dump'):
+            annotation_data = annotation.model_dump(by_alias=False)
+        else:
+            annotation_data = annotation.dict(by_alias=False)
         
         # Remove video_id from annotation_data to avoid conflict with path parameter
         annotation_data.pop('video_id', None)
+
+        # Normalize/clean fields not present on ORM model and map aliases
+        # Accept both snake_case and camelCase keys from clients
+        # Normalize camelCase keys to snake_case
+        if 'vruType' in annotation_data and 'vru_type' not in annotation_data:
+            annotation_data['vru_type'] = annotation_data.pop('vruType')
+        if 'classLabel' in annotation_data and 'class_label' not in annotation_data:
+            annotation_data['class_label'] = annotation_data.pop('classLabel')
+        if 'endTimestamp' in annotation_data and 'end_timestamp' not in annotation_data:
+            annotation_data['end_timestamp'] = annotation_data.pop('endTimestamp')
+        if 'frameNumber' in annotation_data and 'frame_number' not in annotation_data:
+            annotation_data['frame_number'] = annotation_data.pop('frameNumber')
+        if 'validationStatus' in annotation_data and 'validation_status' not in annotation_data:
+            annotation_data['validation_status'] = annotation_data.pop('validationStatus')
+        if 'boundingBox' in annotation_data and 'bounding_box' not in annotation_data:
+            annotation_data['bounding_box'] = annotation_data.pop('boundingBox')
+
+        # Map class_label -> vru_type when needed
+        cls = annotation_data.get('class_label')
+        if not annotation_data.get('vru_type') and cls:
+            mapping = {
+                'person': 'pedestrian',
+                'pedestrian': 'pedestrian',
+                'bicycle': 'cyclist',
+                'cyclist': 'cyclist',
+                'motorcycle': 'motorcyclist',
+                'motorcyclist': 'motorcyclist',
+                'wheelchair': 'wheelchair_user',
+                'scooter': 'scooter_rider',
+            }
+            annotation_data['vru_type'] = mapping.get(str(cls).lower(), 'pedestrian')
+
+        # Ensure bounding_box is a plain dict
+        bbox = annotation_data.get('bounding_box')
+        if bbox is not None:
+            if hasattr(bbox, 'model_dump'):
+                annotation_data['bounding_box'] = bbox.model_dump()
+            elif hasattr(bbox, 'dict'):
+                annotation_data['bounding_box'] = bbox.dict()
+
+        # Drop fields not part of ORM model
+        for key in ['class_label', 'validation_status', 'confidence']:
+            annotation_data.pop(key, None)
         
         # Handle bounding_box serialization
         if 'bounding_box' in annotation_data:
@@ -2179,13 +2600,163 @@ async def create_video_annotation(
         
         logger.info(f"✅ Created annotation {db_annotation.id} for video {video_id}")
         return db_annotation
-        
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Error creating annotation for video {video_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error creating annotation: {str(e)}")
+
+
+# --- Video Validation Endpoints (for frontend validation workflow) ---
+
+from fastapi import Request
+
+@app.options("/api/videos/{video_id}/validate")
+async def cors_preflight_validate(video_id: str, request: Request):
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=200,
+        content={"message": "CORS preflight ok"},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Vary": "Origin",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS,PATCH",
+            "Access-Control-Allow-Headers": request.headers.get("access-control-request-headers", "*"),
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600",
+        },
+    )
+
+@app.options("/api/videos/{video_id}/invalidate")
+async def cors_preflight_invalidate(video_id: str, request: Request):
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=200,
+        content={"message": "CORS preflight ok"},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Vary": "Origin",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS,PATCH",
+            "Access-Control-Allow-Headers": request.headers.get("access-control-request-headers", "*"),
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600",
+        },
+    )
+
+@app.patch("/api/videos/{video_id}/validate")
+@app.post("/api/videos/{video_id}/validate")
+async def validate_video_endpoint(
+    video_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Mark a video as validated.
+
+    Accepts both PATCH and POST for compatibility with different clients.
+    Body may include optional fields like {validated: true, notes, force}.
+    """
+    try:
+        # Parse request body if present
+        payload = {}
+        try:
+            if request.headers.get("content-type", "").startswith("application/json"):
+                payload = await request.json()
+        except Exception:
+            # Ignore parsing errors for empty or invalid JSON
+            pass
+        
+        from models import Video
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        # Update video status and validation fields
+        video.status = "validated"
+        
+        # Update validation-related fields if they exist
+        if hasattr(video, 'validation_status'):
+            video.validation_status = "validated"
+        if hasattr(video, 'validated_at'):
+            video.validated_at = datetime.now(timezone.utc)
+        if hasattr(video, 'validation_type'):
+            video.validation_type = payload.get('validation_type', 'manual')
+        # Maintain legacy processing_status for older flows
+        if hasattr(video, 'processing_status'):
+            video.processing_status = "completed"
+        
+        db.commit()
+        db.refresh(video)
+
+        response_data = {
+            "video_id": video.id,
+            "status": getattr(video, 'status', 'validated'),
+            "validation_status": getattr(video, 'validation_status', 'validated'),
+            "validated_at": getattr(video, 'validated_at', None).isoformat() if getattr(video, 'validated_at', None) is not None else None,
+            "processing_status": getattr(video, 'processing_status', 'completed'),
+            "message": "Video marked as validated"
+        }
+        
+        origin = request.headers.get("origin", "*")
+        return JSONResponse(
+            content=response_data,
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH", 
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Credentials": "true",
+                "Vary": "Origin"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Validate video error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to validate video: {str(e)}")
+
+
+@app.patch("/api/videos/{video_id}/invalidate")
+@app.post("/api/videos/{video_id}/invalidate")
+async def invalidate_video_endpoint(
+    video_id: str,
+    payload: dict | None = None,
+    db: Session = Depends(get_db)
+):
+    """Revert a validated video back to annotated (pending further review)."""
+    try:
+        from models import Video
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        video.status = "annotated"
+        if hasattr(video, 'validation_status'):
+            video.validation_status = "pending"
+        if hasattr(video, 'validated_at'):
+            video.validated_at = None
+        if hasattr(video, 'processing_status'):
+            video.processing_status = "completed"
+        db.commit()
+
+        body = {
+            "video_id": video.id,
+            "status": getattr(video, 'status', 'annotated'),
+            "validation_status": getattr(video, 'validation_status', 'pending'),
+            "validated_at": None,
+            "message": "Video validation reverted to annotated"
+        }
+        origin = app.state.settings.cors_origins[0] if hasattr(app.state, 'settings') else "*"
+        return JSONResponse(content=body, headers={"Access-Control-Allow-Origin": origin, "Vary": "Origin"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Invalidate video error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to invalidate video")
 
 @app.get("/api/videos/{video_id}/annotations")
 async def get_video_annotations(video_id: str, db: Session = Depends(get_db)):
@@ -2237,39 +2808,43 @@ async def list_test_sessions(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    # Filter out phantom detection sessions that clutter the UI
-    from sqlalchemy import and_, or_, not_
-    
-    # Base query
-    query = db.query(TestSession)
-    
-    # Apply filters
-    if project_id:
-        query = query.filter(TestSession.project_id == project_id)
-    if video_id:
-        query = query.filter(TestSession.video_id == video_id)
-    
-    # CRITICAL: Only show user-created test sessions in UI (filter phantom sessions)
-    query = query.filter(
-        and_(
-            TestSession.session_type == "user_created",  # Use new session_type field
-            not_(  # Backup filter for legacy data without session_type
-                or_(
-                    TestSession.name.like("Detection Session - %"),
-                    TestSession.name.like("Detection Session%"),
-                    and_(
-                        TestSession.name.contains("Detection"),
-                        TestSession.name.contains("Session")
+    try:
+        # Filter out phantom detection sessions that clutter the UI
+        from sqlalchemy import and_, or_, not_
+        
+        # Base query
+        query = db.query(TestSession)
+        
+        # Apply filters
+        if project_id:
+            query = query.filter(TestSession.project_id == project_id)
+        if video_id:
+            query = query.filter(TestSession.video_id == video_id)
+        
+        # CRITICAL: Only show user-created test sessions in UI (filter phantom sessions)
+        query = query.filter(
+            and_(
+                TestSession.session_type == "user_created",  # Use new session_type field
+                not_(  # Backup filter for legacy data without session_type
+                    or_(
+                        TestSession.name.like("Detection Session - %"),
+                        TestSession.name.like("Detection Session%"),
+                        and_(
+                            TestSession.name.contains("Detection"),
+                            TestSession.name.contains("Session")
+                        )
                     )
                 )
             )
         )
-    )
-    
-    # Apply pagination
-    sessions = query.offset(skip).limit(limit).all()
-    
-    return [TestSessionResponse.model_validate(session) for session in sessions]
+        
+        # Apply pagination
+        sessions = query.offset(skip).limit(limit).all()
+        
+        return [TestSessionResponse.model_validate(session) for session in sessions]
+    except (SQLAlchemyError, OperationalError) as e:
+        logger.error(f"Database error listing test sessions: {e}")
+        return []
 
 # Raspberry Pi detection endpoint
 @app.post("/api/detection-events")
@@ -2320,71 +2895,71 @@ async def receive_detection(
             detail="Failed to process detection event"
         )
 
-# Validation Results endpoint - UPDATED FOR LABJACK TIMING
-@app.get("/api/test-sessions/{session_id}/results")
-async def get_test_results(
-    session_id: str,
-    db: Session = Depends(get_db)
-):
-    """Get LabJack timing-based validation results for a completed test session"""
-    try:
-        from services.test_execution_service import test_execution_service
-        from services.latency_validation_service import latency_validation_service
-        
-        # Try latency validation service first for more accurate timing metrics
-        latency_results = latency_validation_service.get_session_summary(session_id)
-        if latency_results:
-            return {
-                "success": True,
-                "validation_type": "latency_based",
-                "data": latency_results
-            }
-        
-        # Fallback to test execution service results
-        results = test_execution_service.get_session_results(session_id)
-        if not results:
-            # Check if session exists but isn't completed
-            test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
-            if not test_session:
-                raise HTTPException(status_code=404, detail="Test session not found")
-            
-            if test_session.status == "running":
-                return {
-                    "success": False,
-                    "status": "running",
-                    "message": "Test session is still running",
-                    "data": {
-                        "session_id": session_id,
-                        "status": "running",
-                        "validation_type": "pending"
-                    }
-                }
-            elif test_session.status == "failed":
-                return {
-                    "success": False,
-                    "status": "failed",
-                    "message": f"Test session failed: {test_session.error_message or 'Unknown error'}",
-                    "data": {
-                        "session_id": session_id,
-                        "status": "failed",
-                        "error_message": test_session.error_message
-                    }
-                }
-            else:
-                raise HTTPException(status_code=404, detail="Test results not available")
-        
-        # Return results with updated format
-        return {
-            "success": True,
-            "validation_type": results.get("validation_type", "legacy"),
-            "data": results
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting test results for session {session_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get test results: {str(e)}")
+# Validation Results endpoint - COMMENTED OUT - Replaced by HIL Results API in src/api/hil_results_endpoints.py
+# @app.get("/api/test-sessions/{session_id}/results")
+# async def get_test_results(
+#     session_id: str,
+#     db: Session = Depends(get_db)
+# ):
+#     """Get LabJack timing-based validation results for a completed test session"""
+#     try:
+#         from services.test_execution_service import test_execution_service
+#         from services.latency_validation_service import latency_validation_service
+#         
+#         # Try latency validation service first for more accurate timing metrics
+#         latency_results = latency_validation_service.get_session_summary(session_id)
+#         if latency_results:
+#             return {
+#                 "success": True,
+#                 "validation_type": "latency_based",
+#                 "data": latency_results
+#             }
+#         
+#         # Fallback to test execution service results
+#         results = test_execution_service.get_session_results(session_id)
+#         if not results:
+#             # Check if session exists but isn't completed
+#             test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
+#             if not test_session:
+#                 raise HTTPException(status_code=404, detail="Test session not found")
+#             
+#             if test_session.status == "running":
+#                 return {
+#                     "success": False,
+#                     "status": "running",
+#                     "message": "Test session is still running",
+#                     "data": {
+#                         "session_id": session_id,
+#                         "status": "running",
+#                         "validation_type": "pending"
+#                     }
+#                 }
+#             elif test_session.status == "failed":
+#                 return {
+#                     "success": False,
+#                     "status": "failed",
+#                     "message": f"Test session failed: {test_session.error_message or 'Unknown error'}",
+#                     "data": {
+#                         "session_id": session_id,
+#                         "status": "failed",
+#                         "error_message": test_session.error_message
+#                     }
+#                 }
+#             else:
+#                 raise HTTPException(status_code=404, detail="Test results not available")
+#         
+#         # Return results with updated format
+#         return {
+#             "success": True,
+#             "validation_type": results.get("validation_type", "legacy"),
+#             "data": results
+#         }
+#         
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error getting test results for session {session_id}: {str(e)}", exc_info=True)
+#         raise HTTPException(status_code=500, detail=f"Failed to get test results: {str(e)}")
 
 # Additional endpoint for detailed latency metrics
 @app.get("/api/test-sessions/{session_id}/latency-metrics")
@@ -2489,6 +3064,84 @@ async def get_test_session_status(session_id: str):
     except Exception as e:
         logger.error(f"Error getting test session status {session_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
+
+@app.get("/api/test-sessions/{session_id}/timing-diagnostics")
+async def get_timing_diagnostics(session_id: str, db: Session = Depends(get_db)):
+    """Return diagnostics for timing fields and sample detection events to help pinpoint latency sources."""
+    try:
+        # Session fields
+        session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Test session not found")
+
+        # Helpers
+        def to_float(val):
+            try:
+                return float(val)
+            except Exception:
+                return None
+
+        started = session.started_at
+        vps = session.video_playback_start_time
+        # Guess units for vps
+        unit = 'seconds'
+        vps_seconds = to_float(vps)
+        if vps_seconds and vps_seconds >= 1e11:
+            unit = 'milliseconds'
+            vps_seconds = vps_seconds / 1000.0
+
+        # Compute raw delta
+        delta_s = None
+        if started and vps_seconds is not None:
+            delta_s = vps_seconds - started.timestamp()
+            # Normalize common 1h offset
+            normalized = False
+            if abs(delta_s - 3600.0) < 120.0:
+                delta_s -= 3600.0
+                normalized = True
+        else:
+            normalized = False
+
+        # Sample detection events (first 5 ordered by timestamp)
+        dets = db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session_id).order_by(DetectionEvent.timestamp).limit(5).all()
+        sample = [
+            {
+                'timestamp': d.timestamp,
+                'labjack_timestamp': d.labjack_timestamp,
+                'video_relative_timestamp': d.video_relative_timestamp,
+                'actual_latency_ms': d.actual_latency_ms,
+                'video_frame_number': d.video_frame_number,
+                'labjack_voltage': d.labjack_voltage,
+                't3_detection_timestamp': getattr(d, 't3_detection_timestamp', None),
+                'processing_time_ms': d.processing_time_ms,
+                'source': d.source,
+            }
+            for d in dets
+        ]
+
+        return {
+            'session_id': session_id,
+            'timing_fields': {
+                'started_at': started.isoformat() if started else None,
+                'video_playback_start_time': session.video_playback_start_time,
+                'video_playback_start_time_ns': session.video_playback_start_time_ns,
+                'unit_guess': unit,
+                'startup_delta_seconds': delta_s,
+                'normalized_one_hour_correction_applied': normalized,
+                'startup_delay_ms': (delta_s * 1000.0) if delta_s is not None else None,
+            },
+            'detection_events_sample': sample,
+            'notes': [
+                'Ensure started_at and video_playback_start_time are captured with the same server clock (time.time()).',
+                'If unit_guess is milliseconds, store seconds (float) going forward.',
+                'A ~3600s delta usually indicates a timezone offset; normalization may be applied.'
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Timing diagnostics failed for {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get timing diagnostics: {str(e)}")
 
 @app.post("/api/test-sessions/{session_id}/complete")
 async def complete_test_session(session_id: str):
@@ -3277,6 +3930,22 @@ async def database_error_middleware(request, call_next):
     try:
         response = await call_next(request)
         return response
+    except Exception as e:
+        # Gracefully handle client disconnects and ASGI EndOfStream
+        msg = str(e)
+        if (
+            e.__class__.__name__ in ("EndOfStream",)
+            or isinstance(e, asyncio.CancelledError)
+            or (isinstance(e, RuntimeError) and "generator didn't stop after throw()" in msg)
+        ):
+            # 499 Client Closed Request (nginx convention)
+            response = JSONResponse(status_code=499, content={"detail": "client_disconnected"})
+            # Add CORS headers for frontend access
+            response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
     except (OperationalError, TimeoutError) as e:
         logger.error(f"Database connection error: {e}")
         return JSONResponse(
@@ -3300,7 +3969,23 @@ async def database_error_middleware(request, call_next):
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     """Add security headers to all responses"""
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        msg = str(e)
+        if (
+            e.__class__.__name__ in ("EndOfStream",)
+            or isinstance(e, asyncio.CancelledError)
+            or (isinstance(e, RuntimeError) and "generator didn't stop after throw()" in msg)
+        ):
+            response = JSONResponse(status_code=499, content={"detail": "client_disconnected"})
+            # Add CORS headers for frontend access
+            response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
+        raise
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -3312,7 +3997,23 @@ async def add_process_time_header(request, call_next):
     """Add processing time header for performance monitoring"""
     import time
     start_time = time.time()
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        msg = str(e)
+        if (
+            e.__class__.__name__ in ("EndOfStream",)
+            or isinstance(e, asyncio.CancelledError)
+            or (isinstance(e, RuntimeError) and "generator didn't stop after throw()" in msg)
+        ):
+            response = JSONResponse(status_code=499, content={"detail": "client_disconnected"})
+            # Add CORS headers for frontend access
+            response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
+        raise
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
@@ -3569,6 +4270,231 @@ async def shutdown_event():
         logger.warning(f"⚠️ WebSocket cleanup warning: {e}")
     
     logger.info("✅ AI Model Validation Platform API shutdown complete")
+
+@app.get("/labjack/session-events/{session_id}")
+async def get_labjack_session_events(session_id: str, db: Session = Depends(get_db)):
+    """
+    Compatibility endpoint for frontend proxy: /svc/session-events → /labjack/session-events
+    Returns HIL session events as JSON the frontend can parse.
+    """
+    try:
+        from services.dedicated_labjack_monitor import get_hil_session_events
+        events = get_hil_session_events(session_id) or []
+
+        normalized = []
+        for e in events:
+            ev = {
+                "id": e.get("detection_id") or e.get("id") or e.get("event_id"),
+                "timestamp": e.get("timestamp") or e.get("unix_timestamp") or e.get("video_relative_timestamp"),
+                "frame": e.get("video_frame_number") or e.get("frame_number"),
+                "latency_ms": e.get("actual_latency_ms") or e.get("latency_ms") or e.get("processing_latency_ms"),
+                "voltage": e.get("labjack_voltage") or e.get("voltage"),
+                "channel": e.get("detection_channel") or e.get("channel"),
+                "status": e.get("validation_result") or e.get("status"),
+                "data": {
+                    "voltage": e.get("labjack_voltage") or e.get("voltage"),
+                    "channel": e.get("detection_channel") or e.get("channel"),
+                    "metadata": {
+                        "screenshot_path": e.get("screenshot_path"),
+                        "screenshotZoomPath": e.get("screenshot_zoom_path"),
+                    },
+                },
+            }
+            normalized.append(ev)
+
+        return {"success": True, "data": {"session_id": session_id, "events": normalized}}
+    except Exception as e:
+        logger.error(f"Error retrieving session events for {session_id}: {e}")
+        return {"success": False, "error": {"message": f"Error occurred: {str(e)}"}}
+
+# Ground Truth Events Endpoint
+@app.get("/api/videos/{video_id}/ground-truth-events")
+async def get_video_ground_truth_events(
+    video_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get ground truth events for a video with timestamps and screenshots"""
+    try:
+        # Get ground truth objects for the video
+        ground_truth_objects = db.query(GroundTruthObject).filter(
+            GroundTruthObject.video_id == video_id
+        ).order_by(GroundTruthObject.timestamp).all()
+        
+        if not ground_truth_objects:
+            return {"success": True, "data": {"ground_truth_events": []}}
+        
+        # Format ground truth events for frontend
+        gt_events = []
+        for gt in ground_truth_objects:
+            gt_events.append({
+                "id": gt.id,
+                "timestamp": gt.timestamp,
+                "video_frame": int(gt.timestamp * 24) if gt.timestamp else 0,  # Assuming 24 fps
+                "x": gt.x,
+                "y": gt.y,
+                "width": gt.width,
+                "height": gt.height,
+                "class_label": gt.class_label,
+                "confidence": gt.confidence,
+                "screenshot_path": getattr(gt, 'screenshot_path', None),
+                "screenshot_zoom_path": getattr(gt, 'screenshot_zoom_path', None),
+                "validated": gt.validated,
+                "description": f"Ground Truth: {gt.class_label} at {gt.timestamp:.2f}s"
+            })
+        
+        return {
+            "success": True, 
+            "data": {
+                "ground_truth_events": gt_events,
+                "total_count": len(gt_events)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting ground truth events: {str(e)}")
+        return {"success": False, "error": {"message": str(e)}}
+
+# HIL Compute Results Endpoint - Missing endpoint that frontend expects
+@app.post("/svc/compute-results/{session_id}")
+async def compute_hil_results(
+    session_id: str,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Compute HIL test results with ground truth comparison.
+    This endpoint is called by the frontend HIL Results page.
+    """
+    try:
+        logger.info(f"🎯 Computing HIL results for session: {session_id}")
+        
+        # Extract parameters from request
+        tolerance_ms = request.get('toleranceMs', 100)
+        max_latency_ms = request.get('maxLatencyMs', 100)
+        
+        # Check if session exists
+        session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Test session not found")
+        
+        # Get detection events for this session
+        detection_events = db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id == session_id
+        ).all()
+        
+        if not detection_events:
+            logger.warning(f"No detection events found for session {session_id}")
+            return {
+                "success": True,
+                "message": "No detection events found for ground truth comparison",
+                "results": {
+                    "session_id": session_id,
+                    "total_detections": 0,
+                    "matched_detections": 0,
+                    "ground_truth_comparison": None
+                }
+            }
+        
+        # Get ground truth objects for comparison
+        ground_truth_objects = []
+        if session.video_id:
+            ground_truth_objects = db.query(GroundTruthObject).filter(
+                GroundTruthObject.video_id == session.video_id
+            ).all()
+        
+        # Perform ground truth matching if available
+        if ground_truth_objects:
+            try:
+                from services.ground_truth_matching_service import GroundTruthMatchingService
+                matching_service = GroundTruthMatchingService()
+                
+                # Run the matching analysis
+                results = matching_service.match_detections_to_ground_truth(
+                    session_id=session_id,
+                    tolerance_ms=tolerance_ms,
+                    db=db
+                )
+                
+                logger.info(f"✅ Ground truth matching completed for session {session_id}")
+                return {
+                    "success": True,
+                    "message": "HIL results computed successfully with ground truth comparison",
+                    "results": results
+                }
+                
+            except Exception as matching_error:
+                logger.warning(f"Ground truth matching failed: {matching_error}")
+                # Continue without matching
+        
+        # Fallback: basic analysis without ground truth
+        logger.info(f"Computing basic HIL results without ground truth matching")
+        
+        # Calculate basic metrics from detection events
+        voltage_readings = [event.labjack_voltage for event in detection_events if event.labjack_voltage]
+        
+        # Get latency readings - try different field names
+        latency_readings = []
+        for event in detection_events:
+            if hasattr(event, 'actual_latency_ms') and event.actual_latency_ms:
+                latency_readings.append(event.actual_latency_ms)
+            elif hasattr(event, 'latency_ns') and event.latency_ns:
+                # Convert nanoseconds to milliseconds
+                try:
+                    latency_readings.append(float(event.latency_ns) / 1_000_000)
+                except (ValueError, TypeError):
+                    pass
+            elif hasattr(event, 'processing_time_ms') and event.processing_time_ms:
+                latency_readings.append(event.processing_time_ms)
+        
+        basic_results = {
+            "session_id": session_id,
+            "total_detections": len(detection_events),
+            "voltage_detections": len(voltage_readings),
+            "average_voltage": statistics.mean(voltage_readings) if voltage_readings else 0,
+            "max_voltage": max(voltage_readings) if voltage_readings else 0,
+            "min_voltage": min(voltage_readings) if voltage_readings else 0,
+            "average_latency_ms": statistics.mean(latency_readings) if latency_readings else 0,
+            "max_latency_ms": max(latency_readings) if latency_readings else 0,
+            "tolerance_ms": tolerance_ms,
+            "threshold_ms": max_latency_ms,
+            "ground_truth_available": len(ground_truth_objects) > 0,
+            "ground_truth_count": len(ground_truth_objects),
+            "message": "Basic analysis completed - no ground truth comparison available"
+        }
+        
+        return {
+            "success": True,
+            "message": "HIL results computed successfully",
+            "results": basic_results
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error computing HIL results for session {session_id}: {str(e)}")
+        return {
+            "success": False,
+            "error": {
+                "message": f"Failed to compute HIL results: {str(e)}",
+                "session_id": session_id
+            }
+        }
+
+@app.post("/api/test-sessions/{session_id}/compute-and-fetch")
+async def compute_and_fetch_results(session_id: str, request: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    Frontend compatibility endpoint used by HILResults.tsx.
+    Computes ground-truth matching and returns metrics in { success, data: { results } }.
+    """
+    try:
+        from services.ground_truth_matching_service import GroundTruthMatchingService
+        matcher = GroundTruthMatchingService()
+        tolerance = request.get("toleranceMs", 100)
+        metrics = matcher.match_detections_to_ground_truth(session_id=session_id, tolerance_ms=tolerance, force_rematch=False)
+        return {"success": True, "data": {"results": (metrics.__dict__ if metrics else None)}}
+    except Exception as e:
+        logger.error(f"compute-and-fetch failed for {session_id}: {e}")
+        return {"success": False, "error": {"message": str(e)}}
 
 # Enhanced startup message
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ export interface DetectionLatencyEvent {
   timestamp: number;
   frame_number: number;
   detection_time_ms: number;
-  processing_latency_ms: number;
+  processing_latency_ms?: number;
   labJack_trigger_time_ms: number;
   passed: boolean;
   error_message?: string;
@@ -28,7 +28,11 @@ export interface DetectionLatencyEvent {
   screenshot_path?: string;
   screenshot_zoom_path?: string;
   failure_reason?: string;
-  failure_type?: 'timing' | 'accuracy' | 'detection' | 'system';
+  failure_type?: 'timing' | 'accuracy' | 'detection' | 'system' | 'voltage' | 'none';
+  // Enhanced fields for ground truth integration
+  voltage?: number;
+  channel?: string;
+  actual_latency_ms?: string;
 }
 
 export interface LatencyStatistics {
@@ -74,7 +78,7 @@ export interface FrameDetection {
   groundTruthId?: string;
   iouScore?: number;
   isGroundTruth: boolean;
-  matchType?: 'true_positive' | 'false_positive' | 'false_negative' | 'unmatched';
+  matchType?: 'true_positive' | 'false_positive' | 'false_negative' | 'unmatched' | 'video_ended';
   // Failure snapshot fields
   failed?: boolean;
   screenshot_path?: string;
@@ -767,4 +771,167 @@ export interface VisualizationSettings {
   refreshInterval: number;
   maxDataPoints: number;
   smoothing: boolean;
+}
+
+// Enhanced HIL Results with Ground Truth Comparison
+export interface EnhancedHILResults {
+  session_id: string;
+  hardware_status: {
+    labjack_connected: boolean;
+    model: string;
+    firmware_version?: string;
+    channels_active?: number;
+    sample_rate?: number;
+  };
+  video_timing: {
+    startup_delay_ms: number;
+    timing_sync_status: string;
+    timing_accuracy_ns: number | null;
+    fps?: number;
+    duration?: number;
+    filename?: string;
+  };
+  detection_statistics: {
+    total_detections: number;
+    original_results: {
+      average_apparent_latency_ms: number;
+      passed_detections: number;
+      failed_detections: number;
+      pass_rate: number;
+    };
+    corrected_results: {
+      average_real_latency_ms: number;
+      median_real_latency_ms: number;
+      passed_detections: number;
+      failed_detections: number;
+      pass_rate: number;
+    };
+  };
+  ground_truth_comparison?: {
+    ground_truth_events_available: number;
+    total_detections: number;
+    events_with_matches: number;
+    average_confidence_score: number;
+    timing_quality_distribution: {
+      excellent?: number;
+      good?: number;
+      fair?: number;
+      poor?: number;
+    };
+    precision?: number;
+    recall?: number;
+    f1_score?: number;
+    true_positives?: number;
+    false_positives?: number;
+    false_negatives?: number;
+  };
+  detection_events: Array<{
+    event_id: string;
+    detection_time: string;
+    labjack_trigger_time: string;
+    frame_number: number;
+    threshold_ms: number;
+    result: 'pass' | 'fail';
+    voltage_level: number;
+    original_latency?: {
+      apparent_latency_ms: number;
+    };
+    corrected_latency?: {
+      real_latency_ms: number;
+    };
+    timing_synchronization?: {
+      timing_quality: 'excellent' | 'good' | 'fair' | 'poor';
+      confidence_score: number;
+      ground_truth_available: boolean;
+    };
+    measured_breakdown?: {
+      system_processing_ms: number;
+      frame_timing_variance_ms: number;
+      initial_startup_effect_ms: number;
+      camera_processing_note: string;
+      total_measured_latency_ms: number;
+      measurement_source: string;
+      measurement_method: string;
+      note?: string;
+    };
+  }>;
+  session_info?: {
+    project_name?: string;
+    name?: string;
+    duration_seconds?: number;
+    status?: string;
+    start_time?: string;
+    end_time?: string;
+    operator?: string;
+  };
+}
+
+// Ground Truth Event Structure
+export interface GroundTruthEvent {
+  id: string;
+  timestamp: number;
+  video_frame: number;
+  frame_number: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  class_label: string;
+  confidence: number;
+  validated: boolean;
+  difficult?: boolean;
+}
+
+// Ground Truth Comparison Metrics
+export interface GroundTruthComparisonMetrics {
+  ground_truth_events_available: number;
+  total_detections: number;
+  events_with_matches: number;
+  average_confidence_score: number;
+  timing_quality_distribution: {
+    excellent: number;
+    good: number;
+    fair: number;
+    poor: number;
+  };
+  precision: number;
+  recall: number;
+  f1_score: number;
+  true_positives: number;
+  false_positives: number;
+  false_negatives: number;
+}
+
+// Enhanced Detection Event with Ground Truth Integration
+export interface EnhancedDetectionEvent extends DetectionLatencyEvent {
+  // Enhanced timing fields
+  real_latency_ms?: number;
+  apparent_latency_ms?: number;
+  timing_quality?: 'excellent' | 'good' | 'fair' | 'poor';
+  confidence_score?: number;
+  processing_time_ms?: number;
+  
+  // Ground truth matching
+  ground_truth_match_id?: string;
+  ground_truth_available?: boolean;
+  match_distance_pixels?: number;
+  match_iou_score?: number;
+  
+  // Video timing context
+  video_frame?: number;
+  voltage?: number;
+  labjack_voltage?: number;
+  channel?: string;
+  
+  // Measured breakdown
+  measured_breakdown?: {
+    system_processing_ms: number | string;
+    frame_timing_variance_ms: number;
+    initial_startup_effect_ms: number;
+    camera_processing_note: string;
+    total_measured_latency_ms: number;
+    measurement_source: string;
+    measurement_method: string;
+    note?: string;
+  };
 }

@@ -1,0 +1,71 @@
+{
+  "test_suite": "LabJack Backend API Integration",
+  "timestamp": "2025-09-14T21:24:31.821481",
+  "base_url": "http://localhost:8000",
+  "test_results": {
+    "health_check": {
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2edf70>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "healthy": false
+    },
+    "labjack_status_api": {
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e579e50>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "success": false
+    },
+    "labjack_devices_api": {
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/devices (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2ee570>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "success": false
+    },
+    "labjack_health_api": {
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2eec90>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "success": false
+    },
+    "precision_monitoring_api": {
+      "start": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/monitoring/start (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2ef410>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+        "success": false
+      },
+      "status": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/monitoring/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2efbc0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+        "success": false
+      }
+    },
+    "signal_validation_api": {
+      "connection": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/signal-validation/test-connection (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2a5040>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+        "success": false
+      },
+      "processing": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/signal-validation/signal/process (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2eed20>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+        "success": false
+      }
+    },
+    "api_performance": {
+      "/health": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2eeae0>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+      },
+      "/api/labjack/status": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e2ee120>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+      },
+      "/api/labjack/devices": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/devices (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e32c4a0>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+      },
+      "/api/labjack/health": {
+        "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/labjack/health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7e417e32cd40>: Failed to establish a new connection: [Errno 111] Connection refused'))"
+      }
+    },
+    "websocket_test": {
+      "connection_successful": false,
+      "messages_received": 0,
+      "data_flow_validated": false,
+      "connection_time_ms": 0,
+      "error": "BaseEventLoop.create_connection() got an unexpected keyword argument 'timeout'"
+    }
+  },
+  "summary": {
+    "total_tests": 8,
+    "passed_tests": 0,
+    "failed_tests": 5,
+    "success_rate": 0.0,
+    "overall_status": "FAIL"
+  }
+}

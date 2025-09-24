@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HIL Test Results Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .voltage-good { color: green; font-weight: bold; }
+        .voltage-low { color: orange; font-weight: bold; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HIL Test Results - Debug View</h1>
+        
+        <button onclick="testSessionWithEvents()">Test Session with Events (b8a345a5...)</button>
+        <button onclick="testLatestWithEvents()">Test Latest with Events API</button>
+        <button onclick="testHILResultsAPI()">Test HIL Results API</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        function logResult(title, data, isError = false) {
+            const resultsDiv = document.getElementById('results');
+            const card = document.createElement('div');
+            card.className = `card ${isError ? 'error' : 'success'}`;
+            
+            const titleEl = document.createElement('h3');
+            titleEl.textContent = title;
+            card.appendChild(titleEl);
+            
+            const preEl = document.createElement('pre');
+            preEl.textContent = JSON.stringify(data, null, 2);
+            preEl.style.maxHeight = '400px';
+            preEl.style.overflow = 'auto';
+            card.appendChild(preEl);
+            
+            resultsDiv.appendChild(card);
+        }
+        
+        async function testSessionWithEvents() {
+            try {
+                const sessionId = 'b8a345a5-582a-4a55-a409-c7a8a06408f9';
+                console.log('🔍 Testing session with events:', sessionId);
+                
+                const response = await fetch(`${API_BASE}/api/test-sessions/${sessionId}/results`);
+                const data = await response.json();
+                
+                logResult(`Session Results for ${sessionId}`, data);
+                
+                // Show summary
+                if (data.summary) {
+                    console.log('📊 Summary:', data.summary);
+                    const summaryCard = document.createElement('div');
+                    summaryCard.className = 'card warning';
+                    summaryCard.innerHTML = `
+                        <h4>Session Summary</h4>
+                        <p><strong>Total Detections:</strong> ${data.summary.total_detections}</p>
+                        <p><strong>VRU Types:</strong> ${JSON.stringify(data.summary.vru_type_distribution)}</p>
+                        <p><strong>Status:</strong> ${data.session_status}</p>
+                    `;
+                    document.getElementById('results').appendChild(summaryCard);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                logResult('Error testing session with events', { error: error.message }, true);
+            }
+        }
+        
+        async function testLatestWithEvents() {
+            try {
+                console.log('🔍 Testing latest session with events API...');
+                
+                const response = await fetch(`${API_BASE}/api/test-sessions/latest-with-events`);
+                const data = await response.json();
+                
+                logResult('Latest Session with Events', data);
+                
+                if (data.session_id) {
+                    console.log('✅ Found session:', data.session_id);
+                    // Now test that session's results
+                    setTimeout(() => testHILResultsAPI(data.session_id), 1000);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                logResult('Error testing latest with events', { error: error.message }, true);
+            }
+        }
+        
+        async function testHILResultsAPI(sessionId = 'b8a345a5-582a-4a55-a409-c7a8a06408f9') {
+            try {
+                console.log('🔍 Testing HIL Results API for session:', sessionId);
+                
+                const response = await fetch(`${API_BASE}/api/test-sessions/${sessionId}/results`);
+                const data = await response.json();
+                
+                logResult(`HIL Results API for ${sessionId}`, data);
+                
+                // If we have detection events, show them in a nice table
+                if (data.detection_events && data.detection_events.length > 0) {
+                    const tableCard = document.createElement('div');
+                    tableCard.className = 'card success';
+                    tableCard.innerHTML = `
+                        <h4>Detection Events (${data.detection_events.length})</h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Event ID</th>
+                                    <th>Timestamp</th>
+                                    <th>Voltage</th>
+                                    <th>Channel</th>
+                                    <th>Result</th>
+                                    <th>Session</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.detection_events.slice(0, 10).map(event => `
+                                    <tr>
+                                        <td>${(event.event_id || 'N/A').substring(0, 8)}...</td>
+                                        <td>${event.timestamp || event.detection_time || 'N/A'}</td>
+                                        <td class="${(event.voltage_level || 0) >= 2.5 ? 'voltage-good' : 'voltage-low'}">
+                                            ${(event.voltage_level || 0).toFixed(2)}V
+                                        </td>
+                                        <td>${event.channel || 'AIN0'}</td>
+                                        <td>${event.result || 'unknown'}</td>
+                                        <td>${(event.session_id || 'N/A').substring(0, 8)}...</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        ${data.detection_events.length > 10 ? `<p>Showing first 10 of ${data.detection_events.length} events</p>` : ''}
+                    `;
+                    document.getElementById('results').appendChild(tableCard);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                logResult('Error testing HIL Results API', { error: error.message }, true);
+            }
+        }
+        
+        // Auto-run test on page load
+        window.onload = function() {
+            console.log('🚀 HIL Frontend Debug Test loaded');
+            setTimeout(testSessionWithEvents, 500);
+        };
+    </script>
+</body>
+</html>

@@ -15,8 +15,9 @@ import {
 } from '@mui/icons-material';
 
 import { apiService } from '../services/api';
+// Using inline interface instead of importing
 
-interface LabJackStatus {
+interface SimpleLabJackStatusState {
   connected: boolean;
   status: 'connected' | 'disconnected' | 'checking' | 'error';
   deviceInfo?: {
@@ -27,7 +28,7 @@ interface LabJackStatus {
 }
 
 interface SimpleLabJackStatusProps {
-  onStatusChange?: (status: LabJackStatus) => void;
+  onStatusChange?: (status: SimpleLabJackStatusState) => void;
   showRefreshButton?: boolean;
 }
 
@@ -35,7 +36,7 @@ const SimpleLabJackStatus: React.FC<SimpleLabJackStatusProps> = ({
   onStatusChange,
   showRefreshButton = true
 }) => {
-  const [status, setStatus] = useState<LabJackStatus>({
+  const [status, setStatus] = useState<SimpleLabJackStatusState>({
     connected: false,
     status: 'checking'
   });
@@ -44,23 +45,26 @@ const SimpleLabJackStatus: React.FC<SimpleLabJackStatusProps> = ({
   const checkLabJackStatus = async () => {
     try {
       setLoading(true);
+      console.log('🔍 [SimpleLabJackStatus] Checking LabJack status...');
       const response = await apiService.checkLabJackStatus();
+      console.log('📡 [SimpleLabJackStatus] API Response:', response);
       
-      const newStatus: LabJackStatus = {
-        connected: response?.connected || false,
-        status: response?.connected ? 'connected' : 'disconnected',
+      const newStatus: SimpleLabJackStatusState = {
+        connected: response?.is_connected || false,
+        status: response?.is_connected ? 'connected' : 'disconnected',
         deviceInfo: response?.device_info ? {
-          deviceType: response.device_info.device_type || 'LabJack DAQ',
-          serialNumber: response.device_info.serial_number
+          deviceType: (response.device_info as any)?.device_type || 'LabJack DAQ',
+          serialNumber: (response.device_info as any)?.serial_number?.toString()
         } : undefined,
-        error: response?.error_message
+        error: (response as any)?.error_message || response?.error
       };
       
+      console.log('✅ [SimpleLabJackStatus] Processed Status:', newStatus);
       setStatus(newStatus);
       onStatusChange?.(newStatus);
       
     } catch (err: any) {
-      const errorStatus: LabJackStatus = {
+      const errorStatus: SimpleLabJackStatusState = {
         connected: false,
         status: 'error',
         error: err.message || 'Connection check failed'

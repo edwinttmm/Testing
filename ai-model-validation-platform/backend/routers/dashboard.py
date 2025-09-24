@@ -53,15 +53,31 @@ async def get_dashboard_statistics(db: Session = Depends(get_db)):
             TestSession.created_at >= yesterday
         ).scalar() or 0
         
-        # Calculate average accuracy (placeholder - should be computed from real data)
-        average_accuracy = 0.87  # Default value, should be calculated from detection results
+        # Calculate average accuracy from test results; fallback to detection events
+        try:
+            from models import TestResult
+            avg_acc = db.query(func.avg(TestResult.accuracy)).scalar()
+            if avg_acc and avg_acc > 0:
+                average_accuracy = float(avg_acc) * 100.0
+            else:
+                # Fallback: proportion of positive validation results
+                total_det = detection_count
+                if total_det > 0:
+                    passed = db.query(func.count(DetectionEvent.id)).filter(
+                        DetectionEvent.validation_result.in_(["PASS", "TP", "validated", "Valid", "valid"])  # tolerant matches
+                    ).scalar() or 0
+                    average_accuracy = (passed / total_det) * 100.0
+                else:
+                    average_accuracy = 0.0
+        except Exception:
+            average_accuracy = 0.0
         
         return DashboardStats(
             project_count=project_count,
             video_count=video_count,
             test_session_count=session_count,
             detection_event_count=detection_count,
-            average_accuracy=average_accuracy,
+            average_accuracy=round(average_accuracy, 1),
             active_tests=active_sessions
         )
         
@@ -153,12 +169,24 @@ async def get_enhanced_dashboard_statistics(
             for day in daily_sessions
         ]
         
-        # System health indicators
-        recent_errors = db.query(func.count(TestSession.id)).filter(
-            TestSession.status == "failed",
-            TestSession.created_at >= datetime.utcnow() - timedelta(hours=1)
-        ).scalar() or 0
-        
+        # Compute average accuracy from results or detection events
+        try:
+            from models import TestResult
+            avg_acc = db.query(func.avg(TestResult.accuracy)).scalar()
+            if avg_acc and avg_acc > 0:
+                average_accuracy = float(avg_acc) * 100.0
+            else:
+                if total_detections > 0:
+                    passed = db.query(func.count(DetectionEvent.id)).filter(
+                        DetectionEvent.created_at >= start_date,
+                        DetectionEvent.validation_result.in_(["PASS", "TP", "validated", "Valid", "valid"])  # tolerant
+                    ).scalar() or 0
+                    average_accuracy = (passed / total_detections) * 100.0
+                else:
+                    average_accuracy = 0.0
+        except Exception:
+            average_accuracy = 0.0
+
         # Return EnhancedDashboardStats with base fields + enhanced fields
         return EnhancedDashboardStats(
             # Base DashboardStats fields
@@ -166,7 +194,7 @@ async def get_enhanced_dashboard_statistics(
             video_count=video_count,
             test_session_count=total_sessions,
             detection_event_count=total_detections,
-            average_accuracy=87.5,  # Calculate from actual results
+            average_accuracy=round(average_accuracy, 1),
             active_tests=session_stats.get("running", 0),
             total_detections=total_detections,
             
@@ -182,8 +210,8 @@ async def get_enhanced_dashboard_statistics(
                 "performance": "stable"
             },
             signal_processing_metrics={
-                "totalSignals": detection_count,
-                "successRate": float(success_rate),
+                "totalSignals": total_detections,
+                "successRate": round(float(success_rate), 1),
                 "avgProcessingTime": float(avg_session_duration) if avg_session_duration else 0
             }
         )

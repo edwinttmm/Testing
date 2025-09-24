@@ -385,7 +385,10 @@ class FailureSnapshotService:
     def _create_zoomed_region(self, frame: np.ndarray, bounding_box: Dict[str, Any], failure_type: str) -> Optional[np.ndarray]:
         """Create zoomed region around detection area"""
         try:
-            x, y, w, h = bounding_box.get('x', 0), bounding_box.get('y', 0), bounding_box.get('width', 0), bounding_box.get('height', 0)
+            x = getattr(bounding_box, 'x', bounding_box.get('x', 0) if hasattr(bounding_box, 'get') else 0)
+            y = getattr(bounding_box, 'y', bounding_box.get('y', 0) if hasattr(bounding_box, 'get') else 0)
+            w = getattr(bounding_box, 'width', bounding_box.get('width', 0) if hasattr(bounding_box, 'get') else 0)
+            h = getattr(bounding_box, 'height', bounding_box.get('height', 0) if hasattr(bounding_box, 'get') else 0)
             
             # Calculate zoom region with padding
             padding = max(50, int(max(w, h) * 0.5))  # 50% padding around detection

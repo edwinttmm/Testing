@@ -4,12 +4,16 @@ import {
   ListItemAvatar, Avatar, Chip, Box, Button, CircularProgress,
   Alert
 } from '@mui/material';
-import { Visibility, CameraAlt, Person, SmartToy, PersonOutline } from '@mui/icons-material';
+import { 
+  Visibility, CameraAlt, Person, SmartToy, PersonOutline, 
+  CheckCircle, Warning, Error, AccessTime, VideoFile 
+} from '@mui/icons-material';
 
 interface DetectionResult {
   id: string;
   timestamp: number;
   frameNumber: number;
+  video_frame_number?: number; // New field for frame correlation
   confidence: number;
   classLabel: string;
   vruType: string;
@@ -21,6 +25,15 @@ interface DetectionResult {
   };
   screenshotPath?: string;
   screenshotZoomPath?: string;
+  // Frame correlation fields
+  frame_correlation?: {
+    status: 'aligned' | 'misaligned' | 'missing';
+    offset_ms: number;
+    closest_gt_frame?: number;
+  };
+  latency_ms?: number; // Processing latency
+  voltage?: number; // For HIL testing
+  channel?: string; // For HIL testing
 }
 
 interface DetectionResultsPanelProps {
@@ -166,6 +179,24 @@ const DetectionResultsPanel: React.FC<DetectionResultsPanelProps> = ({
     return source === 'ai' ? <SmartToy /> : baseIcon;
   };
 
+  const getCorrelationIcon = (status?: string) => {
+    switch (status) {
+      case 'aligned': return <CheckCircle />;
+      case 'misaligned': return <Warning />;
+      case 'missing': return <Error />;
+      default: return null;
+    }
+  };
+
+  const getCorrelationColor = (status?: string) => {
+    switch (status) {
+      case 'aligned': return 'success';
+      case 'misaligned': return 'warning';
+      case 'missing': return 'error';
+      default: return 'default';
+    }
+  };
+
   return (
     <Paper sx={{ p: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
@@ -248,14 +279,61 @@ const DetectionResultsPanel: React.FC<DetectionResultsPanelProps> = ({
                     size="small"
                     variant="outlined"
                   />
+                  {/* Frame Correlation Status */}
+                  {detection.frame_correlation && (
+                    <Chip
+                      icon={getCorrelationIcon(detection.frame_correlation.status)}
+                      label={`Frame ${detection.frame_correlation.status}`}
+                      color={getCorrelationColor(detection.frame_correlation.status) as any}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
+                  {/* Latency Information */}
+                  {detection.latency_ms !== undefined && (
+                    <Chip
+                      icon={<AccessTime />}
+                      label={`${detection.latency_ms.toFixed(1)}ms`}
+                      color={detection.latency_ms > 100 ? 'error' : 'success'}
+                      size="small"
+                    />
+                  )}
+                  {/* Voltage for HIL Testing */}
+                  {detection.voltage !== undefined && (
+                    <Chip
+                      label={`${detection.voltage.toFixed(2)}V`}
+                      color={detection.voltage >= 2.5 ? 'success' : 'error'}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
                 </Box>
               }
               secondary={
-                `Frame ${detection.frameNumber} • ${detection.timestamp?.toFixed(2)}s${
-                  detection.boundingBox 
-                    ? ` • Box: ${Math.round(detection.boundingBox.x)},${Math.round(detection.boundingBox.y)} ${Math.round(detection.boundingBox.width)}×${Math.round(detection.boundingBox.height)}`
-                    : ''
-                }`
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Frame {detection.frameNumber}
+                    {detection.video_frame_number && detection.video_frame_number !== detection.frameNumber && (
+                      <> (Video: F{detection.video_frame_number})</>
+                    )}
+                    {' • '}{detection.timestamp?.toFixed(2)}s
+                    {detection.boundingBox && (
+                      <> • Box: {Math.round(detection.boundingBox.x)},{Math.round(detection.boundingBox.y)} {Math.round(detection.boundingBox.width)}×{Math.round(detection.boundingBox.height)}</>
+                    )}
+                    {detection.channel && (
+                      <> • {detection.channel}</>
+                    )}
+                  </Typography>
+                  {/* Frame correlation details */}
+                  {detection.frame_correlation && detection.frame_correlation.status !== 'aligned' && (
+                    <Typography variant="caption" color="warning.main">
+                      ⚠️ Frame offset: {detection.frame_correlation.offset_ms.toFixed(1)}ms
+                      {detection.frame_correlation.closest_gt_frame && (
+                        <> (closest GT: F{detection.frame_correlation.closest_gt_frame})</>
+                      )}
+                    </Typography>
+                  )}
+                </Box>
               }
             />
             

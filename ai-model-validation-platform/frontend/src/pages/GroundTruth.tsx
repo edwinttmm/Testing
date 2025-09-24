@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -44,6 +44,7 @@ import {
   Publish,
   CropFree,
   PlayArrow,
+  Verified,
 } from '@mui/icons-material';
 import { 
   VideoFile, 
@@ -154,6 +155,7 @@ const validateVideoFile = (file: File): string | null => {
 };
 
 const GroundTruth: React.FC = () => {
+  const navigate = useNavigate();
   // State management
   const [videos, setVideos] = useState<VideoFile[]>([]);
   const [uploadingVideos, setUploadingVideos] = useState<UploadingVideo[]>([]);
@@ -1604,6 +1606,14 @@ const GroundTruth: React.FC = () => {
                 
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Tooltip title="Open Validation">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => navigate(`/annotation-validation/${video.id}`)}
+                      >
+                        <Verified />
+                      </IconButton>
+                    </Tooltip>
                     {(video.status === VideoValidationStatus.VALIDATED || video.status === VideoValidationStatus.VALIDATED) && (
                       <Tooltip title={
                         video.projectId || projectId 

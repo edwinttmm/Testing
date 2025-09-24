@@ -3,7 +3,7 @@
  * Centralizes video status logic and transitions
  */
 
-import { VideoStatus } from '../services/types';
+import { VideoStatus, VideoValidationStatus } from '../services/types';
 
 export interface StatusTransition {
   from: VideoStatus;
@@ -253,4 +253,67 @@ export function groupVideosByStatus<T extends { status: VideoStatus }>(
     groups[status].push(video);
     return groups;
   }, {} as Record<VideoStatus, T[]>);
+}
+
+/**
+ * Convert VideoValidationStatus to VideoStatus for compatibility
+ */
+export function convertValidationStatusToVideoStatus(validationStatus: VideoValidationStatus): VideoStatus {
+  const statusMapping: Record<VideoValidationStatus, VideoStatus> = {
+    [VideoValidationStatus.UPLOADED]: VideoStatus.UPLOADED,
+    [VideoValidationStatus.PROCESSING]: VideoStatus.PROCESSING,
+    [VideoValidationStatus.PROCESSING_FAILED]: VideoStatus.ERROR,
+    [VideoValidationStatus.ANNOTATED]: VideoStatus.COMPLETED,
+    [VideoValidationStatus.VALIDATING]: VideoStatus.PROCESSING,
+    [VideoValidationStatus.VALIDATION_FAILED]: VideoStatus.ERROR,
+    [VideoValidationStatus.VALIDATED]: VideoStatus.VALIDATED,
+    [VideoValidationStatus.READY_FOR_TESTING]: VideoStatus.VALIDATED,
+    [VideoValidationStatus.IN_TESTING]: VideoStatus.VALIDATED,
+    [VideoValidationStatus.TESTED]: VideoStatus.VALIDATED,
+    [VideoValidationStatus.ARCHIVED]: VideoStatus.VALIDATED,
+    [VideoValidationStatus.ERROR]: VideoStatus.ERROR
+  };
+  
+  return statusMapping[validationStatus] || VideoStatus.UPLOADED;
+}
+
+/**
+ * Convert VideoStatus to VideoValidationStatus for compatibility
+ */
+export function convertVideoStatusToValidationStatus(videoStatus: VideoStatus): VideoValidationStatus {
+  const statusMapping: Record<VideoStatus, VideoValidationStatus> = {
+    [VideoStatus.UPLOADED]: VideoValidationStatus.UPLOADED,
+    [VideoStatus.PROCESSING]: VideoValidationStatus.PROCESSING,
+    [VideoStatus.COMPLETED]: VideoValidationStatus.ANNOTATED,
+    [VideoStatus.VALIDATED]: VideoValidationStatus.VALIDATED,
+    [VideoStatus.ERROR]: VideoValidationStatus.ERROR,
+    [VideoStatus.PENDING_ANNOTATION]: VideoValidationStatus.ANNOTATED,
+    [VideoStatus.PENDING_VALIDATION]: VideoValidationStatus.VALIDATING
+  };
+  
+  return statusMapping[videoStatus] || VideoValidationStatus.UPLOADED;
+}
+
+/**
+ * Check if two status values are equivalent (cross-enum compatibility)
+ */
+export function isStatusEquivalent(
+  status1: VideoStatus | VideoValidationStatus,
+  status2: VideoStatus | VideoValidationStatus
+): boolean {
+  // If both are the same type, do direct comparison
+  if (typeof status1 === typeof status2) {
+    return status1 === status2;
+  }
+  
+  // Convert both to VideoStatus for comparison
+  const normalizedStatus1 = typeof status1 === 'string' && status1 in VideoValidationStatus 
+    ? convertValidationStatusToVideoStatus(status1 as VideoValidationStatus)
+    : status1 as VideoStatus;
+    
+  const normalizedStatus2 = typeof status2 === 'string' && status2 in VideoValidationStatus
+    ? convertValidationStatusToVideoStatus(status2 as VideoValidationStatus) 
+    : status2 as VideoStatus;
+    
+  return normalizedStatus1 === normalizedStatus2;
 }

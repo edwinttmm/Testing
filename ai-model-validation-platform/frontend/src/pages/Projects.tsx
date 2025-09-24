@@ -555,8 +555,9 @@ const Projects: React.FC = () => {
               disabled={formLoading}
             >
               <MenuItem value={CameraType.FRONT_FACING_VRU}>Front-facing VRU</MenuItem>
-              <MenuItem value={CameraType.REAR_VIEW}>Rear-view</MenuItem>
-              <MenuItem value={CameraType.SIDE_VIEW}>Side-view</MenuItem>
+              <MenuItem value={CameraType.REAR_FACING_VRU}>Rear-facing VRU</MenuItem>
+              <MenuItem value={CameraType.IN_CAB_DRIVER_BEHAVIOR}>In-Cab Driver Behavior</MenuItem>
+              <MenuItem value={CameraType.MULTI_ANGLE_SCENARIOS}>Multi-angle</MenuItem>
             </Select>
           </FormControl>
           
@@ -569,9 +570,9 @@ const Projects: React.FC = () => {
               disabled={formLoading}
             >
               <MenuItem value={SignalType.GPIO}>GPIO</MenuItem>
-              <MenuItem value={SignalType.TTL}>TTL</MenuItem>
-              <MenuItem value={SignalType.ANALOG}>Analog</MenuItem>
-              <MenuItem value={SignalType.DIGITAL}>Digital</MenuItem>
+              <MenuItem value={SignalType.NETWORK_PACKET}>Network Packet</MenuItem>
+              <MenuItem value={SignalType.SERIAL}>Serial</MenuItem>
+              <MenuItem value={SignalType.CAN_BUS}>CAN Bus</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>

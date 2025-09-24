@@ -68,6 +68,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Import LabJack helper functions for compatibility
+try:
+    from services.ljm_helpers import numberToType, numberToDeviceType, numberToConnectionType, numberToIP
+    HELPERS_AVAILABLE = True
+except ImportError:
+    HELPERS_AVAILABLE = False
+    logger.warning("LabJack helper functions not available")
+
 
 class ConnectionMode(Enum):
     """LabJack connection modes"""
@@ -362,24 +370,39 @@ class LabJackService:
         # Thread pool for async operations
         self.executor = ThreadPoolExecutor(max_workers=4)
         
-        logger.info("LabJack service initialized")
+        # Lazy connection flag - do NOT connect during initialization
+        self._initialized = True
+        
+        logger.info("LabJack service initialized (lazy connection - will connect when needed)")
     
     async def connect(self, force_mode: Optional[ConnectionMode] = None) -> bool:
-        """Connect using fallback strategy: Bridge → Direct → Mock"""
-        
+        """Connect using environment-aware fallback strategy.
+
+        - On WSL: Bridge → Direct → Mock (avoid direct USB to prevent segfaults)
+        - Else:   Direct → Bridge → Mock
+        """
+        import platform
+        is_wsl = platform.system() == "Linux" and "microsoft" in platform.uname().release.lower()
+
         if force_mode:
             return await self._connect_specific_mode(force_mode)
-        
-        # Try Direct mode FIRST (prioritize real hardware)
-        logger.info("🔌 Attempting direct hardware connection...")
-        if await self._connect_direct():
-            return True
-        
-        # Try Bridge mode second
-        logger.info("🌐 Attempting bridge connection...")
-        if await self._connect_bridge():
-            return True
-        
+
+        if is_wsl:
+            logger.info("🌐 WSL detected: preferring Windows bridge for LabJack access...")
+            if await self._connect_bridge():
+                return True
+            logger.info("🔌 Bridge failed; attempting direct hardware connection...")
+            if await self._connect_direct():
+                return True
+        else:
+            # Native Linux/Windows: try direct first
+            logger.info("🔌 Attempting direct hardware connection...")
+            if await self._connect_direct():
+                return True
+            logger.info("🌐 Attempting bridge connection...")
+            if await self._connect_bridge():
+                return True
+
         # Fallback to Mock mode LAST
         logger.info("🔧 Falling back to mock mode...")
         return await self._connect_mock()
@@ -435,7 +458,7 @@ class LabJackService:
             
             # First, try to import the official LabJack library
             try:
-                import labjack.ljm as ljm
+                from labjack import ljm
                 # Test if this is the real library by checking for key functions
                 if hasattr(ljm, 'numberToType') and hasattr(ljm, 'openS'):
                     # Test if the library can actually load (it might fail due to missing .so file)
@@ -493,8 +516,8 @@ class LabJackService:
             
             # Verify connection and get device info
             info = ljm.getHandleInfo(self.direct_handle)
-            device_type = ljm.numberToType(info[0])
-            connection_type = ljm.numberToConnectionType(info[1])
+            device_type = numberToType(info[0]) if HELPERS_AVAILABLE else f"Device_{info[0]}"
+            connection_type = numberToConnectionType(info[1]) if HELPERS_AVAILABLE else f"Connection_{info[1]}"
             serial_number = info[2]
             
             # Store device info
@@ -502,7 +525,7 @@ class LabJackService:
                 "device_type": device_type,
                 "connection_type": connection_type,
                 "serial_number": serial_number,
-                "ip_address": ljm.numberToIP(info[3]) if connection_type in ["ETHERNET", "WIFI"] else "N/A",
+                "ip_address": (numberToIP(info[3]) if HELPERS_AVAILABLE else f"IP_{info[3]}") if connection_type in ["ETHERNET", "WIFI"] else "N/A",
                 "port": info[4] if connection_type in ["ETHERNET", "WIFI"] else "N/A",
                 "max_bytes": info[5],
                 "is_mock": False,
@@ -614,10 +637,10 @@ class LabJackService:
                     ljm = self.ljm_module
                     info = ljm.getHandleInfo(self.direct_handle)
                     return {
-                        "device_type": ljm.numberToType(info[0]),
-                        "connection_type": ljm.numberToConnectionType(info[1]),
+                        "device_type": numberToType(info[0]) if HELPERS_AVAILABLE else f"Device_{info[0]}",
+                        "connection_type": numberToConnectionType(info[1]) if HELPERS_AVAILABLE else f"Connection_{info[1]}",
                         "serial_number": info[2],
-                        "ip_address": ljm.numberToIP(info[3]),
+                        "ip_address": numberToIP(info[3]) if HELPERS_AVAILABLE else f"IP_{info[3]}",
                         "port": info[4],
                         "is_mock": False
                     }
@@ -887,18 +910,25 @@ _labjack_service: Optional[LabJackService] = None
 
 
 def get_labjack_service() -> LabJackService:
-    """Get global LabJack service instance"""
+    """Get global LabJack service instance (lazy initialization - no connection)"""
     global _labjack_service
     if _labjack_service is None:
         _labjack_service = LabJackService()
+        logger.info("LabJack service instance created (disconnected, ready for connection)")
     return _labjack_service
 
 
-async def initialize_labjack_service(config: Optional[LabJackConfig] = None) -> bool:
-    """Initialize and connect LabJack service"""
+async def initialize_labjack_service(config: Optional[LabJackConfig] = None, auto_connect: bool = False) -> bool:
+    """Initialize LabJack service (optionally connect immediately)"""
     global _labjack_service
     _labjack_service = LabJackService(config)
-    return await _labjack_service.connect()
+    
+    if auto_connect:
+        logger.info("Auto-connecting LabJack service during initialization...")
+        return await _labjack_service.connect()
+    else:
+        logger.info("LabJack service initialized (connection deferred until needed)")
+        return True
 
 
 # Export key classes and functions

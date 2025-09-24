@@ -120,6 +120,18 @@ async def start_video_timing(
         
         # Start video timing (precise timestamp)
         video_start_time, video_start_time_unix = await timing_service.start_video_timing(session_id)
+
+        # Persist timing to test_session using server clock for consistency
+        try:
+            test_session.started_at = test_session.started_at or datetime.now(timezone.utc)
+            # Store as epoch seconds (float)
+            test_session.video_playback_start_time = float(video_start_time_unix)
+            # Also store ns string for precision consumers
+            test_session.video_playback_start_time_ns = str(int(float(video_start_time_unix) * 1_000_000_000))
+            db.commit()
+            logger.info(f"Persisted timing for session {session_id}: started_at={test_session.started_at}, video_playback_start_time={test_session.video_playback_start_time}")
+        except Exception as persist_err:
+            logger.warning(f"Could not persist timing fields on session {session_id}: {persist_err}")
         
         # Start LabJack detection monitoring
         detection_started = await detection_service.start_monitoring(
@@ -137,6 +149,23 @@ async def start_video_timing(
         test_session.started_at = datetime.now(timezone.utc)
         db.commit()
         
+        # Optionally start T3 YOLO detection + video monitor + coordination
+        try:
+            if video_file_path:
+                from src.hil_video_frame_monitor import start_hil_video_monitoring
+                from src.t3_t4_coordination_service import start_t3_t4_coordination
+                from src.hil_t3_yolo_pipeline import start_t3_detection_for_hil_session
+
+                # Start T3 pipeline session
+                await start_t3_detection_for_hil_session(session_id=session_id, video_id=request.video_id, video_start_time=float(video_start_time_unix))
+                # Start video frame monitor (process frames + store detections)
+                await start_hil_video_monitoring(session_id=session_id, video_path=video_file_path, video_id=request.video_id, start_frame=0)
+                # Start coordination for T3-T4 if desired (use latency threshold provided)
+                await start_t3_t4_coordination(session_id=session_id, latency_threshold_ms=request.latency_threshold_ms or 100.0)
+                logger.info(f"T3 detection + video monitor + coordination started for session {session_id}")
+        except Exception as t3_err:
+            logger.warning(f"T3 auto-start skipped for session {session_id}: {t3_err}")
+
         logger.info(f"Started video timing and detection monitoring for session {session_id}")
         
         return {
@@ -148,6 +177,10 @@ async def start_video_timing(
             "latency_threshold_ms": request.latency_threshold_ms,
             "detection_channel": request.detection_channel,
             "timing_session": timing_session.to_dict(),
+            "t3": {
+                "auto_started": bool(video_file_path),
+                "video_path": video_file_path
+            },
             "message": "Video timing and LabJack detection monitoring started successfully"
         }
         

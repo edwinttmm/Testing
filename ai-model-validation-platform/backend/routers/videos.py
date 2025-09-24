@@ -6,7 +6,7 @@ Consolidated video-related endpoints following FastAPI best practices.
 Handles video upload, processing, annotations, and ground truth management.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query, BackgroundTasks, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Dict, Any
@@ -296,7 +296,9 @@ async def list_videos(
                 "annotation_count": annotation_count,
                 "has_ground_truth": db.query(GroundTruthObject).filter(
                     GroundTruthObject.video_id == video.id
-                ).first() is not None
+                ).first() is not None,
+                "status": getattr(video, 'validation_status', 'uploaded'),
+                "processing_status": getattr(video, 'processing_status', 'pending')
             })
         
         # Get total count for proper pagination
@@ -313,6 +315,45 @@ async def list_videos(
     except Exception as e:
         logger.error(f"Error listing videos: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list videos: {str(e)}")
+
+@router.get("/{video_id}")
+async def get_video_details(video_id: str, db: Session = Depends(get_db)):
+    """Get detailed information about a specific video"""
+    try:
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        # Get annotation count
+        annotation_count = db.query(func.count(Annotation.id)).filter(
+            Annotation.video_id == video_id
+        ).scalar() or 0
+        
+        # Check for ground truth objects
+        has_ground_truth = db.query(GroundTruthObject).filter(
+            GroundTruthObject.video_id == video_id
+        ).first() is not None
+        
+        return {
+            "id": video.id,
+            "filename": video.filename,
+            "file_path": video.file_path,
+            "file_size": video.file_size,
+            "duration": video.duration,
+            "fps": video.fps,
+            "project_id": video.project_id,
+            "uploaded_at": video.created_at.isoformat() if video.created_at else None,
+            "annotation_count": annotation_count,
+            "has_ground_truth": has_ground_truth,
+            "status": getattr(video, 'status', 'uploaded'),
+            "processing_status": getattr(video, 'processing_status', 'completed')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get video {video_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get video details: {str(e)}")
 
 @router.get("/{project_id}/videos")
 async def get_project_videos(
@@ -497,19 +538,104 @@ async def create_video_annotation(
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         
-        # Create annotation - FIXED: Avoid video_id conflict
-        annotation_data = annotation.dict()
-        annotation_data.pop('video_id', None)  # Remove video_id to avoid duplicate parameter
-        
+        # Create annotation with normalization
+        # Extract data from pydantic using snake_case keys
+        if hasattr(annotation, 'model_dump'):
+            annotation_data = annotation.model_dump(by_alias=False)
+        else:
+            annotation_data = annotation.dict(by_alias=False)
+
+        # Remove video_id from body to avoid path conflict
+        annotation_data.pop('video_id', None)
+
+        # Normalize camelCase keys to snake_case if present
+        if 'vruType' in annotation_data and 'vru_type' not in annotation_data:
+            annotation_data['vru_type'] = annotation_data.pop('vruType')
+        if 'classLabel' in annotation_data and 'class_label' not in annotation_data:
+            annotation_data['class_label'] = annotation_data.pop('classLabel')
+        if 'endTimestamp' in annotation_data and 'end_timestamp' not in annotation_data:
+            annotation_data['end_timestamp'] = annotation_data.pop('endTimestamp')
+        if 'frameNumber' in annotation_data and 'frame_number' not in annotation_data:
+            annotation_data['frame_number'] = annotation_data.pop('frameNumber')
+        if 'validationStatus' in annotation_data and 'validation_status' not in annotation_data:
+            annotation_data['validation_status'] = annotation_data.pop('validationStatus')
+        if 'boundingBox' in annotation_data and 'bounding_box' not in annotation_data:
+            annotation_data['bounding_box'] = annotation_data.pop('boundingBox')
+
+        # Map class_label to vru_type if needed
+        cls = annotation_data.get('class_label')
+        if not annotation_data.get('vru_type') and cls:
+            mapping = {
+                'person': 'pedestrian',
+                'pedestrian': 'pedestrian',
+                'bicycle': 'cyclist',
+                'cyclist': 'cyclist',
+                'motorcycle': 'motorcyclist',
+                'motorcyclist': 'motorcyclist',
+                'wheelchair': 'wheelchair_user',
+                'scooter': 'scooter_rider',
+            }
+            annotation_data['vru_type'] = mapping.get(str(cls).lower(), 'pedestrian')
+
+        # Ensure bounding_box is a simple dict
+        bbox = annotation_data.get('bounding_box')
+        if bbox is not None:
+            if hasattr(bbox, 'model_dump'):
+                annotation_data['bounding_box'] = bbox.model_dump()
+            elif hasattr(bbox, 'dict'):
+                annotation_data['bounding_box'] = bbox.dict()
+
+        # Drop fields not present on ORM model
+        for key in ['class_label', 'validation_status', 'confidence']:
+            annotation_data.pop(key, None)
+
         db_annotation = Annotation(
             id=str(uuid.uuid4()),
-            video_id=video_id,  # Use path parameter only
+            video_id=video_id,
             **annotation_data
         )
         
         db.add(db_annotation)
         db.commit()
         db.refresh(db_annotation)
+
+        # Mirror to ground_truth_objects so Ground Truth views see boxes immediately
+        try:
+            from models import GroundTruthObject
+            from datetime import datetime, timezone
+            bbox = annotation_data.get('bounding_box') or {}
+            gt = GroundTruthObject(
+                id=str(uuid.uuid4()),
+                video_id=video_id,
+                frame_number=annotation_data.get('frame_number'),
+                timestamp=annotation_data.get('timestamp') or 0.0,
+                class_label=str(annotation_data.get('vru_type') or 'pedestrian'),
+                x=float(bbox.get('x') or 0),
+                y=float(bbox.get('y') or 0),
+                width=float(bbox.get('width') or 1),
+                height=float(bbox.get('height') or 1),
+                bounding_box=bbox,
+                confidence=bbox.get('confidence')
+            )
+            db.add(gt)
+            db.commit()
+
+            # Auto-mark video as validated and ground truth generated
+            try:
+                v = db.query(Video).filter(Video.id == video_id).first()
+                if v:
+                    v.ground_truth_generated = True
+                    v.validated = True
+                    v.validation_status = 'validated'
+                    v.validation_type = v.validation_type or 'automatic'
+                    v.validated_at = datetime.now(timezone.utc)
+                    v.processing_status = 'completed'
+                    db.commit()
+            except Exception:
+                db.rollback()
+        except Exception as e:
+            # Non-fatal if mirroring fails
+            logger.warning(f"GroundTruthObject mirror skipped: {e}")
         
         logger.info(f"Annotation created for video {video_id}")
         return db_annotation
@@ -519,6 +645,89 @@ async def create_video_annotation(
     except Exception as e:
         logger.error(f"Error creating annotation: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create annotation: {str(e)}")
+
+
+@router.post("/annotations/{annotation_id}/validate")
+async def validate_annotation(
+    annotation_id: str,
+    validated: bool = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Validate or invalidate an annotation"""
+    try:
+        # Find the annotation
+        annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
+        if not annotation:
+            # Try to find it in GroundTruthObject table as fallback
+            ground_truth = db.query(GroundTruthObject).filter(GroundTruthObject.id == annotation_id).first()
+            if not ground_truth:
+                raise HTTPException(status_code=404, detail="Annotation not found")
+            
+            # Update ground truth validation status
+            ground_truth.validated = validated
+            db.commit()
+            db.refresh(ground_truth)
+            
+            return {
+                "id": ground_truth.id,
+                "video_id": ground_truth.video_id,
+                "vru_type": ground_truth.vru_type,
+                "frame_number": ground_truth.frame_number,
+                "timestamp": ground_truth.timestamp,
+                "bounding_box": ground_truth.bounding_box,
+                "confidence": ground_truth.confidence,
+                "validated": ground_truth.validated,
+                "created_at": ground_truth.created_at.isoformat() if ground_truth.created_at else None,
+            }
+        
+        # Update annotation validation status
+        annotation.validated = validated
+        db.commit()
+        db.refresh(annotation)
+
+        # Safely serialize bounding_box and confidence (Annotation may not have a 'confidence' column)
+        bbox = annotation.bounding_box
+        if bbox is None:
+            bbox_dict: Dict[str, Any] = {"x": 0, "y": 0, "width": 1, "height": 1}
+        elif isinstance(bbox, str):
+            import json
+            try:
+                bbox_dict = json.loads(bbox)
+            except Exception:
+                bbox_dict = {"x": 0, "y": 0, "width": 1, "height": 1}
+        elif isinstance(bbox, dict):
+            bbox_dict = bbox
+        else:
+            bbox_dict = bbox.__dict__ if hasattr(bbox, '__dict__') else {"x": 0, "y": 0, "width": 1, "height": 1}
+
+        # Confidence may be stored inside bounding_box
+        confidence_val = None
+        try:
+            confidence_val = getattr(annotation, 'confidence', None)
+        except Exception:
+            confidence_val = None
+        if confidence_val is None and isinstance(bbox_dict, dict):
+            confidence_val = bbox_dict.get('confidence', None)
+
+        return {
+            "id": annotation.id,
+            "video_id": annotation.video_id,
+            "vru_type": annotation.vru_type,
+            "frame_number": annotation.frame_number,
+            "timestamp": annotation.timestamp,
+            "bounding_box": bbox_dict,
+            "confidence": confidence_val,
+            "validated": annotation.validated,
+            "created_at": annotation.created_at.isoformat() if annotation.created_at else None,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating annotation {annotation_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to validate annotation")
+
 
 @router.get("/{video_id}/annotations")
 async def get_video_annotations(
@@ -550,16 +759,108 @@ async def get_video_annotations(
             query = query.filter(Annotation.frame_number <= frame_end)
         
         annotations = query.order_by(Annotation.frame_number).offset(skip).limit(limit).all()
-        
-        return {
-            "video_id": video_id,
-            "annotations": annotations,
-            "total_annotations": len(annotations),
-            "filters_applied": {
-                "validated_only": validated_only,
-                "frame_range": [frame_start, frame_end] if frame_start or frame_end else None
+
+        # Load detection events with screenshots for reuse
+        try:
+            from pathlib import Path
+            dets = db.query(DetectionEvent).filter(
+                DetectionEvent.video_id == video_id,
+                DetectionEvent.screenshot_path.isnot(None)
+            ).all()
+            det_list = [
+                {
+                    'timestamp': float(getattr(d, 'timestamp') or 0.0),
+                    'frame_number': getattr(d, 'frame_number', None),
+                    'screenshot_path': getattr(d, 'screenshot_path', None),
+                    'screenshot_zoom_path': getattr(d, 'screenshot_zoom_path', None)
+                }
+                for d in dets
+            ]
+            det_by_frame = {d['frame_number']: d for d in det_list if d.get('frame_number') is not None}
+        except Exception:
+            det_list = []
+            det_by_frame = {}
+
+        # Serialize annotations and attach screenshot paths if found
+        enriched = []
+        for ann in annotations:
+            # Bounding box normalization
+            bbox = {}
+            if ann.bounding_box:
+                if isinstance(ann.bounding_box, dict):
+                    bbox = ann.bounding_box
+                else:
+                    try:
+                        import json
+                        bbox = json.loads(ann.bounding_box) if isinstance(ann.bounding_box, str) else ann.bounding_box
+                    except Exception:
+                        bbox = {}
+            bbox = {
+                'x': bbox.get('x', 0),
+                'y': bbox.get('y', 0),
+                'width': bbox.get('width', 100),
+                'height': bbox.get('height', 100),
+                'confidence': bbox.get('confidence', None),
+                'label': bbox.get('label', ann.vru_type)
             }
-        }
+
+            # Prefer frame match; fallback to nearest timestamp
+            screenshot_path = None
+            screenshot_zoom_path = None
+            if det_list:
+                try:
+                    matched = None
+                    if ann.frame_number is not None:
+                        fn = ann.frame_number
+                        if fn in det_by_frame:
+                            matched = det_by_frame[fn]
+                        elif (fn - 1) in det_by_frame:
+                            matched = det_by_frame[fn - 1]
+                        elif (fn + 1) in det_by_frame:
+                            matched = det_by_frame[fn + 1]
+                    else:
+                        t = float(ann.timestamp or 0.0)
+                        best = None
+                        best_dt = 10**9
+                        for d in det_list:
+                            dt = abs(d['timestamp'] - t)
+                            if dt < best_dt:
+                                best = d
+                                best_dt = dt
+                        if best is not None and best_dt <= 1.0:
+                            matched = best
+                    if matched is not None:
+                        if matched.get('screenshot_zoom_path'):
+                            screenshot_zoom_path = f"/screenshots/{Path(matched['screenshot_zoom_path']).name}"
+                        if matched.get('screenshot_path'):
+                            screenshot_path = f"/screenshots/{Path(matched['screenshot_path']).name}"
+                except Exception:
+                    pass
+
+            enriched.append({
+                'id': ann.id,
+                'videoId': ann.video_id,
+                'detectionId': ann.detection_id,
+                'frameNumber': ann.frame_number,
+                'timestamp': ann.timestamp,
+                'endTimestamp': ann.end_timestamp,
+                'vruType': ann.vru_type,
+                'boundingBox': bbox,
+                'occluded': ann.occluded or False,
+                'truncated': ann.truncated or False,
+                'difficult': ann.difficult or False,
+                'validated': ann.validated or False,
+                'notes': ann.notes,
+                'annotator': ann.annotator,
+                'createdAt': ann.created_at,
+                'updatedAt': ann.updated_at,
+                'screenshotPath': screenshot_zoom_path or screenshot_path,
+                'rawScreenshotPath': screenshot_path,
+                'hasVisualEvidence': bool(screenshot_path or screenshot_zoom_path),
+            })
+
+        # Return a plain list for compatibility with frontend apiService.getAnnotations()
+        return enriched
         
     except HTTPException:
         raise

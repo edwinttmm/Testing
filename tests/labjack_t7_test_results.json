@@ -1,0 +1,221 @@
+{
+  "test_suite": "LabJack T7 ADAS HIL Integration",
+  "test_duration_seconds": 10.613657,
+  "timestamp": "2025-09-14T21:24:30.300002",
+  "test_results": {
+    "connectivity": {
+      "status": "failed",
+      "error": "No module named 'ljm'",
+      "using_mock": true
+    },
+    "analog_io": {
+      "AIN0": {
+        "mean_voltage": 2.595,
+        "std_voltage": 0.0,
+        "min_voltage": 2.595,
+        "max_voltage": 2.595,
+        "voltage_range": 0.0,
+        "noise_level": 0.0,
+        "mean_timing_us": 0.342884003657673,
+        "timing_jitter_us": 1.2184592381619328,
+        "samples_count": 1000,
+        "precision_quality": "excellent"
+      },
+      "AIN1": {
+        "mean_voltage": 2.527,
+        "std_voltage": 0.0,
+        "min_voltage": 2.527,
+        "max_voltage": 2.527,
+        "voltage_range": 0.0,
+        "noise_level": 0.0,
+        "mean_timing_us": 0.3397339905859553,
+        "timing_jitter_us": 0.12804373087360366,
+        "samples_count": 1000,
+        "precision_quality": "excellent"
+      },
+      "AIN2": {
+        "mean_voltage": 2.553,
+        "std_voltage": 0.0,
+        "min_voltage": 2.553,
+        "max_voltage": 2.553,
+        "voltage_range": 0.0,
+        "noise_level": 0.0,
+        "mean_timing_us": 0.33149800037790556,
+        "timing_jitter_us": 0.06231529504081523,
+        "samples_count": 1000,
+        "precision_quality": "excellent"
+      },
+      "AIN3": {
+        "mean_voltage": 2.521,
+        "std_voltage": 0.0,
+        "min_voltage": 2.521,
+        "max_voltage": 2.521,
+        "voltage_range": 0.0,
+        "noise_level": 0.0,
+        "mean_timing_us": 0.38555299579456914,
+        "timing_jitter_us": 0.07371033201089044,
+        "samples_count": 1000,
+        "precision_quality": "excellent"
+      }
+    },
+    "digital_io": {
+      "FIO0": {
+        "output_timing_us": 0.3618800110416487,
+        "timing_jitter_us": 0.403910836612005,
+        "input_samples": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "switching_speed": "fast"
+      },
+      "FIO1": {
+        "output_timing_us": 0.2664800740603823,
+        "timing_jitter_us": 0.11417727353783068,
+        "input_samples": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "switching_speed": "fast"
+      },
+      "FIO2": {
+        "output_timing_us": 0.3055000343010761,
+        "timing_jitter_us": 0.1930128146738524,
+        "input_samples": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "switching_speed": "fast"
+      },
+      "FIO3": {
+        "output_timing_us": 0.30545990739483386,
+        "timing_jitter_us": 0.10878623464996315,
+        "input_samples": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "switching_speed": "fast"
+      }
+    },
+    "timing": {
+      "mean_timing_us": 0.3085390035266755,
+      "timing_jitter_us": 0.5867051711367632,
+      "max_jitter_us": 18.309000552108046,
+      "mean_drift_us": -499195.0267144412,
+      "max_drift_us": 998404.7080008385,
+      "precision_grade": "excellent",
+      "samples_analyzed": 1000,
+      "microsecond_capable": true
+    },
+    "performance": {
+      "acquisition_rates": [
+        2360930.0588660254,
+        2381708.9953931887,
+        2286655.2225371273,
+        2298529.970259011,
+        2301017.7183330823,
+        2342477.456544586,
+        2303005.7144282167,
+        2270574.2280046665,
+        2220401.245063483,
+        2280234.224720267
+      ],
+      "mean_acquisition_rate": 2304553.483414965,
+      "max_acquisition_rate": 2381708.9953931887,
+      "min_acquisition_rate": 2220401.245063483,
+      "acquisition_stability": 0.06999522965753635,
+      "concurrent_test_duration": 0.5064124190002985,
+      "concurrent_capable": true,
+      "performance_grade": "excellent",
+      "hil_ready": true
+    },
+    "vru_events": {
+      "pedestrian": {
+        "mean_sync_time_us": 1397.6133998767182,
+        "sync_success_rate": 0.0,
+        "timing_samples": 20,
+        "adas_compliant": false,
+        "event_count": 20
+      },
+      "cyclist": {
+        "mean_sync_time_us": 1298.8296000003174,
+        "sync_success_rate": 0.0,
+        "timing_samples": 20,
+        "adas_compliant": false,
+        "event_count": 20
+      },
+      "vehicle": {
+        "mean_sync_time_us": 1414.394250150508,
+        "sync_success_rate": 0.0,
+        "timing_samples": 20,
+        "adas_compliant": false,
+        "event_count": 20
+      }
+    },
+    "error_handling": {
+      "invalid_channel_tests": 3,
+      "error_handling_success_rate": 100.0,
+      "recovery_tests": [
+        true
+      ],
+      "recovery_success_rate": 100.0,
+      "robust_error_handling": true,
+      "recovery_capable": true
+    },
+    "health_monitoring": {
+      "temperature_c": 25.299862384796143,
+      "voltage_supply": 5.0,
+      "connection_quality": 95.0,
+      "temperature_ok": true,
+      "voltage_ok": true,
+      "connection_ok": true,
+      "overall_health": true,
+      "health_grade": "excellent",
+      "operational": true
+    }
+  },
+  "overall_status": "PARTIAL_PASS",
+  "adas_hil_ready": {
+    "timing_precision": true,
+    "vru_synchronization": false,
+    "performance_adequate": true,
+    "error_handling": true,
+    "hardware_health": true,
+    "overall_ready": false
+  },
+  "recommendations": [
+    "Improve VRU event synchronization - check trigger timing",
+    "Install real LabJack hardware for production HIL testing"
+  ]
+}

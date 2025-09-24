@@ -73,10 +73,14 @@ logger.info(f"Database URL configured: {mask_database_url(DATABASE_URL)}")
 
 # Enhanced engine configuration with optimized connection pool
 if DATABASE_URL.startswith("sqlite"):
+    # SQLite: avoid implicit RETURNING and use NullPool to reduce cross-thread cursor conflicts.
+    from sqlalchemy.pool import NullPool
     engine = create_engine(
         DATABASE_URL,
         echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
+        implicit_returning=False,
+        poolclass=NullPool
     )
 else:
     # Enhanced connection pool with better error handling for Docker networking
@@ -248,6 +252,19 @@ def initialize_database_on_startup():
     # Create tables if connection is successful
     try:
         safe_create_indexes_and_tables()
+
+        # One-time SQLite migrations to align legacy DBs with current ORM
+        try:
+            if str(engine.url).startswith('sqlite'):
+                from sqlite_migrations import ensure_test_sessions_columns, ensure_detection_events_columns, ensure_videos_columns
+                ts_result = ensure_test_sessions_columns(engine)
+                de_result = ensure_detection_events_columns(engine)
+                v_result = ensure_videos_columns(engine)
+                logger.info(f"SQLite migrations result (test_sessions): {ts_result}")
+                logger.info(f"SQLite migrations result (detection_events): {de_result}")
+                logger.info(f"SQLite migrations result (videos): {v_result}")
+        except Exception as e:
+            logger.warning(f"SQLite migrations skipped/failed: {e}")
         logger.info("✅ Database initialization completed successfully")
         return True
     except Exception as e:

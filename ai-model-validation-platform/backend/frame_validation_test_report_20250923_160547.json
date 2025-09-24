@@ -1,0 +1,33 @@
+{
+  "test_run_timestamp": "2025-09-23T16:05:47.103798",
+  "test_suite": "Frame-Based Validation Comprehensive Test Suite",
+  "summary": {
+    "total_test_suites": 1,
+    "passed_test_suites": 0,
+    "failed_test_suites": 1,
+    "success_rate_percentage": 0.0,
+    "overall_status": "FAILED"
+  },
+  "test_results": {
+    "test_known_session": {
+      "command": "python3 -m pytest tests/test_frame_based_validation_comprehensive.py::TestFrameBasedValidationComprehensive::test_known_session_validation_with_24_ground_truth_events -v --tb=short -x --no-header",
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "/usr/bin/python3: No module named pytest\n",
+      "success": false
+    }
+  },
+  "conclusions": {
+    "frame_correlation_validation": false,
+    "user_concern_addressed": false,
+    "camera_validation_improved": false,
+    "edge_cases_handled": false,
+    "production_ready": false
+  },
+  "recommendations": [
+    "Review comprehensive frame validation implementation",
+    "Fix known session validation - critical for user concern",
+    "Improve edge case handling for production robustness",
+    "Address camera latency frame correlation issues"
+  ]
+}

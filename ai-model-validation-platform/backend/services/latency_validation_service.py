@@ -15,7 +15,7 @@ from enum import Enum
 import math
 
 from services.labjack_detection_service import DetectionEvent
-from services.video_timing_service import VideoTimingData, LatencyMeasurement as TimingLatencyMeasurement
+from services.video_timing_service import EnhancedVideoTimingData as VideoTimingData, VideoLatencyMeasurement as TimingLatencyMeasurement
 
 logger = logging.getLogger(__name__)
 

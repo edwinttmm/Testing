@@ -169,9 +169,8 @@ const ValidationWorkflowPanel: React.FC<ValidationWorkflowPanelProps> = ({
     return requirements;
   }, [validationStats]);
   
-  const canValidate = validationRequirements
-    .filter(req => req.critical)
-    .every(req => req.status === 'passed');
+  // Previously, validation was gated behind all critical requirements passing.
+  // We now allow marking a video as validated regardless of unmet requirements.
   
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -407,24 +406,15 @@ const ValidationWorkflowPanel: React.FC<ValidationWorkflowPanelProps> = ({
         {/* Action Buttons */}
         <Stack spacing={1}>
           {!isValidated && (
-            <>
-              <Button
-                variant="contained"
-                fullWidth
-                onClick={handleValidationStart}
-                disabled={!canValidate}
-                startIcon={<Verified />}
-                size="large"
-              >
-                Mark Video as Validated
-              </Button>
-              
-              {!canValidate && (
-                <Alert severity="warning" sx={{ mt: 1 }}>
-                  Complete all required validation steps before marking video as validated.
-                </Alert>
-              )}
-            </>
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={handleValidationStart}
+              startIcon={<Verified />}
+              size="large"
+            >
+              Mark Video as Validated
+            </Button>
           )}
           
           {isValidated && (

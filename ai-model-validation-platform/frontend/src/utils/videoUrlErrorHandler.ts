@@ -5,7 +5,8 @@
  * with fallback strategies and recovery mechanisms.
  */
 
-import { VideoFile, VideoStatus } from '../services/types';
+import { VideoFile, VideoStatus, VideoValidationStatus } from '../services/types';
+import { convertVideoStatusToValidationStatus } from './videoStatusUtils';
 import { isDebugEnabled } from './envConfig';
 
 export interface VideoUrlError {
@@ -99,8 +100,8 @@ class VideoUrlErrorHandler {
             annotationCount: video.annotationCount || 0,
             createdAt: video.createdAt || new Date().toISOString(),
             // Add other required VideoFile properties with defaults
-            uploadedAt: video.uploadedAt || new Date().toISOString(),
-            status: video.status || VideoStatus.VALIDATED
+            uploaded_at: video.uploaded_at || new Date().toISOString(),
+            status: video.status || VideoValidationStatus.VALIDATED
           };
           
           this.recordError({
@@ -136,8 +137,8 @@ class VideoUrlErrorHandler {
             detectionCount: video.detectionCount || 0,
             annotationCount: video.annotationCount || 0,
             createdAt: video.createdAt || new Date().toISOString(),
-            uploadedAt: video.uploadedAt || new Date().toISOString(),
-            status: video.status || VideoStatus.VALIDATED
+            uploaded_at: video.uploaded_at || new Date().toISOString(),
+            status: video.status || VideoValidationStatus.VALIDATED
           };
           
           this.recordError({

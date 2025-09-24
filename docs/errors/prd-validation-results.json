@@ -1,0 +1,261 @@
+{
+  "timestamp": "2025-09-14T21:44:25.248Z",
+  "frontend_status": "accessible",
+  "module_1_data_management": {
+    "score": 0,
+    "max_score": 10,
+    "findings": [
+      "❌ Video upload interface not found",
+      "❌ Annotation interface not found",
+      "❌ VRU detection interface not found",
+      "❌ Video library interface not found",
+      "❌ Search functionality not found"
+    ]
+  },
+  "module_2_project_management": {
+    "score": 2,
+    "max_score": 10,
+    "findings": [
+      "❌ Project creation interface not found",
+      "❌ Project list interface not found",
+      "✅ Projects route accessible",
+      "❌ Project management actions not found",
+      "❌ Add videos to project functionality not found"
+    ]
+  },
+  "module_3_hil_test_execution": {
+    "score": 0,
+    "max_score": 10,
+    "findings": [
+      "❌ LabJack connection status not found",
+      "❌ Latency threshold input not found",
+      "❌ Video playback interface not found",
+      "❌ Test execution controls not found",
+      "❌ Timing display interface not found"
+    ]
+  },
+  "module_4_analysis_reporting": {
+    "score": 2,
+    "max_score": 10,
+    "findings": [
+      "❌ Analysis interface not found",
+      "❌ Pass/Fail analysis indicators not found",
+      "❌ Report generation functionality not found",
+      "✅ Statistical metrics found",
+      "❌ Failure snapshot functionality not found"
+    ]
+  },
+  "console_errors": [
+    {
+      "timestamp": "2025-09-14T21:44:27.016Z",
+      "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "location": {
+        "url": "http://localhost:8000/socket.io/",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.049Z",
+      "message": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+      "location": {
+        "url": "http://localhost:8000/api/test-sessions",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.052Z",
+      "message": "Message: API Error",
+      "location": {
+        "url": "webpack-internal:///./src/services/errorReporting.ts",
+        "lineNumber": 137,
+        "columnNumber": 12
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.061Z",
+      "message": "API Error: {userMessage: An internal server error occurred. Our team has been notified., technicalMessage: Failed to list test sessions: (sqlite3.Operational… on this error at: https://sqlalche.me/e/20/e3q8), status: 500, code: undefined, context: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/services/api.ts",
+        "lineNumber": 383,
+        "columnNumber": 14
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.061Z",
+      "message": "Failed to fetch test sessions: Backend connection failed {name: ApiError, message: An internal server error occurred. Our team has been notified., status: 500, details: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/pages/Dashboard.tsx",
+        "lineNumber": 217,
+        "columnNumber": 16
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.061Z",
+      "message": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+      "location": {
+        "url": "http://localhost:8000/api/test-sessions",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.061Z",
+      "message": "Message: API Error",
+      "location": {
+        "url": "webpack-internal:///./src/services/errorReporting.ts",
+        "lineNumber": 137,
+        "columnNumber": 12
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.062Z",
+      "message": "API Error: {userMessage: An internal server error occurred. Our team has been notified., technicalMessage: Failed to list test sessions: (sqlite3.Operational… on this error at: https://sqlalche.me/e/20/e3q8), status: 500, code: undefined, context: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/services/api.ts",
+        "lineNumber": 383,
+        "columnNumber": 14
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.063Z",
+      "message": "Failed to fetch test sessions: Backend connection failed {name: ApiError, message: An internal server error occurred. Our team has been notified., status: 500, details: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/pages/Dashboard.tsx",
+        "lineNumber": 217,
+        "columnNumber": 16
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.832Z",
+      "message": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+      "location": {
+        "url": "http://localhost:8000/api/projects?skip=0&limit=100",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.834Z",
+      "message": "Message: API Error",
+      "location": {
+        "url": "webpack-internal:///./src/services/errorReporting.ts",
+        "lineNumber": 137,
+        "columnNumber": 12
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.836Z",
+      "message": "API Error: {userMessage: An internal server error occurred. Our team has been notified., technicalMessage: Internal server error, status: 500, code: undefined, context: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/services/api.ts",
+        "lineNumber": 383,
+        "columnNumber": 14
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:27.837Z",
+      "message": "❌ Request failed for GET /api/projects (attempt 1): An internal server error occurred. Our team has been notified.",
+      "location": {
+        "url": "webpack-internal:///./src/services/api.ts",
+        "lineNumber": 520,
+        "columnNumber": 18
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.633Z",
+      "message": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+      "location": {
+        "url": "http://localhost:8000/api/test-sessions",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.637Z",
+      "message": "Message: API Error",
+      "location": {
+        "url": "webpack-internal:///./src/services/errorReporting.ts",
+        "lineNumber": 137,
+        "columnNumber": 12
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.639Z",
+      "message": "API Error: {userMessage: An internal server error occurred. Our team has been notified., technicalMessage: Failed to list test sessions: (sqlite3.Operational… on this error at: https://sqlalche.me/e/20/e3q8), status: 500, code: undefined, context: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/services/api.ts",
+        "lineNumber": 383,
+        "columnNumber": 14
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.640Z",
+      "message": "Failed to fetch test sessions: Backend connection failed {name: ApiError, message: An internal server error occurred. Our team has been notified., status: 500, details: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/pages/Dashboard.tsx",
+        "lineNumber": 217,
+        "columnNumber": 16
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.704Z",
+      "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "location": {
+        "url": "http://localhost:8000/socket.io/",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.705Z",
+      "message": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+      "location": {
+        "url": "http://localhost:8000/api/test-sessions",
+        "lineNumber": 0,
+        "columnNumber": 0
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.708Z",
+      "message": "Message: API Error",
+      "location": {
+        "url": "webpack-internal:///./src/services/errorReporting.ts",
+        "lineNumber": 137,
+        "columnNumber": 12
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.709Z",
+      "message": "API Error: {userMessage: An internal server error occurred. Our team has been notified., technicalMessage: Failed to list test sessions: (sqlite3.Operational… on this error at: https://sqlalche.me/e/20/e3q8), status: 500, code: undefined, context: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/services/api.ts",
+        "lineNumber": 383,
+        "columnNumber": 14
+      }
+    },
+    {
+      "timestamp": "2025-09-14T21:44:28.709Z",
+      "message": "Failed to fetch test sessions: Backend connection failed {name: ApiError, message: An internal server error occurred. Our team has been notified., status: 500, details: Object}",
+      "location": {
+        "url": "webpack-internal:///./src/pages/Dashboard.tsx",
+        "lineNumber": 217,
+        "columnNumber": 16
+      }
+    }
+  ],
+  "network_failures": [
+    {
+      "timestamp": "2025-09-14T21:44:28.378Z",
+      "url": "http://localhost:8000/health",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "performance_metrics": {
+    "load_time": 0,
+    "dom_content_loaded": 0.09999999962747097,
+    "first_paint": 9.800000000745058
+  }
+}

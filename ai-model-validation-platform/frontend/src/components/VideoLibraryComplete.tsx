@@ -40,7 +40,8 @@ import {
   CloudUpload,
   Analytics
 } from '@mui/icons-material';
-import { VideoFile, VideoStatus } from '../services/types';
+import { VideoFile, VideoStatus, VideoValidationStatus } from '../services/types';
+import { convertValidationStatusToVideoStatus, isStatusEquivalent } from '../utils/videoStatusUtils';
 import { apiService } from '../services/api';
 
 interface VideoLibraryStats {
@@ -119,8 +120,8 @@ const VideoLibraryComplete: React.FC = () => {
       const stats: VideoLibraryStats = {
         total_videos: allVideos.length,
         validated: allVideos.filter(v => v.status === 'validated').length,
-        pending_validation: allVideos.filter(v => v.status === 'pending_validation').length,
-        pending_annotation: allVideos.filter(v => v.status === 'pending_annotation').length,
+        pending_validation: allVideos.filter(v => isStatusEquivalent(v.status, VideoValidationStatus.VALIDATING)).length,
+        pending_annotation: allVideos.filter(v => isStatusEquivalent(v.status, VideoValidationStatus.ANNOTATED)).length,
         processing: allVideos.filter(v => v.status === 'processing').length,
         error: allVideos.filter(v => v.status === 'error').length
       };
@@ -361,9 +362,9 @@ const VideoLibraryComplete: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      icon={getStatusIcon(video.status as VideoStatus)}
+                      icon={getStatusIcon(convertValidationStatusToVideoStatus(video.status))}
                       label={video.status.replace('_', ' ').toUpperCase()}
-                      color={getStatusColor(video.status as VideoStatus)}
+                      color={getStatusColor(convertValidationStatusToVideoStatus(video.status))}
                       variant="outlined"
                       size="small"
                     />
@@ -378,7 +379,7 @@ const VideoLibraryComplete: React.FC = () => {
                     {video.annotationCount || 0}
                   </TableCell>
                   <TableCell align="center">
-                    {new Date(video.uploadedAt).toLocaleDateString()}
+                    {new Date(video.uploaded_at || video.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip title="View with annotations">

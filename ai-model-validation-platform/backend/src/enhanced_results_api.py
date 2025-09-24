@@ -22,11 +22,30 @@ from models import (
     Project, Video, TestSession, DetectionEvent, TestResult, 
     DetectionComparison, GroundTruthObject
 )
+from src.services.ground_truth_matching_service import (
+    get_session_matching_results, get_detection_event_details, calculate_project_metrics
+)
 
 logger = logging.getLogger(__name__)
 
 # Create API router
 router = APIRouter(prefix="/api/results", tags=["Enhanced Results"])
+
+def _generate_session_summary(total_gt: int, matched_gt: int, precision: float, avg_latency: float) -> str:
+    """Generate human-readable session summary"""
+    if total_gt == 0:
+        return "No ground truth data available for analysis"
+    
+    coverage = (matched_gt / total_gt) * 100 if total_gt > 0 else 0
+    
+    if coverage >= 90 and precision >= 85 and avg_latency <= 50:
+        return f"Excellent: {matched_gt}/{total_gt} ground truth found ({coverage:.0f}%), {precision:.0f}% precision, {avg_latency:.1f}ms latency"
+    elif coverage >= 75 and precision >= 70 and avg_latency <= 100:
+        return f"Good: {matched_gt}/{total_gt} ground truth found ({coverage:.0f}%), {precision:.0f}% precision, {avg_latency:.1f}ms latency"
+    elif coverage >= 50:
+        return f"Fair: {matched_gt}/{total_gt} ground truth found ({coverage:.0f}%), {precision:.0f}% precision, {avg_latency:.1f}ms latency"
+    else:
+        return f"Poor: {matched_gt}/{total_gt} ground truth found ({coverage:.0f}%), {precision:.0f}% precision, {avg_latency:.1f}ms latency"
 
 # Response Models
 class VideoDetectionResult(BaseModel):
@@ -41,8 +60,34 @@ class VideoDetectionResult(BaseModel):
     average_confidence: float
     processing_time: Optional[str]
 
+class GroundTruthMetrics(BaseModel):
+    """Ground truth matching metrics"""
+    ground_truth_total: int
+    ground_truth_matched: int
+    ground_truth_missed: int
+    extra_detections: int
+    precision: float
+    recall: float
+    f1_score: float
+    avg_latency_ms: float
+    median_latency_ms: float
+    latency_std_ms: float
+
+class DetectionEventDetail(BaseModel):
+    """Detection event with ground truth correlation"""
+    ground_truth_time: Optional[float]
+    detected_time: Optional[float]
+    video_relative_time: Optional[float]
+    latency_ms: Optional[float]
+    temporal_offset_ms: Optional[float]
+    status: str  # 'matched', 'missed', 'false_positive'
+    match_type: str  # 'true_positive', 'false_negative', 'false_positive'
+    confidence: Optional[float]
+    ground_truth_id: Optional[str]
+    detection_event_id: Optional[str]
+
 class SessionResults(BaseModel):
-    """Complete session results"""
+    """Complete session results with ground truth metrics"""
     session_id: str
     session_name: str
     project_id: str
@@ -55,6 +100,8 @@ class SessionResults(BaseModel):
     failed_videos: int
     video_results: List[VideoDetectionResult]
     statistics: Dict[str, Any]
+    ground_truth_metrics: Optional[GroundTruthMetrics]
+    detection_details: List[DetectionEventDetail]
 
 class ProjectResultsSummary(BaseModel):
     """Project-level results summary"""
@@ -134,6 +181,121 @@ async def get_project_results_sessions(
         raise HTTPException(
             status_code=500,
             detail=f"Error retrieving project sessions: {str(e)}"
+        )
+
+@router.get("/{session_id}/results", response_model=Dict[str, Any])
+async def get_session_results(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get ground truth matching results for a session
+    Returns enhanced metrics with precision, recall, and real latency data
+    """
+    try:
+        # Get ground truth matching results
+        matching_results = get_session_matching_results(session_id, db)
+        
+        # Get detailed detection events
+        detection_details = get_detection_event_details(session_id, db)
+        
+        # Get session info
+        session = db.query(TestSession).options(
+            joinedload(TestSession.project)
+        ).filter(TestSession.id == session_id).first()
+        
+        if not session:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session {session_id} not found"
+            )
+        
+        return {
+            "session_id": session_id,
+            "session_name": session.name,
+            "project_name": session.project.name if session.project else "Unknown Project",
+            "status": session.status,
+            "ground_truth_total": matching_results.ground_truth_total,
+            "ground_truth_matched": matching_results.true_positives,
+            "ground_truth_missed": matching_results.false_negatives,
+            "extra_detections": matching_results.false_positives,
+            "precision": round(matching_results.precision * 100, 1),
+            "recall": round(matching_results.recall * 100, 1),
+            "f1_score": round(matching_results.f1_score * 100, 1),
+            "avg_latency_ms": round(matching_results.avg_latency_ms, 1),
+            "median_latency_ms": round(matching_results.median_latency_ms, 1),
+            "latency_std_ms": round(matching_results.latency_std_ms, 1),
+            "detection_details": detection_details,
+            "summary": {
+                "coverage_percentage": round(matching_results.recall * 100, 1),
+                "detection_accuracy": round(matching_results.precision * 100, 1),
+                "overall_performance": round(matching_results.f1_score * 100, 1),
+                "timing_performance": f"{matching_results.avg_latency_ms:.1f}ms ± {matching_results.latency_std_ms:.1f}ms"
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting session results: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving session results: {str(e)}"
+        )
+
+@router.get("/{session_id}/detection-events", response_model=List[Dict[str, Any]])
+async def get_session_detection_events(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get detection events with ground truth correlation for display in detection table
+    Shows video-relative timestamps and match status (TP/FP/FN)
+    """
+    try:
+        # Get detection event details with ground truth correlation
+        detection_details = get_detection_event_details(session_id, db)
+        
+        if not detection_details:
+            return []
+        
+        # Format for frontend display
+        formatted_events = []
+        for detail in detection_details:
+            event = {
+                "id": detail.get("detection_event_id") or detail.get("ground_truth_id", ""),
+                "video_time": detail.get("video_relative_time", 0.0),
+                "ground_truth_time": detail.get("ground_truth_time"),
+                "detected_time": detail.get("detected_time"),
+                "latency_ms": detail.get("latency_ms"),
+                "temporal_offset_ms": detail.get("temporal_offset_ms"),
+                "status": detail.get("status", "unknown"),
+                "match_type": detail.get("match_type", "unknown"),
+                "confidence": detail.get("confidence"),
+                "status_color": {
+                    "matched": "green",
+                    "missed": "red", 
+                    "false_positive": "orange"
+                }.get(detail.get("status", "unknown"), "gray"),
+                "display_text": {
+                    "matched": "✓ Matched",
+                    "missed": "✗ Missed GT",
+                    "false_positive": "⚠ False Positive"
+                }.get(detail.get("status", "unknown"), "Unknown")
+            }
+            
+            formatted_events.append(event)
+        
+        # Sort by video time for timeline display
+        formatted_events.sort(key=lambda x: x["video_time"] if x["video_time"] is not None else float('inf'))
+        
+        return formatted_events
+        
+    except Exception as e:
+        logger.error(f"Error getting detection events for session {session_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving detection events: {str(e)}"
         )
 
 @router.get("/sessions/{session_id}/detailed", response_model=SessionResults)
@@ -326,6 +488,45 @@ async def get_detailed_session_results(
             
             formatted_video_results.append(video_result)
         
+        # Get ground truth matching results
+        try:
+            matching_results = get_session_matching_results(session_id, db)
+            detection_details = get_detection_event_details(session_id, db)
+            
+            ground_truth_metrics = GroundTruthMetrics(
+                ground_truth_total=matching_results.ground_truth_total,
+                ground_truth_matched=matching_results.true_positives,
+                ground_truth_missed=matching_results.false_negatives,
+                extra_detections=matching_results.false_positives,
+                precision=matching_results.precision,
+                recall=matching_results.recall,
+                f1_score=matching_results.f1_score,
+                avg_latency_ms=matching_results.avg_latency_ms,
+                median_latency_ms=matching_results.median_latency_ms,
+                latency_std_ms=matching_results.latency_std_ms
+            )
+            
+            # Convert detection details to the required format
+            converted_detection_details = [
+                DetectionEventDetail(
+                    ground_truth_time=detail.get("ground_truth_time"),
+                    detected_time=detail.get("detected_time"),
+                    video_relative_time=detail.get("video_relative_time"),
+                    latency_ms=detail.get("latency_ms"),
+                    temporal_offset_ms=detail.get("temporal_offset_ms"),
+                    status=detail.get("status", "unknown"),
+                    match_type=detail.get("match_type", "unknown"),
+                    confidence=detail.get("confidence"),
+                    ground_truth_id=detail.get("ground_truth_id"),
+                    detection_event_id=detail.get("detection_event_id")
+                )
+                for detail in detection_details
+            ]
+        except Exception as e:
+            logger.warning(f"Could not get ground truth metrics for session {session_id}: {str(e)}")
+            ground_truth_metrics = None
+            converted_detection_details = []
+        
         # Calculate overall statistics
         total_videos = len(formatted_video_results)
         successful_videos = sum(1 for v in formatted_video_results if v.success_rate > 50)
@@ -358,7 +559,9 @@ async def get_detailed_session_results(
                     sum(v.average_confidence for v in formatted_video_results) / len(formatted_video_results)
                     if formatted_video_results else 0
                 )
-            }
+            },
+            ground_truth_metrics=ground_truth_metrics,
+            detection_details=converted_detection_details
         )
         
         return session_result
@@ -621,24 +824,72 @@ async def get_completed_sessions(
                 DetectionEvent.test_session_id == session.id
             ).count()
             
-            # Calculate basic metrics from detection events
-            detection_events = db.query(DetectionEvent).filter(
-                DetectionEvent.test_session_id == session.id
-            ).all()
+            # Get ground truth matching metrics
+            try:
+                matching_results = get_session_matching_results(session.id, db)
+                
+                # Use ground truth metrics if available
+                if matching_results.ground_truth_total > 0:
+                    success_rate = matching_results.recall * 100  # Ground truth coverage
+                    precision_rate = matching_results.precision * 100
+                    f1_rate = matching_results.f1_score * 100
+                    avg_latency = matching_results.avg_latency_ms
+                    total_ground_truth = matching_results.ground_truth_total
+                    matched_ground_truth = matching_results.true_positives
+                    extra_detections = matching_results.false_positives
+                    
+                    # Enhanced metrics based on ground truth
+                    avg_accuracy = matching_results.f1_score  # Use F1 as overall accuracy
+                    avg_precision = matching_results.precision
+                    avg_recall = matching_results.recall
+                    avg_f1 = matching_results.f1_score
+                else:
+                    # Fallback to legacy detection metrics
+                    detection_events = db.query(DetectionEvent).filter(
+                        DetectionEvent.test_session_id == session.id
+                    ).all()
+                    
+                    passed_detections = sum(1 for d in detection_events if d.validation_result == "Pass")
+                    total_detections = len(detection_events)
+                    success_rate = (passed_detections / total_detections * 100) if total_detections > 0 else 0
+                    precision_rate = success_rate
+                    f1_rate = success_rate
+                    avg_latency = 0.0
+                    total_ground_truth = 0
+                    matched_ground_truth = 0
+                    extra_detections = total_detections
+                    
+                    # Get legacy test result metrics
+                    test_results = db.query(TestResult).filter(
+                        TestResult.test_session_id == session.id
+                    ).all()
+                    
+                    avg_accuracy = sum(r.accuracy for r in test_results if r.accuracy) / len(test_results) if test_results else None
+                    avg_precision = sum(r.precision for r in test_results if r.precision) / len(test_results) if test_results else None
+                    avg_recall = sum(r.recall for r in test_results if r.recall) / len(test_results) if test_results else None
+                    avg_f1 = sum(r.f1_score for r in test_results if r.f1_score) / len(test_results) if test_results else None
             
-            passed_detections = sum(1 for d in detection_events if d.validation_result == "Pass")
-            total_detections = len(detection_events)
-            success_rate = (passed_detections / total_detections * 100) if total_detections > 0 else 0
-            
-            # Get test result metrics
-            test_results = db.query(TestResult).filter(
-                TestResult.test_session_id == session.id
-            ).all()
-            
-            avg_accuracy = sum(r.accuracy for r in test_results if r.accuracy) / len(test_results) if test_results else None
-            avg_precision = sum(r.precision for r in test_results if r.precision) / len(test_results) if test_results else None
-            avg_recall = sum(r.recall for r in test_results if r.recall) / len(test_results) if test_results else None
-            avg_f1 = sum(r.f1_score for r in test_results if r.f1_score) / len(test_results) if test_results else None
+            except Exception as e:
+                logger.warning(f"Could not get ground truth metrics for session {session.id}: {str(e)}")
+                # Fallback to legacy metrics
+                detection_events = db.query(DetectionEvent).filter(
+                    DetectionEvent.test_session_id == session.id
+                ).all()
+                
+                passed_detections = sum(1 for d in detection_events if d.validation_result == "Pass")
+                total_detections = len(detection_events)
+                success_rate = (passed_detections / total_detections * 100) if total_detections > 0 else 0
+                precision_rate = success_rate
+                f1_rate = success_rate
+                avg_latency = 0.0
+                total_ground_truth = 0
+                matched_ground_truth = 0
+                extra_detections = total_detections
+                
+                avg_accuracy = None
+                avg_precision = None
+                avg_recall = None
+                avg_f1 = None
             
             session_data = {
                 "session_id": session.id,
@@ -652,15 +903,31 @@ async def get_completed_sessions(
                 "detection_events_count": detection_events_count,
                 "has_results": test_results_count > 0 or detection_events_count > 0,
                 "metrics": {
+                    # Ground truth enhanced metrics
+                    "ground_truth_coverage": round(success_rate, 1),  # Replaces simple pass rate
+                    "detection_precision": round(precision_rate, 1),   # Detection accuracy
+                    "overall_performance": round(f1_rate, 1),          # F1 score as overall metric
+                    "avg_latency_ms": round(avg_latency, 1),           # Real latency measurements
+                    
+                    # Ground truth breakdown
+                    "total_ground_truth": total_ground_truth,
+                    "matched_ground_truth": matched_ground_truth,
+                    "missed_ground_truth": total_ground_truth - matched_ground_truth,
+                    "extra_detections": extra_detections,
+                    
+                    # Legacy metrics (for backward compatibility)
                     "success_rate": round(success_rate, 2),
-                    "total_detections": total_detections,
-                    "passed_detections": passed_detections,
-                    "failed_detections": total_detections - passed_detections,
+                    "total_detections": detection_events_count,
+                    "passed_detections": matched_ground_truth,
+                    "failed_detections": extra_detections,
                     "accuracy": round(avg_accuracy * 100, 2) if avg_accuracy else None,
                     "precision": round(avg_precision * 100, 2) if avg_precision else None,
                     "recall": round(avg_recall * 100, 2) if avg_recall else None,
                     "f1_score": round(avg_f1 * 100, 2) if avg_f1 else None
                 },
+                "summary_text": _generate_session_summary(
+                    total_ground_truth, matched_ground_truth, precision_rate, avg_latency
+                ),
                 "processing_time": (
                     (session.completed_at - session.started_at).total_seconds()
                     if session.started_at and session.completed_at else None

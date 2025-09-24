@@ -272,19 +272,42 @@ class LabJackHardwareService:
                     ljm.constants.ctANY if hasattr(ljm, 'constants') else 0
                 )
                 
+                # Use helper conversions to avoid referencing non-existent LJM constants (e.g., dtU3)
+                try:
+                    from services.ljm_helpers import (
+                        numberToType,
+                        numberToConnectionType,
+                        numberToIP,
+                    )
+                except Exception:
+                    # Fallbacks if helpers cannot be imported
+                    def numberToType(x):
+                        return str(x)
+                    def numberToConnectionType(x):
+                        return str(x)
+                    def numberToIP(x):
+                        return f"{(x >> 24) & 0xFF}.{(x >> 16) & 0xFF}.{(x >> 8) & 0xFF}.{x & 0xFF}"
+
                 for i in range(num_found):
-                    device_type_str = ljm.numberToType(device_types[i])
-                    connection_type_str = ljm.numberToConnectionType(connection_types[i])
-                    
+                    device_type_str = numberToType(device_types[i])
+                    connection_type_str = numberToConnectionType(connection_types[i])
+
+                    # Format IP address only for network connections
                     ip_str = None
-                    if hasattr(ljm, 'constants') and connection_types[i] in [ljm.constants.ctETHERNET, ljm.constants.ctWIFI]:
-                        ip_str = ljm.numberToIP(ip_addresses[i])
-                    
+                    try:
+                        if hasattr(ljm, 'constants') and connection_types[i] in [
+                            getattr(ljm.constants, 'ctETHERNET', None),
+                            getattr(ljm.constants, 'ctWIFI', None),
+                        ]:
+                            ip_str = numberToIP(ip_addresses[i])
+                    except Exception:
+                        ip_str = None
+
                     devices.append({
                         "device_type": device_type_str,
                         "connection_type": connection_type_str,
                         "serial_number": serial_numbers[i],
-                        "ip_address": ip_str
+                        "ip_address": ip_str,
                     })
             else:
                 # Fallback method for USB stub
@@ -338,9 +361,11 @@ class LabJackHardwareService:
                 device_type_num, connection_type_num, serial_number, ip_number, port, max_bytes_per_mb = device_info_tuple
                 
                 # Convert numbers to readable strings
-                device_type_str = ljm.numberToType(device_type_num)
-                connection_type_str = ljm.numberToConnectionType(connection_type_num)
-                ip_str = ljm.numberToIP(ip_number) if hasattr(ljm, 'numberToIP') else None
+                # Use helper function for compatibility
+                from services.ljm_helpers import numberToType, numberToDeviceType, numberToConnectionType, numberToIP
+                device_type_str = numberToType(device_type_num)
+                connection_type_str = numberToConnectionType(connection_type_num)
+                ip_str = numberToIP(ip_number)
                 
                 # Get firmware versions (with error handling)
                 try:
@@ -718,18 +743,29 @@ class LabJackHardwareService:
     
     def _health_monitoring_loop(self):
         """Health monitoring loop to detect disconnections"""
+        consecutive_failures = 0
+        max_consecutive_failures = 3  # Allow 3 consecutive failures before marking as error
+        
         while self.health_check_active and self.is_connected():
             try:
                 # Test connection by reading a register
                 test_voltage = self.read_single_voltage("AIN0")
+                consecutive_failures = 0  # Reset on successful read
                 time.sleep(30)  # Check every 30 seconds
                 
             except Exception as e:
-                logger.error(f"❌ Health check failed: {e}")
-                self.connection_status = HardwareConnectionStatus.ERROR
-                self.statistics["errors_count"] += 1
-                self.statistics["last_error"] = f"Health check failed: {e}"
-                break
+                consecutive_failures += 1
+                logger.warning(f"⚠️ Health check failed (attempt {consecutive_failures}/{max_consecutive_failures}): {e}")
+                
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(f"❌ Health check failed {consecutive_failures} consecutive times, marking as error")
+                    self.connection_status = HardwareConnectionStatus.ERROR
+                    self.statistics["errors_count"] += 1
+                    self.statistics["last_error"] = f"Health check failed {consecutive_failures} times: {e}"
+                    break
+                else:
+                    # Brief pause before retry
+                    time.sleep(5)
         
         self.health_check_active = False
         logger.debug("🩺 Health monitoring stopped")
@@ -825,9 +861,17 @@ def get_labjack_hardware_service(config: Optional[LabJackConfig] = None) -> LabJ
     return _hardware_service
 
 
-def initialize_hardware_service(config: Optional[LabJackConfig] = None) -> bool:
+def initialize_hardware_service(config: Optional[LabJackConfig] = None, force_wsl_connection: bool = False) -> bool:
     """Initialize LabJack hardware service and attempt connection"""
     try:
+        # Check for WSL environment - but allow override if USB passthrough is working
+        import platform
+        is_wsl = platform.system() == "Linux" and "microsoft" in platform.uname().release.lower()
+        if is_wsl and not force_wsl_connection:
+            logger.warning("⚠️ WSL environment detected - skipping direct LabJack LJM initialization")
+            logger.info("💡 To override this check (if USB passthrough is working), set force_wsl_connection=True")
+            return False
+
         service = get_labjack_hardware_service(config)
         devices = service.detect_devices()
         

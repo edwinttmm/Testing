@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HIL Results Fix Test</title>
+</head>
+<body>
+    <h1>HIL Results Fix Test</h1>
+    <p>Click the button to navigate to HIL Results and check for JavaScript errors:</p>
+    <button onclick="window.open('http://localhost:3000/hil-results', '_blank')">Open HIL Results</button>
+    
+    <h2>Recent HIL Sessions:</h2>
+    <ul id="sessions"></ul>
+    
+    <script>
+        // Test if our backend is accessible
+        fetch('http://localhost:8000/api/test-sessions?limit=3')
+            .then(response => response.json())
+            .then(sessions => {
+                const sessionsList = document.getElementById('sessions');
+                sessions.forEach(session => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <strong>${session.name}</strong> (${session.status}) 
+                        <a href="http://localhost:3000/hil-results?sessionId=${session.id}" target="_blank">View Results</a>
+                    `;
+                    sessionsList.appendChild(li);
+                });
+            })
+            .catch(error => {
+                document.getElementById('sessions').innerHTML = '<li>Error loading sessions: ' + error.message + '</li>';
+            });
+    </script>
+</body>
+</html>

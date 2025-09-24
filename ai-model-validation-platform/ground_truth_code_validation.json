@@ -1,0 +1,114 @@
+{
+  "timestamp": "2025-09-23T13:48:00Z",
+  "tests": {
+    "enhanced_hil_api_exists": {
+      "passed": true,
+      "details": {
+        "file_path": "backend/src/api/enhanced_hil_results_endpoints.py",
+        "file_size": 53463,
+        "features": {
+          "has_ground_truth_comparison": true,
+          "loads_real_gt_events": true,
+          "has_corrected_results_endpoint": true,
+          "processes_gt_events": true,
+          "returns_gt_metrics": true
+        }
+      }
+    },
+    "ground_truth_events_count_fix": {
+      "passed": true,
+      "details": {
+        "fix_indicators": {
+          "loads_from_database": true,
+          "filters_by_video_id": true,
+          "appends_real_events": true,
+          "returns_length": true,
+          "not_hardcoded_zero": true
+        },
+        "no_hardcoded_zero": true,
+        "has_db_query": true
+      }
+    },
+    "frontend_enhanced_timing_integration": {
+      "passed": true,
+      "details": {
+        "file_path": "frontend/src/pages/HILResults.tsx",
+        "features": {
+          "has_enhanced_timing_toggle": true,
+          "loads_enhanced_results": true,
+          "displays_gt_comparison": true,
+          "shows_gt_events_count": true,
+          "uses_dynamic_count": true,
+          "has_timing_correction": true
+        }
+      }
+    },
+    "frontend_ground_truth_display_fix": {
+      "passed": true,
+      "details": {
+        "dynamic_indicators": {
+          "uses_gt_events_length": true,
+          "loads_gt_data": true,
+          "displays_gt_count": true,
+          "not_hardcoded_zero": true
+        },
+        "has_dynamic_display": true,
+        "pattern_found": "Ground Truth Events:</strong> {enhancedResults?.ground_truth_comparison?.ground_truth_events_available || groundTruthEvents.length"
+      }
+    },
+    "enhanced_hil_service_exists": {
+      "passed": true,
+      "details": {
+        "file_path": "frontend/src/services/enhancedHILService.ts",
+        "features": {
+          "has_vru_tracking": true,
+          "has_temporal_matching": true,
+          "loads_gt_annotations": true,
+          "creates_mock_data": true,
+          "processes_hil_signals": true
+        }
+      }
+    },
+    "timing_synchronization_implementation": {
+      "passed": true,
+      "details": {
+        "implementations_found": 2,
+        "files_checked": 2,
+        "file_details": {
+          "timing_synchronization_calculator.py": {
+            "exists": true,
+            "size": 27039,
+            "has_correction_logic": true,
+            "has_video_timing": true
+          },
+          "precision_timing_service.py": {
+            "exists": true,
+            "size": 13492,
+            "has_correction_logic": false,
+            "has_video_timing": true
+          }
+        }
+      }
+    },
+    "database_schema_ground_truth_support": {
+      "passed": true,
+      "details": {
+        "file_path": "backend/models.py",
+        "schema_features": {
+          "has_ground_truth_model": true,
+          "has_video_relationship": true,
+          "has_timing_fields": true,
+          "has_frame_number": true,
+          "has_class_label": true
+        }
+      }
+    }
+  },
+  "summary": {
+    "total_tests": 7,
+    "passed_tests": 7,
+    "failed_tests": 0,
+    "pass_rate": 100.0,
+    "overall_result": "PASS"
+  }
+}

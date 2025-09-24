@@ -37,6 +37,7 @@ except ImportError:
 
 # LabJack service integration
 from services.labjack_service import get_labjack_service, LabJackService
+from services.labjack_hardware_service import get_labjack_hardware_service
 
 # Database integration
 try:
@@ -47,6 +48,16 @@ except ImportError:
     logging.warning("Detection database service not available")
 
 logger = logging.getLogger(__name__)
+
+# Export get_detection_service function
+def get_detection_service():
+    """Get or create detection service instance"""
+    global _detection_service_instance
+    if _detection_service_instance is None:
+        _detection_service_instance = LabJackDetectionMonitor()
+    return _detection_service_instance
+
+_detection_service_instance = None
 
 
 class DetectionStatus(Enum):
@@ -108,6 +119,8 @@ class LabJackDetectionMonitor:
     
     def __init__(self, labjack_service: Optional[LabJackService] = None):
         self.labjack_service = labjack_service or get_labjack_service()
+        # Connect to real hardware service for voltage readings
+        self.hardware_service = get_labjack_hardware_service()
         
         # Database service integration
         self.db_service = get_detection_db_service() if DATABASE_SERVICE_AVAILABLE else None
@@ -121,6 +134,9 @@ class LabJackDetectionMonitor:
         # Detection data
         self.detection_events: Dict[str, List[DetectionEvent]] = {}
         self.last_detection_times: Dict[str, Dict[str, datetime]] = {}  # session_id -> channel -> timestamp
+        
+        # Direct LabJack connection (like your working code)
+        self._ljm_handle = None
         
         # Callbacks and notifications
         self.detection_callbacks: List[Callable[[DetectionEvent], None]] = []
@@ -231,13 +247,22 @@ class LabJackDetectionMonitor:
             # Signal stop to monitoring thread
             if session_id in self.stop_events:
                 self.stop_events[session_id].set()
+                logger.info(f"🛑 Stop signal sent for session {session_id}")
             
-            # Wait for thread to finish
+            # Wait for monitoring thread to finish (with timeout)
             if session_id in self.monitoring_threads:
                 thread = self.monitoring_threads[session_id]
-                thread.join(timeout=5)
                 if thread.is_alive():
-                    logger.warning(f"Monitoring thread for session {session_id} did not stop gracefully")
+                    logger.info(f"⏳ Waiting for monitoring thread to stop for session {session_id}")
+                    thread.join(timeout=5.0)  # Wait up to 5 seconds
+                    
+                    if thread.is_alive():
+                        logger.warning(f"⚠️ Monitoring thread for session {session_id} did not stop within timeout")
+                    else:
+                        logger.info(f"✅ Monitoring thread stopped for session {session_id}")
+                
+                # Remove thread reference
+                del self.monitoring_threads[session_id]
             
             # End database session record
             if self.db_service:
@@ -245,6 +270,10 @@ class LabJackDetectionMonitor:
             
             # Clean up session state
             self._cleanup_session(session_id)
+            
+            # Keep LJM handle open for reuse - only close on service shutdown
+            # Note: LabJack stays connected for next session, only monitoring stops
+            logger.info("🔌 LabJack connection maintained for next session")
             
             logger.info(f"⏹️ Stopped detection monitoring for session {session_id}")
             return True
@@ -334,10 +363,31 @@ class LabJackDetectionMonitor:
             
             while not stop_event.is_set():
                 try:
-                    # Read voltages from all monitored channels
+                    # Read voltages from all monitored channels using real hardware
                     channel_readings = {}
                     for channel in config.channels:
-                        voltage = asyncio.run(self.labjack_service.read_single_voltage(channel))
+                        try:
+                            # Use direct LJM library approach like your working code
+                            import labjack.ljm as ljm
+                            try:
+                                # Try to use existing handle or open new one
+                                if hasattr(self, '_ljm_handle') and self._ljm_handle is not None:
+                                    handle = self._ljm_handle
+                                else:
+                                    handle = ljm.openS("ANY", "ANY", "ANY")  # Same as your working code
+                                    self._ljm_handle = handle
+                                
+                                # Direct voltage reading like your working code
+                                voltage = ljm.eReadName(handle, channel)
+                                logger.debug(f"📊 {channel}: {voltage:.4f}V (threshold: {config.voltage_threshold}V)")
+                                
+                            except Exception as ljm_error:
+                                logger.error(f"Direct LJM read failed for {channel}: {ljm_error}")
+                                voltage = 0.0
+                                
+                        except Exception as e:
+                            logger.error(f"Error reading voltage from {channel}: {e}")
+                            voltage = 0.0
                         channel_readings[channel] = voltage
                     
                     # Check for detection events
@@ -345,11 +395,15 @@ class LabJackDetectionMonitor:
                     
                     for channel, voltage in channel_readings.items():
                         if voltage >= config.voltage_threshold:
+                            logger.info(f"🎯 DETECTION! {channel}: {voltage:.3f}V > {config.voltage_threshold}V threshold")
                             if self._should_record_detection(session_id, channel, current_time, config):
                                 event = self._create_detection_event(
                                     session_id, channel, voltage, config.voltage_threshold, current_time
                                 )
                                 self._record_detection_event(session_id, event)
+                                logger.info(f"📝 Detection event recorded: {voltage:.3f}V at {current_time}")
+                            else:
+                                logger.debug(f"🔄 Detection skipped (debounce): {voltage:.3f}V")
                     
                     # Sleep until next poll
                     time.sleep(poll_interval)
@@ -414,10 +468,10 @@ class LabJackDetectionMonitor:
             
             logger.info(f"🎯 Detection event: {event.channel} = {event.voltage:.3f}V @ {event.timestamp.isoformat()}")
         
-        # Store in database (async)
+        # Store in database (fixed async handling)
         config = self.active_sessions.get(session_id)
         if config and config.store_in_db:
-            asyncio.create_task(self._store_event_in_db(event))
+            self._schedule_db_storage(event)
         
         # Notify callbacks
         self._notify_detection_callbacks(event)
@@ -425,6 +479,35 @@ class LabJackDetectionMonitor:
         # Send WebSocket notification
         if config and config.enable_websocket:
             self._notify_websocket_callbacks(session_id, event)
+    
+    def _schedule_db_storage(self, event: DetectionEvent):
+        """Schedule database storage from synchronous context"""
+        try:
+            # Try to get running event loop
+            loop = asyncio.get_running_loop()
+            # If we have a running loop, schedule the task
+            loop.create_task(self._store_event_in_db(event))
+        except RuntimeError:
+            # No running event loop, run in new thread to avoid blocking
+            import threading
+            threading.Thread(
+                target=self._store_event_sync_wrapper,
+                args=(event,),
+                daemon=True
+            ).start()
+    
+    def _store_event_sync_wrapper(self, event: DetectionEvent):
+        """Wrapper to run async database storage in new event loop"""
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._store_event_in_db(event))
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"Failed to store detection event in database (sync wrapper): {e}")
     
     async def _store_event_in_db(self, event: DetectionEvent):
         """Store detection event in database"""
@@ -471,6 +554,12 @@ class LabJackDetectionMonitor:
             self.detection_status.pop(session_id, None)
             self.monitoring_threads.pop(session_id, None)
             self.stop_events.pop(session_id, None)
+            
+            # DO NOT close LJM handle - let hardware service manage the connection
+            # Keep LJM handle open for reuse between sessions
+            # The LabJackHardwareService is responsible for connection lifecycle management
+            if not self.active_sessions and hasattr(self, '_ljm_handle') and self._ljm_handle is not None:
+                logger.info("🔌 Keeping LJM handle open for future sessions (managed by hardware service)")
             
             # Keep detection events and last detection times for retrieval
             # These can be cleaned up separately if needed

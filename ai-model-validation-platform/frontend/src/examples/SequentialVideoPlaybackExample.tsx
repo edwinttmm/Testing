@@ -29,7 +29,7 @@ import {
 } from '@mui/icons-material';
 
 import SequentialVideoPlayer from '../components/SequentialVideoPlayer';
-import { VideoFile, VideoStatus } from '../services/types';
+import { VideoFile, VideoStatus, VideoValidationStatus } from '../services/types';
 
 const SequentialVideoPlaybackExample: React.FC = () => {
   const [exampleVideos] = useState<VideoFile[]>([
@@ -44,8 +44,8 @@ const SequentialVideoPlaybackExample: React.FC = () => {
       fileSize: 1048576,
       filePath: '/videos/test-1.mp4',
       format: 'mp4',
-      status: VideoStatus.VALIDATED,
-      processingStatus: 'completed' as const,
+      status: VideoValidationStatus.VALIDATED,
+      // processingStatus: 'completed' as const, // Removed - not in VideoFile interface
       groundTruthGenerated: false,
       detectionCount: 0,
       annotationCount: 0,
@@ -63,8 +63,8 @@ const SequentialVideoPlaybackExample: React.FC = () => {
       fileSize: 2097152,
       filePath: '/videos/test-2.mp4',
       format: 'mp4',
-      status: VideoStatus.VALIDATED,
-      processingStatus: 'completed' as const,
+      status: VideoValidationStatus.VALIDATED,
+      // processingStatus: 'completed' as const, // Removed - not in VideoFile interface
       groundTruthGenerated: false,
       detectionCount: 0,
       annotationCount: 0,
@@ -82,8 +82,8 @@ const SequentialVideoPlaybackExample: React.FC = () => {
       fileSize: 5242880,
       filePath: '/videos/test-3.mp4',
       format: 'mp4',
-      status: VideoStatus.VALIDATED,
-      processingStatus: 'completed' as const,
+      status: VideoValidationStatus.VALIDATED,
+      // processingStatus: 'completed' as const, // Removed - not in VideoFile interface
       groundTruthGenerated: false,
       detectionCount: 0,
       annotationCount: 0,

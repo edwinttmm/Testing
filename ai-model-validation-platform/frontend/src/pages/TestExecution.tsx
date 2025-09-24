@@ -60,6 +60,7 @@ import TimingMetricsPanel from '../components/TimingMetricsPanel';
 import EmergencyStopButton from '../components/EmergencyStopButton';
 import SequentialVideoPlayer from '../components/SequentialVideoPlayer';
 import { markUserInteraction } from '../utils/videoUtils';
+import { VideoTimingMeasurement } from '../utils/videoTimingMeasurement';
 
 // ModelConfiguration imported from types/common.ts
 
@@ -127,6 +128,7 @@ const TestExecution: React.FC = () => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
+  const videoTimingMeasurementRef = useRef<VideoTimingMeasurement | null>(null);
 
   // Initialize fullscreen support detection
   useEffect(() => {
@@ -410,6 +412,13 @@ const TestExecution: React.FC = () => {
     try {
       // Mark user interaction immediately when button is clicked
       markUserInteraction();
+      
+      // Initialize video timing measurement for accurate latency calculation
+      const commandTimestamp = Date.now() / 1000;
+      videoTimingMeasurementRef.current = new VideoTimingMeasurement(
+        session.id,
+        commandTimestamp
+      );
       
       setIsRunning(true);
       setCurrentSession(session);
@@ -777,6 +786,10 @@ const TestExecution: React.FC = () => {
               onNextVideo={() => setCurrentVideoIndex(prev => Math.min(prev + 1, currentVideoPlaylist.length - 1))}
               onPreviousVideo={() => setCurrentVideoIndex(prev => Math.max(prev - 1, 0))}
               onToggleFullScreen={toggleFullscreen}
+              onVideoStart={(videoElement: HTMLVideoElement) => {
+                // Attach timing measurement to video element
+                videoTimingMeasurementRef.current?.attachToVideo(videoElement);
+              }}
               testStartTime={new Date()}
             />
             
@@ -881,6 +894,17 @@ const TestExecution: React.FC = () => {
               showProgress={true}
               onVideoStart={(video, index) => {
                 showSnackbar(`Playing video ${index + 1}: ${video.filename}`, 'info');
+                
+                // Find and attach timing measurement to video element (fallback approach)
+                setTimeout(() => {
+                  const videoElements = document.querySelectorAll('video');
+                  videoElements.forEach(videoElement => {
+                    if (videoElement.src?.includes(video.filename) || 
+                        videoElement.currentSrc?.includes(video.filename)) {
+                      videoTimingMeasurementRef.current?.attachToVideo(videoElement);
+                    }
+                  });
+                }, 100); // Small delay to ensure video element is ready
               }}
               onVideoEnd={(_video, _index) => {
                 // Video playback ended

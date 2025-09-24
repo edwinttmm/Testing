@@ -26,6 +26,16 @@ import queue
 
 logger = logging.getLogger(__name__)
 
+# Export get_error_handler_service function
+def get_error_handler_service():
+    """Get or create error handler service instance"""
+    global _error_handler_instance
+    if _error_handler_instance is None:
+        _error_handler_instance = LabJackErrorHandler()
+    return _error_handler_instance
+
+_error_handler_instance = None
+
 
 class ErrorSeverity(Enum):
     """Error severity levels"""

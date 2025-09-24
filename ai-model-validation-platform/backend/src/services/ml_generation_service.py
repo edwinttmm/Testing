@@ -14,8 +14,11 @@ from datetime import datetime
 import uuid
 from sqlalchemy.orm import Session
 
-# Optional ML dependencies
+# Optional ML dependencies with runtime disable flag
+DISABLE_ML = os.getenv("AIVALIDATION_DISABLE_ML", "false").lower() == "true"
 try:
+    if DISABLE_ML:
+        raise ImportError("ML disabled by environment variable")
     from ultralytics import YOLO
     import torch
     ML_AVAILABLE = True
@@ -23,7 +26,7 @@ except ImportError as e:
     YOLO = None
     torch = None
     ML_AVAILABLE = False
-    logging.warning(f"ML dependencies not available: {e}. Using fallback mode.")
+    logging.warning(f"ML unavailable ({e}). Using fallback mode.")
 
 from database import SessionLocal
 from models import GroundTruthObject, Video

@@ -556,8 +556,8 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
     if (hasProperty(data, 'updatedAt') && isString(data.updatedAt)) {
       videoFile.updatedAt = data.updatedAt;
     }
-    if (hasProperty(data, 'updated_at') && isString(data.updated_at)) {
-      videoFile.updated_at = data.updated_at;
+    if (hasProperty(data, 'updatedAt') && isString(data.updatedAt)) {
+      videoFile.updatedAt = data.updatedAt;
     }
     if (hasProperty(data, 'processing_status') && isString(data.processing_status) && 
         ['pending', 'processing', 'completed', 'failed'].includes(data.processing_status)) {

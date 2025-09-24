@@ -1,0 +1,212 @@
+{
+  "hypothesis_supported": true,
+  "startup_delay_stats": {
+    "count": 20,
+    "average_ms": 3600025.59,
+    "median_ms": 3600021.54,
+    "min_ms": 3600015.2,
+    "max_ms": 3600048.45,
+    "std_dev_ms": 10.42
+  },
+  "hypothesis_evidence": {
+    "significant_startup_delay": true,
+    "consistent_delay": true,
+    "delay_around_1825ms": false,
+    "multiple_sessions": true
+  },
+  "session_analyses": [
+    {
+      "session_id": "3241ee64...",
+      "started_at": "2025-09-18 14:25:35.619038",
+      "video_start_timestamp": 1758205535.63926,
+      "startup_delay_ms": 3600020.22,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "97f9df23...",
+      "started_at": "2025-09-18 14:25:00.610654",
+      "video_start_timestamp": 1758205500.635042,
+      "startup_delay_ms": 3600024.39,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "2c378820...",
+      "started_at": "2025-09-18 14:21:03.178127",
+      "video_start_timestamp": 1758205263.19975,
+      "startup_delay_ms": 3600021.62,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "91d38b75...",
+      "started_at": "2025-09-18 14:19:56.757459",
+      "video_start_timestamp": 1758205196.77266,
+      "startup_delay_ms": 3600015.2,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "3a5d4586...",
+      "started_at": "2025-09-18 14:19:26.638397",
+      "video_start_timestamp": 1758205166.654546,
+      "startup_delay_ms": 3600016.15,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "554fd331...",
+      "started_at": "2025-09-18 14:18:53.853822",
+      "video_start_timestamp": 1758205133.879233,
+      "startup_delay_ms": 3600025.41,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "797b3749...",
+      "started_at": "2025-09-18 14:18:25.312599",
+      "video_start_timestamp": 1758205105.357217,
+      "startup_delay_ms": 3600044.62,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "e4a866e4...",
+      "started_at": "2025-09-18 14:16:39.879450",
+      "video_start_timestamp": 1758204999.918651,
+      "startup_delay_ms": 3600039.2,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "running"
+    },
+    {
+      "session_id": "04285769...",
+      "started_at": "2025-09-18 14:15:26.319222",
+      "video_start_timestamp": 1758204926.342719,
+      "startup_delay_ms": 3600023.5,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "2b7c5591...",
+      "started_at": "2025-09-18 13:49:36.830281",
+      "video_start_timestamp": 1758203376.84846,
+      "startup_delay_ms": 3600018.18,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "dd64dc48...",
+      "started_at": "2025-09-18 13:49:04.508645",
+      "video_start_timestamp": 1758203344.557097,
+      "startup_delay_ms": 3600048.45,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "de6715a9...",
+      "started_at": "2025-09-18 13:47:52.967455",
+      "video_start_timestamp": 1758203272.988912,
+      "startup_delay_ms": 3600021.46,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "0b30977e...",
+      "started_at": "2025-09-18 13:47:24.370637",
+      "video_start_timestamp": 1758203244.392908,
+      "startup_delay_ms": 3600022.27,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "065305b9...",
+      "started_at": "2025-09-18 13:46:18.676427",
+      "video_start_timestamp": 1758203178.697772,
+      "startup_delay_ms": 3600021.35,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "d5688742...",
+      "started_at": "2025-09-18 13:44:46.725037",
+      "video_start_timestamp": 1758203086.741103,
+      "startup_delay_ms": 3600016.07,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "e3e036d0...",
+      "started_at": "2025-09-18 13:44:17.356374",
+      "video_start_timestamp": 1758203057.386243,
+      "startup_delay_ms": 3600029.87,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "39c27b41...",
+      "started_at": "2025-09-18 13:40:10.414944",
+      "video_start_timestamp": 1758202810.435299,
+      "startup_delay_ms": 3600020.35,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "8c5141ac...",
+      "started_at": "2025-09-18 13:14:31.378275",
+      "video_start_timestamp": 1758201271.397893,
+      "startup_delay_ms": 3600019.62,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "764632cc...",
+      "started_at": "2025-09-18 12:33:56.643933",
+      "video_start_timestamp": 1758198836.689845,
+      "startup_delay_ms": 3600045.91,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    },
+    {
+      "session_id": "78b21fe6...",
+      "started_at": "2025-09-17 13:20:48.731830",
+      "video_start_timestamp": 1758115248.749728,
+      "startup_delay_ms": 3600017.9,
+      "sync_status": "synced",
+      "timing_accuracy_ns": 1000.0,
+      "session_status": "completed"
+    }
+  ],
+  "detection_stats": {
+    "total_detections": 7017,
+    "with_timestamp": 7017,
+    "with_labjack_timestamp": 0,
+    "with_processing_time": 2394,
+    "avg_processing_time": 5.1002506265664165
+  },
+  "ground_truth_stats": {
+    "total_ground_truth": 24,
+    "earliest_gt": 0.20833333333333334,
+    "latest_gt": 5.0,
+    "avg_gt_time": 2.6041666666666665
+  }
+}

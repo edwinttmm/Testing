@@ -167,6 +167,11 @@ class TestSession(Base):
     pass_fail_result = Column(String)  # PASS, FAIL, CONDITIONAL_PASS
     overall_score = Column(Float)  # Overall performance score (0-100)
     
+    # HIL Ground Truth Timing Fields
+    video_playback_start_time = Column(Float)  # Unix timestamp when video playback started
+    video_playback_duration = Column(Float)  # Duration of video playback in seconds
+    ground_truth_count = Column(Integer)  # Number of ground truth objects in the video
+    
     started_at = Column(DateTime(timezone=True), index=True)
     completed_at = Column(DateTime(timezone=True), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -176,6 +181,7 @@ class TestSession(Base):
     video = relationship("Video", back_populates="test_sessions")
     detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
     signal_events = relationship("SignalEvent", back_populates="test_session", cascade="all, delete-orphan")
+    detection_comparisons = relationship("DetectionComparison", cascade="all, delete-orphan")
 
     # Composite index for common queries
     __table_args__ = (
@@ -202,6 +208,10 @@ class DetectionEvent(Base):
     screenshot_path = Column(String)  # Path to detection screenshot
     model_version = Column(String)  # Version of ML model used
     
+    # HIL Ground Truth Timing Fields
+    video_relative_timestamp = Column(Float, index=True)  # Timestamp relative to video start (seconds)
+    actual_latency_ms = Column(Float)  # Actual measured latency from ground truth to detection
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     test_session = relationship("TestSession", back_populates="detection_events")
@@ -213,6 +223,40 @@ class DetectionEvent(Base):
         Index('idx_detection_session_validation', 'test_session_id', 'validation_result'),
         Index('idx_detection_timestamp_confidence', 'timestamp', 'confidence'),
         Index('idx_detection_frame_class', 'frame_number', 'class_label'),
+        # HIL timing indexes
+        Index('idx_detection_events_video_relative_time', 'video_relative_timestamp'),
+        Index('idx_detection_events_session_time', 'test_session_id', 'video_relative_timestamp'),
+    )
+
+class DetectionComparison(Base):
+    """Enhanced detection comparison model for ground truth matching"""
+    __tablename__ = "detection_comparisons"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    detection_event_id = Column(String(36), ForeignKey("detection_events.id", ondelete="CASCADE"), index=True)
+    ground_truth_object_id = Column(String(36), ForeignKey("ground_truth_objects.id", ondelete="CASCADE"), index=True)
+    
+    # HIL Matching Fields
+    is_matched = Column(Boolean, default=False, index=True)
+    matching_confidence = Column(Float)  # Confidence score for the match (0.0-1.0)
+    match_quality = Column(String(20))  # excellent, good, fair, poor
+    latency_ms = Column(Float)  # Latency between ground truth and detection
+    
+    # Validation results
+    validation_result = Column(Enum(ValidationResult), default=ValidationResult.PENDING, index=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    # Relationships
+    test_session = relationship("TestSession")
+    detection_event = relationship("DetectionEvent")
+    ground_truth_object = relationship("GroundTruthObject")
+
+    __table_args__ = (
+        Index('idx_detection_comparisons_session', 'test_session_id'),
+        Index('idx_detection_comparisons_matched', 'is_matched', 'match_quality'),
+        Index('idx_detection_comparisons_validation', 'test_session_id', 'validation_result'),
     )
 
 class SignalEvent(Base):

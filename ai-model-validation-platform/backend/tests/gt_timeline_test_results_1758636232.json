@@ -1,0 +1,55 @@
+{
+  "test_run_id": "gt_timeline_test_1758636232",
+  "timestamp": "2025-09-23T15:03:52.382207",
+  "duration_seconds": 0.14,
+  "total_tests": 6,
+  "passed": 0,
+  "failed": 6,
+  "skipped": 0,
+  "warnings": 0,
+  "overall_status": "FAIL",
+  "detailed_results": [
+    {
+      "test_name": "API Enhanced HIL - Exception",
+      "status": "FAIL",
+      "timestamp": "2025-09-23T15:03:52.350277",
+      "details": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/enhanced-hil/test-sessions/afac3c3c-ecdf-47fb-9d12-3c4c135aff45/corrected-results (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x77189a9c31d0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "data": null
+    },
+    {
+      "test_name": "GT Data Structure - Exception",
+      "status": "FAIL",
+      "timestamp": "2025-09-23T15:03:52.360464",
+      "details": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/enhanced-hil/test-sessions/test-session-1/corrected-results (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x77189aa21790>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "data": null
+    },
+    {
+      "test_name": "Frontend Integration - Exception",
+      "status": "FAIL",
+      "timestamp": "2025-09-23T15:03:52.368640",
+      "details": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/enhanced-hil/test-sessions/test-session-1/corrected-results (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x77189a9eb980>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "data": null
+    },
+    {
+      "test_name": "Timeline Display - Exception",
+      "status": "FAIL",
+      "timestamp": "2025-09-23T15:03:52.373334",
+      "details": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/enhanced-hil/test-sessions/032db726-442f-40c4-80f9-a8a234cd7176/corrected-results (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x77189a9eb950>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "data": null
+    },
+    {
+      "test_name": "E2E Display - Exception",
+      "status": "FAIL",
+      "timestamp": "2025-09-23T15:03:52.375352",
+      "details": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/enhanced-hil/test-sessions/afac3c3c-ecdf-47fb-9d12-3c4c135aff45/corrected-results (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x77189a9eb3b0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "data": null
+    },
+    {
+      "test_name": "Browser Simulation - All Failed",
+      "status": "FAIL",
+      "timestamp": "2025-09-23T15:03:52.382186",
+      "details": "All API calls that frontend would make failed",
+      "data": null
+    }
+  ]
+}

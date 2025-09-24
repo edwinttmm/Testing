@@ -120,6 +120,14 @@ class ProjectResponse(ProjectBase):
     total_annotations: Optional[int] = Field(None, alias="totalAnnotations")
     average_accuracy: Optional[float] = Field(None, alias="averageAccuracy")
 
+    # Normalize database status values like 'Active' -> 'active' before enum validation
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
 # Video schemas - Frontend-compatible with comprehensive field mapping
 class VideoBase(CamelCaseModel):
     filename: str
@@ -191,6 +199,14 @@ class VideoUploadResponse(CamelCaseModel):
     ground_truth_generated: bool = Field(alias="groundTruthGenerated")
     processing_status: str = Field(alias="processingStatus")  # Fixed: Use actual model field
     detection_count: int = Field(alias="detectionCount")
+    message: str
+
+# Lightweight upload response used by simplified upload endpoints
+class SimpleUploadResponse(CamelCaseModel):
+    id: str
+    project_id: str = Field(alias="projectId")
+    filename: str
+    status: str
     message: str
 
 # VideoFile schema for ground truth videos API

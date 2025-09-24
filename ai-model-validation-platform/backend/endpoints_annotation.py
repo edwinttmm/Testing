@@ -76,10 +76,10 @@ async def create_annotation(
                     # Ensure all required fields exist
                     if not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
                         bounding_box = {
-                            "x": bounding_box.get('x', 0),
-                            "y": bounding_box.get('y', 0), 
-                            "width": bounding_box.get('width', 1),
-                            "height": bounding_box.get('height', 1),
+                            "x": getattr(bounding_box, 'x', bounding_box.get('x', 0) if hasattr(bounding_box, 'get') else 0),
+                            "y": getattr(bounding_box, 'y', bounding_box.get('y', 0) if hasattr(bounding_box, 'get') else 0),
+                            "width": getattr(bounding_box, 'width', bounding_box.get('width', 1) if hasattr(bounding_box, 'get') else 1),
+                            "height": getattr(bounding_box, 'height', bounding_box.get('height', 1) if hasattr(bounding_box, 'get') else 1),
                             **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
                         }
                 except (json.JSONDecodeError, ValueError):
@@ -152,10 +152,10 @@ async def get_annotations(
                     # Ensure all required fields exist
                     if not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
                         bounding_box = {
-                            "x": bounding_box.get('x', 0),
-                            "y": bounding_box.get('y', 0), 
-                            "width": bounding_box.get('width', 1),
-                            "height": bounding_box.get('height', 1),
+                            "x": getattr(bounding_box, 'x', bounding_box.get('x', 0) if hasattr(bounding_box, 'get') else 0),
+                            "y": getattr(bounding_box, 'y', bounding_box.get('y', 0) if hasattr(bounding_box, 'get') else 0),
+                            "width": getattr(bounding_box, 'width', bounding_box.get('width', 1) if hasattr(bounding_box, 'get') else 1),
+                            "height": getattr(bounding_box, 'height', bounding_box.get('height', 1) if hasattr(bounding_box, 'get') else 1),
                             **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
                         }
                 except (json.JSONDecodeError, ValueError):
@@ -373,10 +373,10 @@ async def get_annotations_by_detection_id(
                     # Ensure all required fields exist
                     if not all(field in bounding_box for field in ['x', 'y', 'width', 'height']):
                         bounding_box = {
-                            "x": bounding_box.get('x', 0),
-                            "y": bounding_box.get('y', 0), 
-                            "width": bounding_box.get('width', 1),
-                            "height": bounding_box.get('height', 1),
+                            "x": getattr(bounding_box, 'x', bounding_box.get('x', 0) if hasattr(bounding_box, 'get') else 0),
+                            "y": getattr(bounding_box, 'y', bounding_box.get('y', 0) if hasattr(bounding_box, 'get') else 0),
+                            "width": getattr(bounding_box, 'width', bounding_box.get('width', 1) if hasattr(bounding_box, 'get') else 1),
+                            "height": getattr(bounding_box, 'height', bounding_box.get('height', 1) if hasattr(bounding_box, 'get') else 1),
                             **{k: v for k, v in bounding_box.items() if k not in ['x', 'y', 'width', 'height']}
                         }
                 except (json.JSONDecodeError, ValueError):

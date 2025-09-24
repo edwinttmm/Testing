@@ -147,9 +147,9 @@
                 const videosData = await videosResponse.json();
                 
                 const validatedVideos = videosData.videos?.filter(v => 
-                    v.validationStatus === 'validated' && 
+                    v.status === 'validated' && 
                     v.processing_status === 'completed' && 
-                    v.detectionCount > 0
+                    v.annotation_count > 0
                 ) || [];
                 
                 let resultHtml = '';

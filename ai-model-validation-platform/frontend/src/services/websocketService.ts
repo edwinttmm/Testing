@@ -182,8 +182,8 @@ class WebSocketService {
           autoConnect: true,
           upgrade: true,
           rememberUpgrade: true,
-          pingTimeout: 60000,
-          pingInterval: 25000,
+          // pingTimeout: 60000, // Removed - not available in socket.io v4
+          // pingInterval: 25000, // Removed - not available in socket.io v4
           // Enhanced for HIL testing reliability
           forceNew: false,
           withCredentials: false

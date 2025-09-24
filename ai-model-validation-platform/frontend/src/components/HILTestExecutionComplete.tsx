@@ -253,10 +253,11 @@ const HILTestExecutionComplete: React.FC = () => {
   // Check LabJack connection status with enhanced details
   const checkLabJackStatus = useCallback(async () => {
     try {
-      const response = await apiService.get<any>('/api/labjack/status');
+      // Add timestamp to bypass cache
+      const response = await apiService.get<any>(`/api/labjack/status?t=${Date.now()}`);
       const status: LabJackConnectionStatus = {
-        connected: response.connected || false,
-        status: response.status || 'disconnected',
+        connected: response.is_connected || response.connected || false,
+        status: response.connection_status || response.status || 'disconnected',
         mode: response.mode || 'auto',
         deviceInfo: response.device_info ? {
           deviceType: response.device_info.device_type || 'Unknown',

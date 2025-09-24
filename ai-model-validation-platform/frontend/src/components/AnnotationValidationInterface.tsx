@@ -149,6 +149,21 @@ const AnnotationValidationInterface: React.FC<AnnotationValidationInterfaceProps
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize validated state from incoming video status on mount or when video changes
+  useEffect(() => {
+    try {
+      const status = (video as any)?.status || (video as any)?.validationStatus || (video as any)?.validation_status;
+      if (typeof status === 'string') {
+        const normalized = status.toLowerCase();
+        if (normalized.includes('validated')) {
+          setIsValidated(true);
+          return;
+        }
+      }
+    } catch {}
+    // Fallback: leave as-is; panel will show "Ready for Validation" when 100%
+  }, [video]);
   
   // Convert initial annotations to ground truth objects
   useEffect(() => {
@@ -215,7 +230,7 @@ const AnnotationValidationInterface: React.FC<AnnotationValidationInterfaceProps
       {/* Video Element */}
       <video
         ref={videoRef}
-        src={video.filePath || `/api/videos/${video.id}/stream`}
+        src={`http://localhost:8000/api/videos/${video.id}/file`}
         style={{
           width: '100%',
           height: '100%',
@@ -1302,6 +1317,12 @@ const AnnotationValidationInterface: React.FC<AnnotationValidationInterfaceProps
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNextFrame, handlePreviousFrame, handlePlayPause, handleToggleFullscreen, isFullscreen]);
   
+  // Keep local and parent validation state in sync when workflow panel completes
+  const handleWorkflowValidationComplete = useCallback((validated: boolean) => {
+    setIsValidated(validated);
+    onValidationComplete(validated);
+  }, [onValidationComplete]);
+
   return (
     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -1331,7 +1352,7 @@ const AnnotationValidationInterface: React.FC<AnnotationValidationInterfaceProps
                 video={video}
                 groundTruthObjects={groundTruthObjects}
                 isValidated={isValidated}
-                onValidationComplete={onValidationComplete}
+                onValidationComplete={handleWorkflowValidationComplete}
                 onSaveProgress={handleSaveProgress}
                 onValidateAllFrame={handleValidateAllVisible}
                 onValidateAll={handleValidateAllObjects}

@@ -168,6 +168,50 @@ async def configure_voltage_detection(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/labjack/read-voltage/{channel}")
+async def read_voltage_signal(channel: str = "AIN0"):
+    """Read current voltage from LabJack channel
+    
+    Args:
+        channel: Analog input channel (e.g., "AIN0", "AIN1", "AIN2")
+        
+    Returns:
+        Current voltage reading with timestamp and status
+    """
+    try:
+        # Check if service has read_voltage_signal method (WSL service)
+        if hasattr(signal_validation_service, 'read_voltage_signal'):
+            result = signal_validation_service.read_voltage_signal(channel)
+        else:
+            # Fallback to TTL signal reading
+            result = signal_validation_service.read_ttl_signal(channel)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Voltage read error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/labjack/read-ttl/{channel}")
+async def read_ttl_signal(channel: str = "FIO0"):
+    """Read TTL digital signal from LabJack channel
+    
+    Args:
+        channel: Digital I/O channel (e.g., "FIO0", "FIO1", "FIO2")
+        
+    Returns:
+        Digital signal state (0 or 1) with voltage and timestamp
+    """
+    try:
+        result = signal_validation_service.read_ttl_signal(channel)
+        return result
+        
+    except Exception as e:
+        logger.error(f"TTL read error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/monitoring/start/{test_session_id}")
 async def start_signal_monitoring(test_session_id: str):
     """Start continuous monitoring of external signals for a test session

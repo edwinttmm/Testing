@@ -1,0 +1,137 @@
+{
+  "validation_suite": "LabJack T7 Performance Validation",
+  "timestamp": "2025-09-14T21:25:41.809696",
+  "validation_results": {
+    "microsecond_timing": {
+      "mean_timing_us": 9.944519388591289,
+      "timing_std_us": 7.807589593010779,
+      "min_timing_us": 2.708000465645455,
+      "max_timing_us": 205.07499993982492,
+      "mean_jitter_us": 191.8489639833272,
+      "max_jitter_us": 15280.113999528112,
+      "samples_analyzed": 5000,
+      "adas_response_compliant": false,
+      "adas_jitter_compliant": false,
+      "adas_consistent": false,
+      "overall_adas_compliant": false,
+      "timing_grade": "poor"
+    },
+    "high_frequency_acquisition": {
+      "100Hz": {
+        "target_rate_hz": 100,
+        "actual_rate_hz": 89.24803659418184,
+        "rate_accuracy_percent": 89.24803659418184,
+        "rate_stability_percent": 98.1618859585302,
+        "samples_collected": 179,
+        "test_duration_s": 2.005646362999869,
+        "mean_interval_s": 0.01120321300561883,
+        "interval_std_s": 0.0002059278313520498,
+        "achievable": false,
+        "stable": true
+      },
+      "500Hz": {
+        "target_rate_hz": 500,
+        "actual_rate_hz": 397.6364002813895,
+        "rate_accuracy_percent": 79.5272800562779,
+        "rate_stability_percent": 91.61173699875297,
+        "samples_collected": 796,
+        "test_duration_s": 2.001828805000514,
+        "mean_interval_s": 0.0025146993886802143,
+        "interval_std_s": 0.0002109395984132473,
+        "achievable": false,
+        "stable": true
+      },
+      "1000Hz": {
+        "target_rate_hz": 1000,
+        "actual_rate_hz": 707.4761708474364,
+        "rate_accuracy_percent": 70.74761708474364,
+        "rate_stability_percent": 87.04884613011639,
+        "samples_collected": 1416,
+        "test_duration_s": 2.0014808389996688,
+        "mean_interval_s": 0.0014132983491165923,
+        "interval_std_s": 0.0001830384438346147,
+        "achievable": false,
+        "stable": false
+      },
+      "2000Hz": {
+        "target_rate_hz": 2000,
+        "actual_rate_hz": 1190.3293133233988,
+        "rate_accuracy_percent": 59.516465666169935,
+        "rate_stability_percent": 79.85222834448642,
+        "samples_collected": 2381,
+        "test_duration_s": 2.0002867889998015,
+        "mean_interval_s": 0.0008401660457985302,
+        "interval_std_s": 0.00016927473643464552,
+        "achievable": false,
+        "stable": false
+      },
+      "5000Hz": {
+        "target_rate_hz": 5000,
+        "actual_rate_hz": 2664.498371991748,
+        "rate_accuracy_percent": 53.28996743983496,
+        "rate_stability_percent": 80.35955503178413,
+        "samples_collected": 5329,
+        "test_duration_s": 2.00000122199981,
+        "mean_interval_s": 0.00037529341948196426,
+        "interval_std_s": 7.370929752269074e-05,
+        "achievable": false,
+        "stable": false
+      },
+      "summary": {
+        "max_stable_rate_hz": 0,
+        "high_frequency_capable": false,
+        "adas_hil_ready": false
+      }
+    },
+    "concurrent_operations": {
+      "test_duration_s": 10.003769934000047,
+      "analog_samples_collected": 7846,
+      "analog_rate_hz": 784.3043224468423,
+      "digital_operations": 905,
+      "digital_rate_hz": 90.46589495467657,
+      "events_processed": 1728,
+      "event_rate_hz": 172.73488009025536,
+      "total_errors": 0,
+      "error_list": [],
+      "concurrent_performance": {
+        "analog_target_met": false,
+        "digital_target_met": true,
+        "events_target_met": false,
+        "error_free": true
+      },
+      "overall_concurrent_capable": false
+    },
+    "memory_efficiency": {
+      "initial_memory_mb": 16.125,
+      "final_memory_mb": 16.625,
+      "max_memory_mb": 16.625,
+      "mean_memory_mb": 16.33372641509434,
+      "memory_increase_mb": 0.5,
+      "samples_collected": 21215,
+      "memory_per_sample_kb": 0.024133867546547255,
+      "test_duration_s": 30,
+      "memory_efficient": true,
+      "memory_stable": true,
+      "memory_grade": "excellent"
+    },
+    "signal_integrity": {
+      "error": "cannot access local variable 'math' where it is not associated with a value"
+    }
+  },
+  "performance_summary": {
+    "timing_performance": "poor",
+    "acquisition_performance": "poor",
+    "concurrent_performance": "needs_improvement",
+    "memory_performance": "excellent",
+    "signal_performance": "unknown",
+    "overall_performance": "poor"
+  },
+  "adas_hil_performance_ready": {
+    "timing_ready": false,
+    "throughput_ready": false,
+    "concurrent_ready": false,
+    "memory_ready": true,
+    "signal_ready": false,
+    "overall_performance_ready": false
+  }
+}

@@ -22,7 +22,8 @@ import {
   Assessment,
   Info,
 } from '@mui/icons-material';
-import { VideoFile, VideoStatus } from '../services/types';
+import { VideoFile, VideoStatus, VideoValidationStatus } from '../services/types';
+import { convertValidationStatusToVideoStatus } from '../utils/videoStatusUtils';
 
 interface UnlinkVideoConfirmationDialogProps {
   open: boolean;
@@ -115,7 +116,7 @@ const UnlinkVideoConfirmationDialog: React.FC<UnlinkVideoConfirmationDialogProps
                 <Chip 
                   label={video.status} 
                   size="small" 
-                  color={video.status === VideoStatus.VALIDATED ? 'success' : video.status === VideoStatus.PROCESSING ? 'warning' : 'default'}
+                  color={convertValidationStatusToVideoStatus(video.status) === VideoStatus.VALIDATED ? 'success' : convertValidationStatusToVideoStatus(video.status) === VideoStatus.PROCESSING ? 'warning' : 'default'}
                 />
                 {video.duration && (
                   <Chip 
@@ -136,7 +137,7 @@ const UnlinkVideoConfirmationDialog: React.FC<UnlinkVideoConfirmationDialogProps
             </Box>
             <Box>
               <Typography variant="body2" color="text.secondary">
-                <strong>Uploaded:</strong> {new Date(video.createdAt || video.created_at || video.uploadedAt || '').toLocaleDateString()}
+                <strong>Uploaded:</strong> {new Date(video.createdAt || video.created_at || video.uploaded_at || '').toLocaleDateString()}
               </Typography>
             </Box>
             {video.detectionCount !== undefined && (

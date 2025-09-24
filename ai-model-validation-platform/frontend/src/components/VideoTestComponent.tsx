@@ -22,7 +22,7 @@ import {
 import { PlayArrow as PlayIcon, VideoLibrary as VideoIcon } from '@mui/icons-material';
 
 import SequentialVideoPlayer from './SequentialVideoPlayer';
-import { VideoFile, VideoStatus } from '../services/types';
+import { VideoFile, VideoStatus, VideoValidationStatus } from '../services/types';
 
 // Test videos - use publicly available test video URLs
 const TEST_VIDEOS: VideoFile[] = [
@@ -35,12 +35,15 @@ const TEST_VIDEOS: VideoFile[] = [
     duration: 596,
     fileSize: 158008374,
     size: 158008374,
-    status: VideoStatus.VALIDATED,
-    processingStatus: 'completed',
+    status: VideoValidationStatus.VALIDATED,
+    // processingStatus: 'completed', // Removed - not in VideoFile interface
     groundTruthGenerated: false,
     detectionCount: 0,
     annotationCount: 0,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    validationStatus: 'validated' as const,
+    hilTestingReady: true,
+    groundTruthCount: 0
   },
   {
     id: 'test-2',
@@ -51,12 +54,15 @@ const TEST_VIDEOS: VideoFile[] = [
     duration: 653,
     fileSize: 125513024,
     size: 125513024,
-    status: VideoStatus.VALIDATED,
-    processingStatus: 'completed',
+    status: VideoValidationStatus.VALIDATED,
+    // processingStatus: 'completed', // Removed - not in VideoFile interface
     groundTruthGenerated: false,
     detectionCount: 0,
     annotationCount: 0,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    validationStatus: 'validated' as const,
+    hilTestingReady: true,
+    groundTruthCount: 0
   },
   {
     id: 'test-3',
@@ -67,12 +73,15 @@ const TEST_VIDEOS: VideoFile[] = [
     duration: 15,
     fileSize: 2097152,
     size: 2097152,
-    status: VideoStatus.VALIDATED,
-    processingStatus: 'completed',
+    status: VideoValidationStatus.VALIDATED,
+    // processingStatus: 'completed', // Removed - not in VideoFile interface
     groundTruthGenerated: false,
     detectionCount: 0,
     annotationCount: 0,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    validationStatus: 'validated' as const,
+    hilTestingReady: true,
+    groundTruthCount: 0
   }
 ];
 

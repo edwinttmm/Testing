@@ -7,10 +7,10 @@ export enum CameraType {
 }
 
 export enum SignalType {
-  TTL = "ttl",
-  GPIO = "gpio",
-  ANALOG = "analog",
-  DIGITAL = "digital"
+  GPIO = "GPIO",
+  NETWORK_PACKET = "Network Packet",
+  SERIAL = "Serial",
+  CAN_BUS = "CAN Bus",
 }
 
 // PRD-aligned VRU types

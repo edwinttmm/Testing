@@ -38,14 +38,14 @@ import sys
 # Import LabJack LJM library
 try:
     import labjack.ljm as ljm
+    from services.ljm_helpers import numberToType, numberToDeviceType, numberToConnectionType, numberToIP
     LJM_AVAILABLE = True
     logger = logging.getLogger(__name__)
     logger.info("✅ LabJack LJM library loaded successfully")
 except ImportError as e:
     LJM_AVAILABLE = False
     logger = logging.getLogger(__name__)
-    logger.error(f"❌ LabJack LJM library not available: {e}")
-    logger.error("Install with: pip install labjack-ljm")
+    logger.error(f"❌ Failed to initialize real LabJack service: LabJack LJM library not available. Install with: pip install labjack-ljm")
 
 # Precision timing imports
 try:
@@ -130,9 +130,11 @@ class RealLabJackService:
     
     def __init__(self, signal_config: Optional[SignalConfiguration] = None):
         if not LJM_AVAILABLE:
-            raise RuntimeError(
-                "LabJack LJM library not available. Install with: pip install labjack-ljm"
-            )
+            logger.warning("❌ LabJack LJM library not available - service will operate in safe mode")
+            self.connection_status = ConnectionStatus.NOT_DETECTED
+            self.ljm_available = False
+        else:
+            self.ljm_available = True
         
         self.signal_config = signal_config or SignalConfiguration()
         
@@ -187,17 +189,42 @@ class RealLabJackService:
         """Detect available LabJack devices"""
         devices = []
         
+        # Safety check: Only proceed if LJM is available
+        if not LJM_AVAILABLE:
+            logger.warning("❌ LabJack LJM library not available - cannot detect devices")
+            return devices
+        
         try:
-            # List all devices using LJM
+            # Pre-check: Ensure LJM is properly initialized
+            if not hasattr(ljm, 'listAll'):
+                logger.error("❌ LabJack LJM library missing listAll function")
+                return devices
+                
+            # Wrap in additional safety to prevent segmentation faults
+            logger.debug("🔍 Starting LabJack device detection...")
+            
+            # List all devices using LJM with timeout protection
             num_found, device_types, connection_types, serial_numbers, ip_addresses = ljm.listAll(
                 ljm.constants.dtANY,     # Any device type
                 ljm.constants.ctANY      # Any connection type
             )
             
+            # Validate return values
+            if num_found < 0:
+                logger.warning("⚠️ Invalid device count returned from LabJack")
+                return devices
+            
             for i in range(num_found):
-                device_type_str = ljm.numberToDeviceType(device_types[i])
-                connection_type_str = ljm.numberToConnectionType(connection_types[i])
-                ip_str = ljm.numberToIP(ip_addresses[i]) if connection_types[i] in [ljm.constants.ctETHERNET, ljm.constants.ctWIFI] else None
+                # Use helper conversions to avoid referencing non-existent constants (e.g., dtUE9)
+                device_type_str = numberToType(device_types[i])
+                connection_type_str = numberToConnectionType(connection_types[i])
+
+                # Format IP address if available
+                ip_str = None
+                if connection_types[i] in [getattr(ljm.constants, 'ctETHERNET', None), getattr(ljm.constants, 'ctWIFI', None)]:
+                    # Convert IP number to string format
+                    ip_int = ip_addresses[i]
+                    ip_str = numberToIP(ip_int)
                 
                 devices.append({
                     "device_type": device_type_str,
@@ -230,6 +257,12 @@ class RealLabJackService:
             True if connected successfully
         """
         with self.lock:
+            # Safety check: Only proceed if LJM is available
+            if not LJM_AVAILABLE:
+                logger.error("❌ LabJack LJM library not available - cannot connect")
+                self.connection_status = ConnectionStatus.NOT_DETECTED
+                return False
+                
             if self.is_connected():
                 logger.warning("⚠️ Already connected to LabJack")
                 return True
@@ -239,17 +272,35 @@ class RealLabJackService:
             try:
                 logger.info(f"🔌 Attempting to connect to LabJack {device_type} via {connection_type}...")
                 
-                # Open device connection
+                # Pre-check: Ensure required LJM functions exist
+                if not hasattr(ljm, 'openS') or not hasattr(ljm, 'getHandleInfo'):
+                    logger.error("❌ LabJack LJM library missing required connection functions")
+                    self.connection_status = ConnectionStatus.ERROR
+                    return False
+                
+                # Attempt connection with additional safety
+                logger.debug("🔧 Opening LabJack device connection...")
                 self.handle = ljm.openS(device_type, connection_type, identifier)
+                
+                # Validate handle
+                if self.handle is None or self.handle <= 0:
+                    logger.error("❌ Invalid LabJack handle returned")
+                    self.connection_status = ConnectionStatus.ERROR
+                    return False
                 
                 # Get device information
                 device_info_tuple = ljm.getHandleInfo(self.handle)
                 device_type_num, connection_type_num, serial_number, ip_number, port, max_bytes_per_mb = device_info_tuple
                 
-                # Convert numbers to readable strings
-                device_type_str = ljm.numberToDeviceType(device_type_num)
-                connection_type_str = ljm.numberToConnectionType(connection_type_num)
-                ip_str = ljm.numberToIP(ip_number) if connection_type_num in [ljm.constants.ctETHERNET, ljm.constants.ctWIFI] else None
+                # Convert numbers to readable strings using helper functions
+                device_type_str = numberToType(device_type_num)
+                connection_type_str = numberToConnectionType(connection_type_num)
+                
+                # Format IP address if available  
+                ip_str = None
+                if connection_type_num in [getattr(ljm.constants, 'ctETHERNET', None), getattr(ljm.constants, 'ctWIFI', None)]:
+                    # Convert IP number to string format
+                    ip_str = numberToIP(ip_number)
                 
                 # Get firmware versions
                 try:
@@ -268,7 +319,7 @@ class RealLabJackService:
                     connection_type=connection_type_str,
                     serial_number=serial_number,
                     ip_address=ip_str,
-                    port=port if connection_type_num in [ljm.constants.ctETHERNET, ljm.constants.ctWIFI] else None,
+                    port=port if connection_type_num in [getattr(ljm.constants, 'ctETHERNET', None), getattr(ljm.constants, 'ctWIFI', None)] else None,
                     firmware_version=str(firmware_version),
                     hardware_version=str(hardware_version),
                     bootloader_version=str(bootloader_version)
@@ -660,27 +711,34 @@ def get_real_labjack_service(signal_config: Optional[SignalConfiguration] = None
     return _real_labjack_service
 
 
-def initialize_real_labjack_service(signal_config: Optional[SignalConfiguration] = None) -> bool:
-    """Initialize real LabJack service and attempt connection"""
+def initialize_real_labjack_service(signal_config: Optional[SignalConfiguration] = None, auto_connect: bool = False) -> bool:
+    """Initialize real LabJack service (optionally connect immediately)"""
     try:
         service = get_real_labjack_service(signal_config)
-        devices = service.detect_devices()
         
-        if devices:
-            # Try to connect to first available device
-            device = devices[0]
-            success = service.connect(
-                device_type=device["device_type"],
-                connection_type=device["connection_type"],
-                identifier=str(device["serial_number"])
-            )
+        if auto_connect:
+            # Auto-connect mode: detect and connect immediately
+            devices = service.detect_devices()
             
-            if success:
-                logger.info(f"✅ Real LabJack service initialized and connected to {device['device_type']}")
-                return True
-        
-        logger.warning("⚠️ No LabJack devices detected for connection")
-        return False
+            if devices:
+                # Try to connect to first available device
+                device = devices[0]
+                success = service.connect(
+                    device_type=device["device_type"],
+                    connection_type=device["connection_type"],
+                    identifier=str(device["serial_number"])
+                )
+                
+                if success:
+                    logger.info(f"✅ Real LabJack service initialized and connected to {device['device_type']}")
+                    return True
+            
+            logger.warning("⚠️ No LabJack devices detected for connection")
+            return False
+        else:
+            # Lazy mode: initialize service without connecting
+            logger.info("✅ Real LabJack service initialized (lazy connection - will connect when needed)")
+            return True
         
     except Exception as e:
         logger.error(f"❌ Failed to initialize real LabJack service: {e}")

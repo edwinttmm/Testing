@@ -17,7 +17,10 @@ from src.utils.error_handling import FileAccessErrorHandler, handle_file_access_
 from src.config.path_config import get_path_config_manager
 
 # Optional ML dependencies - make them optional for Docker environments without ML packages
+DISABLE_ML = os.getenv("AIVALIDATION_DISABLE_ML", "false").lower() == "true"
 try:
+    if DISABLE_ML:
+        raise ImportError("ML disabled by environment variable")
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"  # Disable OpenEXR support
     import cv2
     import numpy as np
@@ -32,7 +35,7 @@ except ImportError as e:
     torch = None
     ML_AVAILABLE = False
     CV2_AVAILABLE = False
-    logging.warning(f"ML dependencies not available: {e}. Using fallback mode.")
+    logging.warning(f"ML unavailable ({e}). Using fallback mode.")
 
 logger = logging.getLogger(__name__)
 

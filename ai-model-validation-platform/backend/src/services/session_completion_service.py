@@ -120,43 +120,41 @@ class SessionCompletionService:
                 raise Exception(f"Failed to complete test session: {str(e)}")
     
     def _calculate_session_metrics(self, session_id: str) -> Dict[str, Any]:
-        """Calculate comprehensive session metrics"""
+        """Calculate comprehensive session metrics using ground truth matching"""
         try:
-            # Get all detection events for this session
-            detection_events = self.db_session.query(DetectionEvent).filter(
-                DetectionEvent.test_session_id == session_id
-            ).all()
+            # Use ground truth matching for accurate HIL metrics
+            from services.ground_truth_matching_service import get_ground_truth_matching_service
             
-            # Basic counts
-            total_detections = len(detection_events)
+            matching_service = get_ground_truth_matching_service(self.db_session)
+            matching_results = matching_service.match_detections_to_ground_truth(session_id)
             
-            # LabJack timing metrics
-            passed_detections = 0
-            failed_detections = 0
-            latencies = []
+            # Get session duration
+            test_session = self.db_session.query(TestSession).filter(
+                TestSession.id == session_id
+            ).first()
             
-            for event in detection_events:
-                if event.validation_result == "Pass":
-                    passed_detections += 1
-                elif event.validation_result == "Fail":
-                    failed_detections += 1
-                
-                if event.latency_ms is not None:
-                    latencies.append(event.latency_ms)
+            duration_seconds = 0
+            if test_session and test_session.started_at and test_session.completed_at:
+                duration_seconds = (test_session.completed_at - test_session.started_at).total_seconds()
             
-            # Calculate success rate
-            success_rate = (passed_detections / total_detections * 100) if total_detections > 0 else 0.0
+            # Build comprehensive metrics from ground truth matching
+            total_detections = matching_results.true_positives + matching_results.false_positives
+            total_ground_truth = matching_results.true_positives + matching_results.false_negatives
             
-            # Calculate latency statistics
+            # Calculate success rate based on ground truth matching
+            success_rate = matching_results.precision * 100  # Precision represents detection accuracy
+            
+            # Real latency statistics from ground truth matching
             latency_stats = {}
-            if latencies:
+            if matching_results.temporal_offsets:
+                latencies = matching_results.temporal_offsets
                 latencies.sort()
                 n = len(latencies)
                 latency_stats = {
-                    "average_ms": sum(latencies) / n,
-                    "min_ms": min(latencies),
-                    "max_ms": max(latencies),
-                    "median_ms": latencies[n // 2] if n > 0 else 0,
+                    "average_ms": matching_results.avg_latency_ms,
+                    "min_ms": matching_results.min_latency_ms,
+                    "max_ms": matching_results.max_latency_ms,
+                    "median_ms": matching_results.median_latency_ms,
                     "std_dev": self._calculate_std_dev(latencies) if n > 1 else 0,
                     "percentiles": {
                         "25th": latencies[int(0.25 * n)] if n > 0 else 0,
@@ -167,6 +165,37 @@ class SessionCompletionService:
             
             # Get video count for this session
             video_count = self._get_session_video_count(session_id)
+            
+            return {
+                "total_detections": total_detections,
+                "total_ground_truth": total_ground_truth,
+                "passed_detections": matching_results.true_positives,
+                "failed_detections": matching_results.false_positives,
+                "missed_detections": matching_results.false_negatives,
+                "success_rate": success_rate,
+                "precision": matching_results.precision,
+                "recall": matching_results.recall,
+                "f1_score": matching_results.f1_score,
+                "video_count": video_count,
+                "duration_seconds": duration_seconds,
+                "latency_stats": latency_stats,
+                "detection_rate_hz": total_detections / duration_seconds if duration_seconds > 0 else 0,
+                "ground_truth_matched": True,
+                "validation_type": "HIL_GroundTruth_Matched"
+            }
+            
+        except Exception as e:
+            logger.error(f"Ground truth matching failed, falling back to simple metrics: {e}")
+            
+            # Fallback to simple counting if ground truth matching fails
+            detection_events = self.db_session.query(DetectionEvent).filter(
+                DetectionEvent.test_session_id == session_id
+            ).all()
+            
+            total_detections = len(detection_events)
+            passed_detections = len([d for d in detection_events if d.validation_result == "passed"])
+            failed_detections = total_detections - passed_detections
+            success_rate = (passed_detections / total_detections * 100) if total_detections > 0 else 0.0
             
             # Get session duration
             test_session = self.db_session.query(TestSession).filter(
@@ -182,15 +211,13 @@ class SessionCompletionService:
                 "passed_detections": passed_detections,
                 "failed_detections": failed_detections,
                 "success_rate": success_rate,
-                "video_count": video_count,
+                "video_count": self._get_session_video_count(session_id),
                 "duration_seconds": duration_seconds,
-                "latency_stats": latency_stats,
-                "detection_rate_hz": total_detections / duration_seconds if duration_seconds > 0 else 0
+                "latency_stats": {},
+                "detection_rate_hz": total_detections / duration_seconds if duration_seconds > 0 else 0,
+                "ground_truth_matched": False,
+                "validation_type": "HIL_Fallback"
             }
-            
-        except Exception as e:
-            logger.error(f"Error calculating session metrics: {e}")
-            return self._empty_metrics()
     
     def _generate_test_results(self, session_id: str, metrics: Dict[str, Any]) -> Optional[TestResult]:
         """Generate or update test results record"""
@@ -205,7 +232,10 @@ class SessionCompletionService:
                 self._update_test_result(existing_result, metrics)
                 return existing_result
             else:
-                # Create new test result
+                # Create new test result with ground truth metrics if available
+                is_ground_truth_matched = metrics.get("ground_truth_matched", False)
+                validation_type = metrics.get("validation_type", "HIL_Fallback")
+                
                 test_result = TestResult(
                     test_session_id=session_id,
                     pass_rate=metrics.get("success_rate", 0.0),
@@ -215,7 +245,7 @@ class SessionCompletionService:
                     test_duration_seconds=metrics.get("duration_seconds", 0.0),
                     detection_rate_hz=metrics.get("detection_rate_hz", 0.0),
                     
-                    # LabJack timing metrics
+                    # Real latency metrics from ground truth matching
                     avg_latency_ms=metrics.get("latency_stats", {}).get("average_ms"),
                     max_latency_ms=metrics.get("latency_stats", {}).get("max_ms"),
                     min_latency_ms=metrics.get("latency_stats", {}).get("min_ms"),
@@ -223,18 +253,20 @@ class SessionCompletionService:
                     std_dev_latency_ms=metrics.get("latency_stats", {}).get("std_dev"),
                     latency_distribution=metrics.get("latency_stats", {}),
                     
-                    # Legacy compatibility mappings
-                    accuracy=metrics.get("success_rate", 0.0) / 100.0,
-                    precision=metrics.get("success_rate", 0.0) / 100.0,
-                    recall=metrics.get("success_rate", 0.0) / 100.0,
-                    f1_score=metrics.get("success_rate", 0.0) / 100.0,
+                    # Proper ML metrics from ground truth matching (if available)
+                    accuracy=metrics.get("recall", metrics.get("success_rate", 0.0) / 100.0),  # Accuracy = recall for HIL
+                    precision=metrics.get("precision", metrics.get("success_rate", 0.0) / 100.0),
+                    recall=metrics.get("recall", metrics.get("success_rate", 0.0) / 100.0),
+                    f1_score=metrics.get("f1_score", metrics.get("success_rate", 0.0) / 100.0),
+                    
+                    # Confusion matrix from ground truth matching
                     true_positives=metrics.get("passed_detections", 0),
                     false_positives=metrics.get("failed_detections", 0),
-                    false_negatives=0,  # Not applicable for LabJack timing validation
+                    false_negatives=metrics.get("missed_detections", 0),
                     
-                    validation_type="labjack_timing",
+                    validation_type=validation_type,
                     statistical_analysis=metrics.get("latency_stats", {}),
-                    confidence_intervals={"confidence_level": 0.95}
+                    confidence_intervals={"confidence_level": 0.95, "ground_truth_matched": is_ground_truth_matched}
                 )
                 
                 self.db_session.add(test_result)

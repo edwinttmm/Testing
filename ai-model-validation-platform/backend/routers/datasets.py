@@ -47,6 +47,27 @@ async def get_video_annotations_for_dataset(
             Annotation.video_id == video_id
         ).order_by(Annotation.timestamp).all()
         
+        # Load detection events with screenshots for reuse
+        try:
+            from pathlib import Path
+            dets = db.query(DetectionEvent).filter(
+                DetectionEvent.video_id == video_id,
+                DetectionEvent.screenshot_path.isnot(None)
+            ).all()
+            det_list = [
+                {
+                    'timestamp': float(getattr(d, 'timestamp') or 0.0),
+                    'frame_number': getattr(d, 'frame_number', None),
+                    'screenshot_path': getattr(d, 'screenshot_path', None),
+                    'screenshot_zoom_path': getattr(d, 'screenshot_zoom_path', None)
+                }
+                for d in dets
+            ]
+            det_by_frame = {d['frame_number']: d for d in det_list if d.get('frame_number') is not None}
+        except Exception:
+            det_list = []
+            det_by_frame = {}
+
         # Convert to frontend-compatible format
         result = []
         for annotation in annotations:
@@ -69,6 +90,39 @@ async def get_video_annotations_for_dataset(
                             "confidence": getattr(annotation, 'confidence', 1.0)
                         }
             
+            # Attempt to match screenshots by frame number first, else nearest timestamp
+            screenshot_path = None
+            screenshot_zoom_path = None
+            if det_list:
+                try:
+                    matched = None
+                    if annotation.frame_number is not None:
+                        fn = annotation.frame_number
+                        if fn in det_by_frame:
+                            matched = det_by_frame[fn]
+                        elif (fn - 1) in det_by_frame:
+                            matched = det_by_frame[fn - 1]
+                        elif (fn + 1) in det_by_frame:
+                            matched = det_by_frame[fn + 1]
+                    else:
+                        t = float(annotation.timestamp or 0.0)
+                        best = None
+                        best_dt = 10**9
+                        for d in det_list:
+                            dt = abs(d['timestamp'] - t)
+                            if dt < best_dt:
+                                best = d
+                                best_dt = dt
+                        if best is not None and best_dt <= 1.0:
+                            matched = best
+                    if matched is not None:
+                        if matched.get('screenshot_zoom_path'):
+                            screenshot_zoom_path = f"/screenshots/{Path(matched['screenshot_zoom_path']).name}"
+                        if matched.get('screenshot_path'):
+                            screenshot_path = f"/screenshots/{Path(matched['screenshot_path']).name}"
+                except Exception:
+                    pass
+
             annotation_data = {
                 "id": annotation.id,
                 "videoId": annotation.video_id,
@@ -83,7 +137,7 @@ async def get_video_annotations_for_dataset(
                     "y": bounding_box.get("y", 0), 
                     "width": bounding_box.get("width", 100),
                     "height": bounding_box.get("height", 100),
-                    "confidence": bounding_box.get("confidence", 1.0),
+                    "confidence": getattr(bounding_box, 'confidence', bounding_box.get("confidence", 1.0) if hasattr(bounding_box, 'get') else 1.0),
                     "label": bounding_box.get("label", annotation.vru_type)
                 },
                 "occluded": annotation.occluded or False,
@@ -91,12 +145,19 @@ async def get_video_annotations_for_dataset(
                 "difficult": annotation.difficult or False,
                 "validationStatus": "validated" if annotation.validated else "pending",
                 "validated": annotation.validated or False,
-                "confidence": bounding_box.get("confidence", 1.0),
+                "confidence": getattr(bounding_box, 'confidence', bounding_box.get("confidence", 1.0) if hasattr(bounding_box, 'get') else 1.0),
                 "notes": annotation.notes,
                 "annotator": annotation.annotator,
                 "createdAt": annotation.created_at.isoformat() if annotation.created_at else None,
                 "updatedAt": annotation.updated_at.isoformat() if annotation.updated_at else None
             }
+            # Attach screenshot info if available
+            if screenshot_path or screenshot_zoom_path:
+                annotation_data["screenshotPath"] = screenshot_zoom_path or screenshot_path
+                annotation_data["rawScreenshotPath"] = screenshot_path
+                annotation_data["hasVisualEvidence"] = True
+            else:
+                annotation_data["hasVisualEvidence"] = False
             result.append(annotation_data)
         
         logger.info(f"Found {len(result)} annotations for video {video_id}")
@@ -134,6 +195,22 @@ async def get_video_ai_detections(
         
         # Convert to frontend format
         ai_detections = []
+        # Build frame->screenshot map for reuse
+        try:
+            from pathlib import Path
+            det_with_shots = [
+                {
+                    'frame_number': getattr(d, 'frame_number', None),
+                    'timestamp': float(getattr(d, 'timestamp') or 0.0),
+                    'screenshot_path': getattr(d, 'screenshot_path', None),
+                    'screenshot_zoom_path': getattr(d, 'screenshot_zoom_path', None)
+                }
+                for d in detection_events if getattr(d, 'screenshot_path', None)
+            ]
+            det_by_frame = {d['frame_number']: d for d in det_with_shots if d.get('frame_number') is not None}
+        except Exception:
+            det_with_shots = []
+            det_by_frame = {}
         for detection in detection_events:
             detection_data = {
                 "id": detection.id,
@@ -154,13 +231,28 @@ async def get_video_ai_detections(
                 "screenshotZoomPath": None
             }
             
-            # Check for screenshot files
+            # Set screenshot if this detection has one
             if detection.screenshot_path:
-                # Ensure screenshot path is web-accessible
                 screenshot_path = detection.screenshot_path
                 if not screenshot_path.startswith('/screenshots/'):
                     screenshot_path = f"/screenshots/{os.path.basename(screenshot_path)}"
                 detection_data["screenshotPath"] = screenshot_path
+            else:
+                # Reuse by frame number ±1, else leave None
+                fn = detection.frame_number or 0
+                matched = None
+                if fn in det_by_frame:
+                    matched = det_by_frame[fn]
+                elif (fn - 1) in det_by_frame:
+                    matched = det_by_frame[fn - 1]
+                elif (fn + 1) in det_by_frame:
+                    matched = det_by_frame[fn + 1]
+                if matched:
+                    sp = matched.get('screenshot_zoom_path') or matched.get('screenshot_path')
+                    if sp:
+                        if not str(sp).startswith('/screenshots/'):
+                            sp = f"/screenshots/{os.path.basename(str(sp))}"
+                        detection_data["screenshotPath"] = sp
             
             ai_detections.append(detection_data)
         

@@ -4,7 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import List, Optional
 from pydantic import ValidationError
 import uvicorn
@@ -16,13 +16,13 @@ from database import SessionLocal, engine
 from models import Base, Project, Video, TestSession, DetectionEvent
 from schemas import (
     ProjectCreate, ProjectResponse, ProjectUpdate,
-    VideoUploadResponse, GroundTruthResponse,
+    VideoUploadResponse, SimpleUploadResponse, GroundTruthResponse,
     TestSessionCreate, TestSessionResponse,
     DetectionEvent, ValidationResult
 )
 from crud import (
     create_project, get_projects, get_project,
-    create_video, get_videos,
+    create_video, create_video_legacy, get_videos,
     create_test_session, get_test_sessions,
     create_detection_event
 )
@@ -194,7 +194,7 @@ async def get_project_detail(
     return project
 
 # Video and Ground Truth endpoints
-@app.post("/api/projects/{project_id}/videos", response_model=VideoUploadResponse)
+@app.post("/api/projects/{project_id}/videos", response_model=SimpleUploadResponse)
 async def upload_video(
     project_id: str,
     file: UploadFile = File(...),
@@ -208,11 +208,38 @@ async def upload_video(
     ground_truth_service.process_video_async(video_record.id, file)
     
     return {
-        "video_id": video_record.id,
+        "id": video_record.id,
+        "project_id": project_id,
         "filename": file.filename,
         "status": "uploaded",
         "message": "Video uploaded successfully. Ground truth generation started."
     }
+
+# Central video upload (no explicit project required)
+@app.post("/api/videos/upload", response_model=SimpleUploadResponse)
+async def upload_video_central(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    try:
+        CENTRAL_PROJECT_ID = os.getenv('CENTRAL_PROJECT_ID', '00000000-0000-0000-0000-000000000001')
+        # Create video in central project
+        video_record = create_video_legacy(db=db, project_id=CENTRAL_PROJECT_ID, filename=file.filename)
+
+        # Optionally trigger ground truth processing in background (re-using existing service)
+        ground_truth_service.process_video_async(video_record.id, file)
+
+        return {
+            "id": video_record.id,
+            "project_id": CENTRAL_PROJECT_ID,
+            "filename": file.filename,
+            "status": "uploaded",
+            "message": "Video uploaded to central store. Ground truth generation started.",
+        }
+    except Exception as e:
+        logger.error(f"Central upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Central upload failed")
 
 @app.get("/api/videos/{video_id}/ground-truth", response_model=GroundTruthResponse)
 async def get_ground_truth(
@@ -327,3 +354,39 @@ async def health_check():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+# Normalize legacy data at startup (e.g., status casing)
+@app.on_event("startup")
+def normalize_legacy_data():
+    try:
+        db = SessionLocal()
+        # Ensure project status values are lowercase to satisfy enum validation
+        db.execute(text("UPDATE projects SET status = lower(status) WHERE status != lower(status)"))
+        db.commit()
+        logger.info("Normalized legacy project status values to lowercase")
+        
+        # Ensure central store project exists for service-token workflows
+        from models import Project
+        CENTRAL_PROJECT_ID = os.getenv('CENTRAL_PROJECT_ID', '00000000-0000-0000-0000-000000000001')
+        SERVICE_USER_ID = os.getenv('SERVICE_USER_ID', 'system-engineer')
+        central = db.query(Project).filter(Project.id == CENTRAL_PROJECT_ID).first()
+        if not central:
+            central = Project(
+                id=CENTRAL_PROJECT_ID,
+                name='Central Store',
+                description='Central video storage',
+                camera_model='Generic',
+                camera_view='Front-facing VRU',
+                signal_type='GPIO',
+                status='active',
+                owner_id=SERVICE_USER_ID,
+            )
+            db.add(central)
+            db.commit()
+            logger.info(f"Created central store project with id {CENTRAL_PROJECT_ID}")
+    except Exception as e:
+        logger.warning(f"Startup normalization skipped or failed: {e}")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass

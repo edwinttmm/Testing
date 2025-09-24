@@ -8,6 +8,9 @@ from schemas import (
     DetectionEvent as DetectionEventSchema,
     AuditLogCreate
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Project CRUD
@@ -271,7 +274,14 @@ def get_ground_truth_objects(db: Session, video_id: str, user_id: str = "anonymo
 
 # Test Session CRUD
 def create_test_session(db: Session, test_session: TestSessionCreate, user_id: str) -> TestSession:
-    db_session = TestSession(**test_session.model_dump())
+    # Safely map only known fields to the ORM model
+    data = test_session.model_dump(exclude_none=True)
+    # Remove client-side config blob if present
+    data.pop('config', None)
+    # Filter to model columns to avoid unexpected kwargs
+    allowed = {col.name for col in TestSession.__table__.columns}
+    filtered = {k: v for k, v in data.items() if k in allowed}
+    db_session = TestSession(**filtered)
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
@@ -300,10 +310,39 @@ def get_test_session(db: Session, session_id: str, user_id: str = "anonymous") -
 
 # Detection Event CRUD
 def create_detection_event(db: Session, detection: DetectionEventSchema) -> DetectionEvent:
-    db_detection = DetectionEvent(**detection.model_dump())
+    data = detection.model_dump()
+    # Ensure video_id is populated based on test_session_id if missing
+    if not data.get('video_id') and data.get('test_session_id'):
+        try:
+            session = db.query(TestSession).filter(TestSession.id == data['test_session_id']).first()
+            if session and session.video_id:
+                data['video_id'] = session.video_id
+        except Exception as e:
+            logger.warning(f"Could not backfill detection.video_id from session: {e}")
+
+    db_detection = DetectionEvent(**data)
     db.add(db_detection)
     db.commit()
     db.refresh(db_detection)
+    # Debug log with correlation details
+    try:
+        logger.info(
+            "DetectionEvent created",
+            extra={
+                'extra_data': {
+                    'event_type': 'detection_event',
+                    'id': db_detection.id,
+                    'session_id': db_detection.test_session_id,
+                    'video_id': db_detection.video_id,
+                    'timestamp': getattr(db_detection, 'timestamp', None),
+                    'channel': getattr(db_detection, 'channel', None),
+                    'voltage': getattr(db_detection, 'voltage', None),
+                    'validation_result': getattr(db_detection, 'validation_result', None),
+                }
+            }
+        )
+    except Exception:
+        pass
     return db_detection
 
 def get_detection_events(db: Session, test_session_id: str, user_id: str = "anonymous") -> List[DetectionEvent]:

@@ -1,0 +1,145 @@
+{
+  "validation_summary": {
+    "timestamp": 1758636532.0298853,
+    "total_tests": 5,
+    "passed_tests": 3,
+    "failed_tests": 2,
+    "success_rate": 60.0,
+    "overall_status": "FAILED"
+  },
+  "test_results": [
+    {
+      "test_name": "Service Configuration",
+      "passed": true,
+      "details": {
+        "service_initialized": true,
+        "config_loaded": true,
+        "baseline_measurement_samples": true,
+        "camera_latency_bounds_set": true,
+        "system_baseline_max_set": true,
+        "confidence_threshold_set": true
+      },
+      "service_status": {
+        "service": "LatencyDecompositionService",
+        "baseline_calibrated": false,
+        "active_sessions": 0,
+        "total_decompositions": 0,
+        "baseline_profiles_count": 0,
+        "current_baseline_timestamp": null,
+        "config": {
+          "baseline_measurement_samples": 1000,
+          "baseline_confidence_threshold": 0.8,
+          "overhead_estimation_accuracy": 0.95,
+          "camera_latency_bounds_ms": [
+            10,
+            200
+          ],
+          "system_baseline_max_ms": 50
+        }
+      }
+    },
+    {
+      "test_name": "Baseline Calibration",
+      "passed": false,
+      "details": {
+        "calibration_completed": true,
+        "reasonable_calibration_time": true,
+        "baseline_within_bounds": false,
+        "positive_components": true,
+        "reasonable_confidence": false,
+        "system_info_available": true
+      },
+      "baseline_ms": 0.005804,
+      "confidence": 0.0,
+      "calibration_time_s": 0.03884410858154297
+    },
+    {
+      "test_name": "Decomposition Accuracy",
+      "passed": false,
+      "test_cases": [
+        {
+          "case": "Low overhead scenario",
+          "checks": {
+            "decomposition_completed": true,
+            "camera_ratio_reasonable": true,
+            "positive_latencies": true,
+            "components_sum_to_total": true,
+            "reasonable_confidence": true
+          },
+          "actual_camera_ratio": 0.8231398666666667,
+          "expected_camera_ratio": 0.7,
+          "decomposition": {
+            "camera_ms": 24.694196,
+            "system_ms": 0.005804,
+            "processing_ms": 4.0,
+            "confidence": 0.55
+          }
+        },
+        {
+          "case": "High overhead scenario",
+          "checks": {
+            "decomposition_completed": true,
+            "camera_ratio_reasonable": false,
+            "positive_latencies": true,
+            "components_sum_to_total": true,
+            "reasonable_confidence": true
+          },
+          "actual_camera_ratio": 0.90529464,
+          "expected_camera_ratio": 0.5,
+          "decomposition": {
+            "camera_ms": 135.794196,
+            "system_ms": 0.005804,
+            "processing_ms": 11.0,
+            "confidence": 0.6
+          }
+        }
+      ],
+      "total_cases": 2,
+      "passed_cases": 1
+    },
+    {
+      "test_name": "Timing Integration",
+      "passed": true,
+      "details": {
+        "calculation_completed": true,
+        "decomposition_included": true,
+        "decomposition_values_present": true,
+        "real_latency_calculated": true,
+        "camera_less_than_total": true,
+        "timing_quality_assessed": true
+      },
+      "result_summary": {
+        "real_latency_ms": 5599.999904632568,
+        "camera_only_ms": 200.0,
+        "system_overhead_ms": 0.005804,
+        "processing_overhead_ms": 7.6,
+        "decomposition_confidence": 0.5,
+        "timing_quality": "fair"
+      }
+    },
+    {
+      "test_name": "API Endpoints",
+      "passed": true,
+      "details": {
+        "router_imported": true,
+        "router_has_routes": true,
+        "expected_endpoints_count": true,
+        "all_expected_paths_present": true
+      },
+      "endpoint_count": 7,
+      "endpoint_paths": [
+        "/decompose/{session_id}",
+        "/decomposition/{session_id}",
+        "/baseline/calibrate",
+        "/baseline/status",
+        "/analysis/{session_id}/camera-only",
+        "/comparison/{session_id}",
+        "/service/status"
+      ]
+    }
+  ],
+  "recommendations": [
+    "Check system performance and timing precision",
+    "Review latency estimation algorithms and metadata handling"
+  ]
+}
