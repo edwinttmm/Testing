@@ -97,6 +97,7 @@ test_env/
 validation_env/
 yolov8n.pt
 *:Zone.Identifier
+screenshots/
 
 # Python virtual environments
 ai-model-validation-platform/ml_test_env/
