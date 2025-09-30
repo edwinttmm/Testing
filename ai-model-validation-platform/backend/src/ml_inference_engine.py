@@ -341,7 +341,8 @@ class MLInferenceEngine:
                 if not ret:
                     break
                 
-                if frame_num % frame_skip == 0:
+                # Process every frame for complete annotation coverage
+                if True:  # Changed from frame_num % frame_skip == 0 to process all frames
                     # Convert BGR to RGB
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     

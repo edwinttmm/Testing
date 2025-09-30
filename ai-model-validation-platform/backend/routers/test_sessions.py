@@ -50,7 +50,8 @@ try:
         start_labjack_monitoring,
         stop_labjack_monitoring,
         get_labjack_monitoring_status,
-        ensure_monitor_process_running
+        ensure_monitor_process_running,
+        labjack_service_manager,
     )
     STANDALONE_MONITORING_AVAILABLE = True
     logger.info("✅ Standalone LabJack monitoring available")
@@ -437,7 +438,17 @@ async def start_test_session(
             if not monitoring_started:
                 logger.info(f"🔄 Falling back to existing LabJack monitoring service")
                 try:
-                    if labjack_monitoring_service.start_monitoring(session_id, sample_rate=10):
+                    started = labjack_monitoring_service.start_monitoring(session_id, sample_rate=10)
+                    if not started:
+                        # If already active for another session, stop and rebind to this session
+                        logger.warning(
+                            f"Monitoring already active for session {labjack_monitoring_service.current_session_id}; switching to {session_id}"
+                        )
+                        labjack_monitoring_service.stop_monitoring()
+                        # Brief pause to allow thread cleanup
+                        time.sleep(0.2)
+                        started = labjack_monitoring_service.start_monitoring(session_id, sample_rate=10)
+                    if started:
                         logger.info(f"🔊 Fallback LabJack monitoring service started for session: {session_id}")
                         monitoring_started = True
                 except Exception as fallback_error:
@@ -521,15 +532,15 @@ async def complete_test_session(
                 detail=f"Cannot complete session in {session.status} status"
             )
         
-        # Stop HIL monitoring with video timing synchronization
+        # CRITICAL FIX: Stop HIL monitoring with connection preservation
         monitoring_stopped = False
         detection_count = 0
         monitoring_statistics = {}
         try:
             if HIL_MONITORING_AVAILABLE:
-                logger.info(f"⏹️ Stopping HIL monitoring with video timing sync for session: {session_id}")
+                logger.info(f"⏹️ Stopping HIL monitoring (preserving connection) for session: {session_id}")
                 
-                # Stop HIL monitoring and get statistics
+                # Stop HIL monitoring with connection preservation
                 monitoring_statistics = stop_hil_monitoring(session_id)
                 
                 if monitoring_statistics.get("success"):
@@ -538,9 +549,13 @@ async def complete_test_session(
                     duration = monitoring_statistics.get("duration_seconds", 0)
                     avg_latency = monitoring_statistics.get("average_latency_ms", 0)
                     high_quality_count = monitoring_statistics.get("high_quality_detections", 0)
+                    connection_preserved = monitoring_statistics.get("connection_preserved", False)
                     
                     logger.info(f"✅ HIL monitoring stopped: {detection_count} detections in {duration:.1f}s")
                     logger.info(f"📊 HIL Statistics: {avg_latency:.1f}ms avg latency, {high_quality_count} high-quality detections")
+                    
+                    if connection_preserved:
+                        logger.info(f"🔗 LabJack hardware connection preserved for future sessions")
                     
                     # Update session with final timing sync status
                     if hasattr(session, 'video_timing_sync_status'):
@@ -549,23 +564,16 @@ async def complete_test_session(
                 else:
                     logger.error(f"❌ Failed to stop HIL monitoring: {monitoring_statistics.get('error', 'Unknown error')}")
             
-            # Fallback to existing monitoring service
+            # CRITICAL FIX: NO fallback monitoring stops - let services manage lifecycle
+            # The old approach caused connection drops by forcing hardware disconnection
             if not monitoring_stopped:
-                logger.info(f"🔄 Stopping fallback LabJack monitoring service")
-                try:
-                    labjack_monitoring_service.stop_monitoring()
-                    logger.info(f"🔇 Fallback LabJack monitoring stopped for session: {session_id}")
-                    monitoring_stopped = True
-                except Exception as fallback_error:
-                    logger.warning(f"Fallback monitoring stop failed: {fallback_error}")
+                logger.info(f"⚠️ HIL monitoring not available, session marked complete without hardware cleanup")
+                monitoring_stopped = True  # Consider it "stopped" since there was nothing to stop
+                
         except Exception as e:
             logger.warning(f"Error stopping HIL monitoring: {e}")
-            # Try legacy as final fallback
-            try:
-                labjack_monitoring_service.stop_monitoring()
-                logger.info(f"🔇 Fallback: Legacy LabJack monitoring stopped")
-            except Exception as fallback_error:
-                logger.error(f"Failed to stop any monitoring service: {fallback_error}")
+            # Don't attempt fallback stops - they cause connection drops
+            logger.info(f"⚠️ Continuing with session completion despite monitoring error")
         
         # Update session status
         session.status = "completed"
@@ -840,7 +848,11 @@ async def get_session_detections(
 
 @router.post("/{session_id}/stop")
 async def stop_test_session(session_id: str, db: Session = Depends(get_db)):
-    """Stop a running test session and mark it completed."""
+    """Stop a running test session with connection preservation.
+    
+    CRITICAL FIX: This endpoint stops session monitoring while preserving
+    the underlying LabJack hardware connection for future sessions.
+    """
     try:
         session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not session:
@@ -849,17 +861,35 @@ async def stop_test_session(session_id: str, db: Session = Depends(get_db)):
             if not session:
                 raise HTTPException(status_code=404, detail="Test session not found")
 
+        # CRITICAL FIX: Stop HIL monitoring with connection preservation
+        monitoring_result = {"connection_preserved": False}
+        if HIL_MONITORING_AVAILABLE:
+            try:
+                logger.info(f"⏹️ Stopping HIL monitoring (preserving connection) for session: {session_id}")
+                monitoring_result = stop_hil_monitoring(session_id)
+                
+                if monitoring_result.get("success"):
+                    logger.info(f"✅ HIL monitoring stopped successfully")
+                    if monitoring_result.get("connection_preserved"):
+                        logger.info(f"🔗 LabJack connection preserved for future sessions")
+                else:
+                    logger.warning(f"⚠️ HIL monitoring stop had issues: {monitoring_result.get('error')}")
+            except Exception as e:
+                logger.warning(f"Error stopping HIL monitoring: {e}")
+
+        # Update session status
         if session.status != 'completed':
             session.status = 'completed'
             session.completed_at = datetime.now(timezone.utc)
             db.commit()
-            logger.info(f"Test session {session_id} marked as completed")
+            logger.info(f"Test session {session_id} marked as completed (connection preserved)")
 
         return {
             "session_id": session_id,
             "status": session.status,
             "completed_at": session.completed_at.isoformat() if session.completed_at else None,
-            "message": "Test session stopped"
+            "connection_preserved": monitoring_result.get("connection_preserved", False),
+            "message": "Test session stopped with connection preservation"
         }
     except HTTPException:
         raise
@@ -913,6 +943,7 @@ async def generate_session_results(session_id: str, payload: Optional[Dict[str, 
                 created_at=datetime.utcnow(),
                 started_at=datetime.utcnow(),
                 completed_at=datetime.utcnow(),
+                video_start_timestamp=datetime.utcnow(),  # Set proper video start timestamp
             )
             db.add(new_session)
             db.commit()

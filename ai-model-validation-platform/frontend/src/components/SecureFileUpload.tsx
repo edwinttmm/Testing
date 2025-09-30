@@ -41,8 +41,8 @@ const SECURITY_CONFIG = {
     'video/x-matroska': ['.mkv'],
   },
   
-  // File size limits (100MB max, 1KB min)
-  MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+  // File size limits (50GB max, 1KB min) - effectively unlimited
+  MAX_FILE_SIZE: 50 * 1024 * 1024 * 1024, // 50GB (effectively unlimited)
   MIN_FILE_SIZE: 1024, // 1KB
   
   // Security limits
@@ -712,7 +712,7 @@ const SecureFileUpload: React.FC<SecureFileUploadProps> = ({
         {!disabled && (
           <>
             <Typography variant="body2" color="text.secondary">
-              Supported: MP4, AVI, MOV, MKV • Max: {Math.round(SECURITY_CONFIG.MAX_FILE_SIZE / (1024*1024))}MB
+              Supported: MP4, AVI, MOV, MKV • Max: {Math.round(SECURITY_CONFIG.MAX_FILE_SIZE / (1024*1024*1024))}GB
             </Typography>
             <Stack direction="row" spacing={1} justifyContent="center" sx={{ mt: 1 }}>
               <Chip icon={<Security />} label="Virus Scanning" size="small" />

@@ -331,7 +331,7 @@ class VideoProcessorService {
     const maxHeight = options.maxHeight || video.videoHeight;
     const maintainAspectRatio = options.maintainAspectRatio !== false;
     
-    let { width, height } = maintainAspectRatio 
+    const { width, height } = maintainAspectRatio 
       ? this.calculateDimensions(video.videoWidth, video.videoHeight, maxWidth, maxHeight)
       : { width: maxWidth, height: maxHeight };
 

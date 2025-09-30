@@ -397,21 +397,36 @@ class ApiService {
         if (isString(code)) errorContext.errorCode = code;
       }
       
-      // Report error to error reporting service
-      try {
-        errorReporting.reportApiError(customError, 'api-service', errorContext);
-      } catch (reportingError) {
-        console.warn('Failed to report error:', reportingError);
+      // Determine if this is an expected, non-fatal 404 for ground-truth polling
+      const methodForCheck = isAxiosError(error) ? String(safeGet(error, 'config.method', '')).toLowerCase() : '';
+      const urlForCheck = isAxiosError(error) ? String(safeGet(error, 'config.url', '')) : '';
+      const statusForCheck = isAxiosError(error) ? Number(safeGet(error, 'response.status', 0)) : 0;
+      const isGroundTruthGet = methodForCheck === 'get' && urlForCheck.includes('/ground-truth');
+      const expectedGroundTruth404 = isGroundTruthGet && statusForCheck === 404;
+      const expectedGroundTruthNetwork = isGroundTruthGet && apiError.code === 'NETWORK_ERROR';
+
+      // Report error unless it's an expected ground-truth 404 during polling
+      if (!expectedGroundTruth404 && !expectedGroundTruthNetwork) {
+        try {
+          errorReporting.reportApiError(customError, 'api-service', errorContext);
+        } catch (reportingError) {
+          console.warn('Failed to report error:', reportingError);
+        }
       }
 
       // Safe console logging with both technical and user-friendly messages
-      console.error('API Error:', {
+      const logPayload = {
         userMessage: apiError.message,
         technicalMessage: errorMessage,
         status: apiError.status,
         code: apiError.code,
         context: errorContext
-      });
+      } as const;
+      if (expectedGroundTruth404 || expectedGroundTruthNetwork) {
+        console.warn('API Expected 404 (ground-truth polling):', logPayload);
+      } else {
+        console.error('API Error:', logPayload);
+      }
 
       return apiError;
 
@@ -902,6 +917,34 @@ class ApiService {
     return response;
   }
 
+  // Get videos with ground truth data available for a specific project
+  async getGroundTruthVideosAvailable(projectId: string, minDetections: number = 1): Promise<VideoFile[]> {
+    const response = await this.cachedRequest<VideoFile[]>('GET', '/api/ground-truth/videos/available', undefined, {
+      params: { project_id: projectId, min_detections: minDetections }
+    });
+    
+    // Ensure we have an array and enhance video data
+    if (Array.isArray(response)) {
+      // Filter out invalid videos and enhance valid ones
+      const validVideos = response.filter(video => 
+        video && 
+        video.id && 
+        typeof video.id === 'string' &&
+        video.id.trim().length > 0 &&
+        (video.filename || video.originalName)
+      );
+
+      if (validVideos.length !== response.length) {
+        console.warn(`⚠️ Filtered out ${response.length - validVideos.length} invalid ground truth video records`);
+      }
+
+      // Enhance video data with proper URLs and status mapping
+      return validVideos.map(video => this.enhanceVideoData(video));
+    }
+    
+    return [];
+  }
+
   async getVideo(videoId: string): Promise<VideoFile> {
     try {
       const response = await this.api.get(`/api/videos/${videoId}`);
@@ -979,30 +1022,30 @@ class ApiService {
           (response.data as Record<string, unknown>).objects = objectsData.map((obj: unknown) => {
             if (!isObject(obj)) return obj;
           
-          // Safely extract bounding box data
-          const boundingBoxData = safeGet(obj, 'bounding_box', safeGet(obj, 'boundingBox', {}));
-          const boundingBox = isObject(boundingBoxData) ? boundingBoxData : {
-            x: safeGet(obj, 'x', 0),
-            y: safeGet(obj, 'y', 0),
-            width: safeGet(obj, 'width', 100),
-            height: safeGet(obj, 'height', 100),
-            confidence: safeGet(obj, 'confidence', 1.0),
-            label: safeGet(obj, 'class_label', safeGet(obj, 'classLabel', 'unknown'))
-          };
-          
-          return {
-            ...obj,
-            boundingBox,
-            vruType: safeGet(obj, 'vru_type', safeGet(obj, 'vruType', 
-              this.mapClassToVruType(safeGet(obj, 'class_label', safeGet(obj, 'classLabel', ''))))),
-            detectionId: safeGet(obj, 'detection_id', safeGet(obj, 'detectionId', safeGet(obj, 'id', ''))),
-            frameNumber: safeGet(obj, 'frame_number', safeGet(obj, 'frameNumber', 0)),
-            timestamp: safeGet(obj, 'timestamp', 0),
-            validated: safeGet(obj, 'validated', false),
-            occluded: safeGet(obj, 'occluded', false),
-            truncated: safeGet(obj, 'truncated', false),
-            difficult: safeGet(obj, 'difficult', false)
-          };
+            // Safely extract bounding box data
+            const boundingBoxData = safeGet(obj, 'bounding_box', safeGet(obj, 'boundingBox', {}));
+            const boundingBox = isObject(boundingBoxData) ? boundingBoxData : {
+              x: safeGet(obj, 'x', 0),
+              y: safeGet(obj, 'y', 0),
+              width: safeGet(obj, 'width', 100),
+              height: safeGet(obj, 'height', 100),
+              confidence: safeGet(obj, 'confidence', 1.0),
+              label: safeGet(obj, 'class_label', safeGet(obj, 'classLabel', 'unknown'))
+            };
+            
+            return {
+              ...obj,
+              boundingBox,
+              vruType: safeGet(obj, 'vru_type', safeGet(obj, 'vruType', 
+                this.mapClassToVruType(safeGet(obj, 'class_label', safeGet(obj, 'classLabel', ''))))),
+              detectionId: safeGet(obj, 'detection_id', safeGet(obj, 'detectionId', safeGet(obj, 'id', ''))),
+              frameNumber: safeGet(obj, 'frame_number', safeGet(obj, 'frameNumber', 0)),
+              timestamp: safeGet(obj, 'timestamp', 0),
+              validated: safeGet(obj, 'validated', false),
+              occluded: safeGet(obj, 'occluded', false),
+              truncated: safeGet(obj, 'truncated', false),
+              difficult: safeGet(obj, 'difficult', false)
+            };
           });
         }
       }
@@ -1011,12 +1054,37 @@ class ApiService {
         video_id: videoId,
         objects: [],
         total_detections: 0,
-        status: 'pending',
+        status: 'ready',
         message: 'No ground truth data available'
       };
     } catch (error: unknown) {
+      // Determine if this was an expected transitional state (404) or temporary network issue
+      const status = isObject(error) ? (safeGet(error, 'status', 0) as number) : 0;
+      const code = isObject(error) ? (safeGet(error, 'code', '') as string) : '';
+
+      if (status === 404) {
+        // Ground truth not generated yet
+        return {
+          video_id: videoId,
+          objects: [],
+          total_detections: 0,
+          status: 'pending',
+          message: 'Ground truth not ready yet'
+        };
+      }
+      if (code === 'NETWORK_ERROR') {
+        // Temporary connectivity issue - caller may retry/poll
+        return {
+          video_id: videoId,
+          objects: [],
+          total_detections: 0,
+          status: 'retry',
+          message: 'Temporary connectivity issue'
+        };
+      }
+
+      // Unexpected failure - log once at warn level
       console.warn(`Ground truth fetch failed for video ${videoId}:`, error);
-      // Return empty ground truth structure as fallback
       return {
         video_id: videoId,
         objects: [],
@@ -1094,6 +1162,100 @@ class ApiService {
       return response.data;
     } catch (error: unknown) {
       console.warn(`Enhanced HIL ground truth comparison fetch failed for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  // Raw Timing Data API methods
+  async getRawTimingData(
+    sessionId: string,
+    options: {
+      includeTransitions?: boolean;
+      includeRunPeriods?: boolean;
+      startTimeUs?: number;
+      endTimeUs?: number;
+      maxTransitions?: number;
+      minConfidence?: number;
+    } = {}
+  ): Promise<any> {
+    try {
+      const params = new URLSearchParams();
+      if (options.includeTransitions !== undefined) params.append('include_transitions', String(options.includeTransitions));
+      if (options.includeRunPeriods !== undefined) params.append('include_run_periods', String(options.includeRunPeriods));
+      if (options.startTimeUs) params.append('start_time_us', String(options.startTimeUs));
+      if (options.endTimeUs) params.append('end_time_us', String(options.endTimeUs));
+      if (options.maxTransitions) params.append('max_transitions', String(options.maxTransitions));
+      if (options.minConfidence) params.append('min_confidence', String(options.minConfidence));
+      
+      const response = await this.api.get(`/api/raw-timing/test-sessions/${sessionId}/raw-data?${params}`);
+      return response.data;
+    } catch (error: unknown) {
+      console.warn(`Raw timing data fetch failed for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  async getTimelineData(
+    sessionId: string,
+    options: {
+      resolutionUs?: number;
+      includeVideoSync?: boolean;
+    } = {}
+  ): Promise<any> {
+    try {
+      const params = new URLSearchParams();
+      if (options.resolutionUs) params.append('resolution_us', String(options.resolutionUs));
+      if (options.includeVideoSync !== undefined) params.append('include_video_sync', String(options.includeVideoSync));
+      
+      const response = await this.api.get(`/api/raw-timing/test-sessions/${sessionId}/timeline-data?${params}`);
+      return response.data;
+    } catch (error: unknown) {
+      console.warn(`Timeline data fetch failed for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  async getCompressionStatistics(
+    sessionId: string,
+    timeRangeHours: number = 24
+  ): Promise<any> {
+    try {
+      const response = await this.api.get(`/api/raw-timing/test-sessions/${sessionId}/compression-stats?time_range_hours=${timeRangeHours}`);
+      return response.data;
+    } catch (error: unknown) {
+      console.warn(`Compression statistics fetch failed for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  async exportRawData(
+    sessionId: string,
+    options: {
+      format?: string;
+      includeMetadata?: boolean;
+      compress?: boolean;
+    } = {}
+  ): Promise<any> {
+    try {
+      const params = new URLSearchParams();
+      if (options.format) params.append('format', options.format);
+      if (options.includeMetadata !== undefined) params.append('include_metadata', String(options.includeMetadata));
+      if (options.compress !== undefined) params.append('compress', String(options.compress));
+      
+      const response = await this.api.post(`/api/raw-timing/test-sessions/${sessionId}/export-raw-data?${params}`);
+      return response.data;
+    } catch (error: unknown) {
+      console.warn(`Raw data export failed for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  async getRawTimingServiceStatus(): Promise<any> {
+    try {
+      const response = await this.api.get('/api/raw-timing/service-status');
+      return response.data;
+    } catch (error: unknown) {
+      console.warn('Raw timing service status fetch failed:', error);
       throw error;
     }
   }
@@ -1210,25 +1372,8 @@ class ApiService {
       
       return response;
     } catch (error) {
-      console.error('Annotation validation failed, using fallback:', error);
-      
-      // Fallback to mock response if API fails
-      const mockAnnotation: GroundTruthAnnotation = {
-        id: annotationId,
-        video_id: '', // Will be filled by the calling component
-        vru_type: 'pedestrian' as VRUType,
-        frame_number: 0,
-        timestamp: 0,
-        bounding_box: { x: 0, y: 0, width: 0, height: 0 },
-        confidence: 1.0,
-        validated: validated,
-        created_at: new Date().toISOString(),
-      };
-      
-      // Invalidate related cache entries
-      apiCache.invalidatePattern('/api/videos');
-      apiCache.invalidatePattern('/api/annotations');
-      return mockAnnotation;
+      console.error('Annotation validation failed:', error);
+      throw this.handleError(error);
     }
   }
 
@@ -1259,7 +1404,7 @@ class ApiService {
   }
 
   async exportAnnotations(videoId: string, format: 'coco' | 'yolo' | 'pascal' | 'json' = 'json'): Promise<Blob> {
-    const response = await this.api.get(`/api/videos/${videoId}/annotations/export`, {
+    const response = await this.api.get(`/api/annotations/videos/${videoId}/annotations/export`, {
       params: { format },
       responseType: 'blob'
     });
@@ -1983,6 +2128,7 @@ export const getVideos = apiServiceInstance.getVideos.bind(apiServiceInstance);
 export const uploadVideo = apiServiceInstance.uploadVideo.bind(apiServiceInstance);
 export const uploadVideoCentral = apiServiceInstance.uploadVideoCentral.bind(apiServiceInstance);
 export const getAllVideos = apiServiceInstance.getAllVideos.bind(apiServiceInstance);
+export const getGroundTruthVideosAvailable = apiServiceInstance.getGroundTruthVideosAvailable.bind(apiServiceInstance);
 export const getVideo = apiServiceInstance.getVideo.bind(apiServiceInstance);
 export const deleteVideo = apiServiceInstance.deleteVideo.bind(apiServiceInstance);
 export const getGroundTruth = apiServiceInstance.getGroundTruth.bind(apiServiceInstance);

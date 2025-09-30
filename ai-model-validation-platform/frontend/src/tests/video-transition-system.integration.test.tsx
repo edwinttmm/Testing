@@ -629,7 +629,7 @@ describe('Video Transition System Integration Tests', () => {
       console.log('[VIDEO TRANSITION TEST] Starting manual integration test simulation');
       
       const user = userEvent.setup({ delay: null });
-      let userExperienceLog: string[] = [];
+      const userExperienceLog: string[] = [];
       
       const onVideoChange = jest.fn().mockImplementation((video, index) => {
         const logEntry = `User sees video ${index + 1}: ${video.filename}`;

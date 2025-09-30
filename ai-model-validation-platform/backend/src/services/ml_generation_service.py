@@ -47,6 +47,7 @@ class MLGenerationService:
         self.model = None
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.model_loaded = False
+        self.current_model_path = None
         
         # Initialize ML model if available
         if self.ml_available:
@@ -74,28 +75,35 @@ class MLGenerationService:
     def _initialize_models(self):
         """Initialize ML models"""
         try:
-            logger.info("🚀 Initializing YOLOv8 model for ground truth generation...")
+            logger.info("🚀 Initializing YOLO model for ground truth generation...")
             
-            # Check for YOLO model files
-            model_paths = ['yolov8n.pt', 'yolo11l.pt', '/app/yolov8n.pt']
+            # Check for YOLO model files (prioritize larger, more accurate models)
+            model_paths = ['yolo11l.pt', 'yolo11x.pt', 'yolov8l.pt', 'yolov8n.pt', '/app/yolov8n.pt']
             model_path = None
+            
+            logger.info(f"Checking for YOLO models in order: {model_paths}")
             
             for path in model_paths:
                 if os.path.exists(path):
                     model_path = path
+                    logger.info(f"✅ Found YOLO model: {path}")
                     break
+                else:
+                    logger.debug(f"Model not found: {path}")
             
             if not model_path:
                 logger.warning("No YOLO model found, downloading YOLOv8n...")
                 model_path = 'yolov8n.pt'  # This will auto-download
             
             # Load model
+            logger.info(f"🔄 Loading YOLO model from: {model_path}")
             self.model = YOLO(model_path)
+            self.current_model_path = model_path
             
             # Test the model
             if torch:
                 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-                logger.info(f"✅ YOLOv8 model loaded successfully on {device}")
+                logger.info(f"✅ YOLO model {os.path.basename(model_path)} loaded successfully on {device}")
             
             # Warm up model
             dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
@@ -217,9 +225,8 @@ class MLGenerationService:
                 
                 frame_count += 1
                 
-                # Process every 5th frame for efficiency
-                if frame_count % 5 != 0:
-                    continue
+                # Process every frame for complete annotation coverage
+                # (Previously skipped frames for efficiency, now processing all)
                 
                 processed_frames += 1
                 timestamp = (frame_count - 1) / fps
@@ -286,8 +293,8 @@ class MLGenerationService:
                         "height": float(y2 - y1),
                         "confidence": confidence,
                         "quality_level": quality_level,
-                        "detection_method": "yolo_v8",
-                        "model_version": "yolov8n",
+                        "detection_method": "yolo_ultralytics",
+                        "model_version": os.path.basename(self.current_model_path) if self.current_model_path else "unknown",
                         "validated": confidence >= 0.8,  # Auto-validate high confidence detections
                         "difficult": confidence < 0.4,   # Mark low confidence as difficult
                         "metadata": {

@@ -262,13 +262,19 @@ export function hasDetectionProperties(obj: unknown): boolean {
   );
   
   // Backend sends class_name (snake_case), not className
+  // Ground truth objects use 'vru_type' field
   const hasClass = (
+    // Common variants
     ('class_name' in obj && isString(obj.class_name)) ||
     ('class_label' in obj && isString(obj.class_label)) ||
+    ('classLabel' in obj && isString((obj as any).classLabel)) ||
     ('className' in obj && isString(obj.className)) ||
     ('label' in obj && isString(obj.label)) ||
     ('class' in obj && isString(obj.class)) ||
-    ('name' in obj && isString(obj.name))
+    ('name' in obj && isString(obj.name)) ||
+    // VRU type variants
+    ('vru_type' in obj && isString((obj as any).vru_type)) ||  // Ground truth format (old)
+    ('vruType' in obj && isString((obj as any).vruType))       // Ground truth format (camelCase)
   );
   
   // Optional but commonly present in backend response
@@ -287,7 +293,7 @@ export function hasDetectionProperties(obj: unknown): boolean {
     bboxIsArray: isArray(obj.bbox || obj.bounding_box || obj.boundingBox),
     bboxIsObject: isObject(obj.bbox || obj.bounding_box || obj.boundingBox),
     hasClass,
-    classValue: obj.class_name || obj.class_label || obj.className || obj.label,
+    classValue: obj.class_name || obj.class_label || (obj as any).classLabel || obj.className || obj.label || (obj as any).vru_type || (obj as any).vruType,
     hasFrameInfo,
     frameValue: obj.frame_number || obj.frameNumber,
     timestampValue: obj.timestamp,
@@ -478,9 +484,9 @@ export function convertToVideoFile(data: unknown): VideoFile | null {
     return null;
   }
   
-  // ProjectId - try both camelCase and snake_case
-  const projectId = (hasProperty(data, 'projectId') && isString(data.projectId)) ? data.projectId : 
-                   (hasProperty(data, 'project_id') && isString(data.project_id)) ? data.project_id : '';
+  // ProjectId - handle null values for shared video architecture
+  const projectId = (hasProperty(data, 'projectId') && (isString(data.projectId) || data.projectId === null)) ? data.projectId : 
+                   (hasProperty(data, 'project_id') && (isString(data.project_id) || data.project_id === null)) ? data.project_id : null;
   
   try {
     const videoFile: VideoFile = {

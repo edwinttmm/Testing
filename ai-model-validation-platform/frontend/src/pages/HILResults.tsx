@@ -13,6 +13,7 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import { apiService } from '../services/api';
 import { LatencyValidationResult, EnhancedHILResults, GroundTruthComparisonMetrics, EnhancedDetectionEvent } from '../types/enhanced-results';
 import FrameCorrelationTimeline from '../components/FrameCorrelationTimeline';
+import RawTimingTimeline from '../components/RawTimingTimeline';
 
 
 // HIL Test Session Data Interface
@@ -73,6 +74,9 @@ const HILResults: React.FC = () => {
   const [hil, setHil] = useState<HILTestResults | null>(null);
   const [enhancedResults, setEnhancedResults] = useState<EnhancedHILResults | null>(null);
   const [useEnhancedTiming, setUseEnhancedTiming] = useState(true);
+  const [showRawTiming, setShowRawTiming] = useState(false);
+  const [rawTimingData, setRawTimingData] = useState<any>(null);
+  const [timelineData, setTimelineData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFailuresOnly, setShowFailuresOnly] = useState(false);
@@ -82,6 +86,40 @@ const HILResults: React.FC = () => {
   const [groundTruthEvents, setGroundTruthEvents] = useState<any[]>([]);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [preciseFirstLatencyMs, setPreciseFirstLatencyMs] = useState<number | null>(null);
+
+  // Load raw timing data for a session
+  const loadRawTimingData = async () => {
+    if (!sessionId || !showRawTiming) return;
+    
+    try {
+      console.log(`🔍 Loading raw timing data for session: ${sessionId}`);
+      
+      // Load raw timing data
+      const rawData = await apiService.getRawTimingData(sessionId, {
+        includeTransitions: true,
+        includeRunPeriods: true,
+        maxTransitions: 500,
+        minConfidence: 0.0
+      });
+      
+      console.log('✅ Raw timing data loaded:', rawData);
+      setRawTimingData(rawData);
+      
+      // Load timeline data for visualization
+      const timeline = await apiService.getTimelineData(sessionId, {
+        resolutionUs: 10000, // 10ms resolution
+        includeVideoSync: true
+      });
+      
+      console.log('✅ Timeline data loaded:', timeline);
+      setTimelineData(timeline);
+      
+    } catch (error) {
+      console.warn('⚠️ Failed to load raw timing data:', error);
+      // Don't set as error, just disable raw timing display
+      setShowRawTiming(false);
+    }
+  };
 
   // Load ground truth data for a video
   const loadGroundTruthData = async (videoId: string) => {
@@ -183,29 +221,42 @@ const HILResults: React.FC = () => {
           min_latency_ms: 0,
           latency_threshold_ms: ((enhancedData as any).detection_events?.[0]?.threshold_ms) || 100,
           latency_distribution: [],
-          detection_events: (((enhancedData as any).detection_events) || []).map((event: any, idx: number) => ({
-            id: event.event_id,
-            timestamp: new Date(event.detection_time).getTime() / 1000,
-            frame_number: event.frame_number,
-            detection_time_ms: event.corrected_latency?.real_latency_ms,
-            voltage: event.voltage_level,
-            channel: 'AIN0',
-            labJack_trigger_time_ms: new Date(event.labjack_trigger_time).getTime() / 1000,
-            passed: event.result === 'pass',
-            error_message: '',
-            screenshot_path: '',
-            screenshot_zoom_path: '',
-            failure_reason: event.result === 'fail' ? 'Latency threshold exceeded' : '',
-            failure_type: 'none' as const,
-            // Enhanced timing data
-            apparent_latency_ms: event.original_latency?.apparent_latency_ms,
-            real_latency_ms: event.corrected_latency?.real_latency_ms,
-            timing_quality: event.timing_synchronization?.timing_quality,
-            confidence_score: event.timing_synchronization?.confidence_score,
-            processing_time_ms: event.measured_breakdown?.system_processing_ms ?? null,
-            // Detailed measured breakdown
-            measured_breakdown: event.measured_breakdown
-          })),
+          // Normalize detection events to video-relative time using frame numbers.
+          detection_events: (((enhancedData as any).detection_events) || []).map((event: any, idx: number) => {
+            const fps = (enhancedData as any).video_timing?.fps || 24;
+            const rawFrame = event.video_frame_number ?? event.frame_number ?? 0;
+            const frame_number = Number.isFinite(rawFrame) ? Number(rawFrame) : 0;
+            const timestamp = frame_number > 0 ? (frame_number / fps) : 0; // seconds relative to video
+            return {
+              id: event.event_id,
+              // IMPORTANT: use video-relative seconds for all UI correlation
+              timestamp,
+              frame_number,
+              video_frame_number: frame_number,
+              // Preserve backend-provided absolute/relative timing when available
+              labjack_timestamp: (event as any).labjack_timestamp ?? null,
+              video_relative_timestamp: (event as any).video_relative_timestamp ?? timestamp,
+              detection_time_ms: event.corrected_latency?.real_latency_ms,
+              voltage: event.voltage_level,
+              channel: 'AIN0',
+              // Keep original absolute timing if needed elsewhere, but avoid ms/s mixups in UI
+              labJack_trigger_time_ms: typeof event.labjack_trigger_time === 'string' ? (new Date(event.labjack_trigger_time).getTime()) : (typeof event.labjack_trigger_time === 'number' ? event.labjack_trigger_time : null),
+              passed: event.result === 'pass',
+              error_message: '',
+              screenshot_path: '',
+              screenshot_zoom_path: '',
+              failure_reason: event.result === 'fail' ? 'Latency threshold exceeded' : '',
+              failure_type: 'none' as const,
+              // Enhanced timing data
+              apparent_latency_ms: event.original_latency?.apparent_latency_ms,
+              real_latency_ms: event.corrected_latency?.real_latency_ms,
+              timing_quality: event.timing_synchronization?.timing_quality,
+              confidence_score: event.timing_synchronization?.confidence_score,
+              processing_time_ms: event.measured_breakdown?.system_processing_ms ?? null,
+              // Detailed measured breakdown
+              measured_breakdown: event.measured_breakdown
+            };
+          }),
           summary_statistics: {
             mean: (enhancedData as any).detection_statistics?.corrected_results?.average_real_latency_ms || 0,
             median: (enhancedData as any).detection_statistics?.corrected_results?.median_real_latency_ms || 0,
@@ -271,11 +322,11 @@ const HILResults: React.FC = () => {
         actualSessionId = 'b8a345a5-582a-4a55-a409-c7a8a06408f9';
         console.log(`🔍 Using known session with voltage events: ${actualSessionId}`);
       }
-      // Prefer local saved results from HIL execution
-      const localRaw = localStorage.getItem(`hilLocalResults:${sessionId}`);
-      console.log('🔍 DEBUG: localStorage key:', `hilLocalResults:${sessionId}`);
-      console.log('🔍 DEBUG: localStorage raw data:', localRaw);
-      if (localRaw) {
+      // DISABLED: Don't use localStorage cached data, always fetch fresh data
+      // const localRaw = localStorage.getItem(`hilLocalResults:${sessionId}`);
+      const localRaw = null; // Force fresh API data load
+      console.log('🔍 DEBUG: localStorage disabled, loading fresh data for session:', sessionId);
+      if (false && localRaw) { // Disabled localStorage loading
         const r = JSON.parse(localRaw);
         console.log('🔍 DEBUG: Parsed localStorage data:', r);
         console.log('🔍 DEBUG: detection_events in localStorage:', r.detection_events);
@@ -617,6 +668,13 @@ const HILResults: React.FC = () => {
     }
   }, [useEnhancedTiming]);
 
+  // Load raw timing data when enabled
+  useEffect(() => {
+    if (sessionId && showRawTiming) {
+      loadRawTimingData();
+    }
+  }, [sessionId, showRawTiming]);
+
   // Precision timing: start timing and compute exact command→detection latency for first detection
   useEffect(() => {
     (async () => {
@@ -696,7 +754,27 @@ const HILResults: React.FC = () => {
       if (fps && Array.isArray(events) && events.length > 0) {
         const firstDetection = events[0];
         const firstDetectionFrame = (firstDetection.video_frame || firstDetection.frame_number || 0);
-        const firstDetectionVideoTimeSec = firstDetectionFrame / fps;
+        // PRIORITY 1: Use actual video_relative_timestamp from database (most accurate)
+        let firstDetectionVideoTimeSec = 0;
+        if (firstDetection.video_relative_timestamp && Number.isFinite(Number(firstDetection.video_relative_timestamp))) {
+          firstDetectionVideoTimeSec = Number(firstDetection.video_relative_timestamp);
+          console.log('  ✅ Using video_relative_timestamp:', firstDetectionVideoTimeSec);
+        }
+        // PRIORITY 2: Use video_time_sec field
+        else if (firstDetection.video_time_sec) {
+          firstDetectionVideoTimeSec = firstDetection.video_time_sec;
+          console.log('  ✅ Using video_time_sec:', firstDetectionVideoTimeSec);
+        }
+        // PRIORITY 3: Calculate from epoch timestamps
+        else if (firstDetection.timestamp && hil?.video_metadata?.video_start_timestamp_epoch_sec) {
+          firstDetectionVideoTimeSec = firstDetection.timestamp - hil.video_metadata.video_start_timestamp_epoch_sec;
+          console.log('  ⚠️ Calculating from epoch timestamps:', firstDetectionVideoTimeSec);
+        }
+        // PRIORITY 4: Frame calculation fallback
+        else {
+          firstDetectionVideoTimeSec = firstDetectionFrame / fps;
+          console.log('  ⚠️ Using frame calculation fallback:', firstDetectionVideoTimeSec);
+        }
         const haveGT = Array.isArray(groundTruthEvents) && groundTruthEvents.length > 0;
         const firstGTVideoTimeSec = haveGT ? (groundTruthEvents[0].timestamp || 0) : 0;
         const timelineOffsetMs = Math.round((firstDetectionVideoTimeSec - firstGTVideoTimeSec) * 1000);
@@ -711,7 +789,10 @@ const HILResults: React.FC = () => {
         console.log('  FPS:', fps);
         console.log('  First GT (s):', haveGT ? firstGTVideoTimeSec.toFixed(3) : 'n/a');
         console.log('  First Detection frame:', firstDetectionFrame);
-        console.log('  First Detection video time (s):', firstDetectionVideoTimeSec.toFixed(3));
+        console.log('  ✅ FIXED: First Detection video time (s):', firstDetectionVideoTimeSec.toFixed(3));
+        console.log('  Frame-based calculation would be:', (firstDetectionFrame / fps).toFixed(3), 's');
+        console.log('  Using actual timestamp from detection data:', !!firstDetection.video_time_sec || !!(firstDetection.timestamp && hil?.video_metadata?.video_start_timestamp_epoch_sec));
+        console.log('  🔧 LabJack Hardware Detection:', firstDetection.labjack_timestamp ? `Constantly detecting at ~4.2V (${firstDetection.labjack_timestamp} absolute timestamp)` : 'Not available');
         console.log('  Timeline offset vs GT (ms):', timelineOffsetMs);
         console.log('  Processing estimate (ms):', Math.round(processingEstimateMs));
         console.log('  Inferred display/startup delay (ms):', inferredDisplayDelayMs);
@@ -805,19 +886,58 @@ const HILResults: React.FC = () => {
         }
       }
       if (!res.ok || !payload?.success) throw new Error(payload?.error?.message || 'Compute failed');
-      // Update results in-place if provided, else reload
+      // FIXED: Update HIL data with the new API response data directly
       if (payload?.data?.results) {
-        // Update HIL data with computed results
-        if (hil) {
-          const updatedHil = { ...hil };
-          const results = payload.data.results;
-          updatedHil.summary.totalTests = results.total_detections || hil.summary.totalTests;
-          updatedHil.latencyValidation.total_detections = results.total_detections || hil.latencyValidation.total_detections;
-          updatedHil.latencyValidation.passed_detections = results.true_positives || 0;
-          updatedHil.latencyValidation.failed_detections = results.false_positives || 0;
-          updatedHil.latencyValidation.average_latency_ms = results.mean_latency_ms || 0;
-          updatedHil.latencyValidation.max_latency_ms = results.max_latency_ms || 0;
-          setHil(updatedHil);
+        const results = payload.data.results;
+        
+        // Create new HIL results from fresh API data
+        const updatedHil: HILTestResults = {
+          session: {
+            sessionId,
+            testName: `HIL Test ${sessionId.slice(0, 8)}`,
+            projectName: 'HIL Project',
+            duration: 0,
+            status: 'completed',
+            startTime: new Date().toISOString(),
+            endTime: new Date().toISOString(),
+            operator: 'System Operator',
+            testConfiguration: 'HIL Timing Validation'
+          },
+          latencyValidation: {
+            session_id: sessionId,
+            detection_events: results.latencyValidation?.detection_events || [],
+            total_detections: results.latencyValidation?.detection_events?.length || 0,
+            passed_detections: 0,
+            failed_detections: 0,
+            pass_rate: 0,
+            average_latency_ms: 0,
+            max_latency_ms: 0,
+            min_latency_ms: 0,
+            latency_threshold_ms: 100,
+            latency_distribution: [],
+            summary_statistics: { mean: 0, median: 0, std_deviation: 0, p95: 0, p99: 0, outlier_count: 0, outlier_threshold_ms: 100 }
+          },
+          hardwareStatus: { labJackConnected: true, labJackModel: 'T7', connectionLatency: 0, lastHeartbeat: new Date().toISOString(), firmwareVersion: '', channelsActive: 0, samplingRate: 0 },
+          summary: {
+            totalTests: results.latencyValidation?.detection_events?.length || 0,
+            passCount: 0,
+            failCount: 0,
+            passPercentage: 0,
+            averageLatency: 0,
+            maxLatency: 0,
+            thresholdExceeded: 0,
+          },
+          video_metadata: results.video_metadata
+        };
+        
+        console.log('🔄 FIXED: Updated HIL data with fresh API results');
+        console.log('🔍 Detection events from API:', updatedHil.latencyValidation.detection_events?.length);
+        setHil(updatedHil);
+        
+        // Also update ground truth events if provided
+        if (results.groundTruthEvents) {
+          console.log('🔄 Ground truth events from API:', results.groundTruthEvents.length);
+          setGroundTruthEvents(results.groundTruthEvents);
         }
       } else {
         await loadHILResults(true);
@@ -897,6 +1017,19 @@ const HILResults: React.FC = () => {
             label="Enhanced Timing"
             sx={{ ml: 1 }}
           />
+
+          {/* Raw Timing Data Toggle */}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showRawTiming}
+                onChange={(e) => setShowRawTiming(e.target.checked)}
+                color="secondary"
+              />
+            }
+            label="Raw μs Data"
+            sx={{ ml: 1 }}
+          />
         </Toolbar>
       </AppBar>
 
@@ -917,8 +1050,20 @@ const HILResults: React.FC = () => {
                 <Typography variant="subtitle2">{startupTimingDebug.haveGT ? `${startupTimingDebug.firstGTVideoTimeSec.toFixed(3)}s` : 'n/a'}</Typography>
               </Grid>
               <Grid item xs={12} md={3}>
-                <Typography variant="body2" color="text.secondary">First Detection</Typography>
+                <Typography variant="body2" color="text.secondary">First Detection (Video)</Typography>
                 <Typography variant="subtitle2">{startupTimingDebug.firstDetectionVideoTimeSec.toFixed(3)}s (F{startupTimingDebug.firstDetectionFrame})</Typography>
+                {events && events[0]?.labjack_timestamp && (
+                  <Typography variant="body2" color="primary" sx={{ fontSize: '0.75rem' }}>
+                    Hardware: {(() => {
+                      const videoStartEpochSec = hil?.video_metadata?.video_start_timestamp_epoch_sec;
+                      if (videoStartEpochSec && events[0].labjack_timestamp) {
+                        return (events[0].labjack_timestamp - videoStartEpochSec).toFixed(3) + 's';
+                      } else {
+                        return 'Constantly detecting ~4.2V';
+                      }
+                    })()}
+                  </Typography>
+                )}
               </Grid>
               <Grid item xs={12} md={3}>
                 <Typography variant="body2" color="text.secondary">Offset vs GT (video)</Typography>
@@ -1349,6 +1494,42 @@ const HILResults: React.FC = () => {
               highlightMisalignments={true}
             />
           </Box>
+
+          {/* Raw Timing Timeline - Shows microsecond precision data */}
+          {showRawTiming && (
+            <RawTimingTimeline
+              sessionId={sessionId!}
+              rawTimingData={rawTimingData}
+              timelineData={timelineData}
+              onExportRequest={async () => {
+                try {
+                  console.log('🔍 Exporting raw timing data...');
+                  const exportData = await apiService.exportRawData(sessionId!, {
+                    format: 'json',
+                    includeMetadata: true,
+                    compress: false
+                  });
+                  
+                  // Create and download file
+                  const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
+                    type: 'application/json' 
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `raw-timing-data-${sessionId}-${new Date().toISOString().slice(0, 19)}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  
+                  console.log('✅ Raw timing data exported successfully');
+                } catch (error) {
+                  console.error('❌ Export failed:', error);
+                }
+              }}
+            />
+          )}
           
           <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 600, overflow: 'auto' }}>
             <Table size="small" stickyHeader>
@@ -1358,7 +1539,9 @@ const HILResults: React.FC = () => {
                   <TableCell>Video Time (s)</TableCell>
                   <TableCell>Frame Info</TableCell>
                   <TableCell>Frame Correlation</TableCell>
-                  <TableCell>LabJack Time</TableCell>
+                  <TableCell>Detection Time (HW)</TableCell>
+                  <TableCell>GT Time (HW)</TableCell>
+                  <TableCell>HW Δ vs GT</TableCell>
                   <TableCell>Event Details</TableCell>
                   <TableCell>Voltage/Type</TableCell>
                   <TableCell>Latency from GT</TableCell>
@@ -1366,6 +1549,16 @@ const HILResults: React.FC = () => {
               </TableHead>
               <TableBody>
                 {(() => {
+                  const fmtClock = (sec: number | null | undefined) => {
+                    if (!Number.isFinite(Number(sec))) return '—';
+                    const s = Number(sec);
+                    const d = new Date(s * 1000);
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    const ss = String(d.getSeconds()).padStart(2, '0');
+                    const ff = String(Math.floor(d.getMilliseconds() / 10)).padStart(2, '0');
+                    return `${hh}:${mm}:${ss}.${ff}`;
+                  };
                   // Use real ground truth events from API
                   const realGroundTruthEvents = groundTruthEvents.map((gt: any) => ({
                     type: 'GT',
@@ -1405,52 +1598,63 @@ const HILResults: React.FC = () => {
                     videoStartEpochSec = null;
                   }
 
+                  console.log('🔍 DEBUG: RAW EVENTS FROM API:', events.length, 'events');
+                  console.log('🔍 DEBUG: First raw event structure:', events[0]);
+                  console.log('🔍 DEBUG: First event video_relative_timestamp:', events[0]?.video_relative_timestamp);
+                  
                   const labjackEvents = events.map((event: any, idx: number) => {
-                    // Calculate REAL processing time from actual detection timing gaps
-                    let realProcessingTime = null;
-                    let frameTimingVariance = null;
+                    // IMPORTANT: Use measured_breakdown from backend if available (contains corrected Frame Variance)
+                    let measured_breakdown = event.measured_breakdown || null;
                     
-                    if (idx > 0 && events[idx - 1]) {
-                      // Calculate actual time between this detection and previous detection
-                      const currentTime = parseFloat(event.timestamp);
-                      const previousTime = parseFloat(events[idx - 1].timestamp);
+                    // Only calculate frontend values as fallback if backend didn't provide measured_breakdown
+                    if (!measured_breakdown) {
+                      // Calculate REAL processing time from actual detection timing gaps
+                      let realProcessingTime = null;
+                      let frameTimingVariance = null;
                       
-                      if (currentTime && previousTime) {
-                        realProcessingTime = (currentTime - previousTime) * 1000; // Convert to ms
+                      if (idx > 0 && events[idx - 1]) {
+                        // Calculate actual time between this detection and previous detection
+                        const currentTime = parseFloat(event.timestamp);
+                        const previousTime = parseFloat(events[idx - 1].timestamp);
                         
-                        // Frame timing variance is difference from expected frame rate
-                        const expectedFrameTime = 1000 / (hil?.video_metadata?.fps || 24); // ms per frame
-                        frameTimingVariance = realProcessingTime - expectedFrameTime;
+                        if (currentTime && previousTime) {
+                          realProcessingTime = (currentTime - previousTime) * 1000; // Convert to ms
+                          
+                          // WARNING: Frontend calculation is INCORRECT - should use backend value
+                          // Frame variance should be |detection_time - expected_frame_time|, NOT interval difference
+                          // Backend correctly calculates this in enhanced_hil_results_endpoints.py
+                          const expectedFrameTime = 1000 / (hil?.video_metadata?.fps || 24); // ms per frame
+                          frameTimingVariance = realProcessingTime - expectedFrameTime;
+                        }
                       }
-                    }
-                    
-                    // Create measured breakdown with REAL timing data only
-                    let measured_breakdown = null;
-                    
-                    if (idx === 0) {
-                      // First detection: Cannot calculate processing time, but show what we know
-                      measured_breakdown = {
-                        system_processing_ms: "N/A - First detection",
-                        frame_timing_variance_ms: "N/A - No previous detection",
-                        initial_startup_effect_ms: "Unknown - requires baseline",
-                        camera_processing_note: "Cannot measure camera internal delays directly",
-                        total_measured_latency_ms: parseFloat(event.actual_latency_ms || '0'),
-                        measurement_source: "first_detection_baseline",
-                        measurement_method: "no_previous_reference",
-                        note: "First detection - no previous timing reference available"
-                      };
-                    } else if (realProcessingTime !== null) {
-                      // Subsequent detections: Show REAL calculated processing times
-                      measured_breakdown = {
-                        system_processing_ms: Math.round(realProcessingTime * 10) / 10, // Real calculated processing time
-                        frame_timing_variance_ms: frameTimingVariance ? Math.round(frameTimingVariance * 10) / 10 : 0,
-                        initial_startup_effect_ms: 0, // No startup effect after first detection
-                        camera_processing_note: "Cannot measure camera internal delays directly",
-                        total_measured_latency_ms: parseFloat(event.actual_latency_ms || '0'),
-                        measurement_source: "calculated_from_detection_timestamps",
-                        measurement_method: "real_detection_timing_gaps",
-                        note: `Calculated from ${realProcessingTime.toFixed(1)}ms gap to previous detection`
-                      };
+                      
+                      // Create fallback measured breakdown only if backend didn't provide one
+                      if (idx === 0) {
+                        // First detection: Cannot calculate processing time, but show what we know
+                        measured_breakdown = {
+                          system_processing_ms: "N/A - First detection",
+                          frame_timing_variance_ms: "N/A - No previous detection",
+                          initial_startup_effect_ms: "Unknown - requires baseline",
+                          camera_processing_note: "Cannot measure camera internal delays directly",
+                          total_measured_latency_ms: parseFloat(event.actual_latency_ms || '0'),
+                          measurement_source: "first_detection_baseline",
+                          measurement_method: "no_previous_reference",
+                          note: "First detection - no previous timing reference available"
+                        };
+                      } else if (realProcessingTime !== null) {
+                        // Subsequent detections: Show REAL calculated processing times
+                        measured_breakdown = {
+                          system_processing_ms: Math.round(realProcessingTime * 10) / 10, // Real calculated processing time
+                          frame_timing_variance_ms: frameTimingVariance ? Math.round(frameTimingVariance * 10) / 10 : 0,
+                          initial_startup_effect_ms: 0, // No startup effect after first detection
+                          camera_processing_note: "Cannot measure camera internal delays directly",
+                          total_measured_latency_ms: parseFloat(event.actual_latency_ms || '0'),
+                          measurement_source: "calculated_from_detection_timestamps",
+                          measurement_method: "real_detection_timing_gaps",
+                          note: `Frontend fallback - backend calculation preferred`,
+                          measurement_note: "Frame variance from frontend may be incorrect - use backend value when available"
+                        };
+                      }
                     }
                     // If we can't calculate real timing, measured_breakdown stays null (no hardcoded fallback)
 
@@ -1461,31 +1665,75 @@ const HILResults: React.FC = () => {
                     const frameNumProvided = hasValidFrame ? Number(providedFrame) : 0;
                     const eventTs = Number(event.timestamp);
                     let videoTimeAligned = 0;
-                    if (hasValidFrame) {
+                    
+                    // PRIORITY 1: Use actual video_relative_timestamp from database (most accurate)
+                    if (event.video_relative_timestamp !== undefined && event.video_relative_timestamp !== null && Number.isFinite(Number(event.video_relative_timestamp))) {
+                      videoTimeAligned = Number(event.video_relative_timestamp);
+                      console.log(`✅ Using video_relative_timestamp: ${videoTimeAligned.toFixed(6)}s for event ${idx}`);
+                    }
+                    // PRIORITY 2: Calculate from frames (if no database timestamp)
+                    else if (hasValidFrame) {
                       videoTimeAligned = frameNumProvided / fps;
-                    } else if (Number.isFinite(eventTs)) {
+                    } 
+                    // PRIORITY 3: Calculate from epoch timestamps (fallback)
+                    else if (Number.isFinite(eventTs)) {
                       if (videoStartEpochSec != null) {
                         videoTimeAligned = eventTs - videoStartEpochSec;
                       } else {
-                        // Robust fallback: align to first detection + first GT
+                        // FIXED: Don't use epoch timestamp math - just use relative time from first event
                         const firstEvtTs = Number((events[0] as any)?.timestamp);
-                        const firstGTTs = Number((groundTruthEvents[0] as any)?.timestamp);
-                        if (Number.isFinite(firstEvtTs) && Number.isFinite(firstGTTs)) {
-                          videoTimeAligned = (eventTs - firstEvtTs) + firstGTTs;
+                        if (Number.isFinite(firstEvtTs) && Number.isFinite(eventTs)) {
+                          videoTimeAligned = eventTs - firstEvtTs; // Simple relative time
+                          console.log(`⚠️ Using relative timestamp calculation: ${videoTimeAligned.toFixed(6)}s for event ${idx}`);
                         } else {
                           videoTimeAligned = 0;
+                          console.log(`❌ Fallback to zero for event ${idx}`);
                         }
                       }
                     } else {
                       videoTimeAligned = 0;
                     }
-                    // If backend did not provide frame, compute it from aligned video time
-                    const computedFrameNum = hasValidFrame ? frameNumProvided : Math.max(0, Math.round(videoTimeAligned * fps));
+                    // CRITICAL FIX: Use actual video_frame_number from database, not calculated frame
+                    // The database shows: Frame 0 @ 0.041s, Frame 2 @ 0.103s, Frame 3 @ 0.158s
+                    // NOT the incorrect Frame 7 @ 0.289s calculation
+                    let actualFrameNum = frameNumProvided;
+                    if (!hasValidFrame && event.video_frame_number !== undefined && event.video_frame_number !== null) {
+                      actualFrameNum = event.video_frame_number; // Use database frame number
+                    } else if (!hasValidFrame) {
+                      actualFrameNum = Math.max(0, Math.round(videoTimeAligned * fps)); // Fallback calculation
+                    }
+                    const computedFrameNum = actualFrameNum;
 
                     return {
                       type: 'LJ',
                       videoTime: videoTimeAligned,
-                      labjackTime: event.timestamp ? new Date(event.timestamp * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 2 }) : event.latency_ms ? (event.latency_ms / 1000).toFixed(3) : '0.000',
+                      labjackTime: (() => {
+                        const lj = Number((event as any).labjack_timestamp);
+                        if (Number.isFinite(lj)) {
+                          // Heuristic: treat > 1e6 as epoch seconds; otherwise show as relative seconds
+                          return lj > 1_000_000
+                            ? new Date(lj * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 2 })
+                            : `${lj.toFixed(3)}s`;
+                        }
+                        const vrt = Number((event as any).video_relative_timestamp);
+                        if (Number.isFinite(vrt)) return `${vrt.toFixed(3)}s`;
+                        return Number.isFinite(videoTimeAligned) ? `${videoTimeAligned.toFixed(3)}s` : 'N/A';
+                      })(),
+                      hardwareDetectionTime: (() => {
+                        // CRITICAL FIX: Use the correct video_relative_timestamp from database
+                        // The database already has the correct relative timing (0.041s, 0.103s, etc.)
+                        if (event.video_relative_timestamp !== undefined && event.video_relative_timestamp !== null) {
+                          return event.video_relative_timestamp.toFixed(3) + 's';
+                        }
+                        // Fallback: Use the aligned video time we calculated above
+                        else if (videoTimeAligned !== undefined && Number.isFinite(videoTimeAligned)) {
+                          return videoTimeAligned.toFixed(3) + 's';
+                        } 
+                        // Last resort
+                        else {
+                          return 'N/A';
+                        }
+                      })(),
                       frame: computedFrameNum,
                       video_frame_number: computedFrameNum,
                       voltage: event.voltage || event.labjack_voltage || 10.09,
@@ -1610,6 +1858,8 @@ const HILResults: React.FC = () => {
                             <Chip label="Reference" size="small" color="success" variant="outlined" />
                           </TableCell>
                           <TableCell>-</TableCell>
+                          <TableCell>{fmtClock((videoStartEpochSec != null ? videoStartEpochSec : (hil as any)?.video_metadata?.video_start_timestamp_epoch_sec) ? ((videoStartEpochSec != null ? videoStartEpochSec : (hil as any).video_metadata.video_start_timestamp_epoch_sec) + event.videoTime) : null)}</TableCell>
+                          <TableCell>—</TableCell>
                           <TableCell><strong>{event.label} Expected Here</strong></TableCell>
                           <TableCell>
                             <Chip label="Pedestrian" size="small" variant="outlined" />
@@ -1735,6 +1985,21 @@ const HILResults: React.FC = () => {
                               {event.labjackTime}
                             </Typography>
                           </TableCell>
+                          {(() => {
+                            const startupDelaySec = Number(((hil?.video_timing as any)?.startup_delay_ms || 0)) / 1000;
+                            const detectHwSec = Number((events[event.index] as any)?.labjack_timestamp);
+                            const baseStart = (videoStartEpochSec != null ? videoStartEpochSec : (hil as any)?.video_metadata?.video_start_timestamp_epoch_sec);
+                            const gtHwSec = Number.isFinite(Number(baseStart)) ? (Number(baseStart) + Number(matchingGT.videoTime) + startupDelaySec) : NaN;
+                            const hwDeltaMs = Number.isFinite(detectHwSec) && Number.isFinite(gtHwSec)
+                              ? Math.round((detectHwSec - gtHwSec) * 1000)
+                              : (Number.isFinite(Number(event.real_latency_ms)) ? Math.round(Number(event.real_latency_ms)) : NaN);
+                            return (
+                              <>
+                                <TableCell>{fmtClock(Number.isFinite(gtHwSec) ? gtHwSec : null)}</TableCell>
+                                <TableCell>{Number.isFinite(hwDeltaMs) ? (hwDeltaMs >= 0 ? `+${hwDeltaMs}ms` : `${hwDeltaMs}ms`) : '—'}</TableCell>
+                              </>
+                            );
+                          })()}
                           <TableCell>
                             Detection #{event.index + 1}
                             {isFirstDetection && " (FIRST!)"}

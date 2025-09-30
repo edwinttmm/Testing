@@ -7,8 +7,10 @@ import cv2
 try:
     import torch
     TORCH_AVAILABLE = True
+    TORCH_CUDA_AVAILABLE = torch.cuda.is_available()
 except ImportError:
     TORCH_AVAILABLE = False
+    TORCH_CUDA_AVAILABLE = False
     torch = None
 import time
 import logging
@@ -16,10 +18,16 @@ from pathlib import Path
 import uuid
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import DetectionEvent, TestSession, Video
+from models import DetectionEvent, TestSession, Video, GroundTruthObject
 import json
 
 logger = logging.getLogger(__name__)
+
+# Log ML dependencies status
+if TORCH_AVAILABLE:
+    logger.info(f"✅ PyTorch available - CUDA: {TORCH_CUDA_AVAILABLE}")
+else:
+    logger.warning("❌ PyTorch not available - using CPU fallback")
 
 class VRUClass(Enum):
     PEDESTRIAN = "pedestrian"
@@ -130,13 +138,20 @@ class ModelRegistry:
                     model_path = Path(model_info["path"])
                     
                     if not model_path.exists():
-                        logger.info(f"Model file not found at {model_path}, downloading default model...")
-                        # Download YOLOv11l for enhanced detection accuracy
-                        model = YOLO('yolo11l.pt')  # Auto-download YOLOv11l for better performance
-                        # Save to expected location
-                        model_path.parent.mkdir(parents=True, exist_ok=True)
-                        # Note: YOLO handles model downloading automatically
+                        logger.info(f"Model file not found at {model_path}, downloading model...")
+                        # Use basename to get model name for download
+                        model_name = model_path.name if model_path.name.endswith('.pt') else 'yolo11l.pt'
+                        logger.info(f"Downloading model: {model_name}")
+                        model = YOLO(model_name)  # Auto-download
+                        # Save to expected location if we have a local path
+                        if model_path.parent != Path('.'):
+                            try:
+                                model_path.parent.mkdir(parents=True, exist_ok=True)
+                                logger.info(f"Created model directory: {model_path.parent}")
+                            except Exception as e:
+                                logger.warning(f"Could not create model directory: {e}")
                     else:
+                        logger.info(f"Loading existing model: {model_path}")
                         model = YOLO(str(model_path))
                     
                     # Validate model works
@@ -502,16 +517,42 @@ class DetectionPipeline:
         from concurrent.futures import ThreadPoolExecutor
         self.thread_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="DetectionPipeline")
     
+    def _get_default_model_path(self) -> str:
+        """Get default model path with proper fallback chain"""
+        possible_paths = [
+            # Local development paths
+            '/home/rigade/Testing/ai-model-validation-platform/backend/yolo11l.pt',
+            '/home/rigade/Testing/ai-model-validation-platform/backend/yolov8n.pt',
+            './yolo11l.pt',
+            './yolov8n.pt',
+            # Docker production paths
+            '/app/models/yolo11l.pt',
+            '/app/models/yolov8n.pt',
+            # Relative paths
+            'yolo11l.pt',
+            'yolov8n.pt',
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                logger.info(f"✅ Found YOLO model: {path}")
+                return path
+        
+        # Auto-download with better model for accuracy
+        logger.warning("No local models found, downloading yolo11l.pt for better accuracy")
+        return 'yolo11l.pt'
+    
     async def initialize(self):
         """Initialize pipeline with default models"""
         if self.initialized:
             return
         
         try:
-            # Register YOLOv11l model for enhanced detection
+            # Register YOLO model with proper path detection
+            model_path = self._get_default_model_path()
             self.model_registry.register_model(
                 "yolo11l",
-                "/app/models/yolo11l.pt",
+                model_path,
                 "yolov8"
             )
             self.model_registry.set_active_model("yolo11l")
@@ -837,9 +878,8 @@ class DetectionPipeline:
                 
                 frame_number += 1
                 
-                # Process every 5th frame for efficiency (can be adjusted for accuracy vs speed)
-                if frame_number % 5 != 0:
-                    continue
+                # Process every frame for complete annotation coverage
+                # (Previously skipped frames for efficiency, now processing all)
                 
                 try:
                     # Preprocess frame (synchronous in thread)
@@ -1065,40 +1105,56 @@ class DetectionPipeline:
                         
                         logger.info(f"📸 Captured screenshots for detection {detection_id}")
                     
-                    # Create complete DetectionEvent record with CRITICAL FIX: video_id assignment
-                    detection_event = DetectionEvent(
+                    # Create GroundTruthObject record for frontend compatibility
+                    ground_truth_object = GroundTruthObject(
                         id=detection_data.get('id', str(uuid.uuid4())),
-                        test_session_id=test_session.id,
                         video_id=video_id,  # CRITICAL FIX: Ensure video_id is properly set for frontend queries
+                        frame_number=detection_data.get('frame_number', 0),
+                        timestamp=detection_data.get('timestamp', 0.0),
+                        class_label=detection_data.get('class_label', 'unknown'),
+                        confidence=detection_data.get('confidence', 0.0),
+                        
+                        # Bounding box coordinates - map to individual fields
+                        x=getattr(bbox_data, 'x', bbox_data.get('x', 0) if hasattr(bbox_data, 'get') else 0),
+                        y=getattr(bbox_data, 'y', bbox_data.get('y', 0) if hasattr(bbox_data, 'get') else 0),
+                        width=getattr(bbox_data, 'width', bbox_data.get('width', 0) if hasattr(bbox_data, 'get') else 0),
+                        height=getattr(bbox_data, 'height', bbox_data.get('height', 0) if hasattr(bbox_data, 'get') else 0),
+                        
+                        # Validation fields
+                        validated=True,  # Mark AI detections as validated
+                        difficult=False,  # Mark as not difficult
+                        
+                        # Optional fields for backward compatibility
+                        tracking_id=None,  # Could be set for object tracking later
+                        bounding_box=bbox_data if hasattr(bbox_data, 'get') else vars(bbox_data)  # JSON format for compatibility
+                    )
+                    
+                    # Also create DetectionEvent for backward compatibility and dual storage
+                    detection_event = DetectionEvent(
+                        id=str(uuid.uuid4()),  # Different ID for detection event
+                        test_session_id=test_session.id,
+                        video_id=video_id,
                         timestamp=detection_data.get('timestamp', 0.0),
                         confidence=detection_data.get('confidence', 0.0),
                         class_label=detection_data.get('class_label', 'unknown'),
-                        validation_result='Pass',  # FIXED: Set to 'Pass' instead of 'PENDING' for automatic workflow
-                        
-                        # CRITICAL FIX: Set source='ai' for AI-generated detections
-                        source='ai',  # This fixes the "Manual" display issue in frontend
-                        detection_type='automatic',  # Mark as automatic detection
-                        
-                        # NEW FIELDS - Complete detection data
+                        validation_result='Pass',
+                        source='ai',  # Mark as AI-generated
+                        detection_type='automatic',
                         detection_id=detection_data.get('id'),
                         frame_number=detection_data.get('frame_number', 0),
                         vru_type=detection_data.get('vru_type', detection_data.get('class_label')),
-                        
-                        # Bounding box coordinates
                         bounding_box_x=getattr(bbox_data, 'x', bbox_data.get('x', 0) if hasattr(bbox_data, 'get') else 0),
                         bounding_box_y=getattr(bbox_data, 'y', bbox_data.get('y', 0) if hasattr(bbox_data, 'get') else 0),
                         bounding_box_width=getattr(bbox_data, 'width', bbox_data.get('width', 0) if hasattr(bbox_data, 'get') else 0),
                         bounding_box_height=getattr(bbox_data, 'height', bbox_data.get('height', 0) if hasattr(bbox_data, 'get') else 0),
-                        
-                        # Visual evidence paths
                         screenshot_path=screenshot_path,
                         screenshot_zoom_path=screenshot_zoom_path,
-                        
-                        # Processing metadata
-                        processing_time_ms=10.0,  # Approximate processing time
+                        processing_time_ms=10.0,
                         model_version="yolo11l"
                     )
                     
+                    # Add both records for full compatibility
+                    db.add(ground_truth_object)
                     db.add(detection_event)
                     stored_detections.append(detection_data)
                     
@@ -1110,6 +1166,17 @@ class DetectionPipeline:
             
             # Commit all detection events
             db.commit()
+            
+            # Update video's ground truth metadata
+            video = db.query(Video).filter(Video.id == video_id).first()
+            if video:
+                video.ground_truth_generated = True
+                video.ground_truth_count = len(stored_detections)
+                video.ground_truth_completed_at = datetime.utcnow()
+                video.processing_status = "completed"
+                video.status = "completed"
+                db.commit()
+                logger.info(f"✅ Updated video {video_id} with {len(stored_detections)} ground truth objects")
             
             # Mark test session as completed
             test_session.status = "completed"
@@ -1157,12 +1224,44 @@ class DetectionPipeline:
             # Get or load model synchronously
             model = self.model_registry.model_cache.get("yolo11l")
             if not model:
-                # Load model synchronously in thread
+                # Load model synchronously in thread with proper path handling
                 try:
                     from ultralytics import YOLO
-                    yolo_model = YOLO('yolo11l.pt')
+                    import os
+                    
+                    # Use same path detection logic as async version
+                    model_paths = [
+                        '/home/rigade/Testing/ai-model-validation-platform/backend/yolo11l.pt',
+                        '/home/rigade/Testing/ai-model-validation-platform/backend/yolov8n.pt',
+                        'yolo11l.pt',
+                        'yolov8n.pt'
+                    ]
+                    
+                    yolo_model = None
+                    for model_path in model_paths:
+                        try:
+                            if os.path.exists(model_path):
+                                logger.info(f"Loading model in thread: {model_path}")
+                                yolo_model = YOLO(model_path)
+                                break
+                            else:
+                                # Try download
+                                model_name = os.path.basename(model_path)
+                                logger.info(f"Downloading model in thread: {model_name}")
+                                yolo_model = YOLO(model_name)
+                                break
+                        except Exception as e:
+                            logger.warning(f"Failed to load {model_path} in thread: {e}")
+                            continue
+                    
+                    if not yolo_model:
+                        logger.error("No YOLO model could be loaded in thread")
+                        return []
+                    
                     model = RealYOLOv8Wrapper(yolo_model)
                     self.model_registry.model_cache["yolo11l"] = model
+                    logger.info("✅ YOLO model loaded successfully in thread")
+                    
                 except Exception as e:
                     logger.error(f"Failed to load model in thread: {e}")
                     return []

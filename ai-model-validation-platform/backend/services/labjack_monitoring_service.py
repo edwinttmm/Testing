@@ -22,6 +22,9 @@ class LabJackMonitoringService:
         self.monitor_thread = None
         self.sample_rate = 10  # Hz (10 samples per second)
         self._stop_event = threading.Event()
+        # Edge-detection state
+        self.threshold_v = 2.5
+        self._was_high = False
         
     def start_monitoring(self, session_id: str, sample_rate: int = 10):
         """Start monitoring LabJack signals for a test session"""
@@ -79,9 +82,8 @@ class LabJackMonitoringService:
                     if result.get("success") and result.get("voltage") is not None:
                         voltage = result["voltage"]
                         timestamp = time.time()
-                        
-                        # Store as detection event if voltage exceeds threshold (e.g., 3.0V)
-                        if voltage > 3.0:  # TTL high threshold
+                        # Rising-edge detection at configurable threshold
+                        if voltage > self.threshold_v and not self._was_high:
                             self._store_detection_event(
                                 session_id=session_id,
                                 voltage=voltage,
@@ -89,14 +91,17 @@ class LabJackMonitoringService:
                                 channel="AIN0"
                             )
                             detection_count += 1
-                            
-                            # Log every detection during first 10, then every 10th
+                            self._was_high = True
                             if detection_count <= 10 or detection_count % 10 == 0:
-                                logger.info(f"📈 Captured {detection_count} detections, latest: {voltage:.3f}V")
+                                logger.info(f"📈 Captured {detection_count} detections, rising-edge @ {voltage:.3f}V")
+                        elif voltage <= self.threshold_v:
+                            # Reset for next edge
+                            if self._was_high:
+                                logger.debug("🔽 Falling edge detected; arming for next detection")
+                            self._was_high = False
                         else:
-                            # Log low voltage readings occasionally for debugging
-                            if detection_count == 0:  # Log first few readings
-                                logger.debug(f"🔽 Low voltage reading: {voltage:.3f}V (below 3.0V threshold)")
+                            # Still high; no new edge
+                            pass
                     else:
                         logger.warning(f"❌ Failed to read voltage: {result}")
                     
@@ -132,23 +137,28 @@ class LabJackMonitoringService:
             # Calculate latency (assuming minimal hardware latency)
             latency_ms = 5.0  # Typical LabJack response time
             
-            # Insert detection event using existing schema
+            # Insert detection event including LabJack-specific fields when available
             cursor.execute("""
                 INSERT INTO detection_events (
-                    id, test_session_id, timestamp, 
-                    confidence, class_label, validation_result,
-                    created_at, vru_type, processing_time_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, test_session_id, timestamp,
+                    labjack_timestamp, labjack_voltage, voltage_level, detection_channel,
+                    validation_result, created_at, processing_time_ms,
+                    class_label, confidence, vru_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 event_id,
                 session_id,
-                timestamp,
-                voltage,  # Use confidence field to store voltage
-                f"LabJack_{channel}",  # Use class_label to store channel info
-                "passed" if voltage > 3.0 else "failed",
+                float(timestamp),
+                float(timestamp),  # labjack_timestamp mirrors timestamp (epoch seconds)
+                float(voltage),
+                float(voltage),
+                channel,
+                "passed" if voltage > self.threshold_v else "failed",
                 datetime.now().isoformat(),
-                f"LabJack_{voltage:.3f}V",  # Store voltage info in vru_type
-                latency_ms  # Processing time
+                latency_ms,
+                f"LabJack_{channel}",
+                float(voltage),  # legacy confidence field stores voltage
+                f"LabJack_{voltage:.3f}V"
             ))
             
             conn.commit()

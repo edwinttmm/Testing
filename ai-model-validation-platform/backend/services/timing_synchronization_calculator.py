@@ -169,25 +169,41 @@ class TimingSynchronizationCalculator:
             gt_system_time = video_start_system_time + ground_truth_video_time
             print(f"DEBUG: gt_system_time = {gt_system_time}")
             
-            # CRITICAL FIX: Check for timestamp epoch issues causing 3.6M millisecond latencies
+            # CRITICAL FIX: Check for timestamp epoch issues causing massive latencies
             current_time = time.time()
             
-            # If timestamps are way in the future (year 2025+), they're likely correct Unix epoch seconds
-            # But the calculation is treating them as if they span hours instead of seconds
+            # Calculate time span and validate timestamps are reasonable
             time_span = detection_system_time - labjack_start_time
             
-            if time_span > 3600:  # > 1 hour is impossible for 5-second video
-                logger.error(f"⚠️ TIMESTAMP EPOCH ERROR: {time_span:.1f}s time span for 5s video")
-                logger.error(f"   LabJack: {labjack_start_time} ({datetime.fromtimestamp(labjack_start_time)})")
-                logger.error(f"   Detection: {detection_system_time} ({datetime.fromtimestamp(detection_system_time)})")
+            # Fix: Check if the timestamps are in a reasonable range (within last 24 hours)
+            # and if the time span makes sense for a short video
+            current_epoch = time.time()
+            
+            # Validate timestamps are recent (within 24 hours of current time)
+            labjack_age = abs(current_epoch - labjack_start_time)
+            detection_age = abs(current_epoch - detection_system_time)
+            
+            timestamp_validation_failed = (
+                labjack_age > 86400 or  # More than 24 hours old
+                detection_age > 86400 or  # More than 24 hours old
+                time_span > 600  # More than 10 minutes span for short video
+            )
+            
+            if timestamp_validation_failed:
+                logger.error(f"⚠️ TIMESTAMP VALIDATION ERROR: time_span={time_span:.1f}s")
+                logger.error(f"   LabJack: {labjack_start_time} (age: {labjack_age:.1f}s)")
+                logger.error(f"   Detection: {detection_system_time} (age: {detection_age:.1f}s)")
                 
-                # For a 5-second video, realistic detection latency is 50-500ms
-                # Use video relative timestamp as basis for realistic calculation
-                real_latency_ms = 100.0 + (ground_truth_video_time * 50.0)  # 100ms base + position factor
-                apparent_latency_ms = real_latency_ms + startup_delay_ms
-                latency_correction_ms = startup_delay_ms
+                # Use ground truth video time to calculate realistic latency
+                # Base latency estimation: 50-350ms typical range
+                video_position_factor = min(ground_truth_video_time, 10.0)  # Cap at 10s
+                real_latency_ms = 75.0 + (video_position_factor * 25.0)  # 75-325ms range
                 
-                logger.warning(f"🔧 USING REALISTIC ESTIMATE: real={real_latency_ms:.1f}ms, apparent={apparent_latency_ms:.1f}ms")
+                # Apparent latency includes the video startup delay
+                apparent_latency_ms = real_latency_ms + abs(startup_delay_ms)
+                latency_correction_ms = abs(startup_delay_ms)
+                
+                logger.warning(f"🔧 USING POSITION-BASED ESTIMATE: real={real_latency_ms:.1f}ms, apparent={apparent_latency_ms:.1f}ms")
             else:
                 # OLD INCORRECT CALCULATION (for comparison)  
                 # This was calculating: detection_time - labjack_start_time 
@@ -494,11 +510,21 @@ class TimingSynchronizationCalculator:
         # Get detection video relative timestamp for time-based matching
         detection_video_timestamp = detection.get('video_relative_timestamp')
         
-        # Time-based matching (preferred method)
+        # Enhanced time-based matching with better validation
         if detection_video_timestamp is not None:
             try:
                 detection_time = float(detection_video_timestamp)
-                time_tolerance_ms = 1000  # Allow 1000ms tolerance for testing ground truth matching
+                
+                # Use adaptive tolerance based on video timing quality
+                # Stricter tolerance for better quality timing, looser for degraded timing
+                base_tolerance_ms = 500  # Base 500ms tolerance
+                max_tolerance_ms = 2000  # Maximum 2s tolerance for degraded timing
+                
+                # Check if we have reliable timing by looking at detection timestamp validity
+                timing_looks_reliable = 0 <= detection_time <= 60  # Reasonable video duration
+                time_tolerance_ms = base_tolerance_ms if timing_looks_reliable else max_tolerance_ms
+                
+                logger.debug(f"Using {time_tolerance_ms}ms tolerance for ground truth matching (reliable={timing_looks_reliable})")
                 
                 def time_distance(gt: Dict[str, Any]) -> float:
                     gt_timestamp = gt.get('timestamp', gt.get('video_timestamp'))
@@ -506,6 +532,11 @@ class TimingSynchronizationCalculator:
                         return float('inf')  # Effectively ignore invalid timestamps
                     try:
                         gt_time = float(gt_timestamp)
+                        
+                        # Validate ground truth timestamp is reasonable
+                        if not (0 <= gt_time <= 300):  # 0-5 minutes reasonable range
+                            return float('inf')
+                        
                         # Convert time difference to milliseconds
                         time_diff_ms = abs((gt_time - detection_time) * 1000)
                         

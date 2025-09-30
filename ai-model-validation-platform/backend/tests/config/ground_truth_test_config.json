@@ -1,0 +1,223 @@
+{
+  "test_configuration": {
+    "name": "Ground Truth Integration Test Suite",
+    "version": "1.0",
+    "description": "Comprehensive integration testing configuration for Ground Truth functionality"
+  },
+  "test_discovery": {
+    "test_patterns": [
+      "tests/integration/test_ground_truth_*.py",
+      "tests/test_ground_truth_*.py"
+    ],
+    "exclude_patterns": [
+      "tests/**/test_*_manual.py",
+      "tests/**/test_*_experimental.py"
+    ],
+    "test_markers": [
+      "integration",
+      "e2e", 
+      "performance",
+      "concurrency",
+      "error_handling"
+    ]
+  },
+  "execution_settings": {
+    "timeout_seconds": 3600,
+    "parallel_workers": 4,
+    "retry_failed_tests": true,
+    "max_retries": 2,
+    "fail_fast": false,
+    "capture_output": true,
+    "verbose_output": true
+  },
+  "performance_thresholds": {
+    "max_test_duration_seconds": 300,
+    "max_memory_usage_mb": 1024,
+    "max_cpu_usage_percent": 80,
+    "max_disk_usage_mb": 500,
+    "database_query_timeout_seconds": 30
+  },
+  "coverage_settings": {
+    "minimum_coverage_percent": 80.0,
+    "coverage_sources": [
+      "services/ground_truth_service.py",
+      "services/detection_pipeline_service.py",
+      "routers/ground_truth.py",
+      "models.py"
+    ],
+    "coverage_excludes": [
+      "*/venv/*",
+      "*/tests/*",
+      "*/__pycache__/*",
+      "*/migrations/*"
+    ],
+    "coverage_formats": [
+      "html",
+      "xml",
+      "term-missing"
+    ]
+  },
+  "test_environment": {
+    "database": {
+      "type": "sqlite",
+      "url": "sqlite:///./test_ground_truth.db",
+      "reset_before_tests": true,
+      "isolation_level": "READ_COMMITTED"
+    },
+    "file_system": {
+      "temp_directory": "/tmp/ground_truth_tests",
+      "cleanup_after_tests": true,
+      "max_temp_size_mb": 1000
+    },
+    "ml_models": {
+      "mock_ml_inference": true,
+      "model_cache_enabled": true,
+      "gpu_testing": false
+    }
+  },
+  "reporting": {
+    "generate_html_report": true,
+    "generate_json_report": true,
+    "generate_junit_xml": true,
+    "generate_coverage_report": true,
+    "output_directory": "test_results",
+    "archive_results": true,
+    "max_archived_results": 10
+  },
+  "test_categories": {
+    "e2e_integration": {
+      "description": "End-to-end workflow testing",
+      "timeout_seconds": 600,
+      "parallel_execution": true,
+      "required_coverage": 85.0
+    },
+    "data_flow": {
+      "description": "Data consistency validation",
+      "timeout_seconds": 300,
+      "parallel_execution": true,
+      "required_coverage": 90.0
+    },
+    "concurrency": {
+      "description": "Concurrent operations testing",
+      "timeout_seconds": 450,
+      "parallel_execution": false,
+      "required_coverage": 75.0
+    },
+    "error_handling": {
+      "description": "Error scenario testing",
+      "timeout_seconds": 240,
+      "parallel_execution": true,
+      "required_coverage": 85.0
+    }
+  },
+  "quality_gates": {
+    "minimum_success_rate": 95.0,
+    "maximum_failure_rate": 5.0,
+    "maximum_error_rate": 2.0,
+    "performance_regression_threshold": 10.0,
+    "coverage_regression_threshold": 5.0
+  },
+  "notification_settings": {
+    "notify_on_failure": true,
+    "notify_on_success": false,
+    "notify_on_performance_regression": true,
+    "notification_channels": [
+      "console",
+      "file"
+    ]
+  },
+  "debugging": {
+    "enable_debug_mode": false,
+    "capture_screenshots": true,
+    "save_failed_test_artifacts": true,
+    "detailed_error_logging": true,
+    "memory_profiling": false
+  },
+  "ci_cd_integration": {
+    "jenkins": {
+      "junit_xml_path": "test_results/**/junit.xml",
+      "coverage_xml_path": "test_results/**/coverage.xml",
+      "artifacts_path": "test_results/**/*"
+    },
+    "github_actions": {
+      "workflow_timeout": 60,
+      "upload_artifacts": true,
+      "cache_dependencies": true
+    },
+    "docker": {
+      "test_image": "python:3.12-slim",
+      "volumes": [
+        "./:/app",
+        "/tmp:/tmp"
+      ],
+      "environment_variables": [
+        "PYTHONPATH=/app",
+        "TEST_MODE=integration"
+      ]
+    }
+  },
+  "data_management": {
+    "test_data_sources": [
+      "tests/fixtures/sample_videos/",
+      "tests/fixtures/test_data.json"
+    ],
+    "synthetic_data_generation": {
+      "enabled": true,
+      "video_count": 10,
+      "max_video_duration_seconds": 30,
+      "video_resolutions": [
+        "640x480",
+        "1280x720",
+        "1920x1080"
+      ]
+    },
+    "data_cleanup": {
+      "cleanup_on_success": true,
+      "cleanup_on_failure": false,
+      "preserve_artifacts": true
+    }
+  },
+  "monitoring": {
+    "resource_monitoring": {
+      "enabled": true,
+      "sampling_interval_seconds": 5,
+      "metrics": [
+        "cpu_usage",
+        "memory_usage",
+        "disk_usage",
+        "network_io",
+        "database_connections"
+      ]
+    },
+    "performance_tracking": {
+      "enabled": true,
+      "baseline_metrics_file": "tests/baselines/performance_baseline.json",
+      "track_regression": true,
+      "alert_on_regression": true
+    }
+  },
+  "advanced_features": {
+    "chaos_engineering": {
+      "enabled": false,
+      "failure_injection_rate": 0.05,
+      "failure_types": [
+        "database_connection",
+        "file_system_error",
+        "network_timeout",
+        "memory_pressure"
+      ]
+    },
+    "load_testing": {
+      "enabled": false,
+      "concurrent_users": 10,
+      "test_duration_seconds": 300,
+      "ramp_up_seconds": 60
+    },
+    "security_testing": {
+      "enabled": false,
+      "sql_injection_tests": true,
+      "xss_tests": true,
+      "authentication_tests": true
+    }
+  }
+}

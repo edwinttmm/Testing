@@ -435,7 +435,7 @@ async def validate_annotation(
 @router.get("/videos/{video_id}/annotations/export")
 async def export_annotations(
     video_id: str,
-    format: str = Query("json", enum=["json", "csv", "coco"]),
+    format: str = Query("json", enum=["json", "csv", "coco", "yolo", "pascal"]),
     validated_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
@@ -510,6 +510,156 @@ async def export_annotations(
                 media_type="text/csv",
                 headers={
                     "Content-Disposition": f"attachment; filename=annotations_{video_id}.csv"
+                }
+            )
+        
+        elif format == "coco":
+            # COCO format export
+            coco_data = {
+                "info": {
+                    "description": f"Annotations from video {video.filename}",
+                    "date_created": datetime.now(timezone.utc).isoformat(),
+                    "version": "1.0"
+                },
+                "images": [{
+                    "id": 1,
+                    "file_name": video.filename,
+                    "width": 1920,  # Default - could be read from video metadata
+                    "height": 1080
+                }],
+                "categories": [
+                    {"id": 1, "name": "pedestrian", "supercategory": "person"},
+                    {"id": 2, "name": "cyclist", "supercategory": "person"},
+                    {"id": 3, "name": "motorcyclist", "supercategory": "person"}
+                ],
+                "annotations": []
+            }
+            
+            for i, ann in enumerate(annotations):
+                bbox = ann.bounding_box or {}
+                category_map = {"pedestrian": 1, "cyclist": 2, "motorcyclist": 3}
+                
+                coco_data["annotations"].append({
+                    "id": i + 1,
+                    "image_id": 1,
+                    "category_id": category_map.get(ann.vru_type, 1),
+                    "bbox": [
+                        bbox.get("x", 0),
+                        bbox.get("y", 0),
+                        bbox.get("width", 0),
+                        bbox.get("height", 0)
+                    ],
+                    "area": bbox.get("width", 0) * bbox.get("height", 0),
+                    "iscrowd": 0,
+                    "segmentation": []
+                })
+            
+            output = io.StringIO()
+            json.dump(coco_data, output, indent=2)
+            output.seek(0)
+            
+            return StreamingResponse(
+                io.BytesIO(output.getvalue().encode()),
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f"attachment; filename=annotations_{video_id}_coco.json"
+                }
+            )
+        
+        elif format == "yolo":
+            # YOLO format export (returns a zip with .txt files)
+            import zipfile
+            import tempfile
+            
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as temp_zip:
+                with zipfile.ZipFile(temp_zip, 'w') as zipf:
+                    # Group annotations by frame
+                    frame_annotations = {}
+                    for ann in annotations:
+                        frame_num = ann.frame_number
+                        if frame_num not in frame_annotations:
+                            frame_annotations[frame_num] = []
+                        frame_annotations[frame_num].append(ann)
+                    
+                    # Create YOLO format files
+                    for frame_num, frame_anns in frame_annotations.items():
+                        yolo_content = []
+                        for ann in frame_anns:
+                            bbox = ann.bounding_box or {}
+                            # Convert to YOLO format (class_id center_x center_y width height)
+                            class_map = {"pedestrian": 0, "cyclist": 1, "motorcyclist": 2}
+                            class_id = class_map.get(ann.vru_type, 0)
+                            
+                            # Normalize coordinates (assuming 1920x1080 video)
+                            img_width, img_height = 1920, 1080
+                            x = bbox.get("x", 0)
+                            y = bbox.get("y", 0)
+                            w = bbox.get("width", 0)
+                            h = bbox.get("height", 0)
+                            
+                            center_x = (x + w/2) / img_width
+                            center_y = (y + h/2) / img_height
+                            norm_w = w / img_width
+                            norm_h = h / img_height
+                            
+                            yolo_content.append(f"{class_id} {center_x:.6f} {center_y:.6f} {norm_w:.6f} {norm_h:.6f}")
+                        
+                        # Add file to zip
+                        filename = f"frame_{frame_num:06d}.txt"
+                        zipf.writestr(filename, "\n".join(yolo_content))
+                
+                # Read the zip file for response
+                temp_zip.seek(0)
+                zip_content = temp_zip.read()
+            
+            return StreamingResponse(
+                io.BytesIO(zip_content),
+                media_type="application/zip",
+                headers={
+                    "Content-Disposition": f"attachment; filename=annotations_{video_id}_yolo.zip"
+                }
+            )
+        
+        elif format == "pascal":
+            # Pascal VOC XML format export
+            import xml.etree.ElementTree as ET
+            
+            root = ET.Element("annotation")
+            
+            # Add folder and filename
+            ET.SubElement(root, "folder").text = "images"
+            ET.SubElement(root, "filename").text = video.filename
+            
+            # Add size (default values - could be read from video metadata)
+            size = ET.SubElement(root, "size")
+            ET.SubElement(size, "width").text = "1920"
+            ET.SubElement(size, "height").text = "1080"
+            ET.SubElement(size, "depth").text = "3"
+            
+            # Add objects
+            for ann in annotations:
+                bbox = ann.bounding_box or {}
+                obj = ET.SubElement(root, "object")
+                
+                ET.SubElement(obj, "name").text = ann.vru_type or "pedestrian"
+                ET.SubElement(obj, "pose").text = "Unspecified"
+                ET.SubElement(obj, "truncated").text = "1" if ann.truncated else "0"
+                ET.SubElement(obj, "difficult").text = "1" if ann.difficult else "0"
+                
+                bndbox = ET.SubElement(obj, "bndbox")
+                ET.SubElement(bndbox, "xmin").text = str(int(bbox.get("x", 0)))
+                ET.SubElement(bndbox, "ymin").text = str(int(bbox.get("y", 0)))
+                ET.SubElement(bndbox, "xmax").text = str(int(bbox.get("x", 0) + bbox.get("width", 0)))
+                ET.SubElement(bndbox, "ymax").text = str(int(bbox.get("y", 0) + bbox.get("height", 0)))
+            
+            # Convert to string
+            xml_str = ET.tostring(root, encoding="unicode")
+            
+            return StreamingResponse(
+                io.BytesIO(xml_str.encode()),
+                media_type="application/xml",
+                headers={
+                    "Content-Disposition": f"attachment; filename=annotations_{video_id}_pascal.xml"
                 }
             )
         

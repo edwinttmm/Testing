@@ -347,6 +347,10 @@ class LabJackService:
         self.direct_handle = None
         self.mock_device = None
         
+        # CRITICAL FIX: Track active sessions to prevent premature disconnection
+        self.active_sessions = set()
+        self.active_session_count = 0
+        
         # Streaming state
         self.streaming = False
         self.stream_thread = None
@@ -375,16 +379,26 @@ class LabJackService:
         
         logger.info("LabJack service initialized (lazy connection - will connect when needed)")
     
-    async def connect(self, force_mode: Optional[ConnectionMode] = None) -> bool:
+    async def connect(self, force_mode: Optional[ConnectionMode] = None, allow_mock: bool = False) -> bool:
         """Connect using environment-aware fallback strategy.
-
-        - On WSL: Bridge → Direct → Mock (avoid direct USB to prevent segfaults)
-        - Else:   Direct → Bridge → Mock
+        
+        CRITICAL SAFETY CHANGE: No automatic mock fallback for HIL testing.
+        Mock mode must be explicitly requested via allow_mock=True.
+        
+        - On WSL: Bridge → Direct → FAIL (no mock fallback)
+        - Else:   Direct → Bridge → FAIL (no mock fallback)
+        
+        Args:
+            force_mode: Force specific connection mode
+            allow_mock: Allow fallback to mock mode (DANGEROUS for HIL testing)
         """
         import platform
         is_wsl = platform.system() == "Linux" and "microsoft" in platform.uname().release.lower()
 
         if force_mode:
+            if force_mode == ConnectionMode.MOCK and not allow_mock:
+                logger.error("❌ Mock mode requested but not allowed - use allow_mock=True if simulation is intended")
+                return False
             return await self._connect_specific_mode(force_mode)
 
         if is_wsl:
@@ -403,9 +417,16 @@ class LabJackService:
             if await self._connect_bridge():
                 return True
 
-        # Fallback to Mock mode LAST
-        logger.info("🔧 Falling back to mock mode...")
-        return await self._connect_mock()
+        # CRITICAL: NO AUTOMATIC MOCK FALLBACK FOR HIL TESTING
+        if allow_mock:
+            logger.warning("⚠️ Hardware connection failed - falling back to mock mode (SIMULATION DATA ONLY)")
+            return await self._connect_mock()
+        else:
+            logger.error("❌ LabJack hardware connection failed - HIL testing requires real hardware")
+            logger.error("   Available connection methods tried: Bridge, Direct")
+            logger.error("   To use simulation mode, explicitly set allow_mock=True")
+            self.status = ConnectionStatus.ERROR
+            return False
     
     async def _connect_specific_mode(self, mode: ConnectionMode) -> bool:
         """Connect using specific mode"""
@@ -559,10 +580,10 @@ class LabJackService:
             return False
     
     async def _connect_mock(self) -> bool:
-        """Connect using mock interface"""
+        """Connect using mock interface - ONLY for explicit simulation testing"""
         try:
             if not MockLabJackInterface:
-                logger.error("Mock LabJack interface not available")
+                logger.error("❌ Mock LabJack interface not available")
                 return False
             
             self.status = ConnectionStatus.CONNECTING
@@ -576,22 +597,28 @@ class LabJackService:
             
             self._start_health_monitoring()
             
-            logger.info("✅ LabJack connected in mock mode (simulation)")
-            # Set device info for mock mode
+            # CRITICAL WARNING: Make it clear this is simulation
+            logger.warning("⚠️⚠️⚠️ SIMULATION MODE ACTIVE - NOT REAL HARDWARE ⚠️⚠️⚠️")
+            logger.warning("   All detection events will be SIMULATED DATA")
+            logger.warning("   This should NOT be used for HIL validation testing")
+            
+            # Set device info for mock mode with clear warnings
             self.device_info = {
                 "device_type": "T7_SIMULATED",
-                "connection_type": "MOCK",
-                "serial_number": "MOCK_12345",
+                "connection_type": "MOCK_SIMULATION",
+                "serial_number": "SIMULATION_ONLY",
                 "ip_address": "127.0.0.1",
                 "port": "MOCK",
                 "is_mock": True,
+                "is_simulation": True,
                 "interface_type": "MOCK_SIMULATION",
-                "status": "Connected in simulation mode - hardware testing available"
+                "status": "⚠️ SIMULATION MODE - NOT REAL HARDWARE",
+                "warning": "This is simulated data - not suitable for HIL validation"
             }
             return True
             
         except Exception as e:
-            logger.error(f"Mock connection failed: {e}")
+            logger.error(f"❌ Mock connection failed: {e}")
             self.statistics["errors_count"] += 1
             self.statistics["last_error_time"] = datetime.now()
         
@@ -823,9 +850,16 @@ class LabJackService:
         return 0.0
     
     def get_status(self) -> LabJackStatus:
-        """Get comprehensive status"""
+        """Get comprehensive status with simulation warnings"""
         # Ensure device_info exists
         device_info = getattr(self, 'device_info', {}) if self.status == ConnectionStatus.CONNECTED else {}
+        
+        # Add clear simulation warnings if in mock mode
+        if self.mode == ConnectionMode.MOCK and device_info:
+            device_info["simulation_warning"] = "⚠️ SIMULATION MODE ACTIVE - NOT REAL HARDWARE"
+            device_info["hil_suitable"] = False
+        elif device_info:
+            device_info["hil_suitable"] = True
         
         return LabJackStatus(
             mode=self.mode,
@@ -875,11 +909,72 @@ class LabJackService:
                 logger.error(f"Health monitor error: {e}")
                 break
     
-    async def disconnect(self):
-        """Disconnect from LabJack"""
+    def stop_session_monitoring(self, session_id: str) -> bool:
+        """Stop monitoring for a specific session without disconnecting hardware.
+        
+        CRITICAL FIX: This method stops session-specific monitoring while
+        preserving the underlying hardware connection for other sessions.
+        
+        Args:
+            session_id: Session identifier to stop monitoring for
+            
+        Returns:
+            True if session monitoring stopped successfully
+        """
         try:
+            logger.info(f"🔄 Stopping session monitoring for {session_id} (preserving connection)")
+            
+            # Track session removal from active sessions
+            if hasattr(self, 'active_sessions') and session_id in self.active_sessions:
+                self.active_sessions.discard(session_id)
+                logger.info(f"📝 Removed {session_id} from active sessions")
+            
+            # Update active session count
+            if hasattr(self, 'active_session_count') and self.active_session_count > 0:
+                self.active_session_count -= 1
+                logger.info(f"📊 Active session count: {self.active_session_count}")
+            
+            # Remove session-specific callbacks if they exist
+            # Note: This is a session-specific operation, not a global disconnect
+            session_callbacks = getattr(self, f'_session_callbacks_{session_id}', [])
+            for callback in session_callbacks:
+                if callback in self.stream_callbacks:
+                    self.stream_callbacks.remove(callback)
+            
+            # Clear session-specific callback references
+            if hasattr(self, f'_session_callbacks_{session_id}'):
+                delattr(self, f'_session_callbacks_{session_id}')
+            
+            # Log connection preservation status
+            remaining_sessions = getattr(self, 'active_session_count', 0)
+            if remaining_sessions > 0:
+                logger.info(f"🔌 Hardware connection preserved for {remaining_sessions} remaining sessions")
+            else:
+                logger.info("🔌 Hardware connection idle but preserved for future sessions")
+            
+            logger.info(f"✅ Session monitoring stopped for {session_id} (hardware connection preserved)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error stopping session monitoring for {session_id}: {e}")
+            return False
+    
+    async def disconnect(self):
+        """Disconnect from LabJack hardware completely.
+        
+        CRITICAL FIX: Only call this when NO sessions are active.
+        For session-specific cleanup, use stop_session_monitoring() instead.
+        """
+        try:
+            logger.warning("🚨 FULL HARDWARE DISCONNECT - This should only happen when no sessions are active")
+            
             if self.streaming:
                 await self.stop_stream()
+            
+            # CRITICAL FIX: Only close hardware connection if no sessions are using it
+            if hasattr(self, 'active_session_count') and self.active_session_count > 0:
+                logger.error(f"⚠️ WARNING: Attempting to disconnect while {self.active_session_count} sessions are active")
+                logger.error("This may cause connection drops! Use stop_session_monitoring() instead.")
             
             if self.mode == ConnectionMode.BRIDGE and self.bridge_client:
                 self.bridge_client.disconnect()
@@ -887,11 +982,12 @@ class LabJackService:
                 if hasattr(self, 'ljm_module') and self.ljm_module:
                     ljm = self.ljm_module
                     ljm.close(self.direct_handle)
+                    logger.info("🔌 Hardware connection closed")
             elif self.mode == ConnectionMode.MOCK and self.mock_device:
                 self.mock_device.disconnect()
             
             self.status = ConnectionStatus.DISCONNECTED
-            self.mode = ConnectionMode.MOCK  # Reset to mock
+            self.direct_handle = None
             
             # Cleanup threads
             if self.health_thread and self.health_thread.is_alive():
@@ -899,7 +995,7 @@ class LabJackService:
             
             self.executor.shutdown(wait=False)
             
-            logger.info("🔌 LabJack disconnected")
+            logger.info("🔌 LabJack hardware fully disconnected")
             
         except Exception as e:
             logger.error(f"Error during disconnect: {e}")
@@ -915,6 +1011,7 @@ def get_labjack_service() -> LabJackService:
     if _labjack_service is None:
         _labjack_service = LabJackService()
         logger.info("LabJack service instance created (disconnected, ready for connection)")
+        logger.info("⚠️ Service configured for fail-fast HIL mode - no automatic mock fallback")
     return _labjack_service
 
 

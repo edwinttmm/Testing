@@ -134,7 +134,7 @@ async def get_enhanced_dashboard_statistics(
             .all()
         )
         
-        # Performance metrics
+        # Performance metrics - ensure positive duration and handle nulls
         avg_session_duration = db.query(
             func.avg(
                 func.extract('epoch', TestSession.completed_at - TestSession.started_at)
@@ -142,8 +142,13 @@ async def get_enhanced_dashboard_statistics(
         ).filter(
             TestSession.started_at.isnot(None),
             TestSession.completed_at.isnot(None),
+            TestSession.completed_at > TestSession.started_at,  # Ensure positive duration
             TestSession.created_at >= start_date
-        ).scalar() or 0
+        ).scalar()
+        
+        # Ensure positive processing time or default to 0
+        if avg_session_duration is None or avg_session_duration < 0:
+            avg_session_duration = 0
         
         # Success rate calculation
         completed_sessions = session_stats.get("completed", 0)

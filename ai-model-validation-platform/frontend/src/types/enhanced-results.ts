@@ -935,3 +935,144 @@ export interface EnhancedDetectionEvent extends DetectionLatencyEvent {
     note?: string;
   };
 }
+
+// Raw Timing Data Types for Hybrid Logging System
+export interface RawTimingData {
+  session_id: string;
+  data_source: 'hybrid_raw_compression' | 'legacy_detection_events';
+  timing_precision: 'microsecond' | 'second';
+  sample_rate_actual_hz: number;
+  session_info: RawSessionInfo;
+  voltage_transitions?: VoltageTransition[];
+  voltage_run_periods?: VoltageRunPeriod[];
+  compression_statistics?: CompressionStatistics;
+  timing_correlation?: TimingCorrelation;
+}
+
+export interface RawSessionInfo {
+  start_timestamp_us?: number;
+  end_timestamp_us?: number;
+  duration_us?: number;
+  total_samples?: number;
+  compression_ratio?: number;
+  data_quality_score?: number;
+}
+
+export interface VoltageTransition {
+  id: string;
+  timestamp_us: number;
+  timestamp_ms: number;
+  channel: string;
+  voltage_before_v: number;
+  voltage_after_v: number;
+  voltage_delta_v: number;
+  transition_type: 'rising_edge' | 'falling_edge' | 'spike' | 'drift' | 'noise';
+  is_detection_event: boolean;
+  detection_confidence: number;
+  signal_quality_score: number;
+  transition_duration_us?: number;
+  slope_v_per_s?: number;
+  sequence_number: number;
+  time_since_last_us?: number;
+  data_source?: string;
+}
+
+export interface VoltageRunPeriod {
+  id: string;
+  start_timestamp_us: number;
+  end_timestamp_us: number;
+  duration_us: number;
+  channel: string;
+  steady_voltage_v: number;
+  voltage_min_v?: number;
+  voltage_max_v?: number;
+  sample_count: number;
+  sequence_number: number;
+  confidence_score: number;
+}
+
+export interface CompressionStatistics {
+  achieved_compression_ratio?: number;
+  signal_fidelity_score?: number;
+  data_loss_estimate?: number;
+  throughput_samples_per_second?: number;
+  raw_data_size_bytes?: number;
+  compressed_data_size_bytes?: number;
+  storage_efficiency_percent?: number;
+  note?: string;
+}
+
+export interface TimingCorrelation {
+  legacy_events_count?: number;
+  raw_detection_transitions_count?: number;
+  timing_comparison?: TimingComparisonPoint[];
+  frequency_analysis?: FrequencyAnalysis;
+  note?: string;
+  error?: string;
+}
+
+export interface TimingComparisonPoint {
+  legacy_timestamp_us: number;
+  raw_timestamp_us: number;
+  difference_us: number;
+  difference_ms: number;
+  detection_confidence: number;
+}
+
+export interface FrequencyAnalysis {
+  raw_average_interval_ms: number;
+  legacy_average_interval_ms: number;
+  raw_frequency_hz: number;
+  legacy_frequency_hz: number;
+}
+
+export interface TimelineData {
+  session_id: string;
+  resolution_us: number;
+  timeline_start_us: number;
+  timeline_end_us: number;
+  duration_us: number;
+  timeline_points: TimelinePoint[];
+  video_sync_events: VideoSyncEvent[];
+  summary: TimelineSummary;
+}
+
+export interface TimelinePoint {
+  timestamp_us: number;
+  timestamp_ms: number;
+  window_duration_us: number;
+  total_transitions: number;
+  detection_transitions: number;
+  transition_rate_hz: number;
+}
+
+export interface VideoSyncEvent {
+  timestamp_us: number;
+  timestamp_ms: number;
+  frame_number?: number;
+  latency_ms?: number;
+  voltage_level?: number;
+}
+
+export interface TimelineSummary {
+  total_timeline_points: number;
+  total_video_sync_events: number;
+  peak_transition_rate_hz: number;
+}
+
+export interface RawDataExport {
+  session_id: string;
+  export_timestamp: string;
+  format: string;
+  compressed: boolean;
+  data: RawTimingData;
+  export_metadata?: {
+    total_transitions: number;
+    total_run_periods: number;
+    timing_precision: string;
+    data_source: string;
+    sample_rate_hz: number;
+    export_tool: string;
+    export_version: string;
+  };
+}

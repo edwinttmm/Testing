@@ -50,22 +50,58 @@ class GroundTruthService:
         self.ml_available = ML_AVAILABLE
         self.model = None
         self.executor = ThreadPoolExecutor(max_workers=2)
+        self.model_path_selected: Optional[str] = None
+        self.model_version: Optional[str] = None
         
         if self.ml_available:
             try:
-                # Load YOLOv8 model with proper configuration
-                logger.info("🚀 Loading YOLOv8 model for ground truth generation...")
-                self.model = YOLO('yolov8n.pt')  # Using nano version for speed
+                # Load YOLO model with proper configuration
+                logger.info("🚀 Loading YOLO model for ground truth generation...")
+                # Try to find local models first, fallback to download
+                model_paths = [
+                    '/home/rigade/Testing/ai-model-validation-platform/backend/yolo11l.pt',
+                    '/home/rigade/Testing/ai-model-validation-platform/backend/yolov8n.pt',
+                    'yolo11l.pt',  # Better accuracy
+                    'yolov8n.pt'   # Faster processing
+                ]
+                
+                model_loaded = False
+                for model_path in model_paths:
+                    try:
+                        if os.path.exists(model_path):
+                            logger.info(f"Loading model from: {model_path}")
+                            self.model = YOLO(model_path)
+                            self.model_path_selected = model_path
+                            self.model_version = os.path.basename(model_path).replace('.pt', '')
+                        else:
+                            # Try to download
+                            model_name = os.path.basename(model_path)
+                            logger.info(f"Downloading model: {model_name}")
+                            self.model = YOLO(model_name)
+                            self.model_path_selected = model_name
+                            self.model_version = model_name.replace('.pt', '')
+                        model_loaded = True
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed to load {model_path}: {e}")
+                        continue
+                
+                if not model_loaded:
+                    # Ultimate fallback
+                    logger.info("Using nano model as final fallback")
+                    self.model = YOLO('yolov8n.pt')
+                    self.model_path_selected = 'yolov8n.pt'
+                    self.model_version = 'yolov8n'
                 
                 # Test the model with a dummy input to ensure it works
                 import torch
                 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-                logger.info(f"✅ YOLOv8 model loaded successfully on {device}")
+                logger.info(f"✅ YOLO model loaded successfully on {device}: {self.model_version}")
                 
                 # Test inference
                 dummy_img = np.zeros((640, 640, 3), dtype=np.uint8)
                 _ = self.model(dummy_img, verbose=False)
-                logger.info("✅ YOLOv8 model inference test successful")
+                logger.info("✅ YOLO model inference test successful")
                 
             except Exception as e:
                 logger.error(f"❌ Failed to load YOLOv8 model: {e}")
@@ -93,7 +129,7 @@ class GroundTruthService:
         }
     
     async def process_video_async(self, video_id: str, video_file_path: str):
-        """Process video asynchronously to generate ground truth"""
+        """Process video asynchronously to generate ground truth (legacy)."""
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(self.executor, self._process_video, video_id, video_file_path)
     
@@ -157,6 +193,18 @@ class GroundTruthService:
             
             logger.info(f"✅ Found video file: {resolved_path}")
             video_file_path = resolved_path  # Use resolved path for processing
+            try:
+                # Log basic metadata to aid troubleshooting
+                import cv2 as _cv2
+                _cap = _cv2.VideoCapture(video_file_path)
+                _fps = _cap.get(_cv2.CAP_PROP_FPS)
+                _frames = int(_cap.get(_cv2.CAP_PROP_FRAME_COUNT))
+                _width = int(_cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
+                _height = int(_cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+                logger.info(f"🎥 Video metadata: fps={_fps:.2f}, frames={_frames}, size={_width}x{_height}")
+                _cap.release()
+            except Exception as _meta_err:
+                logger.warning(f"Could not read video metadata: {_meta_err}")
             
             # Update video status to processing
             video = get_video(db, video_id)
@@ -167,16 +215,18 @@ class GroundTruthService:
                 logger.info(f"📝 Updated video {video_id} status to processing")
             
             if not self.ml_available:
-                logger.warning(f"⚠️ ML not available. Using fallback detection mode for video {video_id}")
-                # Generate fallback test detections for development/testing
-                detections = self._generate_fallback_detections()
-                logger.info(f"📝 Generated {len(detections)} fallback detections")
+                logger.warning(f"⚠️ ML not available. Skipping detection for video {video_id}")
+                # Mark processing as completed with failure status and exit without generating detections
+                processing_guard.complete_processing(video_id, success=False)
+                update_video_status(db, video_id, "failed")
+                return
             else:
                 # Process video with YOLO  
-                logger.info(f"🔍 Extracting detections using YOLOv8...")
+                logger.info(f"🔍 Extracting detections using YOLO ({self.model_version})...")
                 detections = self._extract_detections(video_file_path)
-                logger.info(f"✅ Extracted {len(detections)} detections from video {video_id}")
-            
+                logger.info(f"✅ Extracted {len(detections)} detections from video {video_id} using {self.model_version}")
+
+            # If no detections, proceed without fallback (user prefers no fallback)
             if len(detections) == 0:
                 logger.warning(f"⚠️  No VRU detections found in video {video_id}")
             
@@ -245,6 +295,96 @@ class GroundTruthService:
                 
         finally:
             db.close()
+
+    def process_video_blocking(self, video_id: str, video_file_path: str):
+        """Process video in a blocking manner suitable for BackgroundTasks."""
+        from database import SessionLocal as _SessionLocal
+        db = _SessionLocal()
+        try:
+            logger.info(f"🧵 Blocking GT processing started for {video_id}")
+            # Validate file exists
+            if not os.path.exists(video_file_path):
+                logger.error(f"❌ Video file not found: {video_file_path}")
+                update_video_status(db, video_id, "failed")
+                return
+
+            # Log metadata
+            try:
+                cap = cv2.VideoCapture(video_file_path)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+                logger.info(f"🎥 (Blocking) Video metadata: fps={fps:.2f}, frames={frames}, size={width}x{height}")
+            except Exception as meta_err:
+                logger.warning(f"Could not read video metadata (blocking): {meta_err}")
+
+            # ML availability
+            if not self.ml_available:
+                logger.error("❌ ML not available in blocking mode")
+                update_video_status(db, video_id, "failed")
+                return
+
+            # Extract detections
+            logger.info(f"🔍 (Blocking) Extracting detections using YOLO ({self.model_version})...")
+            detections = self._extract_detections(video_file_path)
+            logger.info(f"✅ (Blocking) Extracted {len(detections)} detections from video {video_id}")
+
+            # Store detections
+            detection_count = 0
+            for det in detections:
+                try:
+                    create_ground_truth_object(
+                        db=db,
+                        video_id=video_id,
+                        frame_number=det.get("frame_number"),
+                        timestamp=det["timestamp"],
+                        class_label=det["class_label"],
+                        x=det["x"],
+                        y=det["y"],
+                        width=det["width"],
+                        height=det["height"],
+                        confidence=det.get("confidence", 1.0),
+                        validated=det.get("validated", True),
+                        difficult=det.get("difficult", False),
+                        screenshot_path=det.get("screenshot_path"),
+                        screenshot_zoom_path=det.get("screenshot_zoom_path")
+                    )
+                    detection_count += 1
+                except Exception as store_err:
+                    logger.warning(f"Failed to store detection: {store_err}")
+                    continue
+
+            # Update video status
+            video = get_video(db, video_id)
+            if video:
+                video.status = "validated"
+                video.processing_status = "completed"
+                video.ground_truth_generated = True
+                db.commit()
+                logger.info(f"✅ (Blocking) GT completed for {video_id} with {detection_count} detections")
+        except Exception as e:
+            logger.error(f"💥 (Blocking) Error in GT processing for {video_id}: {e}")
+            try:
+                video = get_video(db, video_id)
+                if video:
+                    video.status = "failed"
+                    video.processing_status = "failed"
+                    db.commit()
+            except Exception:
+                pass
+        finally:
+            db.close()
+
+    def get_model_status(self) -> Dict[str, Any]:
+        """Return current ML model status for diagnostics"""
+        return {
+            "ml_available": bool(self.ml_available),
+            "model_loaded": bool(self.model is not None),
+            "model_version": self.model_version,
+            "model_path": self.model_path_selected,
+        }
     
     def _extract_detections(self, video_path: str) -> List[Dict[str, Any]]:
         """Extract detections from video using YOLO"""
@@ -259,6 +399,7 @@ class GroundTruthService:
             cap = cv2.VideoCapture(video_path)
             fps = cap.get(cv2.CAP_PROP_FPS)
             frame_count = 0
+            frames_with_detections = 0
             
             while True:
                 ret, frame = cap.read()
@@ -267,9 +408,8 @@ class GroundTruthService:
             
                 frame_count += 1
 
-                # Process every 5th frame for efficiency
-                if frame_count % 5 != 0:
-                    continue
+                # Process every frame for complete annotation coverage
+                # (Previously skipped frames for efficiency, now processing all)
 
                 # Calculate timestamp in seconds
                 timestamp = (frame_count - 1) / fps
@@ -282,6 +422,7 @@ class GroundTruthService:
 
                 # Process detections
                 if boxes is not None:
+                    frame_det_count = 0
                     for box in boxes:
                         # Get class ID and confidence
                         class_id = int(box.cls.cpu().numpy()[0])
@@ -313,8 +454,15 @@ class GroundTruthService:
                                 "screenshot_zoom_path": screenshot_zoom_path
                             }
                             detections.append(detection)
+                            frame_det_count += 1
+                    if frame_det_count > 0:
+                        frames_with_detections += 1
+                # Periodic debug log every 30 frames
+                if frame_count % 30 == 0:
+                    logger.info(f"🧭 Progress: frame={frame_count}, fps={fps:.2f}, cumulative_detections={len(detections)}, frames_with_detections={frames_with_detections}")
         
             cap.release()
+            logger.info(f"📈 Finished inference: total_frames={frame_count}, total_detections={len(detections)}, frames_with_detections={frames_with_detections}")
             return detections
             
         except Exception as e:

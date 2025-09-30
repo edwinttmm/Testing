@@ -6,6 +6,29 @@ Central configuration file for all video validation system tests,
 providing shared fixtures, test utilities, and configuration.
 """
 
+"""
+PyTest Configuration and Shared Fixtures for LabJack Hybrid Logging System Tests
+===============================================================================
+
+This configuration file provides:
+- Common test fixtures for all test modules
+- Test markers for categorizing tests
+- Database setup for testing
+- Mock services and utilities
+- Performance testing configuration
+- Hardware detection utilities
+
+Test Categories (Markers):
+- hardware: Tests requiring real LabJack hardware
+- integration: Integration tests with mock services  
+- performance: Performance benchmarking tests
+- stress: Stress and load testing
+- fallback: Fallback and error handling tests
+- frontend: Frontend integration tests
+- compatibility: Backward compatibility tests
+- ci_cd: CI/CD specific tests
+"""
+
 import pytest
 import asyncio
 from sqlalchemy import create_engine

@@ -173,26 +173,22 @@ def get_video_projects(db: Session, video_id: str, user_id: str = "anonymous") -
 
 # Video CRUD - Updated for Many-to-Many Structure
 def create_video(db: Session, filename: str, file_path: str = None, file_size: int = None, project_ids: List[str] = None) -> Video:
-    """Create video with project assignment - project_id is required by database"""
-    # Determine primary project_id (first in list or required for NOT NULL constraint)
-    primary_project_id = project_ids[0] if project_ids else None
-    if not primary_project_id:
-        raise ValueError("At least one project_id is required for video creation")
-    
+    """Create video as shared resource - can be linked to multiple projects"""
+    # Create video as project-independent resource
     db_video = Video(
         filename=filename,
         file_path=file_path or f"/uploads/{filename}",
         file_size=file_size,
-        project_id=primary_project_id  # Required by database NOT NULL constraint
+        project_id=None  # Videos are now shared resources
     )
     db.add(db_video)
     db.commit()
     db.refresh(db_video)
     
-    # Assign to additional projects if provided (beyond the primary)
-    if project_ids and len(project_ids) > 1:
-        for project_id in project_ids[1:]:  # Skip first as it's already the primary
-            assign_video_to_project(db, db_video.id, project_id)
+    # Link to all provided projects via VideoProjectLink
+    if project_ids:
+        for project_id in project_ids:
+            assign_video_to_project(db, db_video.id, project_id, "Initial upload assignment")
     
     return db_video
 
@@ -256,9 +252,8 @@ def create_ground_truth_object(db: Session, video_id: str, timestamp: float,
         bounding_box=bounding_box,  # Keep for backward compatibility
         confidence=confidence,
         validated=validated,
-        difficult=difficult,
-        screenshot_path=screenshot_path,
-        screenshot_zoom_path=screenshot_zoom_path
+        difficult=difficult
+        # Note: screenshot_path and screenshot_zoom_path are not model columns
     )
     db.add(db_object)
     db.commit()

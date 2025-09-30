@@ -20,22 +20,31 @@ from crud import (
 from schemas import TestSessionCreate, TestSessionResponse
 # TODO: Import these schemas when available:
 # HILTestStatusResponse, PrecisionTimingEvent, TestSessionAnalysis
-from services.labjack_service import LabJackService
+from services.labjack_service import LabJackService, ConnectionMode
 from services.precision_timing_service import PrecisionTimingService
 from services.test_execution_service import TestExecutionService
 from services.timing_orchestration_service import (
     TimingOrchestrationService, get_timing_orchestration_service,
     capture_test_start_timestamp, capture_video_start_timestamp
 )
+from services.hil_validation_service import (
+    get_hil_validation_service, HILValidationError, HardwareRequirement
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/hil-test", tags=["HIL Test Execution"])
 
-# Global services
+# Global services - configured for fail-fast HIL mode
 labjack_service = LabJackService()
 timing_service = PrecisionTimingService()
 test_execution_service = TestExecutionService()
 timing_orchestration_service = get_timing_orchestration_service()
+hil_validation_service = get_hil_validation_service(labjack_service)
+
+# Log HIL safety configuration
+logger.info("⚠️ HIL Test API configured with fail-fast hardware validation")
+logger.info("❌ Automatic simulation fallback DISABLED for safety")
+logger.info("🛡️ HIL Validation Service active for hardware safety checks")
 
 class HILTestManager:
     def __init__(self):
@@ -118,20 +127,41 @@ def get_video_duration(video_id: str, db: Session, video_data: dict) -> Optional
 async def get_labjack_connection_status():
     """Get LabJack DAQ connection status - PRD Requirement 3.1"""
     try:
-        status = await labjack_service.get_connection_status()
+        status = labjack_service.get_status()
+        device_info = status.device_info
+        
+        # Determine status message with simulation warnings
+        if status.connected:
+            if status.mode == ConnectionMode.MOCK:
+                status_message = "⚠️ Simulation Mode (NOT REAL HARDWARE)"
+                hardware_suitable = False
+            else:
+                status_message = "Connected"
+                hardware_suitable = device_info.get("hil_suitable", True)
+        else:
+            status_message = "Not Detected"
+            hardware_suitable = False
+        
         return {
             "connected": status.connected,
-            "status": "Connected" if status.connected else "Not Detected",
-            "device_type": status.device_type,
-            "device_serial": status.device_serial,
-            "last_check": status.last_check.isoformat(),
-            "error_message": status.error_message
+            "status": status_message,
+            "connection_mode": status.mode.value,
+            "device_type": device_info.get("device_type", "Unknown"),
+            "device_serial": device_info.get("serial_number", "Unknown"),
+            "connection_type": device_info.get("connection_type", "Unknown"),
+            "is_simulation": device_info.get("is_mock", False),
+            "hil_suitable": hardware_suitable,
+            "last_check": datetime.now().isoformat(),
+            "simulation_warning": device_info.get("simulation_warning"),
+            "statistics": status.statistics
         }
     except Exception as e:
-        logger.error(f"Failed to get LabJack status: {e}")
+        logger.error(f"❌ Failed to get LabJack status: {e}")
         return {
             "connected": False,
-            "status": "Not Detected",
+            "status": "Error",
+            "connection_mode": "unknown",
+            "hil_suitable": False,
             "error_message": str(e)
         }
 
@@ -139,19 +169,96 @@ async def get_labjack_connection_status():
 async def connect_labjack_device():
     """Connect to LabJack DAQ device - PRD Requirement 3.1"""
     try:
+        # FIXED: Allow normal connection but validate afterwards to prevent false simulation fallback
         success = await labjack_service.connect()
+        
         if success:
-            logger.info("LabJack device connected successfully")
+            # Validate the connection is real hardware
+            status = labjack_service.get_status()
+            
+            if status.mode == ConnectionMode.MOCK:
+                logger.error("❌ Connection attempt resulted in simulation mode")
+                raise HTTPException(
+                    status_code=503, 
+                    detail="Connection failed: Simulation mode is not allowed for HIL testing"
+                )
+            
+            device_info = status.device_info
+            device_type = device_info.get("device_type", "Unknown")
+            serial_number = device_info.get("serial_number", "Unknown")
+            connection_type = device_info.get("connection_type", "Unknown")
+            
+            logger.info(f"✅ LabJack hardware connected: {device_type} (S/N: {serial_number}) via {connection_type}")
+            
             return {
                 "success": True,
-                "message": "LabJack device connected successfully",
-                "status": "Connected"
+                "message": f"LabJack {device_type} connected successfully",
+                "status": "Connected",
+                "device_type": device_type,
+                "serial_number": serial_number,
+                "connection_type": connection_type,
+                "hardware_validated": True
             }
         else:
-            raise HTTPException(status_code=503, detail="Failed to connect to LabJack device")
+            logger.error("❌ LabJack hardware connection failed")
+            raise HTTPException(
+                status_code=503, 
+                detail="Failed to connect to LabJack hardware. Ensure device is connected and drivers are installed."
+            )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
     except Exception as e:
-        logger.error(f"LabJack connection failed: {e}")
+        logger.error(f"❌ LabJack connection error: {e}")
         raise HTTPException(status_code=503, detail=f"Connection failed: {str(e)}")
+
+async def validate_hil_hardware_requirements() -> None:
+    """Validate that all required hardware is connected for HIL testing"""
+    try:
+        # Get comprehensive LabJack status
+        labjack_status = labjack_service.get_status()
+        
+        # Check if connected
+        if not labjack_status.connected:
+            raise HTTPException(
+                status_code=503,
+                detail="HIL testing requires LabJack hardware connection. Device status: Not Connected."
+            )
+        
+        # Check if using simulation mode (CRITICAL SAFETY CHECK)
+        if labjack_status.mode == ConnectionMode.MOCK:
+            raise HTTPException(
+                status_code=400,
+                detail="HIL testing detected simulation mode. Real LabJack hardware is required for validation testing."
+            )
+        
+        # Check if device info indicates simulation
+        device_info = labjack_status.device_info
+        if device_info.get("is_mock", False) or device_info.get("is_simulation", False):
+            raise HTTPException(
+                status_code=400,
+                detail="HIL testing detected simulated LabJack device. Real hardware is required."
+            )
+        
+        # Check if device is suitable for HIL
+        if not device_info.get("hil_suitable", True):
+            raise HTTPException(
+                status_code=400,
+                detail="Connected LabJack device is not suitable for HIL testing."
+            )
+        
+        # Log successful validation
+        device_type = device_info.get("device_type", "Unknown")
+        serial_number = device_info.get("serial_number", "Unknown")
+        logger.info(f"✅ HIL hardware validation passed: {device_type} (S/N: {serial_number})")
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"❌ HIL hardware validation failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"HIL hardware validation error: {str(e)}"
+        )
 
 @router.post("/session/start", response_model=TestSessionResponse)
 async def start_hil_test_session(
@@ -160,6 +267,9 @@ async def start_hil_test_session(
 ):
     """Start HIL test session with precise T0 timing capture - PRD Requirement 3.1"""
     try:
+        # CRITICAL: Validate hardware BEFORE starting any HIL session
+        await validate_hil_hardware_requirements()
+        
         # CRITICAL: Capture T0 timestamp IMMEDIATELY when test start command is received
         # This captures the precise moment the "Start Test" command was initiated
         t0_capture = timing_orchestration_service.capture_t0_command_timestamp(
@@ -167,14 +277,6 @@ async def start_hil_test_session(
             db=None,  # Will store after session creation
             metadata={"command": "start_hil_test", "project_id": session_data.project_id}
         )
-        
-        # Verify LabJack connection before starting
-        labjack_status = await labjack_service.get_connection_status()
-        if not labjack_status.connected:
-            raise HTTPException(
-                status_code=400, 
-                detail="LabJack DAQ device must be connected before starting test"
-            )
         
         # Create test session with T0 command timestamp
         test_start_time = datetime.fromtimestamp(t0_capture.command_timestamp, timezone.utc)
@@ -328,6 +430,13 @@ async def start_video_playback(
 ):
     """Start video playback with precise T1 timing capture - HIL Phase 1 Integration"""
     try:
+        # CRITICAL: Validate hardware connection before video playback
+        try:
+            hil_validation_service.validate_hil_video_playback()
+        except HILValidationError as e:
+            logger.error(f"🚫 HIL video playback validation failed: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+        
         active_session = hil_manager.active_sessions.get(session_id)
         if not active_session:
             raise HTTPException(status_code=404, detail="Active test session not found")
@@ -498,6 +607,13 @@ async def log_precision_timing_event(
 ):
     """Log precision timing event - PRD Requirement 3.2"""
     try:
+        # CRITICAL: Validate hardware connection for timing events
+        try:
+            hil_validation_service.validate_hil_timing_event()
+        except HILValidationError as e:
+            logger.error(f"🚫 HIL timing event validation failed: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+        
         active_session = hil_manager.active_sessions.get(session_id)
         if not active_session:
             raise HTTPException(status_code=404, detail="Active test session not found")
@@ -584,6 +700,49 @@ async def complete_test_session(session_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to complete test session: {e}")
         raise HTTPException(status_code=500, detail="Failed to complete session")
+
+@router.get("/hardware/validation-status", response_model=dict)
+async def get_hil_hardware_validation_status():
+    """Get comprehensive HIL hardware validation status for UI"""
+    try:
+        return hil_validation_service.get_hardware_status_for_ui()
+    except Exception as e:
+        logger.error(f"❌ Failed to get HIL hardware validation status: {e}")
+        return {
+            "connected": False,
+            "status": "❌ Validation Error",
+            "error": str(e),
+            "hardware_icon": "❌",
+            "status_color": "red"
+        }
+
+@router.get("/hardware/diagnostics", response_model=dict)
+async def get_hil_hardware_diagnostics():
+    """Get detailed hardware diagnostics for troubleshooting"""
+    try:
+        return hil_validation_service.get_connection_diagnostics()
+    except Exception as e:
+        logger.error(f"❌ Failed to get HIL hardware diagnostics: {e}")
+        return {
+            "validation_service_status": "error",
+            "error": str(e)
+        }
+
+@router.post("/hardware/clear-validation-cache", response_model=dict)
+async def clear_hardware_validation_cache():
+    """Clear hardware validation cache to force fresh status check"""
+    try:
+        hil_validation_service.clear_validation_cache()
+        return {
+            "success": True,
+            "message": "Hardware validation cache cleared"
+        }
+    except Exception as e:
+        logger.error(f"❌ Failed to clear validation cache: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @router.get("/video/{video_id}/duration-test", response_model=dict)
 async def test_video_duration_resolution(video_id: str, db: Session = Depends(get_db)):

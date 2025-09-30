@@ -133,10 +133,7 @@ export class EnhancedHILService {
       const annotations = await this.loadGroundTruthAnnotations(video.id);
       
       if (annotations.length === 0) {
-        console.warn('⚠️ [EnhancedHILService] No annotations found - will use mock data for testing');
-        // Create mock annotations for testing
-        const mockAnnotations = this.createMockAnnotations(video);
-        annotations.push(...mockAnnotations);
+        throw new Error('No ground truth annotations found for this video. Please process the video through the detection pipeline first.');
       }
       
       // Step 2: Process annotations into VRU tracks
@@ -388,47 +385,6 @@ export class EnhancedHILService {
     }
   }
 
-  private createMockAnnotations(video: VideoFile): GroundTruthAnnotation[] {
-    console.log('🎭 [EnhancedHILService] Creating mock annotations for testing');
-    
-    const mockAnnotations: GroundTruthAnnotation[] = [
-      {
-        id: 'mock_001',
-        video_id: video.id,
-        vru_type: 'pedestrian',
-        frame_number: 75,
-        timestamp: 2.5,
-        bounding_box: { x: 100, y: 150, width: 80, height: 160 },
-        confidence: 0.95,
-        validated: true,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'mock_002', 
-        video_id: video.id,
-        vru_type: 'pedestrian',
-        frame_number: 150,
-        timestamp: 5.0,
-        bounding_box: { x: 200, y: 150, width: 80, height: 160 },
-        confidence: 0.92,
-        validated: true,
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 'mock_003',
-        video_id: video.id,
-        vru_type: 'cyclist',
-        frame_number: 225,
-        timestamp: 7.5,
-        bounding_box: { x: 300, y: 100, width: 100, height: 120 },
-        confidence: 0.88,
-        validated: true,
-        created_at: new Date().toISOString()
-      }
-    ];
-    
-    return mockAnnotations;
-  }
 
   private initializeResults(): void {
     if (!this.currentSession) return;

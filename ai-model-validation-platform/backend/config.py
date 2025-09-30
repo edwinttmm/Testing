@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     cors_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     cors_headers: List[str] = ["*"]
     
-    # File upload settings
-    max_file_size: int = int(os.getenv('AIVALIDATION_MAX_FILE_SIZE', os.getenv('MAX_UPLOAD_SIZE', str(100 * 1024 * 1024))))
+    # File upload settings - UNLIMITED SIZE
+    max_file_size: int = int(os.getenv('AIVALIDATION_MAX_FILE_SIZE', os.getenv('MAX_UPLOAD_SIZE', str(50 * 1024 * 1024 * 1024))))  # 50GB default (effectively unlimited)
     allowed_video_extensions: List[str] = os.getenv('AIVALIDATION_ALLOWED_VIDEO_EXTENSIONS', '.mp4,.avi,.mov,.mkv,.webm').split(',')
     upload_directory: str = os.getenv('AIVALIDATION_UPLOAD_DIRECTORY', os.getenv('UPLOAD_DIRECTORY', 'uploads'))
     
@@ -249,8 +249,9 @@ def validate_environment(settings: Settings) -> None:
             warnings.append("Using HTTP in production - consider HTTPS for security")
     
     # File upload size validation
-    if settings.max_file_size > 1000 * 1024 * 1024:  # 1GB
-        warnings.append(f"Very large max file size ({settings.max_file_size / 1024 / 1024:.1f}MB) may cause memory issues")
+    # Removed file size warning for unlimited uploads
+    # if settings.max_file_size > 1000 * 1024 * 1024:  # 1GB
+    #     warnings.append(f"Very large max file size ({settings.max_file_size / 1024 / 1024:.1f}MB) may cause memory issues")
     
     # Log errors (these are critical)
     for error in errors:

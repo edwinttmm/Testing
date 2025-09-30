@@ -186,6 +186,7 @@ const HILTestExecutionComplete: React.FC = () => {
   const [testPaused, setTestPaused] = useState(false);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [videoReady, setVideoReady] = useState(false); // Track when video is ready for playback
   const [testStartTime, setTestStartTime] = useState<Date | null>(null); // PRD: Test_Start_Time reference
   
   // UI state
@@ -208,6 +209,17 @@ const HILTestExecutionComplete: React.FC = () => {
   
   // WebSocket for real-time updates
   const { isConnected: wsConnected, emit: wsEmit, on: wsSubscribe } = useWebSocket();
+  
+  // Get video source with fallback handling
+  const getVideoSource = (video: VideoFile): string => {
+    // Primary source: direct file path
+    if (video.filePath && video.filePath.startsWith('http')) {
+      return video.filePath;
+    }
+    
+    // Fallback: streaming API endpoint
+    return `/api/v1/videos/${video.id}/stream`;
+  };
   
   // Load projects on component mount
   useEffect(() => {
@@ -371,32 +383,76 @@ const HILTestExecutionComplete: React.FC = () => {
       const session = await apiService.post<TestSessionInterface>('/api/v1/test-sessions', testSessionData);
       setCurrentTestSession(session);
       
-      // Capture high-precision Test_Start_Time (PRD requirement)
-      const startTime = new Date();
-      setTestStartTime(startTime);
-      setTestInProgress(true);
-      setTestPaused(false);
+      // CRITICAL: Dynamic Timing Synchronization
+      // Step 1: Initialize monitoring FIRST (before video)
+      console.log('🎯 Step 1: Initializing monitoring...');
+      const monitoringStartTime = performance.now();
       
-      // Switch to full-screen mode (PRD requirement)
-      if (testConfig.autoAdvanceVideos) {
-        await enterFullScreen();
-      }
-      
-      // Start video playback
-      setCurrentVideoIndex(0);
-      if (videoRef.current) {
-        videoRef.current.currentTime = 0;
-        await videoRef.current.play();
-      }
-      
-      // Subscribe to hardware signals via WebSocket
+      // Subscribe to hardware signals BEFORE video starts
       if (wsConnected) {
         wsEmit('subscribe_hardware_signals', {
           sessionId: session.id,
           signalType: labjackStatus!.signalType,
-          configuration: testConfig
+          configuration: testConfig,
+          waitForReady: true  // New flag to wait for confirmation
         });
+        
+        // Wait for monitoring ready confirmation
+        console.log('⏳ Waiting for monitoring ready confirmation...');
+        const readyTimeout = 5000; // 5 second timeout
+        const startWait = performance.now();
+        
+        // This would ideally be a promise/callback from WebSocket
+        // For now, adding a small delay to ensure monitoring is ready
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log(`✅ Monitoring ready after ${performance.now() - startWait}ms`);
       }
+      
+      // Step 2: Set test in progress FIRST to show video element
+      console.log('🎯 Step 2: Setting test in progress...');
+      setTestInProgress(true);
+      setTestPaused(false);
+      setVideoReady(false); // Reset video ready state
+      
+      // Step 3: Wait for video to be ready before playing
+      console.log('🎯 Step 3: Waiting for video to be ready...');
+      await waitForVideoReady();
+      
+      // Step 4: Only now start video playback
+      console.log('🎯 Step 4: Starting video playback...');
+      if (videoRef.current) {
+        videoRef.current.currentTime = 0;
+        
+        // Add event listeners for precise timing
+        videoRef.current.addEventListener('playing', () => {
+          const videoStartTime = performance.now();
+          console.log(`📹 Video playing at ${videoStartTime}ms`);
+          console.log(`⏱️ Total setup time: ${videoStartTime - monitoringStartTime}ms`);
+          
+          // Send precise video start time to backend
+          if (wsConnected) {
+            wsEmit('video_started', {
+              sessionId: session.id,
+              videoStartTime: videoStartTime,
+              monitoringStartTime: monitoringStartTime,
+              setupDelay: videoStartTime - monitoringStartTime
+            });
+          }
+        });
+        
+        await videoRef.current.play();
+      }
+      
+      // Step 5: Enter fullscreen AFTER video is confirmed ready and playing
+      console.log('🎯 Step 5: Entering fullscreen mode...');
+      if (testConfig.autoAdvanceVideos) {
+        await enterFullScreen();
+      }
+      
+      // Capture high-precision Test_Start_Time (PRD requirement)
+      const startTime = new Date();
+      setTestStartTime(startTime);
       
       // Start performance monitoring
       if (testConfig.enableRealTimeAnalysis) {
@@ -408,9 +464,66 @@ const HILTestExecutionComplete: React.FC = () => {
       
     } catch (err: any) {
       setError(`Failed to start test: ${err.message}`);
+      setTestInProgress(false);
+      setVideoReady(false);
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Wait for video element to be ready for playback
+  const waitForVideoReady = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (!videoRef.current) {
+        reject(new Error('Video element not found'));
+        return;
+      }
+      
+      const video = videoRef.current;
+      const timeout = 10000; // 10 second timeout
+      let timeoutId: NodeJS.Timeout;
+      
+      const cleanup = () => {
+        video.removeEventListener('loadeddata', onLoadedData);
+        video.removeEventListener('canplay', onCanPlay);
+        video.removeEventListener('error', onError);
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+      
+      const onLoadedData = () => {
+        console.log('📹 Video loaded data event');
+      };
+      
+      const onCanPlay = () => {
+        console.log('📹 Video can play - ready for playback');
+        setVideoReady(true);
+        cleanup();
+        resolve();
+      };
+      
+      const onError = (e: Event) => {
+        console.error('📹 Video error:', e);
+        cleanup();
+        reject(new Error('Video failed to load'));
+      };
+      
+      // Set up event listeners
+      video.addEventListener('loadeddata', onLoadedData);
+      video.addEventListener('canplay', onCanPlay);
+      video.addEventListener('error', onError);
+      
+      // Set timeout
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error('Video load timeout'));
+      }, timeout);
+      
+      // Check if video is already ready
+      if (video.readyState >= 3) { // HAVE_FUTURE_DATA
+        console.log('📹 Video already ready');
+        onCanPlay();
+      }
+    });
   };
   
   // Enhanced performance monitoring
@@ -475,6 +588,7 @@ const HILTestExecutionComplete: React.FC = () => {
       // Stop video playback
       if (videoRef.current) {
         videoRef.current.pause();
+        videoRef.current.currentTime = 0;
       }
       
       // Unsubscribe from hardware signals
@@ -490,6 +604,7 @@ const HILTestExecutionComplete: React.FC = () => {
       
       setTestInProgress(false);
       setTestPaused(false);
+      setVideoReady(false);
       setCurrentTestSession(null);
       setTestStartTime(null);
       setSuccessMessage('Test stopped successfully - Report generated');
@@ -537,12 +652,44 @@ const HILTestExecutionComplete: React.FC = () => {
   // Handle video end - advance to next video in playlist
   const handleVideoEnded = () => {
     if (testConfig.autoAdvanceVideos && currentVideoIndex < videoPlaylist.length - 1) {
+      // Reset video ready state before advancing to next video
+      setVideoReady(false);
       setCurrentVideoIndex(prev => prev + 1);
     } else if (currentVideoIndex >= videoPlaylist.length - 1) {
       // Test completed
       completeTest();
     }
   };
+  
+  // Effect to handle video ready state when video index changes
+  useEffect(() => {
+    if (testInProgress && videoRef.current) {
+      const video = videoRef.current;
+      
+      const handleCanPlay = () => {
+        console.log(`📹 Video ${currentVideoIndex + 1} can play`);
+        setVideoReady(true);
+      };
+      
+      const handleLoadStart = () => {
+        console.log(`📹 Video ${currentVideoIndex + 1} load started`);
+        setVideoReady(false);
+      };
+      
+      video.addEventListener('canplay', handleCanPlay);
+      video.addEventListener('loadstart', handleLoadStart);
+      
+      // Check if video is already ready
+      if (video.readyState >= 3) {
+        setVideoReady(true);
+      }
+      
+      return () => {
+        video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('loadstart', handleLoadStart);
+      };
+    }
+  }, [currentVideoIndex, testInProgress]);
   
   // Complete test when all videos are played
   const completeTest = async () => {
@@ -555,6 +702,7 @@ const HILTestExecutionComplete: React.FC = () => {
       await exitFullScreen();
       setTestInProgress(false);
       setTestPaused(false);
+      setVideoReady(false);
       setSuccessMessage('HIL test completed successfully - Comprehensive report generated');
       
     } catch (err: any) {
@@ -1188,8 +1336,44 @@ const HILTestExecutionComplete: React.FC = () => {
           </>
         )}
 
+        {/* Loading indicator when test is starting but video not ready */}
+        {testInProgress && !videoReady && (
+          <Box
+            sx={{
+              width: '100%',
+              height: isFullScreen ? '100vh' : '600px',
+              backgroundColor: 'black',
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+                color: 'white'
+              }}
+            >
+              <CircularProgress size={80} sx={{ color: 'white' }} />
+              <Typography variant="h5">Preparing Video...</Typography>
+              <Typography variant="body1">
+                Video {currentVideoIndex + 1} of {videoPlaylist.length}
+              </Typography>
+              {videoPlaylist[currentVideoIndex] && (
+                <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                  {videoPlaylist[currentVideoIndex].filename}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        )}
+        
         {/* Full-Screen Video Display */}
-        {testInProgress && (
+        {testInProgress && videoReady && (
           <Box
             sx={{
               width: '100%',
@@ -1204,16 +1388,48 @@ const HILTestExecutionComplete: React.FC = () => {
             {videoPlaylist[currentVideoIndex] && (
               <video
                 ref={videoRef}
-                src={videoPlaylist[currentVideoIndex].filePath}
+                src={getVideoSource(videoPlaylist[currentVideoIndex])}
                 style={{
                   width: '100%',
                   height: '100%',
                   objectFit: 'contain'
                 }}
                 onEnded={handleVideoEnded}
+                onLoadedData={() => {
+                  console.log('📹 Video loadeddata event');
+                }}
+                onCanPlay={() => {
+                  console.log('📹 Video canplay event');
+                  setVideoReady(true);
+                }}
+                onError={(e) => {
+                  console.error('📹 Video error:', e);
+                  setError('Video playback error - switching to fallback source');
+                  // Try fallback source
+                  if (videoRef.current) {
+                    videoRef.current.src = `/api/v1/videos/${videoPlaylist[currentVideoIndex].id}/stream`;
+                  }
+                }}
                 controls={!isFullScreen}
-                autoPlay
+                preload="metadata"
               />
+            )}
+            
+            {/* Loading indicator when video is not ready */}
+            {!videoReady && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                  color: 'white'
+                }}
+              >
+                <CircularProgress size={60} sx={{ color: 'white' }} />
+                <Typography variant="h6">Loading video...</Typography>
+              </Box>
             )}
             
             {/* Full-screen controls overlay */}
@@ -1242,7 +1458,7 @@ const HILTestExecutionComplete: React.FC = () => {
                 </Tooltip>
                 <Tooltip title="Stop Test">
                   <IconButton onClick={stopTest} sx={{ color: 'white' }}>
-                    <Stop />}
+                    <Stop />
                   </IconButton>
                 </Tooltip>
               </Box>

@@ -11,14 +11,13 @@ export interface DetectionConfig {
   targetClasses: string[];
   maxRetries?: number;
   retryDelay?: number;
-  useFallback?: boolean;
 }
 
 export interface DetectionResult {
   success: boolean;
   detections: GroundTruthAnnotation[];
   error?: string;
-  source: 'backend' | 'fallback';
+  source: 'backend';
   processingTime: number;
 }
 
@@ -51,39 +50,18 @@ class DetectionService {
     this.isProcessing.set(videoId, true);
     
     try {
-      // Try backend detection with extended timeout for heavy processing (YOLOv8 can take 70+ seconds)
-      const backendPromise = this.runBackendDetection(videoId, config);
-      const timeoutPromise = new Promise<DetectionResult>((_, reject) => 
-        setTimeout(() => reject(new Error('Detection timeout - video processing taking too long')), 130000) // 130 seconds to handle real YOLOv8 processing
-      );
-      
-      try {
-        const result = await Promise.race([backendPromise, timeoutPromise]);
-        if (result.success) {
-          if (isDebugEnabled()) {
-            console.log('✅ Detection completed successfully:', result.detections.length, 'detections found');
-          }
-          return {
-            ...result,
-            processingTime: Date.now() - startTime
-          };
+      // Run backend detection and let it take as long as needed; no hard client timeout
+      const result = await this.runBackendDetection(videoId, config);
+      if (result.success) {
+        if (isDebugEnabled()) {
+          console.log('✅ Detection completed successfully:', result.detections.length, 'detections found');
         }
-        throw new Error(result.error || 'Detection failed');
-      } catch (backendError: unknown) {
-        const errorMessage = backendError instanceof Error ? backendError.message : String(backendError);
-        console.warn('Backend detection failed:', errorMessage);
-        
-        // Try fallback detection if enabled and retries remain
-        if (config.useFallback && this.retryCount.get(videoId) === undefined) {
-          this.retryCount.set(videoId, 1);
-          if (isDebugEnabled()) {
-            console.log('🔄 Attempting fallback detection...');
-          }
-          return await this.runFallbackDetection(videoId, config);
-        }
-        
-        throw backendError;
+        return {
+          ...result,
+          processingTime: Date.now() - startTime
+        };
       }
+      throw new Error(result.error || 'Detection failed');
       
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -94,9 +72,7 @@ class DetectionService {
       
       // Return user-friendly error message
       let userFriendlyError = 'Detection service is currently unavailable.';
-      if (errorMessage.includes('timeout')) {
-        userFriendlyError = 'Detection is taking longer than expected. Please try with a shorter video.';
-      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+      if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
         userFriendlyError = 'Network connection issue. Please check your internet connection.';
       } else if (errorMessage.includes('400')) {
         userFriendlyError = 'Invalid video format or corrupted file. Please try another video.';
@@ -122,51 +98,123 @@ class DetectionService {
     videoId: string,
     config: DetectionConfig
   ): Promise<DetectionResult> {
+    const startTime = Date.now();
+    let pollCount = 0;
     try {
       if (isDebugEnabled()) {
-        console.log('🔍 Running backend detection pipeline (real YOLOv8 AI - may take up to 70+ seconds)...', { videoId, config });
+        console.log('🔍 Running ground truth generation (real YOLO AI - may take up to 70+ seconds)...', { videoId, config });
       }
       
       // CRITICAL DEBUG: Always log this regardless of debug mode
       console.log('🚨 DETECTION SERVICE CALLED:', { videoId, config, timestamp: new Date().toISOString() });
       
-      const response = await apiService.runDetectionPipeline(videoId, {
-        confidenceThreshold: config.confidenceThreshold,
-        nmsThreshold: config.nmsThreshold,
-        modelName: config.modelName,
-        targetClasses: config.targetClasses
-      });
+      // Step 1: Check if ground truth data already exists (treat 404 as no data)
+      console.log('📡 Checking for existing ground truth data for video:', videoId);
+      let response: any = await apiService.getGroundTruth(videoId);
+      const hasObjects = Array.isArray(response?.objects) && response.objects.length > 0;
+
+      // Step 2: If no existing data, trigger ground truth processing (YOLO detection)
+      if (!hasObjects) {
+        console.log('📡 No existing data found, triggering ground truth processing for video:', videoId);
+        try {
+          const processResponse = await apiService.cachedRequest('POST', `/api/videos/${videoId}/process-ground-truth`);
+          console.log('📡 Ground truth processing started:', processResponse);
+
+          // Poll for results up to 120s with steady backoff
+          const maxWaitMs = 120_000; // 120 seconds
+          const startPoll = Date.now();
+          let intervalMs = 1500;
+          while (Date.now() - startPoll < maxWaitMs) {
+            await new Promise(resolve => setTimeout(resolve, intervalMs));
+            try {
+              response = await apiService.getGroundTruth(videoId);
+            } catch (_) {
+              // Treat transient errors as retry conditions
+              response = { status: 'retry', objects: [] } as any;
+            }
+            const rawStatus = String((response as any)?.status || '').toLowerCase();
+            const status = rawStatus.startsWith('processing') ? 'processing' : rawStatus;
+            const ready = Array.isArray((response as any)?.objects) && (response as any).objects.length > 0;
+            pollCount += 1;
+            if (isDebugEnabled()) {
+              console.log('🧪 GT Poll', {
+                attempt: pollCount,
+                elapsedMs: Date.now() - startPoll,
+                status,
+                objects: Array.isArray((response as any)?.objects) ? (response as any).objects.length : 'NA',
+              });
+            }
+            if (ready) {
+              break;
+            }
+            if (status === 'failed' || status === 'timeout' || status === 'error') {
+              // Terminal error state
+              break;
+            }
+            // Exponential-ish backoff capped at 5s
+            intervalMs = Math.min(intervalMs + 1000, 5000);
+          }
+        } catch (processError) {
+          console.warn('⚠️ Ground truth processing failed (YOLO may not be available):', processError);
+          throw new Error('Ground truth processing is not available. YOLO dependencies may not be installed.');
+        }
+      }
       
       // CRITICAL DEBUG: Always log API response
-      console.log('🚨 API RESPONSE RECEIVED:', { 
+      const groundTruthData = response;
+      console.log('🚨 GROUND TRUTH API RESPONSE RECEIVED:', { 
         response, 
         responseType: typeof response,
         responseKeys: response ? Object.keys(response) : 'null',
-        detectionsRaw: response?.detections,
-        detectionsType: typeof response?.detections,
-        detectionsLength: response?.detections?.length,
+        groundTruthData,
+        groundTruthType: typeof groundTruthData,
+        objectsRaw: groundTruthData?.objects,
+        objectsType: typeof groundTruthData?.objects,
+        objectsLength: groundTruthData?.objects?.length,
         timestamp: new Date().toISOString() 
       });
       
       if (isDebugEnabled()) {
-        console.log('📡 Backend detection response:', response);
+        console.log('📡 Ground truth response:', groundTruthData);
       }
       
-      if (!response) {
-        throw new Error('No response received from detection pipeline');
+      if (!groundTruthData) {
+        throw new Error('No ground truth data received from API');
       }
       
-      // Handle different response formats  
-      let detections: unknown[] = response.detections || [];
+      // If still not ready and no objects, surface a clear message instead of returning success with 0
+      let status = ((groundTruthData?.status as string) || 'unknown').toLowerCase();
+      // Normalize legacy/variant statuses
+      if (status.startsWith('processing')) status = 'processing';
+      const objects = Array.isArray(groundTruthData?.objects) ? groundTruthData.objects : [];
+      if (!objects.length) {
+        if (status === 'pending' || status === 'processing' || status === 'retry') {
+          throw new Error('Ground truth is still processing. Please try again in a moment.');
+        }
+        if (status === 'failed' || status === 'timeout' || status === 'error') {
+          throw new Error('Ground truth processing failed. YOLO may not be available or an error occurred.');
+        }
+      }
+
+      // Handle ground truth response format (backend returns objects)
+      let detections: unknown[] = objects;
+      if (isDebugEnabled()) {
+        console.log('🧪 GT Final Check', {
+          polledAttempts: pollCount,
+          objectsCount: Array.isArray(objects) ? objects.length : 'NA',
+          totalElapsedMs: Date.now() - startTime,
+        });
+      }
       
       if (isDebugEnabled()) {
-        console.log('🔍 Raw backend detection response:', {
+        console.log('🔍 Raw ground truth response:', {
           responseType: typeof response,
           responseKeys: Object.keys(response),
+          groundTruthDataKeys: groundTruthData ? Object.keys(groundTruthData) : 'null',
           detectionsType: typeof detections,
           detectionsIsArray: Array.isArray(detections),
           detectionsLength: Array.isArray(detections) ? detections.length : 'N/A',
-          rawResponse: response,
+          rawResponse: groundTruthData,
           firstDetection: Array.isArray(detections) && detections.length > 0 ? detections[0] : null
         });
       }
@@ -189,13 +237,13 @@ class DetectionService {
       }
       
       if (isDebugEnabled()) {
-        console.log('🔍 Pre-filtering detection data:', {
-          totalDetections: detections.length,
-          sampleDetections: detections.slice(0, 2).map((det, index) => ({
-            index,
-            type: typeof det,
-            keys: isObject(det) ? Object.keys(det) : 'N/A',
-            hasClassValue: isObject(det) ? (det.class_name || det.className || det.label || det.class || 'MISSING') : 'N/A',
+          console.log('🔍 Pre-filtering detection data:', {
+            totalDetections: detections.length,
+            sampleDetections: detections.slice(0, 2).map((det, index) => ({
+              index,
+              type: typeof det,
+              keys: isObject(det) ? Object.keys(det) : 'N/A',
+            hasClassValue: isObject(det) ? (det.class_label || (det as any).classLabel || det.class_name || det.className || (det as any).vruType || (det as any).vru_type || det.label || det.class || 'MISSING') : 'N/A',
             hasConfidenceValue: isObject(det) ? det.confidence : 'N/A',
             hasBboxValue: isObject(det) ? (det.bbox || det.boundingBox || 'MISSING') : 'N/A',
             raw: det
@@ -229,7 +277,15 @@ class DetectionService {
           detectionKeys: isObject(detections[0]) ? Object.keys(detections[0]) : 'Not an object',
           hasConfidence: isObject(detections[0]) ? 'confidence' in detections[0] : false,
           hasBbox: isObject(detections[0]) ? ('bbox' in detections[0] || 'boundingBox' in detections[0]) : false,
-          hasClass: isObject(detections[0]) ? ('class_name' in detections[0] || 'className' in detections[0] || 'label' in detections[0]) : false
+          hasClass: isObject(detections[0]) ? (
+            'class_label' in (detections[0] as any) ||
+            'classLabel' in (detections[0] as any) ||
+            'class_name' in (detections[0] as any) ||
+            'className' in (detections[0] as any) ||
+            'vruType' in (detections[0] as any) ||
+            'vru_type' in (detections[0] as any) ||
+            'label' in (detections[0] as any)
+          ) : false
         });
       }
       
@@ -256,7 +312,7 @@ class DetectionService {
         success: true,
         detections: annotations,
         source: 'backend' as const,
-        processingTime: response.processingTime || 0
+        processingTime: Date.now() - startTime  // Calculate processing time from start
       };
       
       // CRITICAL DEBUG: Always log final result
@@ -296,80 +352,6 @@ class DetectionService {
     }
   }
   
-  private async runFallbackDetection(
-    videoId: string,
-    config: DetectionConfig
-  ): Promise<DetectionResult> {
-    const startTime = Date.now();
-    
-    if (isDebugEnabled()) {
-      console.log('🚧 Running fallback detection (mock data) - this is NOT real AI detection...');
-    }
-    
-    // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Generate mock detections for demonstration
-    const mockDetections: GroundTruthAnnotation[] = [
-      {
-        id: `mock-${Date.now()}-1`,
-        videoId,
-        detectionId: `DET_PED_0001`,
-        frameNumber: 30,
-        timestamp: 1.0,
-        vruType: VRUType.PEDESTRIAN,
-        boundingBox: {
-          x: 320,
-          y: 240,
-          width: 80,
-          height: 160,
-          label: 'pedestrian',
-          confidence: 0.85
-        },
-        occluded: false,
-        truncated: false,
-        difficult: false,
-        validationStatus: 'pending',
-        validated: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      },
-      {
-        id: `mock-${Date.now()}-2`,
-        videoId,
-        detectionId: `DET_CYC_0001`,
-        frameNumber: 45,
-        timestamp: 1.5,
-        vruType: VRUType.CYCLIST,
-        boundingBox: {
-          x: 200,
-          y: 180,
-          width: 120,
-          height: 180,
-          label: 'cyclist',
-          confidence: 0.92
-        },
-        occluded: false,
-        truncated: false,
-        difficult: false,
-        validationStatus: 'pending',
-        validated: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    ];
-    
-    if (isDebugEnabled()) {
-      console.log('✅ Fallback detection completed with mock data:', mockDetections.length, 'detections');
-    }
-    
-    return {
-      success: true,
-      detections: mockDetections,
-      source: 'fallback',
-      processingTime: Date.now() - startTime
-    };
-  }
   
   
   
@@ -387,7 +369,15 @@ class DetectionService {
       }
       
       // Handle backend response format with class_name and bbox array
-      const className = safeGet(det, 'class_name', safeGet(det, 'class', safeGet(det, 'label', safeGet(det, 'name', 'person')))) as string;
+      // Ground truth objects use 'class_label' field (new) or 'vru_type' field (old)
+      const className = safeGet(det, 'class_label',
+                        safeGet(det, 'classLabel',
+                        safeGet(det, 'vru_type', 
+                        safeGet(det, 'vruType',
+                        safeGet(det, 'class_name', 
+                        safeGet(det, 'class', 
+                        safeGet(det, 'label', 
+                        safeGet(det, 'name', 'person')))))))) as string;
       // Prefer standard keys: bbox (array) or bounding_box/boundingBox (object)
       const bboxSource = (safeGet(det, 'bbox', undefined) as unknown) ??
                          (safeGet(det, 'bounding_box', undefined) as unknown) ??
@@ -467,7 +457,7 @@ class DetectionService {
         id: safeGet(det, 'id', `det-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`) as string,
         videoId,
         detectionId: safeGet(det, 'detectionId', safeGet(det, 'id', '')) as string,
-        frameNumber: safeGet(det, 'frame_number', safeGet(det, 'frame', safeGet(det, 'frameNumber', 0))) as number,
+        frameNumber: safeGet(det, 'frame_number', safeGet(det, 'frame', safeGet(det, 'frameNumber', Math.floor((safeGet(det, 'timestamp', 0) as number) * 30)))) as number,
         timestamp: safeGet(det, 'timestamp', 0) as number,
         vruType: mapYoloClassToVRUType(className) as VRUType,
         boundingBox: {

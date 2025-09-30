@@ -228,19 +228,20 @@ class EnhancedYOLOEngine:
     def _get_default_model_path(self) -> str:
         """Get default model path with fallback options"""
         possible_paths = [
-            '/home/user/Testing/ai-model-validation-platform/backend/yolo11l.pt',
-            '/home/user/Testing/ai-model-validation-platform/backend/yolov8n.pt',
-            'yolov8n.pt',  # Download automatically
-            'yolov8s.pt',
-            'yolo11n.pt'
+            '/home/rigade/Testing/ai-model-validation-platform/backend/yolo11l.pt',  # Large model - BEST accuracy
+            '/home/rigade/Testing/ai-model-validation-platform/backend/yolov8n.pt',  # Nano model - fallback
+            'yolo11l.pt',  # Try to download large model if local not found
+            'yolov8n.pt',  # Download nano as last resort
         ]
         
         for path in possible_paths:
             if os.path.exists(path):
+                logger.info(f"Using YOLO model: {path}")
                 return path
         
-        # Default to auto-download
-        return 'yolov8n.pt'
+        # Default to auto-download large model for better accuracy
+        logger.warning("No local models found, downloading yolo11l.pt for best accuracy")
+        return 'yolo11l.pt'
     
     async def initialize(self) -> bool:
         """Initialize YOLO model with error handling and performance optimization"""

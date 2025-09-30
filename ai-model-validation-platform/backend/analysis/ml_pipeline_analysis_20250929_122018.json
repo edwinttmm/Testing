@@ -1,0 +1,649 @@
+{
+  "timestamp": "2025-09-29T11:20:15.826456+00:00",
+  "system_info": {
+    "cpu_count": 8,
+    "memory_total": 8206381056,
+    "memory_available": 2989486080,
+    "disk_usage": 3.9,
+    "python_version": "3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]",
+    "opencv_available": {
+      "available": true,
+      "version": "4.12.0",
+      "build_info": "\nGeneral configuration for OpenCV 4.12.0 =====================================\n  Version control:               4.12.0\n\n  Platform:\n    Timestamp:                   2025-07-04T16:39:24Z\n    Host:                        Linux 6.8.0-1029-azure x86_64\n    CMake:                       4.0.2\n    CMake generator:             Unix Makefiles\n    CMake build tool:            /bin/gmake\n    Configuration:               Release\n    Algorithm Hint:              ALGO_HINT_ACCURATE\n\n  CPU/HW features:\n    Bas..."
+    },
+    "torch_available": {
+      "available": false,
+      "error": "No module named 'torch'"
+    },
+    "ultralytics_available": {
+      "available": false,
+      "error": "No module named 'ultralytics'"
+    },
+    "gpu_info": {
+      "error": "No module named 'torch'"
+    }
+  },
+  "tests": {
+    "yolo_integration": {
+      "test_name": "YOLO Model Integration",
+      "status": "failed",
+      "details": {
+        "ground_truth_service": {
+          "ml_available": false,
+          "model_loaded": false,
+          "model_version": null,
+          "model_path": null
+        },
+        "bulletproof_yolo": {
+          "initialized": false,
+          "model_version": "yolo11l",
+          "has_model": false
+        },
+        "model_files": {
+          "/home/rigade/Testing/ai-model-validation-platform/backend/yolo11l.pt": {
+            "exists": true,
+            "size_mb": 49.006789207458496
+          },
+          "/home/rigade/Testing/ai-model-validation-platform/backend/yolov8n.pt": {
+            "exists": true,
+            "size_mb": 6.246372222900391
+          },
+          "yolo11l.pt": {
+            "exists": true,
+            "size_mb": 49.006789207458496
+          },
+          "yolov8n.pt": {
+            "exists": true,
+            "size_mb": 6.246372222900391
+          }
+        },
+        "auto_download": {
+          "success": false,
+          "error": "No module named 'ultralytics'"
+        }
+      },
+      "issues": [
+        "Ground Truth Service: Model not loaded",
+        "Ground Truth Service: ML dependencies not available",
+        "Bulletproof YOLO: Initialization failed",
+        "Model auto-download failed: No module named 'ultralytics'"
+      ],
+      "performance": {}
+    },
+    "detection_pipeline": {
+      "test_name": "Detection Pipeline",
+      "status": "passed",
+      "details": {
+        "test_video": {
+          "path": "/home/rigade/Testing/ai-model-validation-platform/backend/uploads/test_video.mp4",
+          "size_mb": 7.055670738220215,
+          "exists": true
+        }
+      },
+      "issues": [],
+      "workflow_steps": {
+        "video_metadata": {
+          "fps": 30.0,
+          "frame_count": 90,
+          "resolution": "640x480",
+          "duration": 3.0
+        },
+        "frame_extraction": {
+          "frames_extracted": 10,
+          "avg_processing_time": 0.0027432918548583986,
+          "total_time": 0.027432918548583984
+        },
+        "detection_extraction": {
+          "num_detections": 0,
+          "processing_time": 0.00018334388732910156,
+          "avg_time_per_detection": 0.00018334388732910156
+        }
+      }
+    },
+    "model_performance": {
+      "test_name": "Model Performance",
+      "status": "passed",
+      "details": {
+        "threshold_analysis": {
+          "0.1": {
+            "threshold": 0.1,
+            "error": "No module named 'ultralytics'"
+          },
+          "0.3": {
+            "threshold": 0.3,
+            "error": "No module named 'ultralytics'"
+          },
+          "0.5": {
+            "threshold": 0.5,
+            "error": "No module named 'ultralytics'"
+          },
+          "0.7": {
+            "threshold": 0.7,
+            "error": "No module named 'ultralytics'"
+          },
+          "0.9": {
+            "threshold": 0.9,
+            "error": "No module named 'ultralytics'"
+          }
+        },
+        "accuracy_test": {
+          "error": "No module named 'ultralytics'"
+        },
+        "speed_test": {
+          "error": "No module named 'ultralytics'"
+        },
+        "memory_test": {
+          "error": "No module named 'torch'"
+        }
+      },
+      "issues": [],
+      "metrics": {}
+    },
+    "image_processing": {
+      "test_name": "Image Processing",
+      "status": "failed",
+      "details": {},
+      "issues": [
+        "Format handling for <class 'numpy.float64'> failed: OpenCV(4.12.0) /io/opencv/modules/imgproc/src/color.simd_helpers.hpp:94: error: (-2:Unspecified error) in function 'cv::impl::{anonymous}::CvtHelper<VScn, VDcn, VDepth, sizePolicy>::CvtHelper(cv::InputArray, cv::OutputArray, int) [with VScn = cv::impl::{anonymous}::Set<3, 4>; VDcn = cv::impl::{anonymous}::Set<1>; VDepth = cv::impl::{anonymous}::Set<0, 2, 5>; cv::impl::{anonymous}::SizePolicy sizePolicy = cv::impl::<unnamed>::NONE; cv::InputArray = const cv::_InputArray&; cv::OutputArray = const cv::_OutputArray&]'\n> Unsupported depth of input image:\n>     'VDepth::contains(depth)'\n> where\n>     'depth' is 6 (CV_64F)\n"
+      ],
+      "operations": {
+        "image_loading": {
+          "jpg": {
+            "save_success": true,
+            "load_success": true,
+            "shape_preserved": true
+          },
+          "png": {
+            "save_success": true,
+            "load_success": true,
+            "shape_preserved": true
+          },
+          "bmp": {
+            "save_success": true,
+            "load_success": true,
+            "shape_preserved": true
+          }
+        },
+        "preprocessing": {
+          "color_conversion": {
+            "bgr_to_gray": true,
+            "bgr_to_rgb": true
+          },
+          "normalization": {
+            "success": true,
+            "range_valid": "True"
+          },
+          "histogram_equalization": {
+            "success": true,
+            "shape_preserved": true
+          }
+        },
+        "resize": {
+          "INTER_LINEAR": {
+            "320x240": {
+              "success": true,
+              "output_shape": [
+                240,
+                320,
+                3
+              ],
+              "resize_time": 0.0016331672668457031
+            },
+            "640x480": {
+              "success": true,
+              "output_shape": [
+                480,
+                640,
+                3
+              ],
+              "resize_time": 0.00011992454528808594
+            },
+            "1280x720": {
+              "success": true,
+              "output_shape": [
+                720,
+                1280,
+                3
+              ],
+              "resize_time": 0.0009732246398925781
+            }
+          },
+          "INTER_CUBIC": {
+            "320x240": {
+              "success": true,
+              "output_shape": [
+                240,
+                320,
+                3
+              ],
+              "resize_time": 0.008241891860961914
+            },
+            "640x480": {
+              "success": true,
+              "output_shape": [
+                480,
+                640,
+                3
+              ],
+              "resize_time": 0.00013017654418945312
+            },
+            "1280x720": {
+              "success": true,
+              "output_shape": [
+                720,
+                1280,
+                3
+              ],
+              "resize_time": 0.0014138221740722656
+            }
+          },
+          "INTER_NEAREST": {
+            "320x240": {
+              "success": true,
+              "output_shape": [
+                240,
+                320,
+                3
+              ],
+              "resize_time": 0.0003380775451660156
+            },
+            "640x480": {
+              "success": true,
+              "output_shape": [
+                480,
+                640,
+                3
+              ],
+              "resize_time": 8.416175842285156e-05
+            },
+            "1280x720": {
+              "success": true,
+              "output_shape": [
+                720,
+                1280,
+                3
+              ],
+              "resize_time": 0.0006008148193359375
+            }
+          }
+        },
+        "format_handling": {
+          "<class 'numpy.uint8'>": {
+            "grayscale_conversion": true,
+            "resize_operation": true,
+            "output_dtype": "uint8"
+          },
+          "<class 'numpy.uint16'>": {
+            "grayscale_conversion": true,
+            "resize_operation": true,
+            "output_dtype": "uint16"
+          },
+          "<class 'numpy.float32'>": {
+            "grayscale_conversion": true,
+            "resize_operation": true,
+            "output_dtype": "float32"
+          },
+          "<class 'numpy.float64'>": {
+            "error": "OpenCV(4.12.0) /io/opencv/modules/imgproc/src/color.simd_helpers.hpp:94: error: (-2:Unspecified error) in function 'cv::impl::{anonymous}::CvtHelper<VScn, VDcn, VDepth, sizePolicy>::CvtHelper(cv::InputArray, cv::OutputArray, int) [with VScn = cv::impl::{anonymous}::Set<3, 4>; VDcn = cv::impl::{anonymous}::Set<1>; VDepth = cv::impl::{anonymous}::Set<0, 2, 5>; cv::impl::{anonymous}::SizePolicy sizePolicy = cv::impl::<unnamed>::NONE; cv::InputArray = const cv::_InputArray&; cv::OutputArray = const cv::_OutputArray&]'\n> Unsupported depth of input image:\n>     'VDepth::contains(depth)'\n> where\n>     'depth' is 6 (CV_64F)\n"
+          }
+        }
+      }
+    },
+    "bounding_box_processing": {
+      "test_name": "Bounding Box Processing",
+      "status": "passed",
+      "details": {},
+      "issues": [],
+      "validations": {
+        "coordinate_systems": {
+          "case_0": {
+            "original": {
+              "x1": 100,
+              "y1": 50,
+              "x2": 200,
+              "y2": 150,
+              "frame_w": 640,
+              "frame_h": 480
+            },
+            "xywh": {
+              "x": 100,
+              "y": 50,
+              "w": 100,
+              "h": 100
+            },
+            "normalized": {
+              "x": 0.15625,
+              "y": 0.10416666666666667,
+              "w": 0.15625,
+              "h": 0.20833333333333334
+            },
+            "denormalized": {
+              "x": 100.0,
+              "y": 50.0,
+              "w": 100.0,
+              "h": 100.0
+            },
+            "conversion_accuracy": true
+          },
+          "case_1": {
+            "original": {
+              "x1": 0,
+              "y1": 0,
+              "x2": 640,
+              "y2": 480,
+              "frame_w": 640,
+              "frame_h": 480
+            },
+            "xywh": {
+              "x": 0,
+              "y": 0,
+              "w": 640,
+              "h": 480
+            },
+            "normalized": {
+              "x": 0.0,
+              "y": 0.0,
+              "w": 1.0,
+              "h": 1.0
+            },
+            "denormalized": {
+              "x": 0.0,
+              "y": 0.0,
+              "w": 640.0,
+              "h": 480.0
+            },
+            "conversion_accuracy": true
+          },
+          "case_2": {
+            "original": {
+              "x1": 320,
+              "y1": 240,
+              "x2": 400,
+              "y2": 320,
+              "frame_w": 640,
+              "frame_h": 480
+            },
+            "xywh": {
+              "x": 320,
+              "y": 240,
+              "w": 80,
+              "h": 80
+            },
+            "normalized": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 0.125,
+              "h": 0.16666666666666666
+            },
+            "denormalized": {
+              "x": 320.0,
+              "y": 240.0,
+              "w": 80.0,
+              "h": 80.0
+            },
+            "conversion_accuracy": true
+          }
+        },
+        "normalization": {
+          "normal_box": {
+            "normalized": {
+              "x": 0.15625,
+              "y": 0.10416666666666667,
+              "w": 0.15625,
+              "h": 0.20833333333333334
+            },
+            "valid_range": true,
+            "exceeds_boundary": false,
+            "aspect_ratio": 1.0,
+            "area_ratio": 0.032552083333333336
+          },
+          "edge_box": {
+            "normalized": {
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.015625,
+              "h": 0.020833333333333332
+            },
+            "valid_range": true,
+            "exceeds_boundary": false,
+            "aspect_ratio": 1.0,
+            "area_ratio": 0.0003255208333333333
+          },
+          "large_box": {
+            "normalized": {
+              "x": 0.078125,
+              "y": 0.10416666666666667,
+              "w": 0.78125,
+              "h": 0.8333333333333334
+            },
+            "valid_range": true,
+            "exceeds_boundary": false,
+            "aspect_ratio": 1.25,
+            "area_ratio": 0.6510416666666666
+          },
+          "boundary_box": {
+            "normalized": {
+              "x": 0.984375,
+              "y": 0.9791666666666666,
+              "w": 0.015625,
+              "h": 0.020833333333333332
+            },
+            "valid_range": true,
+            "exceeds_boundary": false,
+            "aspect_ratio": 1.0,
+            "area_ratio": 0.0003255208333333333
+          }
+        },
+        "bbox_validation": {
+          "valid_box": {
+            "input": {
+              "x": 0.1,
+              "y": 0.1,
+              "w": 0.2,
+              "h": 0.3
+            },
+            "valid_coords": true,
+            "valid_size": true,
+            "within_bounds": true,
+            "validation_passed": true,
+            "expected_result": true,
+            "test_passed": true
+          },
+          "negative_coords": {
+            "input": {
+              "x": -0.1,
+              "y": 0.1,
+              "w": 0.2,
+              "h": 0.3
+            },
+            "valid_coords": false,
+            "valid_size": true,
+            "within_bounds": true,
+            "validation_passed": false,
+            "expected_result": false,
+            "test_passed": true
+          },
+          "exceeds_bounds": {
+            "input": {
+              "x": 0.9,
+              "y": 0.9,
+              "w": 0.2,
+              "h": 0.2
+            },
+            "valid_coords": true,
+            "valid_size": true,
+            "within_bounds": false,
+            "validation_passed": false,
+            "expected_result": false,
+            "test_passed": true
+          },
+          "zero_area": {
+            "input": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 0.0,
+              "h": 0.0
+            },
+            "valid_coords": true,
+            "valid_size": false,
+            "within_bounds": true,
+            "validation_passed": false,
+            "expected_result": false,
+            "test_passed": true
+          },
+          "negative_size": {
+            "input": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": -0.1,
+              "h": 0.1
+            },
+            "valid_coords": true,
+            "valid_size": false,
+            "within_bounds": true,
+            "validation_passed": false,
+            "expected_result": false,
+            "test_passed": true
+          },
+          "minimal_box": {
+            "input": {
+              "x": 0.0,
+              "y": 0.0,
+              "w": 0.001,
+              "h": 0.001
+            },
+            "valid_coords": true,
+            "valid_size": true,
+            "within_bounds": true,
+            "validation_passed": true,
+            "expected_result": true,
+            "test_passed": true
+          }
+        },
+        "bbox_conversion": {
+          "xyxy_to_xywh": {
+            "input": {
+              "x1": 100,
+              "y1": 50,
+              "x2": 200,
+              "y2": 150
+            },
+            "output": {
+              "x": 100,
+              "y": 50,
+              "w": 100,
+              "h": 100
+            },
+            "expected": {
+              "x": 100,
+              "y": 50,
+              "w": 100,
+              "h": 100
+            },
+            "conversion_accurate": true
+          },
+          "xywh_to_xyxy": {
+            "input": {
+              "x": 100,
+              "y": 50,
+              "w": 100,
+              "h": 100
+            },
+            "output": {
+              "x1": 100,
+              "y1": 50,
+              "x2": 200,
+              "y2": 150
+            },
+            "expected": {
+              "x1": 100,
+              "y1": 50,
+              "x2": 200,
+              "y2": 150
+            },
+            "conversion_accurate": true
+          },
+          "center_to_corner": {
+            "input": {
+              "cx": 150,
+              "cy": 100,
+              "w": 100,
+              "h": 100
+            },
+            "output": {
+              "x": 100.0,
+              "y": 50.0,
+              "w": 100,
+              "h": 100
+            },
+            "expected": {
+              "x": 100,
+              "y": 50,
+              "w": 100,
+              "h": 100
+            },
+            "conversion_accurate": true
+          }
+        }
+      }
+    }
+  },
+  "performance_metrics": {},
+  "recommendations": [
+    "Add performance metrics collection and dashboards",
+    "Install missing ML dependencies: pip install torch ultralytics",
+    "Download YOLO model weights: wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt",
+    "Implement comprehensive error monitoring and alerting",
+    "Consider increasing available memory for better ML performance",
+    "Consider implementing model fallback mechanisms",
+    "Configure GPU support if available: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118",
+    "Add configuration validation at startup",
+    "Set up automated testing for ML pipeline components"
+  ],
+  "five_whys_analysis": {
+    "Ground Truth Service: Model not loaded": [
+      "Why is the model not loaded? \u2192 Model file not found or initialization failed",
+      "Why did model initialization fail? \u2192 Missing dependencies or incorrect path",
+      "Why are dependencies missing? \u2192 Installation incomplete or environment misconfigured",
+      "Why is environment misconfigured? \u2192 Virtual environment not activated or wrong Python version",
+      "Why is wrong Python version used? \u2192 Multiple Python installations or PATH issues"
+    ],
+    "Ground Truth Service: ML dependencies not available": [
+      "Why did Ground Truth Service: ML dependencies not available occur? \u2192 Root cause analysis needed",
+      "Why is root cause unclear? \u2192 Insufficient logging or monitoring",
+      "Why insufficient monitoring? \u2192 Missing error tracking or performance metrics",
+      "Why missing metrics? \u2192 Incomplete instrumentation or alerting setup",
+      "Why incomplete setup? \u2192 System design lacks observability requirements"
+    ],
+    "Bulletproof YOLO: Initialization failed": [
+      "Why did Bulletproof YOLO: Initialization failed occur? \u2192 Root cause analysis needed",
+      "Why is root cause unclear? \u2192 Insufficient logging or monitoring",
+      "Why insufficient monitoring? \u2192 Missing error tracking or performance metrics",
+      "Why missing metrics? \u2192 Incomplete instrumentation or alerting setup",
+      "Why incomplete setup? \u2192 System design lacks observability requirements"
+    ],
+    "Model auto-download failed: No module named 'ultralytics'": [
+      "Why did Model auto-download failed: No module named 'ultralytics' occur? \u2192 Root cause analysis needed",
+      "Why is root cause unclear? \u2192 Insufficient logging or monitoring",
+      "Why insufficient monitoring? \u2192 Missing error tracking or performance metrics",
+      "Why missing metrics? \u2192 Incomplete instrumentation or alerting setup",
+      "Why incomplete setup? \u2192 System design lacks observability requirements"
+    ],
+    "Format handling for <class 'numpy.float64'> failed: OpenCV(4.12.0) /io/opencv/modules/imgproc/src/color.simd_helpers.hpp:94: error: (-2:Unspecified error) in function 'cv::impl::{anonymous}::CvtHelper<VScn, VDcn, VDepth, sizePolicy>::CvtHelper(cv::InputArray, cv::OutputArray, int) [with VScn = cv::impl::{anonymous}::Set<3, 4>; VDcn = cv::impl::{anonymous}::Set<1>; VDepth = cv::impl::{anonymous}::Set<0, 2, 5>; cv::impl::{anonymous}::SizePolicy sizePolicy = cv::impl::<unnamed>::NONE; cv::InputArray = const cv::_InputArray&; cv::OutputArray = const cv::_OutputArray&]'\n> Unsupported depth of input image:\n>     'VDepth::contains(depth)'\n> where\n>     'depth' is 6 (CV_64F)\n": [
+      "Why did Format handling for <class 'numpy.float64'> failed: OpenCV(4.12.0) /io/opencv/modules/imgproc/src/color.simd_helpers.hpp:94: error: (-2:Unspecified error) in function 'cv::impl::{anonymous}::CvtHelper<VScn, VDcn, VDepth, sizePolicy>::CvtHelper(cv::InputArray, cv::OutputArray, int) [with VScn = cv::impl::{anonymous}::Set<3, 4>; VDcn = cv::impl::{anonymous}::Set<1>; VDepth = cv::impl::{anonymous}::Set<0, 2, 5>; cv::impl::{anonymous}::SizePolicy sizePolicy = cv::impl::<unnamed>::NONE; cv::InputArray = const cv::_InputArray&; cv::OutputArray = const cv::_OutputArray&]'\n> Unsupported depth of input image:\n>     'VDepth::contains(depth)'\n> where\n>     'depth' is 6 (CV_64F)\n occur? \u2192 Root cause analysis needed",
+      "Why is root cause unclear? \u2192 Insufficient logging or monitoring",
+      "Why insufficient monitoring? \u2192 Missing error tracking or performance metrics",
+      "Why missing metrics? \u2192 Incomplete instrumentation or alerting setup",
+      "Why incomplete setup? \u2192 System design lacks observability requirements"
+    ]
+  },
+  "critical_issues": [
+    "Ground Truth Service: Model not loaded",
+    "Ground Truth Service: ML dependencies not available",
+    "Bulletproof YOLO: Initialization failed",
+    "Model auto-download failed: No module named 'ultralytics'",
+    "Format handling for <class 'numpy.float64'> failed: OpenCV(4.12.0) /io/opencv/modules/imgproc/src/color.simd_helpers.hpp:94: error: (-2:Unspecified error) in function 'cv::impl::{anonymous}::CvtHelper<VScn, VDcn, VDepth, sizePolicy>::CvtHelper(cv::InputArray, cv::OutputArray, int) [with VScn = cv::impl::{anonymous}::Set<3, 4>; VDcn = cv::impl::{anonymous}::Set<1>; VDepth = cv::impl::{anonymous}::Set<0, 2, 5>; cv::impl::{anonymous}::SizePolicy sizePolicy = cv::impl::<unnamed>::NONE; cv::InputArray = const cv::_InputArray&; cv::OutputArray = const cv::_OutputArray&]'\n> Unsupported depth of input image:\n>     'VDepth::contains(depth)'\n> where\n>     'depth' is 6 (CV_64F)\n"
+  ],
+  "status": "degraded",
+  "analysis_duration": 1.384631633758545
+}

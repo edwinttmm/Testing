@@ -217,7 +217,7 @@ class BulletproofDetectionPipeline:
         self.initialized = False
         
         # Performance settings
-        self.frame_skip = 5  # Process every 5th frame for efficiency
+        self.frame_skip = 1  # Process every frame for complete annotation coverage
         self.batch_size = 10
         self.max_detections_per_frame = 20
     
@@ -293,9 +293,8 @@ class BulletproofDetectionPipeline:
                     
                     frame_number += 1
                     
-                    # Skip frames for efficiency
-                    if frame_number % self.frame_skip != 0:
-                        continue
+                    # Process every frame for complete annotation coverage
+                    # (Previously skipped frames for efficiency, now processing all)
                     
                     timestamp = frame_number / fps
                     

@@ -1,0 +1,128 @@
+{
+  "timestamp": "2025-09-24T18:13:26.430820",
+  "system_info": {
+    "cpu_count": 8,
+    "memory_total_gb": 7.642787933349609,
+    "python_version": "3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]",
+    "platform": "linux"
+  },
+  "execution_time_s": 8.123355388641357,
+  "overall_score": 60.0,
+  "targets_met": 3,
+  "total_targets": 5,
+  "results": {
+    "data_capture": {
+      "target_sample_rate_hz": 1000,
+      "actual_sample_rate_hz": 736.6246653441327,
+      "samples_captured": 5000,
+      "samples_dropped": 0,
+      "drop_rate_percent": 0.0,
+      "avg_processing_time_ms": 0.004547150351572782,
+      "max_processing_time_ms": 0.1655429950915277,
+      "memory_growth_mb": 8.5,
+      "test_duration_s": 6.78771732095629,
+      "performance_target_met": false
+    },
+    "compression": {
+      "Delta Compression": {
+        "compression_ratio": 0.5601613264620211,
+        "quality_loss_percent": 0.07486836980284352,
+        "compression_time_ms": 1.6795459669083357,
+        "compressed_samples": 4463,
+        "meets_requirements": false
+      },
+      "Adaptive Sampling": {
+        "compression_ratio": 0.5291005291005291,
+        "quality_loss_percent": 0.3413822075406216,
+        "compression_time_ms": 1.9128949497826397,
+        "compressed_samples": 4725,
+        "meets_requirements": false
+      },
+      "Simple Decimation": {
+        "compression_ratio": 5.0,
+        "quality_loss_percent": 2.526765341088718,
+        "compression_time_ms": 0.19333598902449012,
+        "compressed_samples": 500,
+        "meets_requirements": false
+      },
+      "summary": {
+        "valid_methods_count": 0,
+        "best_method": null,
+        "overall_success": false
+      }
+    },
+    "database": {
+      "recent_data": {
+        "query_time_ms": 1.6585589619353414,
+        "result_count": 1000,
+        "meets_target": true
+      },
+      "aggregation": {
+        "query_time_ms": 0.5025709979236126,
+        "result_count": 1,
+        "meets_target": true
+      },
+      "hybrid_query": {
+        "query_time_ms": 1.6816150164231658,
+        "result_count": 500,
+        "meets_target": true
+      },
+      "summary": {
+        "avg_query_time_ms": 1.28091499209404,
+        "all_queries_pass": true,
+        "total_queries": 2
+      }
+    },
+    "memory": {
+      "initial_memory_mb": 42.6171875,
+      "final_memory_mb": 49.73046875,
+      "peak_memory_mb": 49.75390625,
+      "memory_growth_mb": 7.11328125,
+      "memory_trend_mb_per_cycle": 0.08633853541416533,
+      "memory_variance": 3.707445068359375,
+      "cycles_completed": 50,
+      "memory_leak_detected": false,
+      "memory_management_ok": true
+    },
+    "concurrency": {
+      "1_threads": {
+        "thread_count": 1,
+        "total_duration_ms": 81.2119020265527,
+        "total_tasks": 50,
+        "throughput_tasks_per_sec": 615.6733034482089,
+        "avg_task_time_ms": 0.24135430110618472
+      },
+      "2_threads": {
+        "thread_count": 2,
+        "total_duration_ms": 89.88764800596982,
+        "total_tasks": 100,
+        "throughput_tasks_per_sec": 1112.499906476122,
+        "avg_task_time_ms": 0.4145539796445519
+      },
+      "4_threads": {
+        "thread_count": 4,
+        "total_duration_ms": 106.0509979724884,
+        "total_tasks": 200,
+        "throughput_tasks_per_sec": 1885.8851290761422,
+        "avg_task_time_ms": 0.7033925055293366
+      },
+      "8_threads": {
+        "thread_count": 8,
+        "total_duration_ms": 216.17891598725691,
+        "total_tasks": 400,
+        "throughput_tasks_per_sec": 1850.3192051512497,
+        "avg_task_time_ms": 2.7768364814983215
+      },
+      "summary": {
+        "optimal_thread_count": 4,
+        "best_throughput": 1885.8851290761422,
+        "concurrency_effective": true
+      }
+    }
+  },
+  "recommendations": [
+    "- Optimize data capture loop for higher sample rates",
+    "- Tune compression algorithms for better ratio/quality balance",
+    "- Consider hybrid compression strategies"
+  ]
+}

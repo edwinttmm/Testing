@@ -323,7 +323,7 @@ class VideoAccessibilityTester {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     let status: VideoAccessibilityResult['status'] = 'network_error';
-    let recommendations: string[] = [];
+    const recommendations: string[] = [];
 
     if (errorMessage.includes('abort') || errorMessage.includes('timeout')) {
       status = 'timeout';

@@ -1,5 +1,8 @@
 // Detection and HIL Testing Type Definitions
 
+// Re-export VideoFile from services/types if needed
+import type { VideoFile } from '../services/types';
+
 export enum DetectionOutcome {
   PASS = 'PASS',
   FAIL = 'FAIL',
@@ -68,7 +71,4 @@ export interface VideoPlaylistItem extends VideoFile {
   endTime?: Date;
   detectionCount: number;
 }
-
-// Re-export VideoFile from services/types if needed
-import type { VideoFile } from '../services/types';
 export type { VideoFile };

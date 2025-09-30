@@ -276,8 +276,8 @@ class EnhancedGroundTruthService:
                     frame_count += 1
 
                     # Process every 5th frame for efficiency
-                    if frame_count % 5 != 0:
-                        continue
+                    # Process every frame for complete annotation coverage
+                    # (Previously skipped frames for efficiency, now processing all)
 
                     # Calculate timestamp in seconds
                     timestamp = (frame_count - 1) / fps

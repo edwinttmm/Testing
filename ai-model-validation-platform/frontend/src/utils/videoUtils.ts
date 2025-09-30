@@ -772,7 +772,7 @@ class VideoUtilsManager {
    */
   isVideoSizeValid(sizeInBytes: number): boolean {
     const videoConfig = getServiceConfig('video');
-    const maxSizeBytes = (videoConfig.maxSizeMB || 100) * 1024 * 1024;
+    const maxSizeBytes = (videoConfig.maxSizeMB || 50 * 1024) * 1024 * 1024; // Default 50GB
     
     return sizeInBytes <= maxSizeBytes;
   }

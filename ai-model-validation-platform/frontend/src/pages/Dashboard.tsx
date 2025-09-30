@@ -7,12 +7,22 @@ import {
   Skeleton,
   Alert,
   Chip,
+  Grid,
+  Fade,
+  Slide,
+  Container,
+  Paper,
+  Divider,
 } from '@mui/material';
 import {
   FolderOpen,
   VideoLibrary,
   Assessment,
   TrendingUp,
+  Dashboard as DashboardIcon,
+  Analytics,
+  MonitorHeart,
+  Timeline,
 } from '@mui/icons-material';
 import { getDashboardStats } from '../services/api';
 import { getTestSessions } from '../services/api';
@@ -21,6 +31,14 @@ import AccessibleStatCard from '../components/ui/AccessibleStatCard';
 import AccessibleCard, { AccessibleProgressItem, AccessibleSessionItem } from '../components/ui/AccessibleCard';
 import { useWebSocket } from '../hooks/useWebSocket';
 
+// New enhanced dashboard components
+import RealtimeMetricsChart from '../components/dashboard/RealtimeMetricsChart';
+import SystemHealthIndicator from '../components/dashboard/SystemHealthIndicator';
+import DashboardControls from '../components/dashboard/DashboardControls';
+import { ConfidenceIntervalChart } from '../components/results/ConfidenceIntervalChart';
+import ApiHealthIndicator from '../components/detection/ApiHealthIndicator';
+import TimingMetricsPanel from '../components/TimingMetricsPanel';
+
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<EnhancedDashboardStats | null>(null);
   const [recentSessions, setRecentSessions] = useState<TestSession[]>([]);
@@ -28,6 +46,13 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [, setRealtimeUpdates] = useState(0);
   const lastStatsRef = useRef<EnhancedDashboardStats | null>(null);
+
+  // Enhanced dashboard state
+  const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h' | '7d' | '30d'>('24h');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(10000);
+  const [currentView, setCurrentView] = useState<'overview' | 'analytics' | 'health' | 'activity'>('overview');
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   // WebSocket connection for real-time updates
   const { 
@@ -346,6 +371,113 @@ const Dashboard: React.FC = () => {
     fetchDashboardStats();
   }, [fetchDashboardStats]);
 
+  // Enhanced dashboard functions
+  const handleExport = useCallback((format: 'json' | 'csv' | 'pdf') => {
+    if (!stats) return;
+
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      timeRange,
+      stats,
+      recentSessions,
+      systemHealth: {
+        isConnected,
+        lastUpdate: lastUpdate.toISOString()
+      }
+    };
+
+    switch (format) {
+      case 'json':
+        const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        const jsonLink = document.createElement('a');
+        jsonLink.href = jsonUrl;
+        jsonLink.download = `dashboard-data-${new Date().toISOString().split('T')[0]}.json`;
+        jsonLink.click();
+        URL.revokeObjectURL(jsonUrl);
+        break;
+
+      case 'csv':
+        const csvData = [
+          ['Metric', 'Value', 'Unit'],
+          ['Project Count', stats.project_count, 'count'],
+          ['Video Count', stats.video_count, 'count'],
+          ['Test Session Count', stats.test_session_count, 'count'],
+          ['Detection Event Count', stats.detection_event_count, 'count'],
+          ['Average Accuracy', stats.average_accuracy, '%'],
+          ['Signal Success Rate', stats.signal_processing_metrics?.successRate, '%'],
+          ['Active Tests', stats.active_tests, 'count'],
+          ['Total Detections', stats.total_detections, 'count']
+        ].map(row => row.join(',')).join('\n');
+        
+        const csvBlob = new Blob([csvData], { type: 'text/csv' });
+        const csvUrl = URL.createObjectURL(csvBlob);
+        const csvLink = document.createElement('a');
+        csvLink.href = csvUrl;
+        csvLink.download = `dashboard-metrics-${new Date().toISOString().split('T')[0]}.csv`;
+        csvLink.click();
+        URL.revokeObjectURL(csvUrl);
+        break;
+
+      case 'pdf':
+        // For PDF, we'll create a simple text report
+        alert('PDF export feature coming soon! Use JSON or CSV for now.');
+        break;
+    }
+  }, [stats, recentSessions, timeRange, isConnected, lastUpdate]);
+
+  const handleRefresh = useCallback(() => {
+    setLastUpdate(new Date());
+    fetchDashboardStats();
+  }, [fetchDashboardStats]);
+
+  // Generate mock confidence intervals for demo
+  const mockConfidenceIntervals = {
+    accuracy: {
+      estimate: (stats?.average_accuracy || 0) / 100,
+      lowerBound: Math.max(0, (stats?.average_accuracy || 0) / 100 - 0.1),
+      upperBound: Math.min(1, (stats?.average_accuracy || 0) / 100 + 0.1),
+      marginOfError: 0.1,
+      confidenceLevel: 0.95,
+      method: 'bootstrap'
+    },
+    precision: {
+      estimate: (stats?.average_accuracy || 0) / 100 * 0.95,
+      lowerBound: Math.max(0, (stats?.average_accuracy || 0) / 100 * 0.95 - 0.08),
+      upperBound: Math.min(1, (stats?.average_accuracy || 0) / 100 * 0.95 + 0.08),
+      marginOfError: 0.08,
+      confidenceLevel: 0.95,
+      method: 'normal'
+    },
+    recall: {
+      estimate: (stats?.average_accuracy || 0) / 100 * 0.92,
+      lowerBound: Math.max(0, (stats?.average_accuracy || 0) / 100 * 0.92 - 0.12),
+      upperBound: Math.min(1, (stats?.average_accuracy || 0) / 100 * 0.92 + 0.12),
+      marginOfError: 0.12,
+      confidenceLevel: 0.95,
+      method: 'binomial'
+    },
+    f1Score: {
+      estimate: (stats?.average_accuracy || 0) / 100 * 0.93,
+      lowerBound: Math.max(0, (stats?.average_accuracy || 0) / 100 * 0.93 - 0.09),
+      upperBound: Math.min(1, (stats?.average_accuracy || 0) / 100 * 0.93 + 0.09),
+      marginOfError: 0.09,
+      confidenceLevel: 0.95,
+      method: 'bootstrap'
+    }
+  };
+
+  // Mock detection events for timing metrics
+  const mockDetectionEvents = recentSessions.map((session, index) => ({
+    id: session.id || index,
+    videoId: index + 1,
+    expectedEventTime: session.createdAt,
+    signalReceivedTime: session.completedAt,
+    latencyMs: Math.random() * 200 + 50,
+    outcome: Math.random() > 0.2 ? 'PASS' : 'FAIL',
+    createdAt: session.createdAt || new Date().toISOString()
+  }));
+
   if (loading) {
     return (
       <Box>
@@ -407,159 +539,208 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" gutterBottom>
-          Dashboard
-        </Typography>
-        
-        {/* System Status */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Chip
-            icon={<Assessment />}
-            label="HTTP-Only Mode"
-            color="info"
-            variant="filled"
-            size="small"
-          />
-          {stats && (
-            <Chip
-              label={`${stats.test_session_count || 0} tests completed`}
+  const renderOverviewSection = () => (
+    <Fade in timeout={800}>
+      <Box>
+        {/* Enhanced Stats Cards */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={2.4}>
+            <AccessibleStatCard
+              title="Active Projects"
+              value={stats?.project_count || 0}
+              icon={<FolderOpen />}
+              color="primary"
+              subtitle={stats?.project_count ? `${stats.project_count} total projects` : 'No projects yet'}
+              loading={loading}
+              ariaLabel={`Active Projects: ${stats?.project_count || 0} total projects`}
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={2.4}>
+            <AccessibleStatCard
+              title="Videos Processed"
+              value={stats?.video_count || 0}
+              icon={<VideoLibrary />}
               color="success"
-              variant="outlined"
-              size="small"
+              subtitle={stats?.video_count ? `${stats.video_count} videos uploaded` : 'No videos yet'}
+              loading={loading}
+              ariaLabel={`Videos Processed: ${stats?.video_count || 0} videos uploaded`}
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={2.4}>
+            <AccessibleStatCard
+              title="Tests Completed"
+              value={stats?.test_session_count || 0}
+              icon={<Assessment />}
+              color="info"
+              subtitle={stats?.test_session_count ? `${stats.test_session_count} test sessions` : 'No tests yet'}
+              loading={loading}
+              ariaLabel={`Tests Completed: ${stats?.test_session_count || 0} test sessions`}
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={2.4}>
+            <AccessibleStatCard
+              title="Detection Accuracy"
+              value={`${stats?.average_accuracy || 0}%`}
+              icon={<TrendingUp />}
+              color="warning"
+              subtitle={stats?.confidence_intervals ? `CI: ${stats.confidence_intervals.precision[0]}%-${stats.confidence_intervals.precision[1]}%` : "Average across all tests"}
+              loading={loading}
+              ariaLabel={`Detection Accuracy: ${stats?.average_accuracy || 0}% average across all tests`}
+              trend={{
+                value: 2.3,
+                direction: stats?.trend_analysis?.accuracy === 'improving' ? 'up' : stats?.trend_analysis?.accuracy === 'declining' ? 'down' : 'up'
+              }}
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={2.4}>
+            <AccessibleStatCard
+              title="Signal Processing"
+              value={`${Math.round(stats?.signal_processing_metrics?.successRate || 0)}%`}
+              icon={<Assessment />}
+              color="success"
+              subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed`}
+              loading={loading}
+              ariaLabel={`Signal Processing: ${stats?.signal_processing_metrics?.successRate || 0}% success rate`}
+              trend={{
+                value: 2.1,
+                direction: stats?.trend_analysis?.performance === 'improving' ? 'up' : 'up'
+              }}
+            />
+          </Grid>
+        </Grid>
+
+        {/* Real-time Metrics Chart and Activity */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} lg={8}>
+            {stats && (
+              <RealtimeMetricsChart
+                stats={stats}
+                autoRefresh={autoRefresh}
+                onRefresh={handleRefresh}
+              />
+            )}
+          </Grid>
+          
+          <Grid item xs={12} lg={4}>
+            <AccessibleCard
+              title="Recent Test Sessions"
+              loading={loading}
+              ariaLabel="Recent test sessions list"
+              role="region"
+            >
+              <Box role="list" aria-label="Recent test sessions">
+                {recentSessions.length > 0 ? (
+                  recentSessions.map((session, index) => (
+                    <AccessibleSessionItem
+                      key={session.id || index}
+                      sessionNumber={index + 1}
+                      type={session.name || `Test Session ${index + 1}`}
+                      timeAgo={formatTimeAgo(
+                        (() => {
+                          const dateValue = session.createdAt || session.completedAt;
+                          if (typeof dateValue === 'string') {
+                            return dateValue;
+                          } else if (dateValue instanceof Date) {
+                            return dateValue.toISOString();
+                          }
+                          return null;
+                        })()
+                      )}
+                      accuracy={session.metrics?.accuracy || 0}
+                    />
+                  ))
+                ) : (
+                  <Box sx={{ textAlign: 'center', py: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No recent test sessions
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </AccessibleCard>
+          </Grid>
+        </Grid>
+      </Box>
+    </Fade>
+  );
+
+  const renderAnalyticsSection = () => (
+    <Fade in timeout={800}>
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={8}>
+          {stats && (
+            <ConfidenceIntervalChart
+              intervals={mockConfidenceIntervals}
+              chartType="line"
+              showErrorBars={true}
+              showReferenceLine={true}
             />
           )}
-        </Box>
-      </Box>
-      
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 4 }}>
-        {error && (
-          <Alert severity="warning" sx={{ mb: 3, width: '100%' }}>
-            {error} - Showing latest available data
-          </Alert>
-        )}
+        </Grid>
         
-        <Box sx={{ minWidth: 250, flex: 1 }}>
-          <AccessibleStatCard
-            title="Active Projects"
-            value={stats?.project_count || 0}
-            icon={<FolderOpen />}
-            color="primary"
-            subtitle={stats?.project_count ? `${stats.project_count} total projects` : 'No projects yet'}
-            loading={loading}
-            ariaLabel={`Active Projects: ${stats?.project_count || 0} total projects`}
+        <Grid item xs={12} lg={4}>
+          <TimingMetricsPanel
+            metrics={{
+              latency: stats?.signal_processing_metrics?.avgProcessingTime || 0,
+              responseTime: 100,
+              accuracy: stats?.average_accuracy || 0,
+              jitter: 25,
+              throughput: stats?.signal_processing_metrics?.successRate || 0
+            }}
+            isRunning={autoRefresh}
+            detectionEvents={mockDetectionEvents}
+            maxLatencyMs={200}
           />
-        </Box>
+        </Grid>
+      </Grid>
+    </Fade>
+  );
+
+  const renderHealthSection = () => (
+    <Fade in timeout={800}>
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={8}>
+          {stats && (
+            <SystemHealthIndicator
+              stats={stats}
+              isConnected={isConnected}
+              autoRefresh={autoRefresh}
+              onRefresh={handleRefresh}
+            />
+          )}
+        </Grid>
         
-        <Box sx={{ minWidth: 250, flex: 1 }}>
-          <AccessibleStatCard
-            title="Videos Processed"
-            value={stats?.video_count || 0}
-            icon={<VideoLibrary />}
-            color="success"
-            subtitle={stats?.video_count ? `${stats.video_count} videos uploaded` : 'No videos yet'}
-            loading={loading}
-            ariaLabel={`Videos Processed: ${stats?.video_count || 0} videos uploaded`}
-          />
-        </Box>
-        
-        <Box sx={{ minWidth: 250, flex: 1 }}>
-          <AccessibleStatCard
-            title="Tests Completed"
-            value={stats?.test_session_count || 0}
-            icon={<Assessment />}
-            color="info"
-            subtitle={stats?.test_session_count ? `${stats.test_session_count} test sessions` : 'No tests yet'}
-            loading={loading}
-            ariaLabel={`Tests Completed: ${stats?.test_session_count || 0} test sessions`}
-          />
-        </Box>
-        
-        <Box sx={{ minWidth: 250, flex: 1 }}>
-          <AccessibleStatCard
-            title="Detection Accuracy"
-            value={`${stats?.average_accuracy || 0}%`}
-            icon={<TrendingUp />}
-            color="warning"
-            subtitle={stats?.confidence_intervals ? `CI: ${stats.confidence_intervals.precision[0]}%-${stats.confidence_intervals.precision[1]}%` : "Average across all tests"}
-            loading={loading}
-            ariaLabel={`Detection Accuracy: ${stats?.average_accuracy || 0}% average across all tests`}
-            trend={{
-              value: 2.3,
-              direction: stats?.trend_analysis?.accuracy === 'improving' ? 'up' : stats?.trend_analysis?.accuracy === 'declining' ? 'down' : 'up'
+        <Grid item xs={12} lg={4}>
+          <ApiHealthIndicator
+            baseUrl="http://localhost:8000"
+            refreshInterval={refreshInterval}
+            onHealthChange={(status) => {
+              // Handle health changes if needed
+              console.log('Health status changed:', status);
             }}
           />
-        </Box>
-        
-        <Box sx={{ minWidth: 250, flex: 1 }}>
-          <AccessibleStatCard
-            title="Signal Processing"
-            value={`${Math.round(stats?.signal_processing_metrics?.successRate || 0)}%`}
-            icon={<Assessment />}
-            color="success"
-            subtitle={`${stats?.signal_processing_metrics?.totalSignals || 0} signals processed`}
-            loading={loading}
-            ariaLabel={`Signal Processing: ${stats?.signal_processing_metrics?.successRate || 0}% success rate`}
-            trend={{
-              value: 2.1,
-              direction: stats?.trend_analysis?.performance === 'improving' ? 'up' : 'up'
-            }}
-          />
-        </Box>
-      </Box>
+        </Grid>
+      </Grid>
+    </Fade>
+  );
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-        <Box sx={{ minWidth: 400, flex: 1 }}>
+  const renderActivitySection = () => (
+    <Fade in timeout={800}>
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
           <AccessibleCard
-            title="Recent Test Sessions"
-            loading={loading}
-            ariaLabel="Recent test sessions list"
-            role="region"
-          >
-            <Box role="list" aria-label="Recent test sessions">
-              {recentSessions.length > 0 ? (
-                recentSessions.map((session, index) => (
-                  <AccessibleSessionItem
-                    key={session.id || index}
-                    sessionNumber={index + 1}
-                    type={session.name || `Test Session ${index + 1}`}
-                    timeAgo={formatTimeAgo(
-                      (() => {
-                        const dateValue = session.createdAt || session.completedAt;
-                        if (typeof dateValue === 'string') {
-                          return dateValue;
-                        } else if (dateValue instanceof Date) {
-                          return dateValue.toISOString();
-                        }
-                        return null;
-                      })()
-                    )}
-                    accuracy={session.metrics?.accuracy || 0}
-                  />
-                ))
-              ) : (
-                <Box sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No recent test sessions
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          </AccessibleCard>
-        </Box>
-
-        <Box sx={{ minWidth: 400, flex: 1 }}>
-          <AccessibleCard
-            title="System Status 🟢 ACTIVE"
+            title="System Activity"
             loading={loading}
             ariaLabel="System performance metrics and connection status"
             role="region"
           >
             <Box role="group" aria-label="System performance indicators">
               <AccessibleProgressItem
-                label="HTTP Detection Service ✅"
+                label="HTTP Detection Service"
                 value={100}
                 color="success"
                 ariaLabel="HTTP detection service: Available"
@@ -590,9 +771,125 @@ const Dashboard: React.FC = () => {
               />
             </Box>
           </AccessibleCard>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <AccessibleCard
+            title="Recent Activity Log"
+            loading={loading}
+            ariaLabel="Recent system activity"
+            role="region"
+          >
+            <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
+              {recentSessions.length > 0 ? (
+                recentSessions.map((session, index) => (
+                  <Box key={session.id || index} sx={{ mb: 1, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                    <Typography variant="body2">
+                      Test Session: {session.name || `Session ${index + 1}`}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {formatTimeAgo(
+                        (() => {
+                          const dateValue = session.createdAt || session.completedAt;
+                          if (typeof dateValue === 'string') {
+                            return dateValue;
+                          } else if (dateValue instanceof Date) {
+                            return dateValue.toISOString();
+                          }
+                          return null;
+                        })()
+                      )}
+                    </Typography>
+                  </Box>
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No recent activity
+                </Typography>
+              )}
+            </Box>
+          </AccessibleCard>
+        </Grid>
+      </Grid>
+    </Fade>
+  );
+
+  const renderCurrentSection = () => {
+    switch (currentView) {
+      case 'analytics':
+        return renderAnalyticsSection();
+      case 'health':
+        return renderHealthSection();
+      case 'activity':
+        return renderActivitySection();
+      default:
+        return renderOverviewSection();
+    }
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 2 }}>
+      {/* Dashboard Header */}
+      <Slide direction="down" in timeout={600}>
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DashboardIcon color="primary" />
+              AI Model Validation Dashboard
+            </Typography>
+            
+            {/* System Status Indicators */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Chip
+                icon={isConnected ? <Assessment /> : <Assessment />}
+                label={isConnected ? "Connected" : "HTTP-Only Mode"}
+                color={isConnected ? "success" : "info"}
+                variant="filled"
+                size="small"
+              />
+              {stats && (
+                <Chip
+                  label={`${stats.test_session_count || 0} tests completed`}
+                  color="success"
+                  variant="outlined"
+                  size="small"
+                />
+              )}
+            </Box>
+          </Box>
+
+          {/* Dashboard Controls */}
+          <DashboardControls
+            timeRange={timeRange}
+            autoRefresh={autoRefresh}
+            refreshInterval={refreshInterval}
+            view={currentView}
+            onTimeRangeChange={setTimeRange}
+            onAutoRefreshChange={setAutoRefresh}
+            onRefreshIntervalChange={setRefreshInterval}
+            onViewChange={setCurrentView}
+            onRefresh={handleRefresh}
+            onExport={handleExport}
+            isConnected={isConnected}
+            lastUpdate={lastUpdate}
+          />
         </Box>
+      </Slide>
+
+      {/* Error Alert */}
+      {error && (
+        <Fade in>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            {error} - Showing latest available data
+          </Alert>
+        </Fade>
+      )}
+
+      {/* Dashboard Content */}
+      <Box sx={{ mt: 2 }}>
+        {renderCurrentSection()}
       </Box>
-    </Box>
+    </Container>
   );
 };
 

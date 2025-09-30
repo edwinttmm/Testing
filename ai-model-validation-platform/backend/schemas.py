@@ -214,7 +214,7 @@ class VideoFile(CamelCaseModel):
     """Video file schema for frontend compatibility - matches TypeScript interface"""
     id: str
     filename: str
-    project_id: Optional[str] = Field(None, alias="projectId")
+    project_id: Optional[str] = Field(None, alias="projectId")  # Always None for shared videos
     duration: Optional[float] = None
     size: Optional[int] = None
     status: Optional[str] = None
@@ -223,6 +223,10 @@ class VideoFile(CamelCaseModel):
     ground_truth_count: Optional[int] = Field(None, alias="groundTruthCount")
     ground_truth_generated: Optional[bool] = Field(None, alias="groundTruthGenerated")
     validation_status: Optional[str] = Field(None, alias="validationStatus")
+    
+    # Shared video architecture fields
+    is_shared: Optional[bool] = Field(None, alias="isShared")  # Video linked to multiple projects
+    linked_project_count: Optional[int] = Field(None, alias="linkedProjectCount")  # Number of projects linked
 
 # Ground Truth schemas
 class GroundTruthObject(CamelCaseModel):

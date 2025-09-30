@@ -8,7 +8,7 @@ Handles video upload, processing, annotations, and ground truth management.
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query, BackgroundTasks, Body
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
@@ -30,7 +30,7 @@ except ImportError:
     PATH_UTILS_AVAILABLE = False
     logger.warning("Path utilities not available - using basic path handling")
 
-from database import SessionLocal
+from database import SessionLocal, DATABASE_URL
 from models import Video, Project, Annotation, GroundTruthObject, DetectionEvent
 from schemas import VideoUploadResponse, GroundTruthResponse
 from schemas_annotation import (
@@ -66,20 +66,35 @@ async def _process_ground_truth_with_error_handling(video_id: str, video_file_pa
     from sqlalchemy.orm import sessionmaker
     
     # Create new database session for background task
-    engine = create_engine(str(db_url))
+    try:
+        from sqlalchemy.engine import URL
+        if isinstance(db_url, URL):
+            url_str = db_url.render_as_string(hide_password=False)
+        else:
+            url_str = str(db_url)
+    except Exception:
+        url_str = str(db_url)
+
+    logger.info(f"🧪 BG Task: initializing DB engine for video {video_id}")
+    engine = create_engine(url_str)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
     
     try:
-        logger.info(f"🚀 Starting ground truth processing for video {video_id}")
+        logger.info(f"🚀 BG Task: starting ground truth processing for video {video_id}")
+        # Test DB connectivity in background context
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("🧪 BG Task: DB connectivity OK")
+        except Exception as db_conn_err:
+            logger.error(f"💥 BG Task: DB connectivity failed: {db_conn_err}")
+            raise
         
-        # Set timeout of 10 minutes for processing
-        await asyncio.wait_for(
-            ground_truth_service.process_video_async(video_id, video_file_path),
-            timeout=600  # 10 minutes
-        )
+        # Run blocking processing to avoid event-loop issues in background tasks
+        ground_truth_service.process_video_blocking(video_id, video_file_path)
         
-        logger.info(f"✅ Successfully completed ground truth processing for video {video_id}")
+        logger.info(f"✅ BG Task: completed ground truth processing for video {video_id}")
         
     except asyncio.TimeoutError:
         logger.error(f"⏰ Ground truth processing timed out for video {video_id}")
@@ -206,7 +221,7 @@ async def upload_video(
         
         return VideoUploadResponse(
             id=video.id,
-            project_id=video.project_id,
+            project_id=project_id,  # Use provided project_id parameter
             filename=video.filename,
             original_name=file.filename,
             size=len(content),
@@ -253,6 +268,34 @@ async def upload_video_to_project(
 # VIDEO LISTING AND RETRIEVAL
 # ============================================================================
 
+# ============================================================================
+# HEALTH CHECK - MUST BE BEFORE PARAMETERIZED ROUTES
+# ============================================================================
+
+@router.get("/health")
+async def videos_health_check():
+    """Health check endpoint for video management"""
+    # Include path management status
+    path_status = "enabled" if PATH_UTILS_AVAILABLE and path_manager else "disabled"
+    
+    return {
+        "status": "healthy",
+        "service": "Video Management Router",
+        "version": "1.0.0",
+        "path_management": path_status,
+        "endpoints": [
+            "POST /api/videos - Upload video",
+            "GET /api/videos - List videos",
+            "POST /api/videos/{project_id}/videos - Upload to project",
+            "GET /api/videos/{project_id}/videos - Get project videos",
+            "DELETE /api/videos/{id} - Delete video",
+            "POST /api/videos/{id}/annotations - Create annotation",
+            "GET /api/videos/{id}/annotations - Get annotations",
+            "GET /api/videos/{id}/stats - Get annotation stats",
+            "GET /api/videos/{id}/ground-truth - Get ground truth"
+        ]
+    }
+
 @router.get("")
 async def list_videos(
     skip: int = Query(0, ge=0),
@@ -291,7 +334,7 @@ async def list_videos(
                 "file_size": video.file_size,
                 "duration": video.duration,
                 "fps": video.fps,
-                "project_id": video.project_id,
+                "project_id": None,  # Videos are now project-independent
                 "uploaded_at": video.created_at.isoformat() if video.created_at else None,
                 "annotation_count": annotation_count,
                 "has_ground_truth": db.query(GroundTruthObject).filter(
@@ -341,7 +384,7 @@ async def get_video_details(video_id: str, db: Session = Depends(get_db)):
             "file_size": video.file_size,
             "duration": video.duration,
             "fps": video.fps,
-            "project_id": video.project_id,
+            "project_id": None,  # Videos are now project-independent
             "uploaded_at": video.created_at.isoformat() if video.created_at else None,
             "annotation_count": annotation_count,
             "has_ground_truth": has_ground_truth,
@@ -431,6 +474,22 @@ async def process_ground_truth(
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         
+        # Idempotency: do not start if already processing
+        current_status = (getattr(video, 'processing_status', None) or '').lower()
+        if current_status.startswith('processing'):
+            return {
+                "video_id": video_id,
+                "status": "processing",
+                "message": "Ground truth processing already in progress"
+            }
+        # If already generated, no need to reprocess
+        if getattr(video, 'ground_truth_generated', False):
+            return {
+                "video_id": video_id,
+                "status": "completed",
+                "message": "Ground truth already generated"
+            }
+        
         # Update video status to processing ground truth
         video.status = "processing"
         video.processing_status = "processing_ground_truth"
@@ -449,11 +508,12 @@ async def process_ground_truth(
                 logger.warning(f"Path resolution failed, using original: {e}")
         
         # Start ground truth processing in background with proper error handling
+        # Use configured DATABASE_URL rather than session URL to avoid masked password issues
         background_tasks.add_task(
             _process_ground_truth_with_error_handling,
             video_id,
             video_file_path,
-            db.get_bind().url
+            DATABASE_URL
         )
         
         return {
@@ -479,7 +539,10 @@ async def process_ground_truth(
 
 @router.get("/{video_id}/ground-truth", response_model=GroundTruthResponse)
 async def get_video_ground_truth(video_id: str, db: Session = Depends(get_db)):
-    """Get ground truth data for a video"""
+    """Get ground truth data for a video.
+    Returns an empty list with a non-error status when ground truth is not yet available,
+    allowing clients to poll without handling 404s.
+    """
     try:
         # Verify video exists
         video = db.query(Video).filter(Video.id == video_id).first()
@@ -491,10 +554,22 @@ async def get_video_ground_truth(video_id: str, db: Session = Depends(get_db)):
             GroundTruthObject.video_id == video_id
         ).all()
         
+        # If none yet, return an empty, non-error response with current processing status
         if not ground_truth_objects:
-            raise HTTPException(
-                status_code=404,
-                detail="No ground truth data found for this video"
+            raw_status = (getattr(video, 'processing_status', None) or 'pending').lower()
+            # Normalize to stable states expected by frontend
+            if raw_status.startswith('processing'):
+                norm_status = 'processing'
+            elif raw_status in ('failed', 'timeout', 'error'):
+                norm_status = raw_status
+            else:
+                norm_status = 'pending'
+            logger.info(f"📤 GT API (pending): video={video_id}, status={norm_status}, objects=0")
+            return GroundTruthResponse(
+                video_id=video_id,
+                objects=[],
+                total_detections=0,
+                status=norm_status
             )
         
         # Format response
@@ -502,17 +577,20 @@ async def get_video_ground_truth(video_id: str, db: Session = Depends(get_db)):
             {
                 "id": obj.id,
                 "timestamp": obj.timestamp,
-                "vru_type": obj.vru_type,
+                "frame_number": obj.frame_number,
+                "class_label": obj.class_label.value if hasattr(obj.class_label, 'value') else str(obj.class_label).replace('VRUTypeEnum.', '').lower(),
                 "bounding_box": obj.bounding_box,
                 "confidence": obj.confidence
             }
             for obj in ground_truth_objects
         ]
         
+        logger.info(f"📤 GT API (ready): video={video_id}, status=success, objects={len(ground_truth_data)}")
         return GroundTruthResponse(
             video_id=video_id,
-            ground_truth_objects=ground_truth_data,
-            total_objects=len(ground_truth_data)
+            objects=ground_truth_data,
+            total_detections=len(ground_truth_data),
+            status="success"
         )
         
     except HTTPException:
@@ -1067,3 +1145,15 @@ async def videos_health_check():
             "GET /api/videos/{id}/ground-truth - Get ground truth"
         ]
     }
+# ML status endpoint for diagnostics
+@router.get("/ml/status")
+async def ml_status():
+    """Return ML model status (which YOLO model is active)."""
+    try:
+        return {
+            "service": "ground_truth",
+            **ground_truth_service.get_model_status()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get ML status: {e}")
+        return {"service": "ground_truth", "ml_available": False, "error": str(e)}

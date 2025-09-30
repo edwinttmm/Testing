@@ -28,9 +28,18 @@ class WindowsLabJackBridge:
     
     def __init__(self):
         self.bridge_type = "auto"  # auto, tcp, shared_folder, usbip
+        # CRITICAL FIX: Add session lifecycle management
+        self.active_sessions = set()
+        self.monitoring_enabled = False
+        self._handle = None
         self.windows_ip = self._get_windows_host_ip()
         self.bridge_port = 9001
         self.connected = False
+        # Log de-duplication state
+        self._last_usbip_available = None
+        self._last_tcp_available = None
+        self._last_network_available = None
+        self._last_shared_available = None
         
     def _get_windows_host_ip(self) -> str:
         """Get Windows host IP from WSL"""
@@ -44,29 +53,72 @@ class WindowsLabJackBridge:
             pass
         return "localhost"
     
+    def start_session_monitoring(self, session_id: str) -> bool:
+        """Start monitoring for a specific session"""
+        logger.info(f"🚀 Starting LabJack monitoring for session: {session_id}")
+        self.active_sessions.add(session_id)
+        self.monitoring_enabled = True
+        return True
+    
+    def stop_session_monitoring(self, session_id: str) -> bool:
+        """Stop monitoring for a specific session"""
+        logger.info(f"🛑 Stopping LabJack monitoring for session: {session_id}")
+        self.active_sessions.discard(session_id)
+        
+        # If no more active sessions, disable monitoring completely
+        if not self.active_sessions:
+            logger.info("🔌 No active sessions remaining, disabling LabJack monitoring")
+            self.monitoring_enabled = False
+        
+        return True
+    
+    def is_monitoring_enabled(self) -> bool:
+        """Check if monitoring is currently enabled for any session"""
+        return self.monitoring_enabled and bool(self.active_sessions)
+    
+    def get_active_session_count(self) -> int:
+        """Get count of active monitoring sessions"""
+        return len(self.active_sessions)
+    
+    def get_active_sessions(self) -> set:
+        """Get set of active session IDs"""
+        return self.active_sessions.copy()
+    
     def detect_labjack_connection_method(self) -> str:
         """Detect best method to connect to LabJack"""
         methods = []
         
         # Method 1: Direct USB access (if usbipd-win is set up)
-        if self._check_usbip_setup():
+        usbip_ok = self._check_usbip_setup()
+        if usbip_ok:
             methods.append("usbip")
-            logger.info("✅ USB/IP bridge available")
+        if usbip_ok != self._last_usbip_available:
+            (logger.info if usbip_ok else logger.info)("✅ USB/IP bridge available" if usbip_ok else "⛔ USB/IP bridge unavailable")
+            self._last_usbip_available = usbip_ok
         
         # Method 2: TCP bridge to Windows service
-        if self._check_tcp_bridge():
+        tcp_ok = self._check_tcp_bridge()
+        if tcp_ok:
             methods.append("tcp")
-            logger.info("✅ TCP bridge available")
+        if tcp_ok != self._last_tcp_available:
+            (logger.info if tcp_ok else logger.info)("✅ TCP bridge available" if tcp_ok else "⛔ TCP bridge unavailable")
+            self._last_tcp_available = tcp_ok
             
         # Method 3: Network LabJack (if LabJack has Ethernet)
-        if self._check_network_labjack():
+        net_ok = self._check_network_labjack()
+        if net_ok:
             methods.append("network")
-            logger.info("✅ Network LabJack available")
+        if net_ok != self._last_network_available:
+            (logger.info if net_ok else logger.info)("✅ Network LabJack available" if net_ok else "⛔ Network LabJack unavailable")
+            self._last_network_available = net_ok
             
         # Method 4: Shared folder communication
-        if self._check_shared_folder():
+        shared_ok = self._check_shared_folder()
+        if shared_ok:
             methods.append("shared")
-            logger.info("✅ Shared folder communication available")
+        if shared_ok != self._last_shared_available:
+            (logger.info if shared_ok else logger.info)("✅ Shared folder communication available" if shared_ok else "⛔ Shared folder communication unavailable")
+            self._last_shared_available = shared_ok
         
         if not methods:
             logger.warning("❌ No LabJack connection methods available")
@@ -272,6 +324,15 @@ class WindowsLabJackBridge:
     
     def read_analog_voltage(self, channel: str = "AIN0") -> Dict[str, Any]:
         """Read analog voltage from LabJack channel"""
+        # CRITICAL FIX: Check if monitoring is enabled before reading
+        if not self.is_monitoring_enabled():
+            return {
+                "success": False,
+                "error": "Monitoring not active - no sessions running",
+                "voltage": None,
+                "timestamp": datetime.now().isoformat()
+            }
+        
         if not self.connected:
             return {
                 "success": False,
@@ -470,6 +531,57 @@ class WindowsLabJackBridge:
             "windows_host": self.windows_ip,
             "timestamp": datetime.now().isoformat()
         }
+    
+    # CRITICAL FIX: Add session lifecycle management methods
+    def start_session_monitoring(self, session_id: str):
+        """Start monitoring for a specific session"""
+        logger.info(f"🎯 Starting bridge session monitoring for: {session_id}")
+        self.active_sessions.add(session_id)
+        self.monitoring_enabled = True
+        logger.info(f"✅ Bridge monitoring enabled. Active sessions: {len(self.active_sessions)}")
+    
+    def stop_session_monitoring(self, session_id: str) -> bool:
+        """Stop monitoring for a specific session without affecting global state.
+        
+        CRITICAL FIX: Preserve bridge connection and monitoring for other sessions.
+        Only disable global monitoring when NO sessions remain.
+        
+        Args:
+            session_id: Session to stop monitoring for
+            
+        Returns:
+            True if session monitoring stopped successfully
+        """
+        logger.info(f"🔄 Stopping bridge session monitoring for: {session_id}")
+        
+        # Remove session from active list
+        was_active = session_id in self.active_sessions
+        self.active_sessions.discard(session_id)
+        
+        if not was_active:
+            logger.warning(f"⚠️ Session {session_id} was not in active sessions list")
+            return True
+        
+        # CRITICAL FIX: Only disable global monitoring when truly no sessions remain
+        if self.active_sessions:
+            logger.info(f"✅ Bridge monitoring continues. Active sessions: {len(self.active_sessions)}")
+            logger.debug(f"Remaining sessions: {list(self.active_sessions)}")
+            return True
+        
+        # No sessions remain - can safely disable monitoring
+        if not self.active_sessions:
+            self.monitoring_enabled = False
+            logger.info("⏹️ Bridge monitoring disabled - no active sessions remain")
+            # NOTE: We do NOT close the hardware connection here
+            # The connection should remain available for future sessions
+        
+        return True
+    
+    def is_monitoring_enabled(self) -> bool:
+        """Check if monitoring is enabled"""
+        return self.monitoring_enabled and bool(self.active_sessions)
 
 # Service instance
 labjack_bridge = WindowsLabJackBridge()
+# CRITICAL FIX: Export with expected name for dedicated monitor import
+windows_labjack_bridge = labjack_bridge

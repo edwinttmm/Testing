@@ -441,6 +441,92 @@ async def subscribe_to_updates(sid, data):
             'message': f'Subscription failed: {str(e)}'
         }, room=sid)
 
+# WebSocket event handlers for timing synchronization
+@sio.event
+async def subscribe_hardware_signals(sid, data):
+    """Handle hardware signal subscription requests with timing synchronization"""
+    try:
+        session_id = data.get('sessionId')
+        wait_for_ready = data.get('waitForReady', False)
+        
+        if not session_id:
+            await sio.emit('error', {
+                'message': 'sessionId is required for hardware signal subscription'
+            }, room=sid)
+            return
+        
+        # Join session-specific room
+        room = f"hardware_signals_{session_id}"
+        await sio.enter_room(sid, room)
+        
+        logger.info(f"Client {sid} subscribed to hardware signals for session {session_id}")
+        
+        # Send subscription confirmation
+        await sio.emit('hardware_subscription_confirmed', {
+            'session_id': session_id,
+            'room': room,
+            'timestamp': asyncio.get_event_loop().time(),
+            'wait_for_ready': wait_for_ready
+        }, room=sid)
+        
+        # If waiting for ready confirmation, we'll send monitoring_ready event later
+        if wait_for_ready:
+            logger.info(f"Client {sid} waiting for monitoring ready confirmation for session {session_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling hardware signal subscription: {str(e)}")
+        await sio.emit('error', {
+            'message': f'Hardware signal subscription failed: {str(e)}'
+        }, room=sid)
+
+@sio.event
+async def video_started(sid, data):
+    """Handle video started events for timing synchronization"""
+    try:
+        session_id = data.get('sessionId')
+        video_start_time = data.get('videoStartTime')
+        setup_delay = data.get('setupDelay')
+        
+        if not session_id:
+            await sio.emit('error', {
+                'message': 'sessionId is required for video started event'
+            }, room=sid)
+            return
+        
+        logger.info(f"Video started event received from client {sid} for session {session_id}")
+        
+        # Record video timing in synchronization service
+        try:
+            from services.timing_synchronization_service import timing_sync_service
+            timing_sync_service.record_video_event(session_id, 'play_start', video_start_time)
+            
+            if setup_delay:
+                logger.info(f"Video setup took {setup_delay:.1f}ms for session {session_id}")
+        except Exception as timing_error:
+            logger.warning(f"Failed to record video timing: {timing_error}")
+        
+        # Broadcast to session room
+        room = f"test_session_{session_id}"
+        await sio.emit('video_timing_update', {
+            'session_id': session_id,
+            'video_start_time': video_start_time,
+            'setup_delay': setup_delay,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=room)
+        
+        # Send confirmation back to sender
+        await sio.emit('video_started_confirmed', {
+            'session_id': session_id,
+            'recorded_time': video_start_time,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=sid)
+        
+    except Exception as e:
+        logger.error(f"Error handling video started event: {str(e)}")
+        await sio.emit('error', {
+            'message': f'Video started event handling failed: {str(e)}'
+        }, room=sid)
+
 # Enhanced utility functions
 async def emit_hil_status_update(session_id: str, status_data: dict):
     """Emit HIL-specific status updates"""

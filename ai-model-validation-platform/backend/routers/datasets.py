@@ -303,12 +303,9 @@ async def get_video_dataset_summary(
             ).distinct().all()
             ai_detection_types = [t[0] for t in ai_types if t[0]]
         
-        # Get project name if linked
-        project_name = "Unknown Project"
-        if video.project_id:
-            project = db.query(Project).filter(Project.id == video.project_id).first()
-            if project:
-                project_name = project.name
+        # Videos are now project-independent - get project name from VideoProjectLink if needed
+        project_name = "Shared Video"
+        # Could get first linked project name via VideoProjectLink if needed
         
         summary = {
             "videoId": video.id,

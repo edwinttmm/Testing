@@ -1,0 +1,474 @@
+{
+  "video_file": "/home/rigade/Testing/ai-model-validation-platform/backend/uploads/Child_20250923_163333.mp4",
+  "investigation_timestamp": "2025-09-24T12:10:21.668393",
+  "pattern_analysis": {
+    "total_detections": 24,
+    "timestamp_range": "0.208s - 5.000s",
+    "intervals": {
+      "mean": 0.20833333333333331,
+      "std": 2.1877738896478708e-16,
+      "min": 0.20833333333333304,
+      "max": 0.20833333333333393,
+      "all_intervals": [
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333,
+        0.208333
+      ]
+    },
+    "regularity_analysis": {
+      "extremely_regular": "True",
+      "too_perfect": true,
+      "artificial_pattern": true
+    },
+    "frame_analysis": {
+      "frame_numbers": [
+        5,
+        10,
+        15,
+        20,
+        25,
+        30,
+        35,
+        40,
+        45,
+        50,
+        55,
+        60,
+        65,
+        70,
+        75,
+        80,
+        85,
+        90,
+        95,
+        100,
+        105,
+        110,
+        115,
+        120
+      ],
+      "frame_intervals": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "all_same_interval": true,
+      "interval_value": 5
+    }
+  },
+  "ground_truth_comparison": {
+    "ground_truth_count": 24,
+    "frame_inspections": [
+      {
+        "frame_number": 1,
+        "expected_timestamp": 0.0,
+        "ground_truth_count": 0,
+        "ground_truth_objects": []
+      },
+      {
+        "frame_number": 5,
+        "expected_timestamp": 0.16666666666666666,
+        "ground_truth_count": 1,
+        "ground_truth_objects": [
+          {
+            "gt_id": "e90a668e-997b-4587-9700-03e65996f63b",
+            "class_label": "VRUTypeEnum.PEDESTRIAN",
+            "bbox": [
+              809,
+              86,
+              170,
+              425
+            ],
+            "timestamp": 0.20833333333333334,
+            "roi_valid": true,
+            "roi_size": [
+              170,
+              425
+            ],
+            "roi_brightness_mean": 122.6248858131488,
+            "roi_has_content": "True"
+          }
+        ]
+      },
+      {
+        "frame_number": 10,
+        "expected_timestamp": 0.375,
+        "ground_truth_count": 1,
+        "ground_truth_objects": [
+          {
+            "gt_id": "c83f054c-47de-4714-a76e-57253ce55553",
+            "class_label": "VRUTypeEnum.PEDESTRIAN",
+            "bbox": [
+              779,
+              100,
+              209,
+              440
+            ],
+            "timestamp": 0.4166666666666667,
+            "roi_valid": true,
+            "roi_size": [
+              209,
+              440
+            ],
+            "roi_brightness_mean": 129.47514136581123,
+            "roi_has_content": "True"
+          }
+        ]
+      },
+      {
+        "frame_number": 15,
+        "expected_timestamp": 0.5833333333333334,
+        "ground_truth_count": 1,
+        "ground_truth_objects": [
+          {
+            "gt_id": "30d9d414-6191-4b11-a1e2-6eb4e5c4f784",
+            "class_label": "VRUTypeEnum.PEDESTRIAN",
+            "bbox": [
+              772,
+              111,
+              199,
+              428
+            ],
+            "timestamp": 0.625,
+            "roi_valid": true,
+            "roi_size": [
+              199,
+              428
+            ],
+            "roi_brightness_mean": 130.70046494153007,
+            "roi_has_content": "True"
+          }
+        ]
+      },
+      {
+        "frame_number": 20,
+        "expected_timestamp": 0.7916666666666666,
+        "ground_truth_count": 1,
+        "ground_truth_objects": [
+          {
+            "gt_id": "69b76b6b-49e7-4fc1-a404-6a2da0fdb2d1",
+            "class_label": "VRUTypeEnum.PEDESTRIAN",
+            "bbox": [
+              777,
+              105,
+              176,
+              397
+            ],
+            "timestamp": 0.8333333333333334,
+            "roi_valid": true,
+            "roi_size": [
+              176,
+              397
+            ],
+            "roi_brightness_mean": 128.4789615296542,
+            "roi_has_content": "True"
+          }
+        ]
+      }
+    ]
+  },
+  "detection_source_analysis": {
+    "detection_sources": {
+      "labjack_detections": 0,
+      "ai_detections": 24,
+      "manual_detections": 0,
+      "unknown_source": 0
+    },
+    "timing_data_availability": {
+      "has_labjack_timestamp": 0,
+      "has_video_relative_timestamp": 0,
+      "has_actual_latency": 0,
+      "has_frame_number": 24
+    },
+    "detection_details": [
+      {
+        "id": "bfb5b283-0db1-4e21-9db1-b13ff516bbcb",
+        "timestamp": 0.20833333333333334,
+        "frame_number": 5,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9615832257270813,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "4e0ad1a5-14d2-4b9a-b395-5b80ae1a9888",
+        "timestamp": 0.4166666666666667,
+        "frame_number": 10,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9568631339073181,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "aaa8d6b9-488d-4c7e-a2f4-770ba698f547",
+        "timestamp": 0.625,
+        "frame_number": 15,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9577504086494446,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "12509517-d29e-43eb-8365-e133b4e70457",
+        "timestamp": 0.8333333333333334,
+        "frame_number": 20,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9667464780807495,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "0cce05d6-2612-418c-8401-96d950846014",
+        "timestamp": 1.0416666666666667,
+        "frame_number": 25,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9549070286750794,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "7992abac-b76b-4a62-9ae4-c579803120c6",
+        "timestamp": 1.25,
+        "frame_number": 30,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9575547862052918,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "ae39389f-9a7d-4d27-9b8a-56e130e8314e",
+        "timestamp": 1.4583333333333333,
+        "frame_number": 35,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9602719235420227,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "478cad2c-9943-4d52-bdcd-ca8fd6d0fdc8",
+        "timestamp": 1.6666666666666667,
+        "frame_number": 40,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9585103082656861,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "dd90beed-7000-4bf1-ae16-a50458353967",
+        "timestamp": 1.875,
+        "frame_number": 45,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9629533576965332,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "d9d2db04-17e5-478c-8091-4b576ca5a87b",
+        "timestamp": 2.0833333333333335,
+        "frame_number": 50,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9618817853927613,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "5d101fab-17fe-4ff2-8288-b0a2b13f15cd",
+        "timestamp": 2.2916666666666665,
+        "frame_number": 55,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9682796883583069,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "767b70d9-931c-40bb-83e1-a4d7c14cecff",
+        "timestamp": 2.5,
+        "frame_number": 60,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.9673003840446472,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "cfc6e85a-75c0-4e75-91e5-14cc76b3286a",
+        "timestamp": 2.7083333333333335,
+        "frame_number": 65,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "ddf4980c-ad1e-41f4-9a78-4f7bc9b3dfe0",
+        "timestamp": 2.9166666666666665,
+        "frame_number": 70,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "1d0c0b18-a280-456f-9bab-3f6a0c61efc2",
+        "timestamp": 3.125,
+        "frame_number": 75,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "c638a2af-542a-4b13-98e3-1fdab311c7d0",
+        "timestamp": 3.3333333333333335,
+        "frame_number": 80,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "dcb639e0-6457-49be-972a-4b3ca9fc2c3e",
+        "timestamp": 3.5416666666666665,
+        "frame_number": 85,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "062ebbf0-47dc-4bec-8ffa-009f1a4f48dc",
+        "timestamp": 3.75,
+        "frame_number": 90,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "a7a2dbe7-4b2f-4f18-9d44-21c48f0d3427",
+        "timestamp": 3.9583333333333335,
+        "frame_number": 95,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "7aea7320-da64-4f7b-bd16-f7e90f098b65",
+        "timestamp": 4.166666666666667,
+        "frame_number": 100,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "d60ee53c-ee47-4041-a515-be03a150b3e5",
+        "timestamp": 4.375,
+        "frame_number": 105,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "1faa3572-0870-4260-a61e-899a9264ef01",
+        "timestamp": 4.583333333333333,
+        "frame_number": 110,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "1046dd4e-ea78-40d9-8a28-9fdaf591f519",
+        "timestamp": 4.791666666666667,
+        "frame_number": 115,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      },
+      {
+        "id": "709b9668-de84-4b33-b502-5f4a648bf300",
+        "timestamp": 5.0,
+        "frame_number": 120,
+        "source": "ai",
+        "validation_result": "Pass",
+        "has_bbox": true,
+        "confidence": 0.99,
+        "class_label": "pedestrian"
+      }
+    ]
+  },
+  "conclusions": [
+    "\ud83d\udea8 CRITICAL: Detections follow artificial pattern - intervals too regular",
+    "   All intervals are 0.208333s \u00b1 0.000000s",
+    "\ud83d\udea8 CRITICAL: All detections exactly 5 frames apart - this is NOT natural",
+    "\ud83d\udea8 CRITICAL: All detections exactly every 5th frame - artificially generated",
+    "\u2139\ufe0f  INFO: All detections are AI-generated (not LabJack hardware)",
+    "\u26a0\ufe0f  WARNING: No LabJack timestamps found - not true HIL testing"
+  ]
+}

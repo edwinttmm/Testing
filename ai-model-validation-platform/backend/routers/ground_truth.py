@@ -9,7 +9,7 @@ from typing import List, Optional
 import logging
 
 from database import get_db
-from models import Video, GroundTruthObject
+from models import Video, GroundTruthObject, DetectionEvent
 from schemas import VideoFile
 
 logger = logging.getLogger(__name__)
@@ -38,31 +38,69 @@ async def get_available_videos(
     try:
         logger.info(f"🔍 Fetching videos with ground truth data (project_id={project_id}, min_detections={min_detections})")
         
-        # Build base query for videos with ground truth objects
-        # More inclusive query - any video that has ground truth objects, regardless of flag
-        query = db.query(Video).join(
-            GroundTruthObject, Video.id == GroundTruthObject.video_id
-        ).filter(
-            Video.status.in_(["validated", "completed", "processing", "uploaded"])  # Include more valid states
-        )
+        # Build comprehensive query for videos with ground truth objects OR detection events
+        from sqlalchemy import func, or_, exists
         
         # Apply project filter if specified
-        if project_id:
-            query = query.filter(Video.project_id == project_id)
+        base_query = db.query(Video).filter(
+            Video.status.in_(["validated", "completed", "processing", "uploaded"])
+        )
         
-        # Group by video and count ground truth objects
-        from sqlalchemy import func
-        subquery = db.query(
+        if project_id:
+            # Check both direct assignment and VideoProjectLink relationships
+            from models import VideoProjectLink
+            base_query = base_query.filter(
+                or_(
+                    Video.project_id == project_id,
+                    Video.id.in_(
+                        db.query(VideoProjectLink.video_id).filter(
+                            VideoProjectLink.project_id == project_id
+                        )
+                    )
+                )
+            )
+        
+        # Count ground truth objects per video
+        gt_counts = db.query(
             GroundTruthObject.video_id,
             func.count(GroundTruthObject.id).label('gt_count')
         ).group_by(GroundTruthObject.video_id).subquery()
         
-        # Join with the count subquery and filter by minimum detections
-        query = query.join(
-            subquery, Video.id == subquery.c.video_id
+        # Count detection events per video  
+        de_counts = db.query(
+            DetectionEvent.video_id,
+            func.count(DetectionEvent.id).label('de_count')
+        ).group_by(DetectionEvent.video_id).subquery()
+        
+        # Count annotations per video (from annotations table)
+        from models import Annotation
+        ann_counts = db.query(
+            Annotation.video_id,
+            func.count(Annotation.id).label('ann_count')
+        ).group_by(Annotation.video_id).subquery()
+        
+        # Build query that includes videos with ground truth, detection events, OR annotations
+        # and calculates total detection count
+        query = base_query.outerjoin(
+            gt_counts, Video.id == gt_counts.c.video_id
+        ).outerjoin(
+            de_counts, Video.id == de_counts.c.video_id
+        ).outerjoin(
+            ann_counts, Video.id == ann_counts.c.video_id
         ).filter(
-            subquery.c.gt_count >= min_detections
+            or_(
+                gt_counts.c.gt_count != None,
+                de_counts.c.de_count != None,
+                ann_counts.c.ann_count != None
+            )
         )
+        
+        # Filter by minimum detections using WHERE clause instead of HAVING
+        # This avoids the SQLite HAVING error on non-aggregate queries
+        if min_detections > 0:
+            query = query.filter(
+                (func.coalesce(gt_counts.c.gt_count, 0) + func.coalesce(de_counts.c.de_count, 0) + func.coalesce(ann_counts.c.ann_count, 0)) >= min_detections
+            )
         
         # Execute query and get distinct videos
         videos = query.distinct().all()
@@ -72,21 +110,27 @@ async def get_available_videos(
         # Convert to VideoFile response format
         video_files = []
         for video in videos:
-            # Get ground truth count for this video
+            # Get total ground truth count for this video from all sources
             gt_count = db.query(func.count(GroundTruthObject.id)).filter(
                 GroundTruthObject.video_id == video.id
-            ).scalar()
+            ).scalar() or 0
+            
+            ann_count = db.query(func.count(Annotation.id)).filter(
+                Annotation.video_id == video.id
+            ).scalar() or 0
+            
+            total_gt_count = gt_count + ann_count
             
             video_file = VideoFile(
                 id=video.id,
                 filename=video.filename,
-                projectId=video.project_id,
+                projectId=None,  # Videos are now project-independent
                 duration=video.duration,
                 size=video.file_size,
                 status=video.status,
                 createdAt=video.created_at.isoformat() if video.created_at else None,
                 # Additional ground truth specific metadata
-                ground_truth_count=gt_count,
+                ground_truth_count=total_gt_count,
                 ground_truth_generated=video.ground_truth_generated,
                 validation_status=video.validation_status
             )
@@ -181,6 +225,36 @@ async def health_check():
         "endpoints": [
             "/api/ground-truth/videos/available",
             "/api/ground-truth/videos/{video_id}/stats",
-            "/api/ground-truth/health"
+            "/api/ground-truth/health",
+            "/api/annotations/{annotation_id}"
         ]
     }
+
+@router.delete("/annotations/{annotation_id}")
+async def delete_ground_truth_annotation(
+    annotation_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete a ground truth annotation/object"""
+    try:
+        # Check if it's a ground truth object
+        ground_truth_obj = db.query(GroundTruthObject).filter(
+            GroundTruthObject.id == annotation_id
+        ).first()
+        
+        if ground_truth_obj:
+            db.delete(ground_truth_obj)
+            db.commit()
+            logger.info(f"Deleted ground truth object: {annotation_id}")
+            return {"success": True, "message": "Ground truth object deleted successfully"}
+        
+        # If not found, return 404
+        logger.warning(f"Annotation not found: {annotation_id}")
+        raise HTTPException(status_code=404, detail="Annotation not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting annotation {annotation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

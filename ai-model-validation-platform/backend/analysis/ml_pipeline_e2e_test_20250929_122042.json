@@ -1,0 +1,316 @@
+{
+  "timestamp": "2025-09-29T11:20:29.783752+00:00",
+  "test_suite": "ML Pipeline End-to-End",
+  "tests": {
+    "basic_video_processing": {
+      "test_name": "basic_video_processing",
+      "status": "failed",
+      "details": {
+        "video_path": "/tmp/ml_pipeline_test_g4m1o6on/videos/basic_test.mp4",
+        "video_size_mb": 3.383852005004883,
+        "detections_found": 0,
+        "processing_time": 4.649162292480469e-05,
+        "fps": 1290555.076923077,
+        "model_status": {
+          "ml_available": false,
+          "model_loaded": false,
+          "model_version": null,
+          "model_path": null
+        }
+      },
+      "issues": [
+        "No detections found in test video",
+        "ML not available",
+        "Model not loaded"
+      ],
+      "metrics": {
+        "processing_fps": 1290555.076923077,
+        "detections_per_second": 0.0
+      }
+    },
+    "enhanced_video_processing": {
+      "test_name": "enhanced_video_processing",
+      "status": "passed",
+      "details": {
+        "video_path": "/tmp/ml_pipeline_test_g4m1o6on/videos/enhanced_test.mp4",
+        "processing_result": {
+          "video_id": "test_enhanced_video_456",
+          "status": "completed",
+          "metadata": {
+            "fps": 30.0,
+            "total_frames": 120,
+            "width": 640,
+            "height": 480,
+            "duration": 4.0,
+            "codec": "FMP4",
+            "bitrate": 0
+          },
+          "processing_stats": {
+            "total_frames": 120,
+            "total_detections": 13,
+            "processing_time": 0.12305736541748047,
+            "avg_fps": 975.1549579571434,
+            "detections_per_frame": 0.10833333333333334
+          },
+          "detection_summary": {
+            "total": 13,
+            "by_type": {
+              "pedestrian": {
+                "count": 8,
+                "avg_confidence": 0.875
+              },
+              "cyclist": {
+                "count": 5,
+                "avg_confidence": 0.78
+              }
+            },
+            "confidence_stats": {
+              "min": 0.78,
+              "max": 0.9,
+              "avg": 0.8384615384615385,
+              "median": 0.85
+            }
+          },
+          "yolo_stats": {
+            "total_inferences": 120,
+            "total_detections": 13,
+            "average_inference_time": 1.0148684183756506e-05,
+            "model_type": null
+          }
+        },
+        "total_processing_time": 0.12389445304870605,
+        "performance_analysis": {
+          "frames_processed": 120,
+          "detections_found": 13,
+          "processing_fps": 975.1549579571434,
+          "detections_per_frame": 0.10833333333333334,
+          "detection_types": {
+            "pedestrian": {
+              "count": 8,
+              "avg_confidence": 0.875
+            },
+            "cyclist": {
+              "count": 5,
+              "avg_confidence": 0.78
+            }
+          }
+        },
+        "engine_health": {
+          "status": "healthy",
+          "components": {
+            "yolo_engine": "healthy",
+            "database": "not_available"
+          },
+          "timestamp": "2025-09-29T11:20:31.963244+00:00"
+        }
+      },
+      "issues": [],
+      "metrics": {
+        "enhanced_processing_fps": 975.1549579571434,
+        "total_detections": 13
+      }
+    },
+    "bulletproof_detection": {
+      "test_name": "bulletproof_detection",
+      "status": "failed",
+      "details": {
+        "initialization": {
+          "success": false,
+          "model_version": "yolo11l",
+          "has_model": false
+        }
+      },
+      "issues": [
+        "Bulletproof YOLO initialization failed"
+      ],
+      "metrics": {}
+    },
+    "error_recovery": {
+      "test_name": "error_recovery",
+      "status": "passed",
+      "scenarios": {
+        "corrupted_video": {
+          "scenario": "Corrupted video file",
+          "recovery_successful": true,
+          "error_handled": true,
+          "details": {
+            "video_path": "/tmp/ml_pipeline_test_g4m1o6on/videos/corrupted_test.mp4",
+            "file_size": 30,
+            "error_message": null
+          }
+        },
+        "missing_video": {
+          "scenario": "Missing video file",
+          "recovery_successful": true,
+          "error_handled": true,
+          "details": {
+            "video_path": "/tmp/ml_pipeline_test_g4m1o6on/videos/nonexistent.mp4",
+            "file_exists": false,
+            "error_message": null
+          }
+        },
+        "memory_pressure": {
+          "scenario": "Memory pressure test",
+          "recovery_successful": true,
+          "error_handled": true,
+          "details": {
+            "video_frames": 300,
+            "memory_increase_mb": 0.0,
+            "detections_found": 0,
+            "error_message": null
+          }
+        },
+        "model_failure": {
+          "scenario": "Model loading failure",
+          "recovery_successful": true,
+          "error_handled": true,
+          "details": {
+            "fallback_used": true,
+            "error_message": null
+          }
+        }
+      },
+      "issues": [],
+      "recovery_rate": 1.0,
+      "total_scenarios": 4,
+      "successful_recoveries": 4
+    },
+    "performance_benchmarks": {
+      "test_name": "performance_benchmarks",
+      "status": "failed",
+      "benchmarks": {
+        "processing_speed": {
+          "30_frames": {
+            "frames": 30,
+            "processing_time": 0.00011396408081054688,
+            "fps": 263240.83682008367,
+            "detections": 0,
+            "detections_per_second": 0.0
+          },
+          "60_frames": {
+            "frames": 60,
+            "processing_time": 7.987022399902344e-05,
+            "fps": 751218.6268656716,
+            "detections": 0,
+            "detections_per_second": 0.0
+          },
+          "120_frames": {
+            "frames": 120,
+            "processing_time": 6.365776062011719e-05,
+            "fps": 1885080.4494382022,
+            "detections": 0,
+            "detections_per_second": 0.0
+          },
+          "180_frames": {
+            "frames": 180,
+            "processing_time": 7.62939453125e-05,
+            "fps": 2359296.0,
+            "detections": 0,
+            "detections_per_second": 0.0
+          }
+        },
+        "memory_usage": {
+          "320x240": {
+            "resolution": [
+              320,
+              240
+            ],
+            "memory_increase_mb": 0.0,
+            "detections": 0,
+            "memory_per_pixel": 0.0
+          },
+          "640x480": {
+            "resolution": [
+              640,
+              480
+            ],
+            "memory_increase_mb": 0.0,
+            "detections": 0,
+            "memory_per_pixel": 0.0
+          },
+          "1280x720": {
+            "resolution": [
+              1280,
+              720
+            ],
+            "memory_increase_mb": 0.0,
+            "detections": 0,
+            "memory_per_pixel": 0.0
+          }
+        },
+        "detection_accuracy": {
+          "threshold_0.1": {
+            "threshold": 0.1,
+            "total_detections": 0,
+            "avg_confidence": 0,
+            "pedestrian_count": 0,
+            "cyclist_count": 0
+          },
+          "threshold_0.3": {
+            "threshold": 0.3,
+            "total_detections": 0,
+            "avg_confidence": 0,
+            "pedestrian_count": 0,
+            "cyclist_count": 0
+          },
+          "threshold_0.5": {
+            "threshold": 0.5,
+            "total_detections": 0,
+            "avg_confidence": 0,
+            "pedestrian_count": 0,
+            "cyclist_count": 0
+          },
+          "threshold_0.7": {
+            "threshold": 0.7,
+            "total_detections": 0,
+            "avg_confidence": 0,
+            "pedestrian_count": 0,
+            "cyclist_count": 0
+          },
+          "threshold_0.9": {
+            "threshold": 0.9,
+            "total_detections": 0,
+            "avg_confidence": 0,
+            "pedestrian_count": 0,
+            "cyclist_count": 0
+          }
+        },
+        "concurrent_processing": {
+          "sequential": {
+            "time": 0.00010013580322265625,
+            "results": [
+              0,
+              0,
+              0
+            ],
+            "total_detections": 0
+          },
+          "concurrent": {
+            "time": 0.003153085708618164,
+            "results": [
+              0,
+              0,
+              0
+            ],
+            "total_detections": 0,
+            "speedup": 0.03175803402646503
+          }
+        }
+      },
+      "issues": [
+        "Significant FPS degradation with video length: 88.8%",
+        "Poor concurrent processing speedup: 0.0x"
+      ]
+    }
+  },
+  "overall_status": "failed",
+  "performance_metrics": {
+    "basic_video_processing_processing_fps": 1290555.076923077,
+    "basic_video_processing_detections_per_second": 0.0,
+    "enhanced_video_processing_enhanced_processing_fps": 975.1549579571434,
+    "enhanced_video_processing_total_detections": 13
+  },
+  "error_scenarios": {},
+  "recovery_tests": {},
+  "test_duration": 12.767573595046997
+}

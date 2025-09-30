@@ -36,7 +36,10 @@ interface FrameCorrelationEvent {
   frame_number: number;
   video_frame_number?: number;
   confidence?: number;
+  // Latency relative to nearest ground truth (signed ms; positive means after GT)
   latency_ms?: number;
+  // Hardware/processing latency reported by backend (kept for reference)
+  real_latency_ms?: number;
   voltage?: number;
   channel?: string;
   label?: string;
@@ -69,6 +72,15 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
   highlightMisalignments = true
 }) => {
   const fps = videoMetadata?.fps || 24;
+  const duration = videoMetadata?.duration ?? undefined;
+  const totalFrames = typeof duration === 'number' && Number.isFinite(duration) ? Math.max(0, Math.round(duration * fps)) : undefined;
+
+  // Helper to clamp a frame number into valid video range if duration is known.
+  const clampFrame = (frame: number): number => {
+    if (!Number.isFinite(frame)) return 0;
+    if (totalFrames == null) return Math.max(0, Math.floor(frame));
+    return Math.min(Math.max(0, Math.floor(frame)), Math.max(0, totalFrames - 1));
+  };
   
   // Process and correlate events
   const correlatedEvents = useMemo(() => {
@@ -77,15 +89,20 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
     // Calculate last detection timestamp for boundary detection
     const lastDetectionTime = detectionEvents.length > 0 ? 
       Math.max(...detectionEvents.map(d => {
-        const frameNum = d.video_frame_number || d.frame_number || 0;
-        return d.timestamp || (frameNum / fps);
+        const frameNumRaw = d.video_frame_number ?? d.frame_number ?? 0;
+        const frameNum = clampFrame(Number(frameNumRaw));
+        // Prefer video-derived time; ignore absolute epoch timestamps
+        const rel = frameNum > 0 ? (frameNum / fps) : 0;
+        return rel;
       })) : 0;
     const videoEndMargin = 0.5; // 500ms grace period after last detection
     
     // Add ground truth events with boundary detection
     groundTruthEvents.forEach((gt: any) => {
-      const gtFrameNumber = gt.video_frame || gt.frame_number || 0;
-      const gtTimeSeconds = gt.timestamp || (gtFrameNumber / fps);
+      const gtFrameRaw = gt.video_frame ?? gt.frame_number ?? 0;
+      const gtFrameNumber = clampFrame(Number(gtFrameRaw));
+      // Prefer frame-derived time to avoid epoch seconds leaking in
+      const gtTimeSeconds = gtFrameNumber > 0 ? (gtFrameNumber / fps) : (Number(gt.timestamp) || 0);
       
       // Determine if this ground truth is beyond monitoring boundary
       let gtCorrelationStatus: 'aligned' | 'video_ended' = 'aligned';
@@ -108,8 +125,8 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
     
     // Add detection events with correlation analysis
     detectionEvents.forEach((det: any) => {
-      const detectionFrameNumber = det.video_frame_number || det.frame_number || 0;
-      const videoTimeSeconds = detectionFrameNumber / fps;
+      const detectionFrameNumber = clampFrame(Number(det.video_frame_number ?? det.frame_number ?? 0));
+      const videoTimeSeconds = detectionFrameNumber > 0 ? (detectionFrameNumber / fps) : 0;
       
       // Find closest ground truth event for correlation
       let closestGT = null;
@@ -129,10 +146,15 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
       // Determine correlation status
       let correlationStatus: 'aligned' | 'misaligned' | 'missing' | 'video_ended' = 'missing';
       let frameOffsetMs = 0;
+      let gtLatencyMs: number | undefined = undefined; // signed Δ vs nearest GT
       
       if (closestGT) {
-        const frameOffsetFrames = Math.abs(detectionFrameNumber - (closestGT.video_frame || closestGT.frame_number || 0));
+        const closestGTFrame = clampFrame(Number(closestGT.video_frame ?? closestGT.frame_number ?? 0));
+        const closestGTTimeSec = closestGTFrame > 0 ? (closestGTFrame / fps) : (Number(closestGT.timestamp) || 0);
+        const frameOffsetFrames = Math.abs(detectionFrameNumber - closestGTFrame);
         frameOffsetMs = (frameOffsetFrames / fps) * 1000;
+        // Signed latency from GT to detection in ms
+        gtLatencyMs = (videoTimeSeconds - closestGTTimeSec) * 1000;
         
         if (frameOffsetMs <= (1000 / fps) * 2) { // Within 2 frames
           correlationStatus = 'aligned';
@@ -146,11 +168,15 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
       events.push({
         id: `det-${det.id || det.event_id || Math.random()}`,
         type: 'detection',
-        timestamp: det.timestamp || (videoTimeSeconds),
+        // Always use video-relative seconds to keep a consistent timebase
+        timestamp: videoTimeSeconds,
         frame_number: detectionFrameNumber,
         video_frame_number: detectionFrameNumber,
         confidence: det.confidence || 0.8,
-        latency_ms: det.real_latency_ms || det.detection_time_ms || det.corrected_latency?.real_latency_ms,
+        // Show latency relative to nearest GT in this visualization
+        latency_ms: gtLatencyMs,
+        // Preserve backend-reported real latency for reference/tooltips
+        real_latency_ms: det.real_latency_ms || det.detection_time_ms || det.corrected_latency?.real_latency_ms,
         voltage: det.voltage || det.voltage_level,
         channel: det.channel || 'AIN0',
         passed: det.passed || det.validation_result === 'PASS',
@@ -404,17 +430,22 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
                   
                   {showLatencyInfo && (
                     <TableCell>
-                      {event.latency_ms !== undefined && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <AccessTime fontSize="small" />
-                          <Typography variant="body2">
-                            {event.latency_ms.toFixed(1)}ms
-                          </Typography>
-                          {event.passed === false && (
-                            <Chip label="FAIL" color="error" size="small" />
-                          )}
-                        </Box>
+                  {(event.latency_ms !== undefined || event.real_latency_ms !== undefined) && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <AccessTime fontSize="small" />
+                      <Typography variant="body2">
+                            {event.latency_ms !== undefined ? `${event.latency_ms.toFixed(1)}ms` : '—'}
+                      </Typography>
+                      {event.real_latency_ms !== undefined && (
+                        <Tooltip title={`Hardware/processing latency: ${event.real_latency_ms.toFixed(1)}ms`}>
+                          <Chip label={`real ${event.real_latency_ms.toFixed(0)}ms`} size="small" variant="outlined" />
+                        </Tooltip>
                       )}
+                      {event.passed === false && (
+                        <Chip label="FAIL" color="error" size="small" />
+                      )}
+                    </Box>
+                  )}
                     </TableCell>
                   )}
                   
@@ -434,11 +465,29 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
                   
                   <TableCell>
                     {event.type === 'detection' && (
-                      <Chip 
-                        label={event.passed ? 'PASS' : 'FAIL'}
-                        color={event.passed ? 'success' : 'error'}
-                        size="small"
-                      />
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                        {(() => {
+                          const toleranceMs = (2 / fps) * 1000; // ±2 frames
+                          const gtPass = typeof event.latency_ms === 'number' && Math.abs(event.latency_ms) <= toleranceMs;
+                          return (
+                            <Chip
+                              label={gtPass ? 'GT PASS' : 'GT FAIL'}
+                              color={gtPass ? 'success' : 'error'}
+                              size="small"
+                            />
+                          );
+                        })()}
+                        {typeof event.passed === 'boolean' && (
+                          <Tooltip title="Threshold status from backend (e.g., 100ms limit, voltage)">
+                            <Chip
+                              label={event.passed ? 'thr PASS' : 'thr FAIL'}
+                              color={event.passed ? 'success' : 'error'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
                     )}
                   </TableCell>
                 </TableRow>

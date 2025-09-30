@@ -392,10 +392,13 @@ const DatasetVideos: React.FC = () => {
         return false;
       }
 
-      // Project filter
-      if (filter.projects?.length && !filter.projects.some(p => 
-        video.projectName?.includes(p) || video.projectId === p)) {
-        return false;
+      // Project filter - use VideoProjectLink API for shared video architecture
+      if (filter.projects?.length) {
+        // Note: In shared video architecture, we would need to check VideoProjectLink API
+        // For now, filter by project name only since projectId is null for shared resources
+        if (!filter.projects.some(p => video.projectName?.includes(p))) {
+          return false;
+        }
       }
 
       // VRU type filter

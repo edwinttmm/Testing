@@ -1133,10 +1133,10 @@ const EnhancedTestExecution = () => {
                       try {
                         console.log(`🔄 Loading videos for project: ${project.name} (ID: ${project.id})`);
                         // Use the working getAllVideos API instead of the broken project-specific endpoint
-                        const allVideosResponse = await getAllVideos(false, 0, 1000);
-                        // Filter videos by the selected project ID
-                        const videos = allVideosResponse.videos.filter(video => video.projectId === project.id);
-                        console.log(`📹 Found ${videos.length} videos for project ${project.id} (filtered from ${allVideosResponse.videos.length} total):`, videos);
+                        // Use VideoProjectLink API to get videos for this project
+                        const { videoProjectService } = await import('../services/videoProjectService');
+                        const videos = await videoProjectService.getProjectVideos(project.id);
+                        console.log(`📹 Found ${videos.length} videos for project ${project.id}:`, videos);
                         
                         if (videos.length === 0) {
                           console.log(`ℹ️ No videos linked to project ${project.name}. This is normal for new projects.`);

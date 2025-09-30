@@ -131,7 +131,7 @@ export class TemporalMatcher {
     const startTime = Date.now();
     let bestMatch: VRUTrackMatch | null = null;
     let allCandidates: VRUMatchCandidate[] = [];
-    let algorithmUsed = 'multi_scale_temporal';
+    const algorithmUsed = 'multi_scale_temporal';
 
     try {
       // Step 1: Check cache for existing match

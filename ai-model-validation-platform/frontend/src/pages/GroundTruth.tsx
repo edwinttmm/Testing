@@ -310,8 +310,7 @@ const GroundTruth: React.FC = () => {
     modelName: 'yolov8s',
     targetClasses: ['person', 'bicycle', 'motorcycle'],
     maxRetries: 2,
-    retryDelay: 1000,
-    useFallback: true
+    retryDelay: 1000
   });
 
   // Bulk video operations state
@@ -482,30 +481,51 @@ const GroundTruth: React.FC = () => {
   const [projectContext, setProjectContext] = useState<'url' | 'video' | 'central' | null>(urlProjectId ? 'url' : null);
 
   // Utility function to get the best available project context for operations
-  const getProjectContextForOperation = useCallback((operationVideo?: VideoFile) => {
-    const videoProjectId = operationVideo?.projectId || selectedVideo?.projectId;
+  const getProjectContextForOperation = useCallback(async (operationVideo?: VideoFile) => {
+    // In shared video architecture, projectId is always null
+    // We need to use VideoProjectLink API to resolve project context
     
-    // Priority: URL project ID > Video's project ID > Current derived project ID
-    const contextualProjectId = urlProjectId || videoProjectId || projectId;
-    const source = urlProjectId ? 'url' : videoProjectId ? 'video' : projectId ? 'derived' : 'none';
-    
-    return { projectId: contextualProjectId, source };
-  }, [urlProjectId, selectedVideo, projectId]);
-
-  // Helper function to determine project context from videos
-  const deriveProjectContext = useCallback((videos: VideoFile[]) => {
-    if (!videos || videos.length === 0) return null;
-    
-    // Get unique project IDs from videos
-    const projectIds = [...new Set(videos.map(v => v.projectId).filter(Boolean))];
-    
-    // If all videos belong to the same project, use that project ID
-    if (projectIds.length === 1 && projectIds[0]) {
-      return projectIds[0];
+    // Priority: URL project ID > Resolved project from video links > Current derived project ID
+    if (urlProjectId) {
+      return { projectId: urlProjectId, source: 'url' };
     }
     
-    // If videos belong to multiple projects or no project, use central store approach
-    return null;
+    // If we have a video, try to resolve its projects via VideoProjectLink API
+    if (operationVideo?.id || selectedVideo?.id) {
+      try {
+        const { videoProjectService } = await import('../services/videoProjectService');
+        const videoId = operationVideo?.id || selectedVideo?.id;
+        const projects = await videoProjectService.getVideoProjects(videoId!);
+        
+        if (projects.length === 1) {
+          return { projectId: projects[0].id, source: 'video_link' };
+        } else if (projects.length > 1) {
+          // Multiple projects - use the first one or derive from context
+          return { projectId: projects[0].id, source: 'video_link_multi' };
+        }
+      } catch (error) {
+        console.warn('Failed to resolve video project links:', error);
+      }
+    }
+    
+    // Fallback to derived project ID or null
+    return { projectId: projectId, source: projectId ? 'derived' : 'none' };
+  }, [urlProjectId, selectedVideo, projectId]);
+
+  // Helper function to determine project context from videos (updated for shared architecture)
+  const deriveProjectContext = useCallback(async (videos: VideoFile[]) => {
+    if (!videos || videos.length === 0) return null;
+    
+    // In shared video architecture, projectId is always null
+    // We need to use VideoProjectLink API to derive context
+    try {
+      const { videoProjectService } = await import('../services/videoProjectService');
+      const resolvedProjectId = await videoProjectService.resolveProjectContext(videos);
+      return resolvedProjectId;
+    } catch (error) {
+      console.warn('Failed to derive project context:', error);
+      return null;
+    }
   }, []);
 
   // Smart video loading that works with or without project context
@@ -525,13 +545,18 @@ const GroundTruth: React.FC = () => {
         const allVideos = Array.isArray(response) ? response : (response?.videos || []);
         videoList = allVideos;
         
-        // Try to derive project context from videos
-        const derivedProjectId = deriveProjectContext(allVideos || []);
-        if (derivedProjectId && !projectId) {
-          setProjectId(derivedProjectId);
-          setProjectContext('video');
-        } else if (!derivedProjectId && !projectId) {
-          // Use central store approach for mixed/unassigned videos
+        // Try to derive project context from videos (now async)
+        try {
+          const derivedProjectId = await deriveProjectContext(allVideos || []);
+          if (derivedProjectId && !projectId) {
+            setProjectId(derivedProjectId);
+            setProjectContext('video');
+          } else if (!derivedProjectId && !projectId) {
+            // Use central store approach for mixed/unassigned videos
+            setProjectContext('central');
+          }
+        } catch (error) {
+          console.warn('Failed to derive project context:', error);
           setProjectContext('central');
         }
       }
@@ -1557,34 +1582,39 @@ const GroundTruth: React.FC = () => {
                 </Box>
                 
                 <ListItemText
-                  primary={video.filename || video.name}
+                  disableTypography
+                  primary={
+                    <Typography variant="subtitle1" component="div">
+                      {video.filename || video.name}
+                    </Typography>
+                  }
                   secondary={
-                    <>
-                      Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploaded_at || new Date().toISOString()).toLocaleDateString()}
+                    <Box component="div">
+                      <Typography variant="body2" component="span">
+                        Size: {formatFileSize(video.file_size || video.fileSize || video.size || 0)} • Duration: {formatDuration(video.duration)} • Uploaded: {new Date(video.created_at || video.createdAt || video.uploaded_at || new Date().toISOString()).toLocaleDateString()}
+                      </Typography>
                       {video.projectId && (
-                        <>
-                          <br />
-                          <Typography variant="caption" color="primary">
+                        <Box component="div">
+                          <Typography variant="caption" color="primary" component="span">
                             Project: {video.projectId.slice(0, 8)}...
                           </Typography>
-                        </>
+                        </Box>
                       )}
                       {!video.projectId && projectContext === 'central' && (
-                        <>
-                          <br />
-                          <Typography variant="caption" color="text.secondary">
+                        <Box component="div">
+                          <Typography variant="caption" color="text.secondary" component="span">
                             Unassigned to project
                           </Typography>
-                        </>
+                        </Box>
                       )}
                       {video.status === 'processing' && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="caption">Processing ground truth...</Typography>
+                        <Box sx={{ mt: 1 }} component="div">
+                          <Typography variant="caption" component="span">Processing ground truth...</Typography>
                           <LinearProgress sx={{ mt: 0.5 }} />
                         </Box>
                       )}
-                      {((video.status === VideoValidationStatus.VALIDATED || video.status === VideoValidationStatus.VALIDATED) || video.groundTruthGenerated) && (
-                        <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                      {((video.status === VideoValidationStatus.VALIDATED || video.status === VideoValidationStatus.VALIDATED) || (video as any).groundTruthGenerated) && (
+                        <Box sx={{ mt: 1, display: 'flex', gap: 1 }} component="div">
                           <Chip
                             label="Ready for annotation"
                             size="small"
@@ -1600,7 +1630,7 @@ const GroundTruth: React.FC = () => {
                           )}
                         </Box>
                       )}
-                    </>
+                    </Box>
                   }
                 />
                 

@@ -117,37 +117,47 @@ const EnhancedClassicVideoPlayer: React.FC<EnhancedClassicVideoPlayerProps> = ({
       const scaleY = displayHeight / video.videoHeight;
       
       // Scale bounding box coordinates
-      const scaledX = (bbox.x * scaleX) + offsetX;
-      const scaledY = (bbox.y * scaleY) + offsetY;
-      const scaledWidth = bbox.width * scaleX;
-      const scaledHeight = bbox.height * scaleY;
-      
-      // Ensure coordinates are within canvas bounds
-      if (scaledX < 0 || scaledY < 0 || scaledX + scaledWidth > canvas.width || scaledY + scaledHeight > canvas.height) {
-        console.warn('Bounding box outside canvas bounds:', {
-          annotation: annotation,
-          bbox: bbox,
-          scaled: { x: scaledX, y: scaledY, w: scaledWidth, h: scaledHeight },
-          canvas: { w: canvas.width, h: canvas.height }
-        });
+      let scaledX = (bbox.x * scaleX) + offsetX;
+      let scaledY = (bbox.y * scaleY) + offsetY;
+      let scaledWidth = bbox.width * scaleX;
+      let scaledHeight = bbox.height * scaleY;
+
+      // Clip bounding boxes to canvas bounds (objects can leave frame edges)
+      // Only skip drawing if the box is completely outside canvas
+      const isCompletelyOutside =
+        scaledX + scaledWidth < 0 ||
+        scaledY + scaledHeight < 0 ||
+        scaledX > canvas.width ||
+        scaledY > canvas.height;
+
+      if (isCompletelyOutside) {
+        return; // Skip this annotation entirely
       }
-      
+
+      // Clip coordinates to canvas bounds for partial visibility
+      const clippedX = Math.max(0, scaledX);
+      const clippedY = Math.max(0, scaledY);
+      const clippedWidth = Math.min(scaledWidth, canvas.width - clippedX);
+      const clippedHeight = Math.min(scaledHeight, canvas.height - clippedY);
+
       // Set style based on selection
       const isSelected = selectedAnnotation?.id === annotation.id;
       const color = VRU_TYPE_COLORS[annotation.vruType] || '#ff0000';
-      
+
       ctx.strokeStyle = color;
       ctx.lineWidth = isSelected ? 4 : 3;
       ctx.setLineDash(isSelected ? [] : []);
-      
-      // Draw rectangle
+
+      // Draw rectangle (use original coordinates for proper partial rendering)
       ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
-      
-      // Draw label background
+
+      // Draw label background (ensure label stays within canvas)
       ctx.fillStyle = color;
       const labelHeight = 25;
-      ctx.fillRect(scaledX, scaledY - labelHeight, Math.max(scaledWidth, 100), labelHeight);
-      
+      const labelX = Math.max(0, Math.min(scaledX, canvas.width - 100));
+      const labelY = Math.max(labelHeight, scaledY);
+      ctx.fillRect(labelX, labelY - labelHeight, Math.max(Math.min(scaledWidth, 100), 100), labelHeight);
+
       // Draw label text
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 12px Arial';
@@ -155,8 +165,8 @@ const EnhancedClassicVideoPlayer: React.FC<EnhancedClassicVideoPlayerProps> = ({
       const labelText = `${annotation.vruType} (${Math.round(confidence)}%) #${index + 1}`;
       ctx.fillText(
         labelText,
-        scaledX + 3,
-        scaledY - 8
+        labelX + 3,
+        labelY - 8
       );
       
       // Debug info in corner

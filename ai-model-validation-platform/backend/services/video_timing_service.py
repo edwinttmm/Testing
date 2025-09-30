@@ -248,7 +248,31 @@ class VideoTimingService:
     def get_timing_data(self, session_id: str) -> Optional[EnhancedVideoTimingData]:
         """Get complete timing data for a session"""
         with self._lock:
+            # CRITICAL FIX: Clean up very old timing data to prevent memory leaks
+            self._cleanup_old_timing_data()
             return self._timing_cache.get(session_id)
+    
+    def _cleanup_old_timing_data(self):
+        """Clean up timing data older than 1 hour to prevent processing old sessions"""
+        try:
+            import time
+            current_time = time.time()
+            old_sessions = []
+            
+            for session_id, timing_data in self._timing_cache.items():
+                # Remove sessions older than 1 hour
+                if current_time - timing_data.start_timestamp > 3600:
+                    old_sessions.append(session_id)
+            
+            for session_id in old_sessions:
+                logger.info(f"🧹 Cleaning up old timing data for session: {session_id}")
+                del self._timing_cache[session_id]
+                # Also clean up related data
+                if session_id in self._session_videos:
+                    del self._session_videos[session_id]
+                    
+        except Exception as e:
+            logger.error(f"Error cleaning up old timing data: {e}")
     
     def calculate_enhanced_latency(self, session_id: str, detection_timestamp: float,
                                   detection_metadata: Optional[Dict[str, Any]] = None,

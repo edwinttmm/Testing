@@ -65,8 +65,13 @@ const DetectionResultsPanel: React.FC<DetectionResultsPanelProps> = ({
   // Combine all detections for display (backward compatibility or dual mode)
   const combinedDetections = React.useMemo<ExtendedDetectionResult[]>(() => {
     if (detections.length > 0) {
-      // Backward compatibility mode
-      return detections.map(det => ({ ...det, source: 'manual' as const }));
+      // Backward compatibility mode - check if detections have AI source indicators
+      return detections.map(det => ({ 
+        ...det, 
+        source: (det.detection_method === 'yolo_v8' || det.model_version || det.metadata?.auto_generated) 
+          ? 'ai' as const 
+          : 'manual' as const 
+      }));
     }
     
     const results: ExtendedDetectionResult[] = [];

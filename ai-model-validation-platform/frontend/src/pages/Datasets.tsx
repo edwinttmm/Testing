@@ -857,15 +857,26 @@ const Datasets: React.FC = () => {
 
   const handleExportDataset = useCallback(async (format: 'json' | 'coco' | 'yolo', videoIds?: string[]) => {
     try {
+      console.log('🚀 Starting dataset export with format:', format);
       const videosToExport = videoIds || filteredVideos.map(v => v.id);
+      console.log('📹 Videos to export:', videosToExport.length, 'videos');
+      
+      if (videosToExport.length === 0) {
+        setError('No videos available to export');
+        return;
+      }
       
       // Export annotations for each video and combine
+      console.log('📊 Starting export process for each video...');
       const exports = await Promise.all(
         videosToExport.map(async (videoId) => {
           try {
-            return await exportAnnotations(videoId, format);
+            console.log(`📊 Exporting annotations for video ${videoId} in ${format} format...`);
+            const result = await exportAnnotations(videoId, format);
+            console.log(`✅ Successfully exported annotations for video ${videoId}`);
+            return result;
           } catch (err) {
-            console.warn(`Failed to export annotations for video ${videoId}:`, err);
+            console.error(`❌ Failed to export annotations for video ${videoId}:`, err);
             return null;
           }
         })
@@ -873,10 +884,13 @@ const Datasets: React.FC = () => {
 
       // Create combined export file
       const validExports = exports.filter(e => e !== null);
+      console.log('📦 Valid exports:', validExports.length, 'out of', exports.length);
+      
       if (validExports.length > 0) {
         // For now, just download the first export
         // In a real implementation, you'd combine all exports
         const blob = validExports[0]!;
+        console.log('💾 Creating download for blob size:', blob.size, 'bytes');
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
@@ -885,10 +899,16 @@ const Datasets: React.FC = () => {
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
         
+        console.log('✅ Dataset export completed successfully');
         setSuccessMessage(`Dataset exported as ${format.toUpperCase()}`);
+      } else {
+        console.warn('⚠️ No valid exports were created');
+        setError('No annotations could be exported. Please check that videos have annotations.');
       }
     } catch (err) {
+      console.error('❌ Dataset export failed:', err);
       const apiError = err as ApiError;
       setError(`Failed to export dataset: ${apiError.message}`);
     }

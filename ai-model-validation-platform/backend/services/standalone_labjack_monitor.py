@@ -67,8 +67,8 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> lo
 @dataclass
 class MonitoringConfig:
     """Configuration for LabJack monitoring"""
-    sample_rate_hz: float = 10.0
-    voltage_threshold: float = 3.0
+    sample_rate_hz: float = 20.0  # Increased for better coverage
+    voltage_threshold: float = 3.3  # TTL HIGH threshold - anything above this is recorded
     labjack_channel: str = "AIN0"
     database_path: str = "dev_database.db"
     ipc_port: int = 8765

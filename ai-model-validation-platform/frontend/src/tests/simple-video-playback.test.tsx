@@ -255,7 +255,7 @@ describe('Simple Video Playback System', () => {
     const system = new SequentialVideoPlaybackSystem(container, {});
     
     // Initial state
-    let state = system.getState();
+    const state = system.getState();
     expect(state.isPlaying).toBe(false);
     expect(state.isTransitioning).toBe(false);
     expect(state.currentIndex).toBe(0);
