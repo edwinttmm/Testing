@@ -120,22 +120,15 @@ const VideoViewport: React.FC<VideoViewportProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Filter objects for current frame using temporal range matching
-    // This ensures all bounding boxes visible at the current time are displayed simultaneously
+    // Filter objects for progressive temporal appearance
+    // Boxes appear when video reaches their timestamp and remain visible (cumulative display)
     const currentFrameObjects = groundTruthObjects.filter(obj => {
-      // If annotation has endTimestamp, use temporal range matching
-      // This shows the box for its entire duration, not just the creation frame
-      if (obj.endTimestamp !== undefined && obj.endTimestamp !== null) {
-        return obj.timestamp <= currentTime && obj.endTimestamp >= currentTime;
-      }
-      // If annotation has both timestamp and frame info, prefer timestamp range
-      // with a small tolerance (±0.1s) to handle frame rate variations
+      // Show box if current video time has reached or passed its appearance time
       if (obj.timestamp !== undefined) {
-        const frameDuration = 1 / frameRate;
-        return Math.abs(obj.timestamp - currentTime) < frameDuration;
+        return currentTime >= obj.timestamp;
       }
-      // Fallback to exact frame matching (legacy behavior)
-      return obj.frameNumber === currentFrame;
+      // Fallback to frame number comparison for legacy data
+      return currentFrame >= obj.frameNumber;
     });
     
     currentFrameObjects.forEach(obj => {

@@ -71,16 +71,20 @@ const EnhancedClassicVideoPlayer: React.FC<EnhancedClassicVideoPlayerProps> = ({
     // Get current frame number
     const currentFrame = Math.floor(currentTime * frameRate);
     
-    // Draw each annotation
+    // Draw each annotation with progressive temporal appearance
     annotations.forEach((annotation, index) => {
-      // Check if annotation is visible at current time (show all for now to debug)
-      const annotationFrame = annotation.frameNumber || 0;
-      const frameThreshold = 30; // Show within 30 frames to make it more visible
-      const isVisible = annotationFrame === 0 || Math.abs(annotationFrame - currentFrame) < frameThreshold;
-      
-      // For debugging, show all annotations initially
-      const shouldShow = true; // Change to isVisible when working
-      
+      // Show annotation if current video time has reached or passed its appearance time
+      let shouldShow = false;
+
+      if (annotation.timestamp !== undefined) {
+        // Use timestamp for progressive appearance (cumulative display)
+        shouldShow = currentTime >= annotation.timestamp;
+      } else {
+        // Fallback to frame number for legacy data
+        const annotationFrame = annotation.frameNumber || 0;
+        shouldShow = currentFrame >= annotationFrame;
+      }
+
       if (!shouldShow) return;
       
       // Get bounding box - handle both camelCase and snake_case
@@ -176,7 +180,7 @@ const EnhancedClassicVideoPlayer: React.FC<EnhancedClassicVideoPlayerProps> = ({
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px Arial';
         ctx.fillText(`Annotations: ${annotations.length}`, 10, 20);
-        ctx.fillText(`Frame: ${currentFrame} / Target: ${annotationFrame}`, 10, 35);
+        ctx.fillText(`Current Frame: ${currentFrame}`, 10, 35);
         ctx.fillText(`Video: ${video.videoWidth}x${video.videoHeight}`, 10, 50);
         ctx.fillText(`Display: ${Math.round(displayWidth)}x${Math.round(displayHeight)}`, 10, 65);
         ctx.fillText(`Scale: ${scaleX.toFixed(2)}, ${scaleY.toFixed(2)}`, 10, 80);

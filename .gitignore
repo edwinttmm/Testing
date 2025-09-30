@@ -104,3 +104,9 @@ ai-model-validation-platform/ml_test_env/
 
 # Model files
 *.pt
+
+# Test artifacts
+test-results/
+
+# Local media uploads
+ai-model-validation-platform/backend/uploads/
