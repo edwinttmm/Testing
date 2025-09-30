@@ -24,3 +24,75 @@ claude-flow
 claude-flow.bat
 claude-flow.ps1
 hive-mind-prompt-*.txt
+
+# Python Virtual Environments (11.6 GB)
+venv/
+.venv/
+*_env/
+*_venv/
+env/
+ENV/
+labjack_env/
+ml_test_env/
+test_env/
+ml_env/
+test_venv/
+validation_env/
+
+# ML Model Files (79 MB)
+*.pt
+*.pth
+*.onnx
+*.weights
+models/*.pt
+models/*.pth
+yolo*.pt
+
+# Screenshots and Uploads (753 MB + uploads)
+backend/screenshots/
+screenshots/
+backend/uploads/
+uploads/
+*.jpg
+*.jpeg
+*.png
+!docs/**/*.png
+!docs/**/*.jpg
+
+# Database Files (29 MB)
+dev_database.db
+test_database.db
+*.db-shm
+
+# Logs (51 MB)
+logs/
+*.log
+
+# Node modules (782 MB)
+node_modules/
+**/node_modules/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+test_output/
+test_results/
+coverage/
+.coverage
+htmlcov/
