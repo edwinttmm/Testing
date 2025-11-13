@@ -31,7 +31,7 @@ class StartVideoTimingRequest(BaseModel):
     session_id: str = Field(..., description="Test session ID")
     video_id: str = Field(..., description="Video ID")
     video_file_path: Optional[str] = Field(None, description="Video file path")
-    detection_threshold: Optional[float] = Field(2.5, description="LabJack detection threshold in volts")
+    detection_threshold: Optional[float] = Field(3.3, description="LabJack detection threshold in volts")
     latency_threshold_ms: Optional[float] = Field(50.0, description="Latency threshold in milliseconds")
     detection_channel: Optional[str] = Field("AIN0", description="LabJack channel for detection")
 
@@ -128,12 +128,30 @@ async def start_video_timing(
             test_session.video_playback_start_time = float(video_start_time_unix)
             # Also store ns string for precision consumers
             test_session.video_playback_start_time_ns = str(int(float(video_start_time_unix) * 1_000_000_000))
+
+            # ✅ FIX RACE CONDITION: Flush to persist data without committing transaction
+            db.flush()
+
+            # Refresh to ensure data is visible
+            db.refresh(test_session)
+
+            # Verify critical fields are set
+            assert test_session.video_playback_start_time is not None, "video_playback_start_time not persisted"
+            assert test_session.id is not None, "session ID not set"
+
+            # Now safe to commit
             db.commit()
-            logger.info(f"Persisted timing for session {session_id}: started_at={test_session.started_at}, video_playback_start_time={test_session.video_playback_start_time}")
+            logger.info(f"✅ Session {session_id} timing persisted and verified: started_at={test_session.started_at}, video_playback_start_time={test_session.video_playback_start_time}")
+
+            # Add small delay to ensure commit is visible to monitoring service
+            await asyncio.sleep(0.1)
+
         except Exception as persist_err:
-            logger.warning(f"Could not persist timing fields on session {session_id}: {persist_err}")
-        
-        # Start LabJack detection monitoring
+            logger.error(f"❌ Failed to persist timing fields on session {session_id}: {persist_err}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to persist session timing: {str(persist_err)}")
+
+        # Start LabJack detection monitoring (after verified commit)
         detection_started = await detection_service.start_monitoring(
             session_id=session_id,
             video_id=request.video_id,
@@ -385,14 +403,16 @@ async def record_detection_event(
             video_id=test_session.video_id,
             timestamp=request.timestamp,
             detection_id=service_detection_event.detection_id,
-            validation_result=latency_measurement.result.value,
+            validation_result=None,  # Will be populated by ground truth matching service
             labjack_timestamp=request.timestamp,
             video_start_time=video_start_time_unix,
             latency_ms=latency_measurement.latency_ms,
             latency_threshold_ms=latency_measurement.threshold_ms,
             latency_result=latency_measurement.result.value,
             voltage_level=request.voltage_level,
-            detection_channel=request.channel
+            detection_channel=request.channel,
+            frame_number=0,  # FIXED: Manual detection - frame correlation will be computed later
+            video_frame_number=0  # FIXED: Added for consistency with orchestrator
         )
         
         db.add(detection_event)
@@ -501,7 +521,7 @@ async def _store_detection_events_with_latency(
                 video_id=detection_event.video_id,
                 timestamp=detection_event.timestamp_unix,
                 detection_id=detection_event.detection_id,
-                validation_result=measurement.result.value if measurement else "error",
+                validation_result=None,  # Will be populated by ground truth matching service
                 labjack_timestamp=detection_event.timestamp_unix,
                 video_start_time=video_start_time_unix,
                 latency_ms=measurement.latency_ms if measurement else None,
@@ -509,6 +529,8 @@ async def _store_detection_events_with_latency(
                 latency_result=measurement.result.value if measurement else "error",
                 voltage_level=detection_event.voltage_level,
                 detection_channel=detection_event.channel,
+                frame_number=0,  # FIXED: Batch processing - frame correlation computed later
+                video_frame_number=0,  # FIXED: Added for consistency
                 # Legacy fields
                 confidence=1.0 if measurement and measurement.result.value == "pass" else 0.0,
                 class_label="detection",

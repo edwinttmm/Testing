@@ -21,6 +21,17 @@ import {
   DialogActions,
   Snackbar,
   Stack,
+  Checkbox,
+  FormControlLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  CircularProgress,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -29,6 +40,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Refresh as RefreshIcon,
+  ArrowUpward as ArrowUpIcon,
+  ArrowDownward as ArrowDownIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 
 import { Project, VideoFile, GroundTruthAnnotation } from '../services/types';
@@ -36,6 +50,21 @@ import { apiService } from '../services/api';
 import { markUserInteraction } from '../utils/videoUtils';
 import SimpleLabJackStatus from '../components/SimpleLabJackStatus';
 import { createHILDebugger } from '../utils/hilTestDebugging';
+import { videoProjectService } from '../services/videoProjectService';
+import SequentialVideoPlayer from '../components/SequentialVideoPlayer';
+import VideoPlayerErrorBoundary from '../components/VideoPlayerErrorBoundary';
+import { fixVideoObjectUrl } from '../utils/videoUrlFixer';
+import {
+  VideoTimingMetadata,
+  mapDetectionToVideo,
+  getSequenceElapsedTime,
+  getVideoElapsedTime,
+  getHighPrecisionTimestamp,
+  calculateSequenceTimingStats
+} from '../utils/videoTimingUtils';
+import GroundTruthValidationWarningDialog, {
+  GroundTruthValidationData
+} from '../components/GroundTruthValidationWarningDialog';
 
 // VRU Tracking System Imports
 import {
@@ -49,6 +78,7 @@ import {
 import { VRUTrackManager, createVRUTrackManager } from '../services/vruTrackManager';
 import { TemporalMatcher, createTemporalMatcher, TemporalMatchResult } from '../services/temporalMatcher';
 import { getT3Alerts, getT3Pipeline, T3AlertsResponse } from '../services/t3Service';
+import websocketService from '../services/websocketService'; // BUG FIX #2: Import websocketService
 
 // Enhanced HIL Test Session with VRU Tracking
 interface HILTestSession {
@@ -76,7 +106,8 @@ interface LabJackConnectionStatus {
   error?: string;
 }
 
-// Legacy DetectionEvent - maintained for backward compatibility
+// DetectionEvent interface for multi-video HIL testing
+// Stores detection timing, outcome, and video context for each detection event
 interface DetectionEvent {
   expectedEventTime: Date; // PRD: Expected_Event_Time relative to Test_Start_Time
   signalReceivedTime?: Date; // PRD: Signal_Received_Time from LabJack
@@ -84,7 +115,13 @@ interface DetectionEvent {
   outcome: 'pass' | 'fail_high_latency' | 'fail_missed_detection';
   videoId: string;
   frameNumber?: number;
-  
+
+  // Multi-video sequence context
+  videoIndex?: number; // Index of video in sequence
+  videoStartTime?: number; // When this video started in the sequence
+  videoRelativeTimestamp?: number; // Time since video started (seconds)
+  sequenceRelativeTimestamp?: number; // Time since sequence started (seconds)
+
   // Enhanced VRU context (optional for backward compatibility)
   vruTrackId?: string;
   vruDetectionEvent?: VRUDetectionEvent;
@@ -99,11 +136,15 @@ const HILTestExecutionPRD: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [videoPlaylist, setVideoPlaylist] = useState<VideoFile[]>([]);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [orderedVideos, setOrderedVideos] = useState<VideoFile[]>([]);
+  const [multiVideoMode, setMultiVideoMode] = useState<boolean>(true);
   const [maxLatencyMs, setMaxLatencyMs] = useState<number>(100); // PRD: Default 100ms
   const [labjackStatus, setLabjackStatus] = useState<LabJackConnectionStatus>({
     connected: false,
     status: 'checking'
   });
+  const [sequenceId, setSequenceId] = useState<string | null>(null);
   
   // Test execution state
   const [currentSession, setCurrentSession] = useState<HILTestSession | null>(null);
@@ -111,7 +152,10 @@ const HILTestExecutionPRD: React.FC = () => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [detectionEvents, setDetectionEvents] = useState<DetectionEvent[]>([]);
   const [expectedDetections, setExpectedDetections] = useState<{timestamp: number, id: string}[]>([]);
+  const [allVideoExpectedDetections, setAllVideoExpectedDetections] = useState<Map<string, {timestamp: number, id: string}[]>>(new Map());
   const [currentVideoIdx, setCurrentVideoIdx] = useState<number>(0);
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [videoStartTimes, setVideoStartTimes] = useState<Map<string, number>>(new Map());
   
   // VRU Tracking State
   const [vruTracks, setVruTracks] = useState<VRUTrack[]>([]);
@@ -130,17 +174,28 @@ const HILTestExecutionPRD: React.FC = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'warning' | 'info'>('info');
+
+  // Ground Truth Validation state (Issue #3)
+  const [gtValidationDialog, setGtValidationDialog] = useState(false);
+  const [gtValidationData, setGtValidationData] = useState<GroundTruthValidationData | null>(null);
+  const [gtValidationLoading, setGtValidationLoading] = useState(false);
+  const [forceStartRequested, setForceStartRequested] = useState(false);
   
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const autoFullscreenAttemptRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const stalledRetryRef = useRef<number>(0);
-  
+
   // VRU Tracking Services
   const vruTrackManagerRef = useRef<VRUTrackManager | null>(null);
   const temporalMatcherRef = useRef<TemporalMatcher | null>(null);
+
+  // Enhanced timing tracking for multi-video sequences
+  const videoTimingsRef = useRef<VideoTimingMetadata[]>([]);
+  const sequenceStartTimeRef = useRef<number | null>(null);
 
   // Helper function
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
@@ -149,90 +204,145 @@ const HILTestExecutionPRD: React.FC = () => {
     setSnackbarOpen(true);
   }, []);
 
+  // Handler for video sequence progression
+  // Note: Ground truth is preloaded in startTest() before playback begins
+  const handleVideoStarted = useCallback((videoId: string, videoIndex: number, startTime: number) => {
+    console.log('🎬 [HIL] Video started in sequence:', { videoId, videoIndex, startTime });
+    setCurrentVideoId(videoId);
+    setCurrentVideoIdx(videoIndex);
+    setVideoStartTimes(prev => new Map(prev).set(videoId, startTime));
+
+    // Ground truth already preloaded - just log confirmation
+    const preloadedDetections = allVideoExpectedDetections.get(videoId);
+    if (preloadedDetections) {
+      console.log(`✅ [HIL] Using preloaded ${preloadedDetections.length} detections for video ${videoIndex + 1}`);
+      setExpectedDetections(preloadedDetections);
+    } else {
+      console.warn(`⚠️ [HIL] No preloaded ground truth for video ${videoIndex + 1}`);
+      setExpectedDetections([]);
+    }
+  }, [allVideoExpectedDetections]);
+
+  // Forward declaration - defined later in the file
+  const stopTestAndGenerateResultsRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Handler for sequence completion
+  const handleSequenceComplete = useCallback(() => {
+    console.log('🏁 [HIL] Video sequence completed');
+    stopTestAndGenerateResultsRef.current?.();
+  }, []);
+
+  useEffect(() => {
+    if (!currentVideoId) {
+      return;
+    }
+    const detections = allVideoExpectedDetections.get(currentVideoId);
+    if (detections) {
+      setExpectedDetections(detections);
+    } else {
+      setExpectedDetections([]);
+    }
+  }, [currentVideoId, allVideoExpectedDetections]);
+
   // Compute validated videos early to avoid TDZ issues
   const validatedVideos = useMemo(() => {
     console.log('🔍 HIL: VALIDATION VIDEO FILTERING - START');
     console.log('🔍 HIL: Total videoPlaylist length:', videoPlaylist.length);
     console.log('🔍 HIL: Raw videoPlaylist:', videoPlaylist);
-    
+
     const filtered = videoPlaylist.filter(video => {
-      // Check both status and validationStatus fields (API inconsistency fix)
-      const statusCheck1 = video.status === 'validated';
-      const statusCheck2 = (video as any).validationStatus === 'validated';
-      const statusCheck3 = (video as any).validation_status === 'validated';
-      const statusCheck = statusCheck1 || statusCheck2 || statusCheck3;
-      
-      const processingCheck = video.processing_status === 'completed' || 
-                             (statusCheck && !video.processing_status);
-      const isValid = statusCheck && processingCheck;
-      
+      const rawStatus = (video.status ?? '').toString();
+      const rawValidationStatus = ((video as any).validationStatus ?? (video as any).validation_status ?? '').toString();
+      const rawProcessingStatus = ((video as any).processing_status ?? '').toString();
+
+      const statusNormalized = rawStatus.trim().toLowerCase();
+      const validationStatusNormalized = rawValidationStatus.trim().toLowerCase();
+      const processingStatusNormalized = rawProcessingStatus.trim().toLowerCase();
+
+      const statusCheck1 = statusNormalized === 'validated';
+      const statusCheck2 = validationStatusNormalized === 'validated';
+      const statusCheck = statusCheck1 || statusCheck2;
+
+      const isValid = statusCheck;
+
       console.log('🔍 HIL: DETAILED Validation check:', {
-        video: { 
-          id: video.id, 
-          filename: video.filename, 
-          status: video.status, 
-          processing_status: video.processing_status,
-          validationStatus: (video as any).validationStatus,
-          validation_status: (video as any).validation_status,
+        video: {
+          id: video.id,
+          filename: video.filename,
+          status: rawStatus,
+          processing_status: rawProcessingStatus,
+          validationStatus: rawValidationStatus,
           rawVideoObject: video  // Show entire video object
         },
         statusChecks: {
-          'video.status === "validated"': statusCheck1,
-          'validationStatus === "validated"': statusCheck2,
-          'validation_status === "validated"': statusCheck3,
+          statusNormalized,
+          validationStatusNormalized,
           'COMBINED_STATUS_CHECK': statusCheck
         },
         processingChecks: {
-          'processing_status === "completed"': video.processing_status === 'completed',
-          'statusCheck && !processing_status': statusCheck && !video.processing_status,
-          'COMBINED_PROCESSING_CHECK': processingCheck
+          processingStatusNormalized,
+          'COMBINED_PROCESSING_CHECK': 'n/a'
         },
         finalResult: {
           statusCheck,
-          processingCheck,
           isValid,
           'WILL_BE_INCLUDED': isValid ? '✅ YES' : '❌ NO'
         }
       });
-      
+
       // CRITICAL: Show error if video should be valid but isn't
       if (video.filename === 'Child_20250929_142406.mp4') {
         console.error('🚨 HIL: CRITICAL DEBUG - Child_20250929_142406.mp4:', {
           expectedToBeValid: true,
           actualIsValid: isValid,
           statusFields: {
-            status: video.status,
-            validationStatus: (video as any).validationStatus,
-            validation_status: (video as any).validation_status,
-            processing_status: video.processing_status
+            status: rawStatus,
+            validationStatus: rawValidationStatus,
+            processing_status: rawProcessingStatus
           },
-          statusResults: { statusCheck1, statusCheck2, statusCheck3, statusCheck },
-          processingResult: processingCheck,
+          statusResults: { statusCheck1, statusCheck2, statusCheck },
           ERROR: isValid ? 'None - video is valid' : 'VIDEO NOT BEING INCLUDED IN VALIDATED LIST!'
         });
       }
-      
+
       // Extra debugging for exact character comparison
       if (video.filename === 'Child.mp4') {
         console.log('🚨 HIL: Child.mp4 SPECIFIC DEBUG:', {
-          statusBytes: Array.from(video.status || '').map(c => c.charCodeAt(0)),
-          processingBytes: Array.from(video.processing_status || '').map(c => c.charCodeAt(0)),
-          statusTrimmed: `"${(video.status || '').trim()}"`,
-          processingTrimmed: `"${(video.processing_status || '').trim()}"`,
-          statusTrimCheck: (video.status || '').trim() === 'validated',
-          processingTrimCheck: (video.processing_status || '').trim() === 'completed',
-          FIXED_processingCheck: processingCheck
+          statusBytes: Array.from(rawStatus).map(c => c.charCodeAt(0)),
+          processingBytes: Array.from(rawProcessingStatus).map(c => c.charCodeAt(0)),
+          statusTrimmed: `"${statusNormalized}"`,
+          processingTrimmed: `"${processingStatusNormalized}"`,
+          statusTrimCheck: statusNormalized === 'validated',
+          processingTrimCheck: processingStatusNormalized === 'completed'
         });
       }
-      
+
       return isValid;
     });
-    
+
     console.log('🔍 HIL: VALIDATION VIDEO FILTERING - END');
-    console.log('🔍 HIL: Filtered validated videos:', filtered);
+    console.log('🔍 HIL: Filtered validated videos (before URL fix):', filtered);
     console.log('🔍 HIL: Final validated video count:', filtered.length);
     console.log('🔍 HIL: Validated video filenames:', filtered.map(v => v.filename));
-    
+
+    // CRITICAL FIX: Populate video URLs from file_path before returning
+    console.log('🔧 HIL: Fixing video URLs for validated videos...');
+    filtered.forEach(video => {
+      const urlBefore = video.url;
+      fixVideoObjectUrl(video, { debug: true });
+      console.log('🔧 HIL: Video URL fix:', {
+        filename: video.filename,
+        id: video.id,
+        file_path: video.file_path,
+        urlBefore,
+        urlAfter: video.url,
+        changed: urlBefore !== video.url
+      });
+    });
+
+    console.log('🔍 HIL: Validated videos (after URL fix):', filtered);
+    console.log('🔍 HIL: Video URLs:', filtered.map(v => ({ filename: v.filename, url: v.url })));
+
     return filtered;
   }, [videoPlaylist]);
 
@@ -241,6 +351,30 @@ const HILTestExecutionPRD: React.FC = () => {
     console.log('🔍 HIL: Video playlist state:', videoPlaylist);
     console.log('🔍 HIL: Validated videos:', validatedVideos);
   }, [videoPlaylist, validatedVideos]);
+
+  const loadVideoPlaylist = useCallback(async (project: Project, options: { silent?: boolean } = {}) => {
+    try {
+      if (!options.silent) {
+        setLoading(true);
+      }
+      console.log('🔍 HIL: Loading videos for project:', project);
+
+      const projectVideos = await videoProjectService.getProjectVideos(project.id, true);
+      console.log('🔍 HIL: Project videos loaded:', projectVideos);
+
+      setVideoPlaylist(projectVideos);
+      setSelectedVideoIds([]);
+      setOrderedVideos([]);
+    } catch (err: any) {
+      console.error('🚨 HIL: Error loading videos:', err);
+      setError(`Failed to load video playlist: ${err.message}`);
+      showSnackbar('Failed to load videos', 'error');
+    } finally {
+      if (!options.silent) {
+        setLoading(false);
+      }
+    }
+  }, [showSnackbar]);
 
   // Debug function for investigating ground truth issues
   const debugGroundTruthIssues = useCallback(async () => {
@@ -281,52 +415,68 @@ const HILTestExecutionPRD: React.FC = () => {
     loadProjects();
   }, []);
 
-  // Poll for video status updates
-  useEffect(() => {
-    const isProcessing = videoPlaylist.some(video => video.processing_status === 'processing' || video.processing_status === 'pending');
-
-    if (selectedProject && isProcessing) {
-      const interval = setInterval(() => {
-        loadVideoPlaylist(selectedProject);
-      }, 5000); // Poll every 5 seconds
-
-      return () => clearInterval(interval);
-    }
-  }, [selectedProject, videoPlaylist]);
-
-  // Poll T3 alerts and pipeline stats while test is running
-  useEffect(() => {
-    if (!testRunning || !currentSession?.id) {
-      return;
-    }
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const [alerts, pipeline] = await Promise.all([
-          getT3Alerts(currentSession.id).catch(() => null),
-          getT3Pipeline(currentSession.id, 100).catch(() => null)
-        ]);
-        if (cancelled) return;
-        if (alerts) setT3Alerts(alerts);
-        if (pipeline && pipeline.pipeline_statistics) {
-          const ps = pipeline.pipeline_statistics;
-          setT3PipelineSummary({
-            avg: ps.average_t4_t3_latency_ms,
-            min: ps.min_t4_t3_latency_ms,
-            max: ps.max_t4_t3_latency_ms,
-            passRate: ps.validation_pass_rate_percent
-          });
-        }
-      } catch (e) {
-        // ignore transient errors
+// Poll T3 alerts and pipeline stats while test is running
+useEffect(() => {
+  if (!testRunning || !currentSession?.id) {
+    return;
+  }
+  let cancelled = false;
+  const poll = async () => {
+    try {
+      const [alerts, pipeline] = await Promise.all([
+        getT3Alerts(currentSession.id).catch(() => null),
+        getT3Pipeline(currentSession.id, 100).catch(() => null)
+      ]);
+      if (cancelled) return;
+      if (alerts) setT3Alerts(alerts);
+      if (pipeline && pipeline.pipeline_statistics) {
+        const ps = pipeline.pipeline_statistics;
+        setT3PipelineSummary({
+          avg: ps.average_t4_t3_latency_ms,
+          min: ps.min_t4_t3_latency_ms,
+          max: ps.max_t4_t3_latency_ms,
+          passRate: ps.validation_pass_rate_percent
+        });
       }
-    };
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [testRunning, currentSession?.id]);
+    } catch (e) {
+      // ignore transient errors
+    }
+  };
+  poll();
+  const id = setInterval(poll, 3000);
+  return () => { cancelled = true; clearInterval(id); };
+}, [testRunning, currentSession?.id]);
 
-  const loadProjects = async () => {
+// Poll for video status updates
+useEffect(() => {
+  const isProcessing = videoPlaylist.some(video => video.processing_status === 'processing' || video.processing_status === 'pending');
+
+  if (selectedProject && isProcessing) {
+    const interval = setInterval(() => {
+      loadVideoPlaylist(selectedProject, { silent: true });
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval);
+  }
+}, [selectedProject, videoPlaylist, loadVideoPlaylist]);
+
+useEffect(() => {
+  if (!selectedProject) {
+    return;
+  }
+  if (validatedVideos.length > 0) {
+    return;
+  }
+
+  const interval = setInterval(() => {
+    console.log('🔄 HIL: Refreshing video playlist to detect newly validated videos...');
+    loadVideoPlaylist(selectedProject, { silent: true });
+  }, 7000);
+
+  return () => clearInterval(interval);
+}, [selectedProject, validatedVideos.length, loadVideoPlaylist]);
+
+const loadProjects = async () => {
     try {
       setLoading(true);
       console.log('🔄 HIL: Loading projects...');
@@ -349,77 +499,87 @@ const HILTestExecutionPRD: React.FC = () => {
       setLoading(false);
     }
   };
-
-
-  // Load video playlist for selected project (PRD requirement)
-  const loadVideoPlaylist = async (project: Project) => {
-    try {
-      setLoading(true);
-      console.log('🔍 HIL: Loading GROUND TRUTH videos for project:', project);
-      
-      // Use the ground truth API with project filter (this returns videos with ground truth data)
-      const response = await apiService.getGroundTruthVideosAvailable(project.id);
-      console.log('🔍 HIL: Ground Truth API response:', response);
-      
-      // The ground truth API already filters by project, so we can use the response directly
-      const projectVideos = response || [];
-      console.log('🔍 HIL: Ground truth videos for project:', projectVideos);
-
-      setVideoPlaylist(projectVideos);
-    } catch (err: any) {
-      console.error('🚨 HIL: Error loading videos:', err);
-      setError(`Failed to load video playlist: ${err.message}`);
-      showSnackbar('Failed to load videos', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleProjectSelect = async (project: Project) => {
     console.log('🚀 HIL: Project selected:', project);
     setSelectedProject(project);
     setError(null);
-    
+
     // Load video playlist first
     await loadVideoPlaylist(project);
-    
-    // Auto-load ground truth after videos are loaded
-    // Use a small delay to ensure video state is updated
-    setTimeout(async () => {
-      console.log('🔄 [HIL] Auto-loading ground truth after project selection...');
-      try {
-        await loadExpectedDetections();
-      } catch (error: any) {
-        console.warn('⚠️ [HIL] Auto ground truth loading failed:', error.message);
-        // Don't throw error, user can manually reload
-      }
-    }, 500);
+
+    // Auto-load ground truth after videos are loaded (single-video mode only)
+    if (!multiVideoMode) {
+      setTimeout(async () => {
+        console.log('🔄 [HIL] Auto-loading ground truth after project selection...');
+        try {
+          await loadExpectedDetections();
+        } catch (error: any) {
+          console.warn('⚠️ [HIL] Auto ground truth loading failed:', error.message);
+        }
+      }, 500);
+    }
   };
 
-  // Define playback helper function
-  const startPlaybackForIndex = useCallback(async (idx: number) => {
-    const video = validatedVideos[idx];
-    if (!video || !videoRef.current) return;
-    const filePath = (video as any).file_path || (video as any).filePath;
-    const src = video.finalUrl || video.url || (filePath ? `http://localhost:8000/uploads/${String(filePath).split('/').pop()}` : `/api/v1/videos/${video.id}/stream`);
-    const el = videoRef.current;
-    try {
-      el.muted = true;
-      // @ts-ignore playsInline
-      el.playsInline = true;
-      el.src = src;
-      el.currentTime = 0;
-      stalledRetryRef.current = 0;
-      el.load();
-      const onLoaded = async () => {
-        try { await el.play(); console.log('✅ Video play() succeeded:', src); } catch (e) { console.warn('⚠️ play() failed:', (e as Error).message); }
-      };
-      el.addEventListener('loadeddata', onLoaded, { once: true });
-      setTimeout(async () => { if (el.readyState >= HTMLMediaElement.HAVE_METADATA && el.paused) { try { await el.play(); } catch {} } }, 1200);
-    } catch (e) {
-      console.error('❌ Failed to start playback for index', idx, e);
+  // Multi-video selection handlers
+  const handleVideoSelect = (videoId: string, checked: boolean) => {
+    setSelectedVideoIds(prev => {
+      if (checked) {
+        return [...prev, videoId];
+      } else {
+        return prev.filter(id => id !== videoId);
+      }
+    });
+  };
+
+  const handleSelectAllVideos = (checked: boolean) => {
+    if (checked) {
+      setSelectedVideoIds(validatedVideos.map(v => v.id));
+    } else {
+      setSelectedVideoIds([]);
     }
-  }, [validatedVideos]);
+  };
+
+  const handleMoveVideoUp = (index: number) => {
+    if (index === 0) return;
+    const newOrdered = [...orderedVideos];
+    const temp = newOrdered[index];
+    newOrdered[index] = newOrdered[index - 1];
+    newOrdered[index - 1] = temp;
+    setOrderedVideos(newOrdered);
+  };
+
+  const handleMoveVideoDown = (index: number) => {
+    if (index === orderedVideos.length - 1) return;
+    const newOrdered = [...orderedVideos];
+    const temp = newOrdered[index];
+    newOrdered[index] = newOrdered[index + 1];
+    newOrdered[index + 1] = temp;
+    setOrderedVideos(newOrdered);
+  };
+
+  const handleRemoveVideoFromOrder = (index: number) => {
+    setOrderedVideos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddSelectedToOrder = () => {
+    const videosToAdd = validatedVideos.filter(v =>
+      selectedVideoIds.includes(v.id) && !orderedVideos.find(ov => ov.id === v.id)
+    );
+    setOrderedVideos(prev => [...prev, ...videosToAdd]);
+  };
+
+  const calculateTotalDuration = () => {
+    return orderedVideos.reduce((sum, v) => sum + (v.duration || 0), 0);
+  };
+
+  // Fallback playback function (unused with SequentialVideoPlayer)
+  // SequentialVideoPlayer component handles all video playback and transitions
+  // This function is retained only for reference and potential emergency fallback
+  const startPlaybackForIndex = useCallback(async (idx: number) => {
+    console.log('⚠️ [HIL] startPlaybackForIndex called - SequentialVideoPlayer should handle this');
+    // Playback is managed by SequentialVideoPlayer component
+    // No action needed here
+  }, []);
 
   // Fallback ground truth loading function
   const attemptFallbackGroundTruthLoading = async (video: any): Promise<any[]> => {
@@ -482,28 +642,8 @@ const HILTestExecutionPRD: React.FC = () => {
     }
   };
 
-  // Mock detections for Child.mp4 testing
-  const createMockDetectionsForChild = (): any[] => {
-    console.log('🎭 [HIL MOCK] Creating mock detections for Child.mp4 testing');
-    
-    // Create realistic test detections for a 30-second video
-    const mockDetections = [
-      { timestamp: 2.5, id: 'mock_001', frameNumber: 75, confidence: 0.95 },
-      { timestamp: 5.0, id: 'mock_002', frameNumber: 150, confidence: 0.92 },
-      { timestamp: 8.2, id: 'mock_003', frameNumber: 246, confidence: 0.88 },
-      { timestamp: 12.1, id: 'mock_004', frameNumber: 363, confidence: 0.91 },
-      { timestamp: 15.7, id: 'mock_005', frameNumber: 471, confidence: 0.87 },
-      { timestamp: 19.3, id: 'mock_006', frameNumber: 579, confidence: 0.93 },
-      { timestamp: 23.8, id: 'mock_007', frameNumber: 714, confidence: 0.89 },
-      { timestamp: 27.2, id: 'mock_008', frameNumber: 816, confidence: 0.94 }
-    ];
-    
-    console.log(`🎭 [HIL MOCK] Created ${mockDetections.length} mock detections:`, mockDetections);
-    return mockDetections;
-  };
-
   // Helper function to load expected detections for a specific video
-  const loadExpectedDetectionsForVideo = async (video: VideoFile): Promise<void> => {
+  const loadExpectedDetectionsForVideo = useCallback(async (video: VideoFile): Promise<{timestamp: number, id: string}[]> => {
     console.log('🚀 [HIL GROUND TRUTH] Loading annotations for specific video:', {
       id: video.id,
       filename: video.filename,
@@ -513,25 +653,70 @@ const HILTestExecutionPRD: React.FC = () => {
     try {
       // Show loading feedback to user
       showSnackbar(`Loading ground truth for ${video.filename}...`, 'info');
-      
+
+      // Primary path: use dedicated ground-truth events endpoint (canonical data source)
+      console.log(`🔎 [HIL GROUND TRUTH] Fetching ground truth events for video ${video.id}`);
+      const gtEventsResponse = await apiService.getGroundTruthEvents(video.id);
+      const groundTruthEvents: any[] = gtEventsResponse?.data?.ground_truth_events ?? [];
+
+      if (Array.isArray(groundTruthEvents) && groundTruthEvents.length > 0) {
+        console.log(`✅ [HIL GROUND TRUTH] Received ${groundTruthEvents.length} ground truth events`);
+
+        const processedEvents = groundTruthEvents
+          .map((event, index) => {
+            const rawTimestamp =
+              typeof event.timestamp === 'number'
+                ? event.timestamp
+                : event.video_time_seconds ?? event.videoTimeSeconds ?? null;
+
+            const timestampSeconds =
+              rawTimestamp !== null
+                ? rawTimestamp
+                : (typeof event.video_frame === 'number'
+                    ? event.video_frame / ((video as any).fps || 24)
+                    : index * 2);
+
+            const frameNumber =
+              event.video_frame ??
+              event.frame_number ??
+              Math.round(timestampSeconds * ((video as any).fps || 24));
+
+            return {
+              timestamp: timestampSeconds,
+              id: event.id || event.event_id || `gt_event_${index}`,
+              frameNumber,
+              videoId: video.id,
+              confidence: event.confidence ?? event.confidence_score ?? 1.0,
+              label: event.class_label ?? event.label ?? 'pedestrian'
+            };
+          })
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        console.log(`📊 [HIL GROUND TRUTH] Processed ${processedEvents.length} events from canonical endpoint`);
+        showSnackbar(`Loaded ${processedEvents.length} ground truth detections for ${video.filename}`, 'success');
+        return processedEvents;
+      }
+
+      console.warn(`⚠️ [HIL GROUND TRUTH] No ground truth events returned for video ${video.filename}; falling back to legacy sources`);
+
       // Attempt 1: Try to load annotations with retry logic
       let annotations = [];
       let attempts = 0;
       const maxAttempts = 3;
       const retryDelay = 1000;
-      
+
       while (attempts < maxAttempts) {
         try {
           attempts++;
           console.log(`🔄 [HIL GROUND TRUTH] Attempt ${attempts}/${maxAttempts} - Loading annotations for video ID: ${video.id}`);
-          
+
           annotations = await apiService.getAnnotations(video.id);
           console.log(`📊 [HIL GROUND TRUTH] Raw annotations response:`, {
             count: annotations?.length || 0,
             data: annotations,
             videoId: video.id
           });
-          
+
           break; // Success, exit retry loop
         } catch (retryError: any) {
           console.warn(`⚠️ [HIL GROUND TRUTH] Attempt ${attempts} failed:`, {
@@ -539,43 +724,41 @@ const HILTestExecutionPRD: React.FC = () => {
             status: retryError.status,
             videoId: video.id
           });
-          
+
           if (attempts === maxAttempts) {
             throw retryError; // Final attempt failed, throw error
           }
-          
+
           // Wait before retry
           console.log(`⏳ [HIL GROUND TRUTH] Waiting ${retryDelay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
       }
-      
+
       // Validation: Check annotation data structure and content
       if (!Array.isArray(annotations)) {
         console.warn('⚠️ [HIL GROUND TRUTH] Invalid annotations format, attempting to extract array...');
         annotations = annotations?.annotations || annotations?.data || [];
       }
-      
+
       console.log(`📋 [HIL GROUND TRUTH] Processing ${annotations.length} annotations...`);
-      
+
       if (annotations.length === 0) {
         const warningMsg = `No ground truth annotations found for video: ${video.filename}`;
         console.warn(`⚠️ [HIL GROUND TRUTH] ${warningMsg}`);
-        
+
         // Try fallback methods for this specific video
         console.log('🔄 [HIL GROUND TRUTH] Trying fallback methods for video...');
         const fallbackResult = await attemptFallbackGroundTruthLoading(video);
-        
+
         if (fallbackResult.length > 0) {
-          setExpectedDetections(fallbackResult);
           showSnackbar(`Loaded ${fallbackResult.length} detections via fallback method for ${video.filename}`, 'success');
           console.log(`✅ [HIL GROUND TRUTH] Fallback successful: ${fallbackResult.length} detections`);
-          return;
+          return fallbackResult;
         }
-        
+
         showSnackbar(warningMsg, 'warning');
-        setExpectedDetections([]);
-        return;
+        return [];
       }
       
       // Process annotations with detailed validation
@@ -644,14 +827,14 @@ const HILTestExecutionPRD: React.FC = () => {
         }
       });
       
-      // Set the expected detections
-      setExpectedDetections(expectedTimes);
-      
       // Success feedback to user
       const successMsg = `Loaded ${validCount} ground truth detections for HIL test from ${video.filename}`;
       console.log(`✅ [HIL GROUND TRUTH] ${successMsg}`);
       showSnackbar(successMsg, 'success');
-      
+
+      // Return the detections for caller to store
+      return expectedTimes;
+
     } catch (error: any) {
       console.error('❌ [HIL GROUND TRUTH] Failed to load annotations for video:', {
         error: error.message || error,
@@ -659,20 +842,20 @@ const HILTestExecutionPRD: React.FC = () => {
         filename: video.filename,
         stack: error.stack
       });
-      
+
       // Try fallback methods
       console.log('🔄 [HIL GROUND TRUTH] Attempting fallback methods due to error...');
       const fallbackResult = await attemptFallbackGroundTruthLoading(video);
-      
+
       if (fallbackResult.length > 0) {
-        setExpectedDetections(fallbackResult);
         showSnackbar(`Loaded ${fallbackResult.length} detections via fallback method for ${video.filename}`, 'success');
+        return fallbackResult;
       } else {
-        setExpectedDetections([]);
         showSnackbar(`Failed to load ground truth for ${video.filename}`, 'error');
+        return [];
       }
     }
-  };
+  }, [showSnackbar, attemptFallbackGroundTruthLoading]);
 
   // Load ground truth annotations for expected detection times with comprehensive error handling
   const loadExpectedDetections = async (): Promise<void> => {
@@ -702,7 +885,9 @@ const HILTestExecutionPRD: React.FC = () => {
           });
           
           // Try to load annotations for the fallback video
-          await loadExpectedDetectionsForVideo(fallbackVideo);
+          const fallbackDetections = await loadExpectedDetectionsForVideo(fallbackVideo);
+          setAllVideoExpectedDetections(prev => new Map(prev).set(fallbackVideo.id, fallbackDetections));
+          setExpectedDetections(fallbackDetections);
           return;
         }
         
@@ -729,7 +914,10 @@ const HILTestExecutionPRD: React.FC = () => {
       }
 
       // Use the helper function to load annotations for the primary video
-      await loadExpectedDetectionsForVideo(primaryVideo);
+      const detections = await loadExpectedDetectionsForVideo(primaryVideo);
+      // Store for multi-video tracking
+      setAllVideoExpectedDetections(prev => new Map(prev).set(primaryVideo.id, detections));
+      setExpectedDetections(detections);
       
     } catch (error: any) {
       const errorMsg = `Failed to load ground truth: ${error.message || error}`;
@@ -757,6 +945,7 @@ const HILTestExecutionPRD: React.FC = () => {
         const fallbackResult = await attemptFallbackGroundTruthLoading(validatedVideos[0]);
         
         if (fallbackResult.length > 0) {
+          setAllVideoExpectedDetections(prev => new Map(prev).set(validatedVideos[0].id, fallbackResult));
           setExpectedDetections(fallbackResult);
           showSnackbar(`Loaded ${fallbackResult.length} detections via fallback method`, 'success');
           console.log(`✅ [HIL GROUND TRUTH] Fallback successful: ${fallbackResult.length} detections`);
@@ -765,13 +954,6 @@ const HILTestExecutionPRD: React.FC = () => {
         }
       } catch (fallbackError: any) {
         console.error('❌ [HIL GROUND TRUTH] Fallback also failed:', fallbackError.message);
-        // Final fallback: use mock data for testing if this is Child.mp4
-        if (validatedVideos[0]?.filename === 'Child.mp4') {
-          console.log('🔄 [HIL GROUND TRUTH] Using mock data for Child.mp4 testing...');
-          const mockDetections = createMockDetectionsForChild();
-          setExpectedDetections(mockDetections);
-          showSnackbar(`Using ${mockDetections.length} mock detections for testing`, 'warning');
-        }
       }
     }
   };
@@ -818,8 +1000,62 @@ const HILTestExecutionPRD: React.FC = () => {
     };
   };
 
-  // PRD: Start HIL test execution
-  const startTest = async () => {
+  // Ground Truth Validation Flow (Issue #3)
+  const validateGroundTruthAndProceed = async () => {
+    const validation = canStartTest();
+    if (!validation.canStart) {
+      setError(validation.reasons.join('. '));
+      return;
+    }
+
+    // Close start dialog, show GT validation
+    setStartTestDialog(false);
+    setGtValidationDialog(true);
+    setGtValidationLoading(true);
+    setForceStartRequested(false);
+
+    try {
+      console.log('🔍 [HIL] Validating ground truth for videos...');
+      const videoIds = validatedVideos.map(v => v.id);
+      const validationResult = await apiService.validateGroundTruth(videoIds);
+
+      console.log('✅ [HIL] Ground truth validation result:', validationResult);
+      setGtValidationData(validationResult);
+      setGtValidationLoading(false);
+
+      // If no issues, proceed automatically
+      if (!validationResult.has_issues) {
+        console.log('✅ [HIL] All videos have ground truth - proceeding with test start');
+        setGtValidationDialog(false);
+        await startTestInternal(false);
+      } else {
+        console.warn('⚠️ [HIL] Ground truth validation issues detected - showing warning dialog');
+        // Dialog remains open for user decision
+      }
+    } catch (error: any) {
+      console.error('❌ [HIL] Ground truth validation API error:', error);
+      setGtValidationLoading(false);
+      setGtValidationDialog(false);
+      showSnackbar('Failed to validate ground truth: ' + error.message, 'error');
+    }
+  };
+
+  const handleForceStartAnyway = async () => {
+    console.log('⚠️ [HIL] User chose to force start despite ground truth warnings');
+    setForceStartRequested(true);
+    setGtValidationDialog(false);
+    await startTestInternal(true);
+  };
+
+  const handleCancelValidation = () => {
+    console.log('🔙 [HIL] User cancelled test start from validation dialog');
+    setGtValidationDialog(false);
+    setGtValidationData(null);
+    setForceStartRequested(false);
+  };
+
+  // PRD: Start HIL test execution (internal implementation)
+  const startTestInternal = async (forceStart: boolean = false) => {
     const validation = canStartTest();
     if (!validation.canStart) {
       setError(validation.reasons.join('. '));
@@ -827,7 +1063,10 @@ const HILTestExecutionPRD: React.FC = () => {
     }
 
     try {
-      console.log('🚀 [HIL] Starting test execution...');
+      console.log('🚀 [HIL] Starting test execution...', { forceStart });
+      if (forceStart) {
+        console.warn('⚠️ [HIL] FORCED START - proceeding without complete ground truth');
+      }
       
       // Mark user interaction for autoplay permissions
       markUserInteraction();
@@ -851,36 +1090,51 @@ const HILTestExecutionPRD: React.FC = () => {
         console.warn('⚠️ Immediate fullscreen attempt failed (will retry after playback):', (fsErr as Error)?.message);
       }
       
-      // Load ground truth for the first video in the playlist
-      console.log('🔄 [HIL] Loading ground truth before test start...');
+      // PRELOAD ground truth for ALL videos in sequence BEFORE test starts
+      // This prevents race conditions during video transitions
+      console.log(`🔄 [HIL] Preloading ground truth for ${validatedVideos.length} videos...`);
       setCurrentVideoIdx(0);
-      if (validatedVideos[0]) {
-        await loadExpectedDetectionsForVideo(validatedVideos[0]);
-      } else {
-        await loadExpectedDetections();
+
+      let totalDetections = 0;
+      const preloadedMap = new Map<string, {timestamp: number, id: string}[]>();
+
+      for (let i = 0; i < validatedVideos.length; i++) {
+        const video = validatedVideos[i];
+        console.log(`🔄 [HIL] Preloading ground truth ${i + 1}/${validatedVideos.length}: ${video.filename}`);
+
+        try {
+          const detections = await loadExpectedDetectionsForVideo(video);
+          preloadedMap.set(video.id, detections);
+          totalDetections += detections.length;
+          console.log(`✅ [HIL] Preloaded ${detections.length} detections for video ${i + 1}`);
+        } catch (err) {
+          console.error(`❌ [HIL] Failed to preload ground truth for video ${i + 1}:`, err);
+          showSnackbar(`Warning: Failed to load ground truth for ${video.filename}`, 'warning');
+          preloadedMap.set(video.id, []); // Store empty array to prevent undefined
+        }
       }
+
+      // Store all preloaded ground truth in the Map
+      setAllVideoExpectedDetections(preloadedMap);
+      const firstVideoId = validatedVideos[0]?.id;
+      if (firstVideoId) {
+        setExpectedDetections(preloadedMap.get(firstVideoId) ?? []);
+      } else {
+        setExpectedDetections([]);
+      }
+      console.log(`✅ [HIL] Preloaded ${totalDetections} total detections across ${validatedVideos.length} videos`);
       
-      // If no expected detections were loaded, automatically run debug investigation
-      if (expectedDetections.length === 0) {
-        console.log('⚠️ [HIL] No expected detections loaded, triggering automatic debug investigation...');
-        showSnackbar('No ground truth data found. Running automatic investigation...', 'warning');
+      if (totalDetections === 0) {
+        console.warn('⚠️ [HIL] No ground truth detections preloaded - proceeding in enhanced debugging mode');
+        showSnackbar('No ground truth data found. Test will proceed in debugging mode with video playback enabled.', 'warning');
+        console.log('⚠️ [HIL] Triggering automatic debug investigation for missing ground truth');
         setTimeout(async () => {
           await debugGroundTruthIssues();
         }, 1000);
-      }
-      
-      // Validate that ground truth was loaded successfully
-      if (expectedDetections.length === 0) {
-        console.warn('⚠️ [HIL] No ground truth detections loaded - proceeding in enhanced debugging mode');
-        showSnackbar('No ground truth data found. Test will proceed in debugging mode with video playback enabled.', 'warning');
         // Continue execution to allow video loading and debugging features
-      }
-      
-      if (expectedDetections.length > 0) {
-        console.log(`✅ [HIL] Ground truth validation passed: ${expectedDetections.length} detections loaded`);
-        showSnackbar(`Ground truth loaded: ${expectedDetections.length} expected detections`, 'success');
       } else {
-        console.log('🔧 [HIL] Proceeding without ground truth - enhanced debugging mode active');
+        console.log(`✅ [HIL] Ground truth validation passed: ${totalDetections} detections preloaded across ${validatedVideos.length} videos`);
+        showSnackbar(`Ground truth loaded: ${totalDetections} expected detections from ${validatedVideos.length} videos`, 'success');
       }
       
       // Create test session (persist to backend)
@@ -891,7 +1145,8 @@ const HILTestExecutionPRD: React.FC = () => {
           name: `HIL Test ${new Date().toLocaleString()}`,
           projectId: selectedProject!.id,
           videoId: primaryVideo?.id,
-          config: { maxLatencyMs }
+          config: { maxLatencyMs },
+          force_start: forceStart
         });
         createdSessionId = created.id;
         // Try to mark session as started (best-effort)
@@ -905,26 +1160,101 @@ const HILTestExecutionPRD: React.FC = () => {
         console.warn('⚠️ [HIL] Failed to create backend session, using local ID only:', createErr?.message || createErr);
       }
 
+      // Initialize video sequence with backend
+      let backendSequenceId = `sequence_${createdSessionId}`;
+      let enrichedVideoPlaylist = validatedVideos;
+
+      try {
+        console.log('🔄 [HIL] Initializing video sequence with backend...');
+        const sequenceResponse = await apiService.startVideoSequence(
+          selectedProject!.id,
+          validatedVideos.map(v => v.id)
+        );
+
+        // Update sequence ID and session ID from backend response
+        backendSequenceId = sequenceResponse.sequenceId;
+        createdSessionId = sequenceResponse.testSessionId;
+
+        // Enrich video playlist with backend metadata
+        enrichedVideoPlaylist = validatedVideos.map((video, index) => {
+          const backendVideo = sequenceResponse.videoPlaylist.find(v => v.id === video.id);
+          return {
+            ...video,
+            sequenceIndex: backendVideo?.sequenceIndex ?? index,
+            estimatedStartOffset: backendVideo?.estimatedStartOffset ?? 0,
+            fps: backendVideo?.fps ?? 30
+          };
+        });
+
+        console.log('✅ [HIL] Backend sequence initialized:', {
+          sequenceId: backendSequenceId,
+          sessionId: createdSessionId,
+          videoCount: enrichedVideoPlaylist.length
+        });
+      } catch (sequenceErr: any) {
+        console.warn('⚠️ [HIL] Backend sequence initialization failed, using local sequence:', sequenceErr?.message || sequenceErr);
+        // Continue with local sequence ID and original playlist
+      }
+
       const session: HILTestSession = {
         id: createdSessionId,
         projectId: selectedProject!.id,
-        testStartTime: null, // Will be set when video starts
+        testStartTime: new Date(), // Set Test_Start_Time when test begins
         maxLatencyMs,
         labjackConnected: labjackStatus.connected,
         status: 'running',
-        videoPlaylist
+        videoPlaylist: enrichedVideoPlaylist,
+        vruTracks: [],
+        vruTrackingEnabled
       };
       setCurrentSession(session);
       console.log('✅ [HIL] Test session initialized:', session);
-      
-      // Start video playback for the current video; fullscreen already requested
-      if (validatedVideos[0]) {
-        console.log('🔄 [HIL] Setting up video playback...');
-        await startPlaybackForIndex(0);
-      } else {
-        console.warn('⚠️ [HIL] No videoPlaylist available');
+
+      // Set sequence ID for SequentialVideoPlayer using flushSync to prevent race condition
+      flushSync(() => {
+        setSequenceId(backendSequenceId);
+      });
+      console.log('✅ [HIL] Sequence ID set (synchronously):', backendSequenceId);
+
+      // BUG FIX #2: Subscribe to video sequence events via WebSocket
+      console.log('🔌 [HIL] Subscribing to video sequence events...');
+      try {
+        const sequenceSubscription = websocketService.subscribeToSequence(backendSequenceId);
+        if (sequenceSubscription) {
+          // FIX #6: WebSocket Event Handlers - Use correct event names
+          // Handle video_started events
+          sequenceSubscription.onVideoStarted((data: any) => {
+            console.log('🎬 [HIL WebSocket] video_started event received:', data);
+            if (data.video_id && data.video_index !== undefined) {
+              handleVideoStarted(data.video_id, data.video_index, data.started_at || Date.now());
+            }
+          });
+
+          // Handle video_ended events
+          sequenceSubscription.onVideoEnded((data: any) => {
+            console.log('🏁 [HIL WebSocket] video_ended event received:', data);
+          });
+
+          // Handle video completed events
+          sequenceSubscription.onVideoCompleted((data: any) => {
+            console.log('✅ [HIL WebSocket] video_completed event received:', data);
+          });
+
+          // Handle sequence completion
+          sequenceSubscription.onSequenceCompleted((data: any) => {
+            console.log('✅ [HIL WebSocket] sequence_completed event received:', data);
+            handleSequenceComplete();
+          });
+
+          console.log('✅ [HIL] WebSocket sequence subscriptions established');
+        }
+      } catch (wsSubErr) {
+        console.warn('⚠️ [HIL] WebSocket sequence subscription failed:', wsSubErr);
       }
-      
+
+      // SequentialVideoPlayer will handle video playback automatically
+      console.log('✅ [HIL] SequentialVideoPlayer will manage video playback');
+
       // Initialize LabJack backend monitoring and detections stream (WebSocket if available)
       console.log('🔄 [HIL] Starting LabJack backend monitoring...');
       try {
@@ -946,17 +1276,48 @@ const HILTestExecutionPRD: React.FC = () => {
             const payload = JSON.parse(evt.data);
             const items = Array.isArray(payload) ? payload : (payload?.detections ? payload.detections : [payload]);
             items.forEach((d: any, idx: number) => {
-              const tsMs = (d.timestamp_ms ?? (typeof d.timestamp === 'number' ? d.timestamp * 1000 : Date.now()));
+              // DYNAMIC TIMING: Use high-precision timestamps, no fallback to Date.now()
+              const tsMs = d.timestamp_ms ?? (typeof d.timestamp === 'number' ? d.timestamp * 1000 : null);
+              if (tsMs === null) {
+                console.warn('⚠️ [HIL WebSocket] Detection missing timestamp, skipping:', d);
+                return;
+              }
+
+              // DYNAMIC TIMING: Use sequence start time reference
+              const sequenceStart = sequenceStartTimeRef.current || currentSession?.testStartTime?.getTime();
+              if (!sequenceStart) {
+                console.warn('⚠️ [HIL WebSocket] No sequence start time available');
+                return;
+              }
+
               const signalReceivedTime = new Date(tsMs);
-              const start = (currentSession?.testStartTime ? new Date(currentSession.testStartTime) : new Date(tsMs));
-              const videoElapsedSeconds = (signalReceivedTime.getTime() - start.getTime()) / 1000;
+              const videoElapsedSeconds = (tsMs - sequenceStart) / 1000;
+
+              // Use video-specific ground truth from preloaded Map
+              const activeVideoId = currentVideoId || validatedVideos[0]?.id || '';
+              const videoGroundTruth = allVideoExpectedDetections.get(activeVideoId) || [];
+              if (videoGroundTruth.length === 0) {
+                console.warn(`⚠️ [HIL WebSocket] No ground truth for video: ${activeVideoId}`);
+                return;
+              }
+
               let nearestExpected: any = null; let minTimeDiff = Infinity;
-              for (const expected of expectedDetections) {
+              for (const expected of videoGroundTruth) {
                 const td = Math.abs(videoElapsedSeconds - expected.timestamp);
                 if (td < minTimeDiff) { minTimeDiff = td; nearestExpected = expected; }
               }
-              const latencyMs = nearestExpected ? Math.abs((videoElapsedSeconds - nearestExpected.timestamp) * 1000) : Math.abs(Number(d.latency_ms ?? 0));
-              const expectedEventTime = nearestExpected ? new Date(start.getTime() + nearestExpected.timestamp * 1000) : start;
+              // DYNAMIC TIMING: Calculate latency relative to video start
+              const activeVideoStartTime = videoStartTimes.get(currentVideoId || '');
+              const videoRelativeSeconds = activeVideoStartTime ? (tsMs - activeVideoStartTime) / 1000 : videoElapsedSeconds;
+
+              const latencyMs = nearestExpected
+                ? Math.abs((videoRelativeSeconds - nearestExpected.timestamp) * 1000)
+                : Math.abs(Number(d.latency_ms ?? 0));
+
+              // DYNAMIC TIMING: Expected event time relative to video start
+              const expectedEventTime = nearestExpected && activeVideoStartTime
+                ? new Date(activeVideoStartTime + nearestExpected.timestamp * 1000)
+                : new Date(sequenceStart + videoElapsedSeconds * 1000);
               const outcome: 'pass' | 'fail_high_latency' | 'fail_missed_detection' = Math.abs(latencyMs) > maxLatencyMs ? 'fail_high_latency' : 'pass';
               const event: DetectionEvent = {
                 expectedEventTime,
@@ -1002,60 +1363,63 @@ const HILTestExecutionPRD: React.FC = () => {
   };
 
   // PRD: Full-screen mode (required)
-  const enterFullScreen = async () => {
+  const enterFullScreen = useCallback(async () => {
     console.log('🎬 enterFullScreen called:', {
       fullscreenContainerRef: !!fullscreenContainerRef.current,
       currentFullscreen: document.fullscreenElement,
       isFullScreen
     });
     
-    if (fullscreenContainerRef.current) {
+    const container = fullscreenContainerRef.current;
+
+    if (container) {
       try {
-        console.log('🎬 Attempting fullscreen on container:', fullscreenContainerRef.current);
+        console.log('🎬 Attempting fullscreen on container:', container);
         
-        if (fullscreenContainerRef.current.requestFullscreen) {
+        if (container.requestFullscreen) {
           console.log('🎬 Using standard requestFullscreen');
-          await fullscreenContainerRef.current.requestFullscreen();
-        } else if ((fullscreenContainerRef.current as any).webkitRequestFullscreen) {
+          await container.requestFullscreen();
+        } else if ((container as any).webkitRequestFullscreen) {
           console.log('🎬 Using webkit requestFullscreen');
-          await (fullscreenContainerRef.current as any).webkitRequestFullscreen();
-        } else if ((fullscreenContainerRef.current as any).msRequestFullscreen) {
+          await (container as any).webkitRequestFullscreen();
+        } else if ((container as any).msRequestFullscreen) {
           console.log('🎬 Using ms requestFullscreen');
-          await (fullscreenContainerRef.current as any).msRequestFullscreen();
+          await (container as any).msRequestFullscreen();
         }
         
         console.log('✅ Fullscreen request succeeded');
         setIsFullScreen(true);
+        autoFullscreenAttemptRef.current = true;
         
         // Debug fullscreen state after request
         setTimeout(() => {
           console.log('🎬 Fullscreen state after request:', {
             documentFullscreen: !!document.fullscreenElement,
-            isFullScreenState: isFullScreen,
             containerElement: !!fullscreenContainerRef.current
           });
         }, 100);
         
       } catch (err) {
         console.error('❌ Fullscreen failed:', err);
+        autoFullscreenAttemptRef.current = false;
         showSnackbar('Fullscreen not available, continuing in window mode', 'warning');
       }
     }
-  };
+  }, [isFullScreen, showSnackbar]);
 
-  const exitFullScreen = async () => {
+  const exitFullScreen = useCallback(async () => {
     try {
       // Check if document is in fullscreen mode before attempting to exit
-      const isCurrentlyFullscreen = !!(document.fullscreenElement || 
-                                       (document as any).webkitFullscreenElement || 
+      const isCurrentlyFullscreen = !!(document.fullscreenElement ||
+                                       (document as any).webkitFullscreenElement ||
                                        (document as any).msFullscreenElement);
-      
+
       if (!isCurrentlyFullscreen) {
         console.warn('Document not in fullscreen mode, skipping exit');
         setIsFullScreen(false);
         return;
       }
-      
+
       if (document.exitFullscreen) {
         await document.exitFullscreen();
       } else if ((document as any).webkitExitFullscreen) {
@@ -1069,15 +1433,51 @@ const HILTestExecutionPRD: React.FC = () => {
       // Force state update even if exit failed
       setIsFullScreen(false);
     }
-  };
+  }, []);
 
-  // PRD: Capture Test_Start_Time at exact video playback start
+  useEffect(() => {
+    if (!testRunning) {
+      autoFullscreenAttemptRef.current = false;
+      return;
+    }
+
+    const isCurrentlyFullscreen = !!(document.fullscreenElement ||
+                                     (document as any).webkitFullscreenElement ||
+                                     (document as any).msFullscreenElement);
+
+    if (
+      testRunning &&
+      sequenceId &&
+      validatedVideos.length > 0 &&
+      fullscreenContainerRef.current &&
+      !isCurrentlyFullscreen &&
+      !autoFullscreenAttemptRef.current
+    ) {
+      autoFullscreenAttemptRef.current = true;
+      enterFullScreen().catch((err) => {
+        console.warn('⚠️ [HIL] Deferred fullscreen attempt failed:', err);
+        autoFullscreenAttemptRef.current = false;
+      });
+    }
+  }, [testRunning, sequenceId, validatedVideos.length, enterFullScreen]);
+
+  // PRD: Capture Test_Start_Time at exact video playback start with high-precision timing
   const handleVideoStart = () => {
     if (currentSession) {
+      const precisionTimestamp = getHighPrecisionTimestamp();
       const testStartTime = new Date(); // PRD: High-precision Test_Start_Time
+
+      // Store both Date object for compatibility and precision timestamp
+      sequenceStartTimeRef.current = precisionTimestamp;
       setCurrentSession(prev => prev ? { ...prev, testStartTime } : null);
-      console.log('HIL Test - Precision Test_Start_Time captured:', testStartTime.toISOString());
-      showSnackbar('Precision timing started', 'success');
+
+      console.log('HIL Test - High-Precision Test_Start_Time captured:', {
+        isoTimestamp: testStartTime.toISOString(),
+        precisionTimestamp: precisionTimestamp.toFixed(2),
+        context: 'HILTestExecution'
+      });
+
+      showSnackbar('High-precision timing started', 'success');
     }
   };
 
@@ -1105,14 +1505,34 @@ const HILTestExecutionPRD: React.FC = () => {
             const id = (d.id || d.detection_id || `${idx}-${d.timestamp}`) as string;
             if (processedIds.has(id)) return;
 
-            const tsMs = (d.timestamp_ms ?? (typeof d.timestamp === 'number' ? d.timestamp * 1000 : Date.now()));
+            // DYNAMIC TIMING: Use high-precision timestamps, no fallback to Date.now()
+            const tsMs = d.timestamp_ms ?? (typeof d.timestamp === 'number' ? d.timestamp * 1000 : null);
+            if (tsMs === null) {
+              console.warn('⚠️ [HIL Polling] Detection missing timestamp, skipping:', d);
+              return;
+            }
+
+            // DYNAMIC TIMING: Use sequence start time reference
+            const sequenceStart = sequenceStartTimeRef.current || session.testStartTime?.getTime();
+            if (!sequenceStart) {
+              console.warn('⚠️ [HIL Polling] No sequence start time available');
+              return;
+            }
+
             const signalReceivedTime = new Date(tsMs);
-            const start = session.testStartTime ?? new Date(tsMs);
-            const videoElapsedSeconds = (signalReceivedTime.getTime() - start.getTime()) / 1000;
+            const videoElapsedSeconds = (tsMs - sequenceStart) / 1000;
+
+            // Use video-specific ground truth from preloaded Map
+            const activeVideoId = currentVideoId || validatedVideos[0]?.id || '';
+            const videoGroundTruth = allVideoExpectedDetections.get(activeVideoId) || [];
+            if (videoGroundTruth.length === 0) {
+              console.warn(`⚠️ [HIL Polling] No ground truth for video: ${activeVideoId}`);
+              return;
+            }
 
             let nearestExpected: any = null;
             let minTimeDiff = Infinity;
-            for (const expected of expectedDetections) {
+            for (const expected of videoGroundTruth) {
               const timeDiff = Math.abs(videoElapsedSeconds - expected.timestamp);
               if (timeDiff < minTimeDiff) {
                 minTimeDiff = timeDiff;
@@ -1120,12 +1540,18 @@ const HILTestExecutionPRD: React.FC = () => {
               }
             }
 
+            // DYNAMIC TIMING: Calculate latency relative to video start
+            const activeVideoStartTime = videoStartTimes.get(currentVideoId || '');
+            const videoRelativeSeconds = activeVideoStartTime ? (tsMs - activeVideoStartTime) / 1000 : videoElapsedSeconds;
+
             const latencyMs = nearestExpected
-              ? Math.abs((videoElapsedSeconds - nearestExpected.timestamp) * 1000)
+              ? Math.abs((videoRelativeSeconds - nearestExpected.timestamp) * 1000)
               : Math.abs(Number(d.latency_ms ?? 0));
-            const expectedEventTime = nearestExpected
-              ? new Date(start.getTime() + nearestExpected.timestamp * 1000)
-              : start;
+
+            // DYNAMIC TIMING: Expected event time relative to video start
+            const expectedEventTime = nearestExpected && activeVideoStartTime
+              ? new Date(activeVideoStartTime + nearestExpected.timestamp * 1000)
+              : new Date(sequenceStart + videoElapsedSeconds * 1000);
             const outcome: 'pass' | 'fail_high_latency' | 'fail_missed_detection' =
               Math.abs(latencyMs) > maxLatencyMs ? 'fail_high_latency' : 'pass';
 
@@ -1152,135 +1578,226 @@ const HILTestExecutionPRD: React.FC = () => {
     }, 300);
   };
 
-  // PRD: Handle LabJack signal detection
+  // PRD: Handle LabJack signal detection with multi-video sequence support
   const handleLabJackSignal = (signalData: any, session: HILTestSession) => {
     console.log('🎯 [HIL] handleLabJackSignal called with:', { signalData, session: !!session });
-    
+
     if (!session || !session.testStartTime) {
       console.error('❌ [HIL] handleLabJackSignal: No session or test start time');
       return;
     }
-    
-    const signalReceivedTime = new Date(signalData.timestamp);
-    const videoElapsedSeconds = (signalReceivedTime.getTime() - session.testStartTime.getTime()) / 1000;
-    
-    console.log(`📊 [HIL] Processing signal: elapsed=${videoElapsedSeconds.toFixed(2)}s, voltage=${signalData.voltage?.toFixed(2)}V`);
-    
-    // Find nearest expected detection from ground truth
+
+    // DYNAMIC TIMING: Use high-precision timestamp from signal (NO FALLBACK)
+    const signalTimestamp = signalData.timestamp_ms || signalData.timestamp || null;
+    if (signalTimestamp === null) {
+      console.warn('⚠️ [HIL LabJack] Detection missing timestamp, skipping:', signalData);
+      return;
+    }
+
+    // DYNAMIC TIMING: Calculate sequence-relative time (from test start)
+    const sequenceStartMs = sequenceStartTimeRef.current || session.testStartTime.getTime();
+    const sequenceElapsedMs = signalTimestamp - sequenceStartMs;
+    const sequenceElapsedSeconds = sequenceElapsedMs / 1000;
+
+    // DYNAMIC TIMING: Get current video context
+    const activeVideoId = currentVideoId || validatedVideos[currentVideoIdx]?.id || '';
+    const videoStartTime = videoStartTimes.get(activeVideoId);
+
+    // DYNAMIC TIMING: Calculate video-relative time (from video start)
+    const videoRelativeSeconds = videoStartTime
+      ? (signalTimestamp - videoStartTime) / 1000
+      : sequenceElapsedSeconds;
+
+    console.log(`📊 [HIL] Processing signal:`, {
+      sequenceElapsed: sequenceElapsedSeconds.toFixed(2),
+      videoRelative: videoRelativeSeconds.toFixed(2),
+      currentVideoId: activeVideoId,
+      currentVideoIndex: currentVideoIdx,
+      voltage: signalData.voltage?.toFixed(2)
+    });
+
+    // Find nearest expected detection from ground truth (use video-specific ground truth from Map)
+    const videoGroundTruth = allVideoExpectedDetections.get(activeVideoId) || [];
+    if (videoGroundTruth.length === 0) {
+      console.warn(`⚠️ [HIL LabJack] No ground truth loaded for video: ${activeVideoId}`);
+      return;
+    }
+
     let nearestExpected = null;
     let minTimeDiff = Infinity;
-    
-    for (const expected of expectedDetections) {
-      const timeDiff = Math.abs(videoElapsedSeconds - expected.timestamp);
+
+    for (const expected of videoGroundTruth) {
+      const timeDiff = Math.abs(videoRelativeSeconds - expected.timestamp);
       if (timeDiff < minTimeDiff) {
         minTimeDiff = timeDiff;
         nearestExpected = expected;
       }
     }
-    
+
     if (!nearestExpected) {
-      console.warn('⚠️ [HIL] No expected detection found for signal at', videoElapsedSeconds);
-      console.log('Available expected detections:', expectedDetections.map(e => `${e.id}@${e.timestamp}s`));
+      console.warn('⚠️ [HIL] No expected detection found for signal at video time', videoRelativeSeconds);
+      console.log('Available expected detections for this video:', videoGroundTruth.map(e => `${e.id}@${e.timestamp}s`));
       return;
     }
-    
+
     console.log(`🎯 [HIL] Found nearest expected: ${nearestExpected.id} at ${nearestExpected.timestamp}s (diff: ${minTimeDiff.toFixed(3)}s)`);
-    
-    // Calculate latency: signal_time - expected_time (in ms)
-    const latencyMs = (videoElapsedSeconds - nearestExpected.timestamp) * 1000;
-    const expectedEventTime = new Date(session.testStartTime.getTime() + nearestExpected.timestamp * 1000);
-    
+
+    // DYNAMIC TIMING: Calculate latency using video-relative timestamps
+    // Latency = (signal_video_time - expected_video_time)
+    const latencyMs = (videoRelativeSeconds - nearestExpected.timestamp) * 1000;
+
+    // DYNAMIC TIMING: Calculate expected event time relative to VIDEO START (not test start)
+    // For multi-video sequences, this ensures proper timing per video
+    const expectedEventTime = videoStartTime
+      ? new Date(videoStartTime + (nearestExpected.timestamp * 1000))
+      : new Date(session.testStartTime.getTime() + nearestExpected.timestamp * 1000);
+
     // PRD: Determine outcome based on latency threshold
     let outcome: 'pass' | 'fail_high_latency' | 'fail_missed_detection' = 'pass';
     if (Math.abs(latencyMs) > maxLatencyMs) {
       outcome = 'fail_high_latency';
     }
-    
+
     const event: DetectionEvent = {
       expectedEventTime,
-      signalReceivedTime,
+      signalReceivedTime: new Date(signalTimestamp),
       latencyMs: Math.abs(latencyMs),
       outcome,
-      videoId: signalData.videoId || validatedVideos[0]?.id || '',
-      frameNumber: nearestExpected.frameNumber
+      videoId: activeVideoId,
+      frameNumber: nearestExpected.frameNumber,
+      // DYNAMIC TIMING: Multi-video sequence context with precision timestamps
+      videoIndex: currentVideoIdx,
+      videoStartTime: videoStartTime, // High-precision video start time
+      videoRelativeTimestamp: videoRelativeSeconds, // Time since THIS video started
+      sequenceRelativeTimestamp: sequenceElapsedSeconds // Time since sequence started
     };
-    
+
     console.log(`✅ [HIL] Creating detection event:`, {
       latencyMs: latencyMs.toFixed(1),
       outcome,
       expected: nearestExpected.timestamp,
-      actual: videoElapsedSeconds,
-      threshold: maxLatencyMs
+      actualVideoTime: videoRelativeSeconds,
+      actualSequenceTime: sequenceElapsedSeconds,
+      threshold: maxLatencyMs,
+      videoId: activeVideoId,
+      videoIndex: currentVideoIdx
     });
-    
+
     setDetectionEvents(prev => {
       const newCount = prev.length + 1;
       console.log(`📈 [HIL] Detection events: ${prev.length} → ${newCount}`);
       return [...prev, event];
     });
-    
+
     // Show real-time feedback
     const status = outcome === 'pass' ? 'success' : 'error';
     showSnackbar(
-      `Detection: ${Math.abs(latencyMs).toFixed(1)}ms latency - ${outcome.toUpperCase()}`,
+      `Detection (Video ${currentVideoIdx + 1}): ${Math.abs(latencyMs).toFixed(1)}ms latency - ${outcome.toUpperCase()}`,
       status
     );
-    
+
     console.log('✅ [HIL] Detection event:', {
       expected: nearestExpected.timestamp,
-      actual: videoElapsedSeconds,
+      actualVideoTime: videoRelativeSeconds,
+      actualSequenceTime: sequenceElapsedSeconds,
       latency: latencyMs,
       outcome
     });
   };
 
-  // Handle video ended event - automatic test completion
-  const handleVideoEnded = async () => {
-    console.log('🎬 [HIL] Video ended');
-    const nextIdx = currentVideoIdx + 1;
-    if (nextIdx < validatedVideos.length) {
-      // Advance to next video in playlist
-      const nextVideo = validatedVideos[nextIdx];
-      console.log('⏭️ [HIL] Advancing to next video:', nextVideo?.filename);
-      setCurrentVideoIdx(nextIdx);
-      try {
-        await loadExpectedDetectionsForVideo(nextVideo);
-      } catch (e) {
-        console.warn('⚠️ [HIL] Failed loading detections for next video:', (e as Error)?.message);
-        setExpectedDetections([]);
-      }
-      // Switch source and play robustly
-      await startPlaybackForIndex(nextIdx);
-      return;
-    }
-    console.log('🏁 [HIL] Playlist completed - finishing test');
-    await stopTestAndGenerateResults();
-  };
+  // Legacy handleVideoEnded - now replaced by SequentialVideoPlayer callbacks
+  // const handleVideoEnded = async () => { ... }
+  // SequentialVideoPlayer now manages video transitions and completion
 
   // Generate test results locally without backend dependency
-  const generateTestResults = async () => {
+  const generateTestResults = useCallback(async () => {
     if (!currentSession || !selectedProject) return null;
 
     const testEndTime = new Date();
     const testDuration = testEndTime.getTime() - (currentSession.testStartTime?.getTime() || testEndTime.getTime());
-    
-    // Calculate comprehensive results
-    const totalExpectedDetections = expectedDetections.length;
+
+    // Calculate PER-VIDEO results for multi-video sequences
+    const videoResults: any[] = [];
+    let totalExpectedDetections = 0;
+    let totalMissedDetections = 0;
+
+    // Group detection events by video
+    const detectionsByVideo = new Map<string, DetectionEvent[]>();
+    for (const event of detectionEvents) {
+      const videoId = event.videoId;
+      if (!detectionsByVideo.has(videoId)) {
+        detectionsByVideo.set(videoId, []);
+      }
+      detectionsByVideo.get(videoId)!.push(event);
+    }
+
+    // Calculate results for each video
+    for (const video of validatedVideos) {
+      const videoId = video.id;
+      const videoExpected = allVideoExpectedDetections.get(videoId) || [];
+      const videoDetections = detectionsByVideo.get(videoId) || [];
+
+      const videoPassed = videoDetections.filter(e => e.outcome === 'pass').length;
+      const videoFailed = videoDetections.filter(e => e.outcome === 'fail_high_latency').length;
+
+      // Calculate missed detections for this video
+      const videoDetectedTimestamps = new Set(
+        videoDetections.map(e => Math.round(e.videoRelativeTimestamp! * 10) / 10) // Round to 0.1s
+      );
+
+      const videoMissed = videoExpected.filter(expected => {
+        const expectedTime = Math.round(expected.timestamp * 10) / 10;
+        return !videoDetectedTimestamps.has(expectedTime);
+      }).length;
+
+      const videoPassRate = videoExpected.length > 0
+        ? (videoPassed / videoExpected.length) * 100
+        : 0;
+
+      // Calculate latency stats for this video
+      const videoLatencies = videoDetections.map(e => e.latencyMs || 0);
+      const videoAvgLatency = videoLatencies.length > 0
+        ? videoLatencies.reduce((a, b) => a + b, 0) / videoLatencies.length
+        : 0;
+      const videoMaxLatency = videoLatencies.length > 0 ? Math.max(...videoLatencies) : 0;
+      const videoMinLatency = videoLatencies.length > 0 ? Math.min(...videoLatencies) : 0;
+
+      videoResults.push({
+        video_id: videoId,
+        video_filename: video.filename,
+        video_order: validatedVideos.indexOf(video),
+        video_start_time: videoStartTimes.get(videoId) || 0,
+        video_duration_seconds: video.duration || 0,
+        expected_detections: videoExpected.length,
+        actual_detections: videoDetections.length,
+        passed_detections: videoPassed,
+        failed_detections: videoFailed,
+        missed_detections: videoMissed,
+        pass_rate: videoPassRate,
+        avg_latency_ms: Math.round(videoAvgLatency * 100) / 100,
+        max_latency_ms: videoMaxLatency,
+        min_latency_ms: videoMinLatency,
+        detection_events: videoDetections
+      });
+
+      totalExpectedDetections += videoExpected.length;
+      totalMissedDetections += videoMissed;
+
+      console.log(`📊 [HIL] Video ${validatedVideos.indexOf(video) + 1} (${video.filename}):`, {
+        expected: videoExpected.length,
+        detected: videoDetections.length,
+        passed: videoPassed,
+        failed: videoFailed,
+        missed: videoMissed,
+        passRate: `${videoPassRate.toFixed(1)}%`
+      });
+    }
+
+    // Calculate overall results
     const actualDetections = detectionEvents.length;
     const passedDetections = detectionEvents.filter(e => e.outcome === 'pass').length;
     const failedDetections = detectionEvents.filter(e => e.outcome === 'fail_high_latency').length;
-    
-    // Find missed detections (expected but not detected)
-    const detectedTimestamps = new Set(
-      detectionEvents.map(e => Math.round((e.expectedEventTime.getTime() - currentSession.testStartTime.getTime()) / 100) * 100)
-    );
-    
-    const missedDetections = expectedDetections.filter(expected => {
-      const expectedMs = Math.round(expected.timestamp * 1000 / 100) * 100;
-      return !detectedTimestamps.has(expectedMs);
-    }).length;
-    
-    const totalFailedDetections = failedDetections + missedDetections;
+    const totalFailedDetections = failedDetections + totalMissedDetections;
     const passRate = totalExpectedDetections > 0 ? (passedDetections / totalExpectedDetections) * 100 : 0;
     
     // Display real-time results summary
@@ -1288,24 +1805,39 @@ const HILTestExecutionPRD: React.FC = () => {
     console.log(`  Total Expected: ${totalExpectedDetections}`);
     console.log(`  Detected: ${actualDetections}`);
     console.log(`  Passed: ${passedDetections} (within ${maxLatencyMs}ms)`);
-    console.log(`  Failed: ${failedDetections} (high latency)`);
-    console.log(`  Missed: ${missedDetections} (not detected)`);
+    console.log(`  Failed (High Latency): ${failedDetections}`);
+    console.log(`  Missed (False Negatives): ${totalMissedDetections} ⚠️`);
+    console.log(`  Total Failed: ${totalFailedDetections}`);
     console.log(`  Pass Rate: ${passRate.toFixed(1)}%`);
-    
+    console.log(`  Videos in Sequence: ${validatedVideos.length}`);
+
     // Calculate latency statistics
-    const latencies = detectionEvents.map(e => e.latencyMs);
+    const latencies = detectionEvents.map(e => e.latencyMs || 0);
     const averageLatency = latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
     const maxLatency = latencies.length > 0 ? Math.max(...latencies) : 0;
     const minLatency = latencies.length > 0 ? Math.min(...latencies) : 0;
-    
+
     const results = {
       session_id: currentSession.id,
+      sequence_id: sequenceId,
       project_id: selectedProject.id,
       project_name: selectedProject.name,
       test_start_time: currentSession.testStartTime,
       test_end_time: testEndTime,
       test_duration_seconds: Math.round(testDuration / 1000),
+
+      // Overall statistics
+      overall_pass_rate: Math.round(passRate * 100) / 100,
+      overall_avg_latency_ms: Math.round(averageLatency * 100) / 100,
       total_detections: totalExpectedDetections,
+      total_passed: passedDetections,
+      total_failed: totalFailedDetections,
+      total_missed: totalMissedDetections,
+
+      // Per-video results array
+      video_results: videoResults,
+
+      // Aggregated fields for API compatibility and results display
       passed_detections: passedDetections,
       failed_detections: totalFailedDetections,
       pass_rate: Math.round(passRate * 100) / 100,
@@ -1313,10 +1845,14 @@ const HILTestExecutionPRD: React.FC = () => {
       max_latency_ms: maxLatency,
       min_latency_ms: minLatency,
       max_latency_threshold_ms: maxLatencyMs,
-      test_status: passRate >= 80 ? 'PASSED' : 'FAILED', // 80% pass threshold
+      test_status: passRate >= 80 ? 'PASSED' : 'FAILED',
       detection_events: detectionEvents,
       labjack_connected: labjackStatus.connected,
-      video_count: validatedVideos.length
+      video_count: validatedVideos.length,
+
+      // Multi-video sequence flag
+      has_video_sequence: validatedVideos.length > 1,
+      per_video_results: videoResults // Alternative field name for backend compatibility
     };
 
     console.log('📊 [HIL] Generated test results:', results);
@@ -1354,10 +1890,10 @@ const HILTestExecutionPRD: React.FC = () => {
       console.warn('[HIL] Failed to write local session cache:', (e as Error)?.message);
     }
     return results;
-  };
+  }, [currentSession, selectedProject, detectionEvents, validatedVideos, allVideoExpectedDetections, videoStartTimes, sequenceId, maxLatencyMs, labjackStatus.connected]);
 
   // Save results to database via API
-  const saveResultsToDatabase = async (results: any) => {
+  const saveResultsToDatabase = useCallback(async (results: any) => {
     try {
       console.log('💾 [HIL] Saving results to database...');
       const response = await fetch(`${process.env.REACT_APP_API_URL}/api/test-sessions/${results.session_id}/results`, {
@@ -1380,35 +1916,35 @@ const HILTestExecutionPRD: React.FC = () => {
       showSnackbar('Failed to save test results', 'error');
       return null;
     }
-  };
+  }, [showSnackbar]);
 
   // Stop test and generate results with automatic navigation
-  const stopTestAndGenerateResults = async () => {
+  const stopTestAndGenerateResults = useCallback(async () => {
     try {
       console.log('🛑 [HIL] Stopping test and generating results...');
       setTestRunning(false);
-      
+
       // Close WebSocket connection
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
-      
+
       // Stop signal polling
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
         console.log('⏹️ [HIL] Signal polling stopped');
       }
-      
+
       // Pause video
       if (videoRef.current) {
         videoRef.current.pause();
       }
-      
+
       // Exit fullscreen
       await exitFullScreen();
-      
+
       // Generate results
       const results = await generateTestResults();
       if (results) {
@@ -1429,17 +1965,22 @@ const HILTestExecutionPRD: React.FC = () => {
         navigate(`/results/${targetSessionId}`);
         // Note: The list at /results will show the row once backend includes this session in GET /api/test-sessions
       }
-      
+
       // Update session status
       if (currentSession) {
         setCurrentSession(prev => prev ? { ...prev, status: 'completed' } : null);
       }
-      
+
     } catch (err: any) {
       console.error('❌ [HIL] Failed to complete test:', err);
       showSnackbar('Failed to complete test', 'error');
     }
-  };
+  }, [exitFullScreen, generateTestResults, saveResultsToDatabase, showSnackbar, navigate, currentSession]);
+
+  // Assign to ref for use in handleSequenceComplete
+  useEffect(() => {
+    stopTestAndGenerateResultsRef.current = stopTestAndGenerateResults;
+  }, [stopTestAndGenerateResults]);
 
   const stopTest = async () => {
     await stopTestAndGenerateResults();
@@ -1580,18 +2121,25 @@ const HILTestExecutionPRD: React.FC = () => {
                   />
                 </Box>
 
-                {/* 4. Ground Truth Status Display */}
+                {/* 4. Ground Truth Status Display - Multi-Video Sequence */}
                 {selectedProject && (
                   <Box sx={{ mb: 3 }}>
                     <Typography variant="subtitle2" gutterBottom>
-                      4. Ground Truth Status
+                      4. Multi-Video Sequence Status
                     </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+
+                    {/* Overall sequence info */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <Chip
+                        label={`${validatedVideos.length} Videos in Sequence`}
+                        color="primary"
+                        variant="outlined"
+                      />
                       <Chip
                         icon={expectedDetections.length > 0 ? <CheckCircleIcon color="success" /> : <WarningIcon color="warning" />}
-                        label={expectedDetections.length > 0 
-                          ? `${expectedDetections.length} Expected Detections Loaded` 
-                          : 'No Ground Truth Data'
+                        label={expectedDetections.length > 0
+                          ? `${expectedDetections.length} Detections (Current Video)`
+                          : 'No Ground Truth Loaded'
                         }
                         color={expectedDetections.length > 0 ? 'success' : 'warning'}
                         variant={expectedDetections.length > 0 ? 'filled' : 'outlined'}
@@ -1608,18 +2156,97 @@ const HILTestExecutionPRD: React.FC = () => {
                         Reload Ground Truth
                       </Button>
                     </Box>
-                    {expectedDetections.length > 0 ? (
-                      <Typography variant="body2" color="text.secondary">
-                        Video: {validatedVideos[0]?.filename} • 
-                        Expected detection times: {expectedDetections.map(d => `${d.timestamp.toFixed(1)}s`).join(', ').substring(0, 100)}
-                        {expectedDetections.map(d => `${d.timestamp.toFixed(1)}s`).join(', ').length > 100 ? '...' : ''}
+
+                    {/* Video sequence list */}
+                    <Box sx={{
+                      p: 2,
+                      bgcolor: 'grey.50',
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'grey.300'
+                    }}>
+                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
+                        Video Sequence Order:
                       </Typography>
-                    ) : (
-                      <Typography variant="body2" color="error">
-                        No ground truth annotations found. The HIL test requires expected detection times to validate hardware responses.
-                        Please ensure the selected video has been annotated with ground truth data.
+                      {validatedVideos.map((video, index) => (
+                        <Box
+                          key={video.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            mb: 1,
+                            p: 1,
+                            bgcolor: index === 0 ? 'primary.50' : 'transparent',
+                            borderRadius: 1,
+                            border: index === 0 ? '1px solid' : 'none',
+                            borderColor: 'primary.300'
+                          }}
+                        >
+                          <Chip
+                            label={`${index + 1}`}
+                            size="small"
+                            color={index === 0 ? 'primary' : 'default'}
+                            sx={{ minWidth: 30 }}
+                          />
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {video.filename}
+                          </Typography>
+                          {video.duration && (
+                            <Typography variant="caption" color="text.secondary">
+                              {video.duration.toFixed(1)}s
+                            </Typography>
+                          )}
+                          {index === 0 && (
+                            <Chip label="Ready to play" size="small" color="success" />
+                          )}
+                        </Box>
+                      ))}
+
+                      {/* Total duration */}
+                      <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'grey.300' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Total Sequence Duration:</strong>{' '}
+                          {validatedVideos.reduce((sum, v) => sum + (v.duration || 0), 0).toFixed(1)}s
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Ground truth summary for all videos */}
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'info.50', borderRadius: 1, border: '1px solid', borderColor: 'info.200' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                        📋 Ground Truth Summary
                       </Typography>
-                    )}
+
+                      {expectedDetections.length > 0 ? (
+                        <>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Currently Loaded:</strong> {validatedVideos[0]?.filename}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Detections Ready:</strong> {expectedDetections.length} annotations
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                            Sample times: {expectedDetections.slice(0, 5).map(d => `${d.timestamp.toFixed(1)}s`).join(', ')}
+                            {expectedDetections.length > 5 && ` ... +${expectedDetections.length - 5} more`}
+                          </Typography>
+                        </>
+                      ) : (
+                        <Typography variant="body2" color="warning.main">
+                          No ground truth loaded yet. Will load when test starts.
+                        </Typography>
+                      )}
+
+                      <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed', borderColor: 'info.300' }}>
+                        <Typography variant="caption" color="info.dark" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <span style={{ fontSize: '1.2em' }}>🔄</span>
+                          <strong>Auto-Loading:</strong> Each video's ground truth loads automatically when it starts playing
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          Test will validate {validatedVideos.length} video{validatedVideos.length > 1 ? 's' : ''} sequentially without interruption
+                        </Typography>
+                      </Box>
+                    </Box>
                   </Box>
                 )}
 
@@ -1764,17 +2391,8 @@ const HILTestExecutionPRD: React.FC = () => {
           </>
         )}
 
-        {/* Full-Screen Video Player (PRD requirement) */}
-        {(() => {
-          console.log('🎬 Video container render check:', {
-            testRunning,
-            validatedVideos: validatedVideos?.length,
-            isFullScreen,
-            showVideoContainer: testRunning
-          });
-          return null;
-        })()}
-        {testRunning && (
+        {/* Full-Screen Video Player (PRD requirement) - Using SequentialVideoPlayer */}
+        {testRunning && validatedVideos.length > 0 && sequenceId && (
           <Box
             ref={fullscreenContainerRef}
             id="video-container"
@@ -1788,201 +2406,33 @@ const HILTestExecutionPRD: React.FC = () => {
               justifyContent: 'center'
             }}
           >
-            {(() => {
-              // Debug video container visibility
-              const container = document.getElementById('video-container');
-              console.log('🎬 Video container debug:', {
-                container: !!container,
-                testRunning,
-                isFullScreen,
-                containerVisible: container?.offsetHeight > 0,
-                containerStyle: container?.style.display
-              });
-              return null;
-            })()}
-            
-            {(() => {
-              console.log('🎬 Video element render check:', {
-                validatedVideos: validatedVideos?.length,
-                firstVideo: !!validatedVideos?.[0],
-                videoData: validatedVideos?.[0] ? {
-                  id: validatedVideos[0].id,
-                  url: validatedVideos[0].url,
-                  finalUrl: validatedVideos[0].finalUrl,
-                  file_path: validatedVideos[0].file_path
-                } : null
-              });
-              return null;
-            })()}
-            {validatedVideos[currentVideoIdx] && (
-              <video
-                ref={videoRef}
-                id="hil-video"
-                src={(() => {
-                  const video = validatedVideos[currentVideoIdx];
-                  const sourceUrl = video.url || video.finalUrl || 
-                    (video.file_path ? `http://localhost:8000/uploads/${video.file_path.split('/').pop()}` : '') ||
-                    `/api/v1/videos/${video.id}/stream`;
-                  console.log('📹 Video source URL selected:', sourceUrl);
-                  console.log('📹 Video object:', video);
-                  
-                  // Test URL accessibility
-                  fetch(sourceUrl, { method: 'HEAD' })
-                    .then(response => {
-                      console.log('🌐 URL accessibility test:', {
-                        url: sourceUrl,
-                        status: response.status,
-                        ok: response.ok,
-                        headers: {
-                          contentType: response.headers.get('content-type'),
-                          contentLength: response.headers.get('content-length')
-                        }
-                      });
-                    })
-                    .catch(error => {
-                      console.error('❌ URL accessibility test failed:', {
-                        url: sourceUrl,
-                        error: error.message
-                      });
-                    });
-                  
-                  return sourceUrl;
-                })()}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block'
-                }}
-                onPlay={handleVideoStart} // PRD: Capture Test_Start_Time
-                onEnded={handleVideoEnded} // Automatic test completion
-                onCanPlay={async () => {
-                  const videoEl = videoRef.current;
-                  console.log('📹 Video onCanPlay fired:', {
-                    videoElement: !!videoEl,
-                    videoReady: videoEl?.readyState,
-                    videoSrc: videoEl?.src,
-                    videoDimensions: videoEl ? `${videoEl.videoWidth}x${videoEl.videoHeight}` : 'N/A',
-                    testRunning,
-                    isFullScreen
-                  });
-                  
-                  // Debug video element in DOM
-                  setTimeout(() => {
-                    const videoInDom = document.getElementById('hil-video');
-                    console.log('🎬 Video DOM check:', {
-                      videoInDom: !!videoInDom,
-                      videoVisible: videoInDom?.offsetHeight > 0,
-                      videoDisplay: videoInDom?.style.display,
-                      videoParent: !!videoInDom?.parentElement
-                    });
-                  }, 100);
-                  
-                  // Automatic play and fullscreen sequence
-                  if (testRunning && videoEl) {
-                    try {
-                      // First ensure video is playing
-                      console.log('📹 Ensuring video is playing...');
-                      await videoEl.play();
-                      console.log('✅ Video play succeeded');
-                      
-                      // Wait for video stream to stabilize before fullscreen
-                      if (!isFullScreen) {
-                        console.log('📹 Waiting for video stream stability...');
-                        
-                        // Wait for stable playback state
-                        const waitForStability = new Promise((resolve) => {
-                          const checkStability = () => {
-                            if (videoEl.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA && 
-                                !videoEl.paused && 
-                                videoEl.currentTime > 0 &&
-                                videoEl.videoWidth > 0 &&
-                                videoEl.videoHeight > 0) {
-                              console.log('✅ Video stream is stable, entering fullscreen...');
-                              resolve(true);
-                            } else {
-                              console.log('⏳ Video not stable yet, waiting...', {
-                                readyState: videoEl.readyState,
-                                paused: videoEl.paused,
-                                currentTime: videoEl.currentTime,
-                                dimensions: `${videoEl.videoWidth}x${videoEl.videoHeight}`
-                              });
-                              setTimeout(checkStability, 100);
-                            }
-                          };
-                          
-                          // Start checking after brief delay
-                          setTimeout(checkStability, 50);
-                        });
-                        
-                        await waitForStability;
-                        enterFullScreen();
-                      }
-                      
-                    } catch (playError) {
-                      console.error('❌ Automatic video play failed:', playError);
-                      // Try fullscreen without autoplay requirement
-                      console.log('🔄 Attempting fullscreen without autoplay...');
-                      if (!isFullScreen) {
-                        // Still need stability check even without autoplay
-                        setTimeout(() => {
-                          if (videoEl.readyState >= HTMLMediaElement.HAVE_METADATA) {
-                            enterFullScreen();
-                          }
-                        }, 500);
-                      }
-                    }
-                  }
-                }}
-                onLoadedData={() => {
-                  console.log('📹 Video loadedData event fired');
-                }}
-                onLoadedMetadata={() => {
-                  console.log('📹 Video loadedMetadata event fired');
-                }}
-                onError={(e) => {
-                  console.error('❌ Video load error:', e);
-                  console.error('❌ Video error target:', e.target);
-                  // Try fallback source
-                  if (videoRef.current && validatedVideos[0]) {
-                    const fallbackUrl = `/api/v1/videos/${validatedVideos[0].id}/stream`;
-                    console.log('🔄 Trying fallback URL:', fallbackUrl);
-                    videoRef.current.src = fallbackUrl;
-                  }
-                }}
-                onPause={() => {
-                  console.log('📹 Video paused');
-                }}
-                onWaiting={() => {
-                  console.log('📹 Video waiting (buffering)');
-                }}
-                onStalled={() => {
-                  console.log('📹 Video stalled');
-                  const el = videoRef.current;
-                  if (!el) return;
-                  stalledRetryRef.current = Math.min(stalledRetryRef.current + 1, 5);
-                  setTimeout(async () => { try { await el.play(); } catch {} }, stalledRetryRef.current * 300);
-                }}
-                controls={!isFullScreen}
-                autoPlay
-                muted
-                preload="auto"
-                // @ts-ignore
-                playsInline
-              />
-            )}
-            
-            
-            {/* Show loading indicator if no video available */}
-            {testRunning && !validatedVideos[0] && (
-              <Box sx={{ textAlign: 'center', color: 'white' }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>
-                  Loading video...
-                </Typography>
-                <CircularProgress color="primary" />
-              </Box>
-            )}
-            
+            <VideoPlayerErrorBoundary
+              onError={(error, errorInfo) => {
+                console.error('🚨 [HIL] Video player component crashed:', error);
+                console.error('🚨 [HIL] Error info:', errorInfo);
+                showSnackbar(`Video player crashed: ${error.message}`, 'error');
+                setError(error.message);
+                setTestRunning(false);
+              }}
+            >
+              <SequentialVideoPlayer
+                videoPlaylist={validatedVideos}
+                sequenceId={sequenceId}
+                maxLatencyMs={maxLatencyMs}
+                onSequenceComplete={handleSequenceComplete}
+                onError={(error) => {
+              console.error('❌ [HIL] SequentialVideoPlayer error:', error);
+              showSnackbar(error, 'error');
+              setError(error);
+            }}
+            onVideoStarted={handleVideoStarted}
+            onVideoEnded={(videoId, videoIndex, endTime) => {
+              console.log('🎬 [HIL] Video ended callback:', { videoId, videoIndex, endTime });
+            }}
+            fullScreenMode={isFullScreen}
+          />
+            </VideoPlayerErrorBoundary>
+
             {/* Full-screen controls overlay */}
             {isFullScreen && (
               <Box
@@ -1994,7 +2444,8 @@ const HILTestExecutionPRD: React.FC = () => {
                   gap: 1,
                   backgroundColor: 'rgba(0,0,0,0.7)',
                   borderRadius: 1,
-                  p: 1
+                  p: 1,
+                  zIndex: 1000
                 }}
               >
                 <Button
@@ -2008,7 +2459,7 @@ const HILTestExecutionPRD: React.FC = () => {
                 </Button>
               </Box>
             )}
-            
+
             {/* Test progress indicator */}
             {isFullScreen && currentSession && (
               <Box
@@ -2020,18 +2471,20 @@ const HILTestExecutionPRD: React.FC = () => {
                   backgroundColor: 'rgba(0,0,0,0.8)',
                   borderRadius: 1,
                   p: 2,
-                  color: 'white'
+                  color: 'white',
+                  zIndex: 1000
                 }}
               >
                 <Typography variant="h6">
-                  HIL Test Running
+                  HIL Test Running - Video {currentVideoIdx + 1} of {validatedVideos.length}
                 </Typography>
                 <Typography variant="body2">
                   Project: {selectedProject?.name} | Max Latency: {maxLatencyMs}ms
                 </Typography>
                 <Typography variant="body2">
-                  Events: {detectionEvents.length} | 
-                  Passed: {detectionEvents.filter(e => e.outcome === 'pass').length}
+                  Events: {detectionEvents.length} |
+                  Passed: {detectionEvents.filter(e => e.outcome === 'pass').length} |
+                  Failed: {detectionEvents.filter(e => e.outcome === 'fail_high_latency').length}
                 </Typography>
                 <LinearProgress sx={{ mt: 1, backgroundColor: 'rgba(255,255,255,0.3)' }} />
               </Box>
@@ -2064,7 +2517,7 @@ const HILTestExecutionPRD: React.FC = () => {
           <DialogActions>
             <Button onClick={() => setStartTestDialog(false)}>Cancel</Button>
             <Button
-              onClick={startTest}
+              onClick={validateGroundTruthAndProceed}
               variant="contained"
               disabled={!canStartTest().canStart}
               startIcon={<FullscreenIcon />}
@@ -2073,6 +2526,15 @@ const HILTestExecutionPRD: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Ground Truth Validation Warning Dialog (Issue #3) */}
+        <GroundTruthValidationWarningDialog
+          open={gtValidationDialog}
+          onClose={handleCancelValidation}
+          onStartAnyway={handleForceStartAnyway}
+          validationData={gtValidationData}
+          loading={gtValidationLoading}
+        />
 
         {/* Snackbar */}
         <Snackbar

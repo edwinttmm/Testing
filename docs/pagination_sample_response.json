@@ -1,0 +1,50 @@
+{
+  "sessionId": "abc123",
+  "sessionStatus": "completed",
+  "perVideoResults": [
+    {
+      "videoId": "video1",
+      "videoFilename": "test_video_1.mp4",
+      "sequenceOrder": 0,
+      "expectedDetectionCount": 50,
+      "actualDetectionCount": 48,
+      "passedDetections": 45,
+      "failedDetections": 3,
+      "avgLatencyMs": 125.5,
+      "maxLatencyMs": 250.0,
+      "minLatencyMs": 75.0,
+      "passRatePercent": 93.75,
+      "validationResult": "Pass",
+      "videoStatus": "completed"
+    },
+    {
+      "videoId": "video2",
+      "videoFilename": "test_video_2.mp4",
+      "sequenceOrder": 1,
+      "expectedDetectionCount": 60,
+      "actualDetectionCount": 58,
+      "passedDetections": 55,
+      "failedDetections": 3,
+      "avgLatencyMs": 130.2,
+      "maxLatencyMs": 280.0,
+      "minLatencyMs": 80.0,
+      "passRatePercent": 94.83,
+      "validationResult": "Pass",
+      "videoStatus": "completed"
+    }
+  ],
+  "pagination": {
+    "limit": 100,
+    "cursor": null,
+    "next_cursor": null,
+    "has_more": false,
+    "count": 2
+  },
+  "results": [],
+  "summary": {
+    "totalDetections": 106,
+    "totalResults": 0,
+    "vruTypeDistribution": {},
+    "sessionDuration": 150.5
+  }
+}

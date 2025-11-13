@@ -109,10 +109,10 @@ def test_api_endpoints():
 def test_latency_calculations(session_id: str):
     """Test latency calculation accuracy with real data"""
     print("🧮 Testing Latency Calculations...")
-    
+
     try:
         # Get detection events
-        response = requests.get(f"{BASE_URL}/api/test-sessions/{session_id}/events?limit=50", timeout=10)
+        response = requests.get(f"{BASE_URL}/api/test-sessions/{session_id}/events?limit=2000", timeout=10)
         if response.status_code != 200:
             print(f"❌ Failed to get events: {response.status_code}")
             return {"success": False, "error": f"HTTP {response.status_code}"}

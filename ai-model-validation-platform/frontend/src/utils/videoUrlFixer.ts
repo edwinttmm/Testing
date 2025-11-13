@@ -510,17 +510,41 @@ export function fixVideoObjectUrl(
   options: VideoUrlFixOptions = {}
 ): void {
   if (!video) return;
-  
+
   const originalUrl = video.url;
-  
+  const baseUrl = getCachedVideoBaseUrl();
+
+  // Helper function to extract filename from absolute path
+  const extractFilename = (path: string): string => {
+    // If path contains 'uploads/', extract everything after it
+    if (path.includes('/uploads/')) {
+      const parts = path.split('/uploads/');
+      return parts[parts.length - 1];
+    }
+    // Otherwise, just get the last part
+    const pathParts = path.split('/');
+    return pathParts[pathParts.length - 1];
+  };
+
+  // Fix absolute file paths that point to uploads directory
+  if (video.url && video.url.includes('/uploads/')) {
+    // Check if this is an absolute file path (not an HTTP URL)
+    if (!video.url.startsWith('http://') && !video.url.startsWith('https://')) {
+      const filename = extractFilename(video.url);
+      video.url = `${baseUrl}/uploads/${filename}`;
+
+      if (options.debug) {
+        console.log('🔧 Fixed absolute path to URL:', originalUrl, '->', video.url);
+      }
+      return;
+    }
+  }
+
   // Prioritize file_path over filename for URL construction
   if (video.file_path && !originalUrl) {
-    // Extract just the filename from the full file_path
-    const pathParts = video.file_path.split('/');
-    const actualFilename = pathParts[pathParts.length - 1];
-    const baseUrl = getCachedVideoBaseUrl();
+    const actualFilename = extractFilename(video.file_path);
     video.url = `${baseUrl}/uploads/${actualFilename}`;
-    
+
     if (options.debug) {
       console.log('🔧 Using file_path for URL construction:', actualFilename, '->', video.url);
     }
@@ -528,7 +552,7 @@ export function fixVideoObjectUrl(
     // Fallback to original logic
     video.url = fixVideoUrl(video.url, video.filename, video.id, options);
   }
-  
+
   if (options.debug && originalUrl !== video.url) {
     console.log('🔧 fixVideoObjectUrl updated:', originalUrl, '->', video.url);
   }

@@ -38,6 +38,7 @@ import DashboardControls from '../components/dashboard/DashboardControls';
 import { ConfidenceIntervalChart } from '../components/results/ConfidenceIntervalChart';
 import ApiHealthIndicator from '../components/detection/ApiHealthIndicator';
 import TimingMetricsPanel from '../components/TimingMetricsPanel';
+import { getAccuracyPercent } from '../utils/testSessionUtils';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<EnhancedDashboardStats | null>(null);
@@ -634,25 +635,35 @@ const Dashboard: React.FC = () => {
             >
               <Box role="list" aria-label="Recent test sessions">
                 {recentSessions.length > 0 ? (
-                  recentSessions.map((session, index) => (
-                    <AccessibleSessionItem
-                      key={session.id || index}
-                      sessionNumber={index + 1}
-                      type={session.name || `Test Session ${index + 1}`}
-                      timeAgo={formatTimeAgo(
-                        (() => {
-                          const dateValue = session.createdAt || session.completedAt;
-                          if (typeof dateValue === 'string') {
-                            return dateValue;
-                          } else if (dateValue instanceof Date) {
-                            return dateValue.toISOString();
-                          }
-                          return null;
-                        })()
-                      )}
-                      accuracy={session.metrics?.accuracy || 0}
-                    />
-                  ))
+                  recentSessions.map((session, index) => {
+                    const accuracyPercent = getAccuracyPercent(session);
+                    const accuracyValue = typeof accuracyPercent === 'number'
+                      ? Math.round(accuracyPercent * 10) / 10
+                      : null;
+                    return (
+                      <AccessibleSessionItem
+                        key={session.id || index}
+                        sessionNumber={index + 1}
+                        type={session.name || `Test Session ${index + 1}`}
+                        timeAgo={formatTimeAgo(
+                          (() => {
+                            const dateValue = session.createdAt || session.completedAt;
+                            if (typeof dateValue === 'string') {
+                              return dateValue;
+                            } else if (dateValue instanceof Date) {
+                              return dateValue.toISOString();
+                            }
+                            return null;
+                          })()
+                        )}
+                        accuracy={accuracyValue}
+                        accuracyResult={session.accuracyResult ?? session.passFailResult ?? null}
+                        latencyResult={session.latencyResult ?? null}
+                        overallResult={session.overallTestResult ?? session.passFailResult ?? null}
+                        latencyMeanMs={session.latencyMeanMs ?? null}
+                      />
+                    );
+                  })
                 ) : (
                   <Box sx={{ textAlign: 'center', py: 2 }}>
                     <Typography variant="body2" color="text.secondary">

@@ -1,0 +1,138 @@
+{
+  "verification_metadata": {
+    "session_id": "0846e476-2e21-499c-bfc8-0b2218081c77",
+    "endpoint": "/api/enhanced-hil/test-sessions/{session_id}/ground-truth-comparison",
+    "verification_date": "2025-11-05",
+    "status": "PASSED",
+    "verifier": "Backend API Developer Agent"
+  },
+  "structural_checks": {
+    "per_video_results_contains_video_metadata": {
+      "status": "PASS",
+      "details": "8/8 video metadata fields found, 0/6 detection event fields found",
+      "confidence": "HIGH"
+    },
+    "all_videos_have_ground_truth_metrics": {
+      "status": "PASS",
+      "details": "All 2 videos have complete ground_truth_metrics objects",
+      "confidence": "HIGH"
+    },
+    "detection_events_properly_separated": {
+      "status": "PASS",
+      "details": "502 detection events in top-level array, not nested in per_video_results",
+      "confidence": "HIGH"
+    },
+    "video_id_references_valid": {
+      "status": "PASS",
+      "details": "All detection events reference valid video IDs from per_video_results",
+      "confidence": "HIGH"
+    }
+  },
+  "data_structure_verification": {
+    "per_video_results": {
+      "count": 2,
+      "structure_type": "VIDEO_METADATA",
+      "fields_verified": [
+        "video_id",
+        "sequence_order",
+        "video_status",
+        "video_start_time",
+        "video_end_time",
+        "actual_duration_ms",
+        "video_filename",
+        "video_url",
+        "video_duration",
+        "expected_detection_count",
+        "actual_detection_count",
+        "passed_detections",
+        "failed_detections",
+        "avg_latency_ms",
+        "pass_rate_percent",
+        "validation_result",
+        "ground_truth_metrics"
+      ],
+      "videos": [
+        {
+          "video_id": "10c2b16c-86fa-4140-b1cf-c0ea42f82ca5",
+          "sequence_order": 0,
+          "video_filename": "child_test_video_20251031_144012.mp4",
+          "video_status": "pending",
+          "has_ground_truth_metrics": true,
+          "ground_truth_metrics_complete": true
+        },
+        {
+          "video_id": "550e3cf8-2755-42df-8c3c-041300735f93",
+          "sequence_order": 1,
+          "video_filename": "Child_20251031_143523.mp4",
+          "video_status": "pending",
+          "has_ground_truth_metrics": true,
+          "ground_truth_metrics_complete": true
+        }
+      ]
+    },
+    "detection_events": {
+      "count": 502,
+      "location": "TOP_LEVEL_ARRAY",
+      "properly_separated": true,
+      "all_have_video_id_reference": true
+    }
+  },
+  "ground_truth_metrics": {
+    "video_1": {
+      "video_id": "10c2b16c-86fa-4140-b1cf-c0ea42f82ca5",
+      "filename": "child_test_video_20251031_144012.mp4",
+      "metrics": {
+        "total_ground_truth": 262,
+        "true_positives": 0,
+        "false_positives": 287,
+        "false_negatives": 262,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0
+      },
+      "metrics_present": true,
+      "all_fields_complete": true
+    },
+    "video_2": {
+      "video_id": "550e3cf8-2755-42df-8c3c-041300735f93",
+      "filename": "Child_20251031_143523.mp4",
+      "metrics": {
+        "total_ground_truth": 252,
+        "true_positives": 0,
+        "false_positives": 215,
+        "false_negatives": 252,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0
+      },
+      "metrics_present": true,
+      "all_fields_complete": true
+    }
+  },
+  "issues_found": [],
+  "data_quality_observations": [
+    {
+      "severity": "WARNING",
+      "category": "GROUND_TRUTH_MATCHING",
+      "description": "0% true positive rate for both videos",
+      "impact": "All detections are false positives, all ground truth events are false negatives",
+      "recommendation": "Review ground truth matching logic and timing tolerances"
+    },
+    {
+      "severity": "INFO",
+      "category": "VIDEO_STATUS",
+      "description": "Both videos show 'pending' status with null start/end times",
+      "impact": "May indicate incomplete session execution",
+      "recommendation": "Verify session completion status"
+    }
+  ],
+  "summary": {
+    "overall_status": "PASS",
+    "total_checks": 4,
+    "passed_checks": 4,
+    "failed_checks": 0,
+    "structural_issues": 0,
+    "data_quality_warnings": 2,
+    "conclusion": "API structure is correct. per_video_results contains video metadata with ground truth metrics (not detection events). Detection events are properly separated in a top-level array. Low matching rates indicate a data quality or matching logic issue, not a structural problem."
+  }
+}

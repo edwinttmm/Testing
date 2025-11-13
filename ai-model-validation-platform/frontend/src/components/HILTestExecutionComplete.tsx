@@ -386,7 +386,7 @@ const HILTestExecutionComplete: React.FC = () => {
       // CRITICAL: Dynamic Timing Synchronization
       // Step 1: Initialize monitoring FIRST (before video)
       console.log('🎯 Step 1: Initializing monitoring...');
-      const monitoringStartTime = performance.now();
+      const monitoringStartTime = Date.now();  // CRITICAL FIX: Use Date.now() for Unix epoch timestamps
       
       // Subscribe to hardware signals BEFORE video starts
       if (wsConnected) {
@@ -423,20 +423,59 @@ const HILTestExecutionComplete: React.FC = () => {
       console.log('🎯 Step 4: Starting video playback...');
       if (videoRef.current) {
         videoRef.current.currentTime = 0;
-        
+
+        // CRITICAL FIX: Call backend API to register video start with metadata
+        const currentVideo = videoPlaylist[currentVideoIndex];
+        if (currentVideo && session) {
+          try {
+            const videoData = {
+              video_id: currentVideo.id,
+              duration_s: currentVideo.duration ? currentVideo.duration / 1000 : undefined,  // Convert ms to seconds
+              duration: currentVideo.duration ? currentVideo.duration / 1000 : undefined,    // Fallback key
+              fps: currentVideo.frameRate || 30,
+              filename: currentVideo.filename,
+              resolution: `${currentVideo.width || 1920}x${currentVideo.height || 1080}`
+            };
+
+            console.log(`📡 Calling /api/hil-test-complete/session/${session.id}/video/start with data:`, videoData);
+            const response = await fetch(`/api/hil-test-complete/session/${session.id}/video/start`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(videoData)
+            });
+
+            if (!response.ok) {
+              console.error('Failed to register video start:', await response.text());
+            } else {
+              console.log('✅ Video start registered with backend');
+            }
+          } catch (error) {
+            console.error('Error registering video start:', error);
+          }
+        }
+
         // Add event listeners for precise timing
         videoRef.current.addEventListener('playing', () => {
-          const videoStartTime = performance.now();
+          const videoStartTime = Date.now();  // CRITICAL FIX: Use Date.now() for Unix epoch timestamps
           console.log(`📹 Video playing at ${videoStartTime}ms`);
           console.log(`⏱️ Total setup time: ${videoStartTime - monitoringStartTime}ms`);
-          
-          // Send precise video start time to backend
-          if (wsConnected) {
+
+          // Send precise video start time to backend with complete metadata
+          if (wsConnected && currentVideo) {
             wsEmit('video_started', {
               sessionId: session.id,
               videoStartTime: videoStartTime,
               monitoringStartTime: monitoringStartTime,
-              setupDelay: videoStartTime - monitoringStartTime
+              setupDelay: videoStartTime - monitoringStartTime,
+              // CRITICAL FIX: Include video metadata for LabJack auto-stop timer
+              video_data: {
+                duration_s: currentVideo.duration ? currentVideo.duration / 1000 : undefined,  // Convert ms to seconds
+                duration: currentVideo.duration ? currentVideo.duration / 1000 : undefined,    // Fallback key
+                fps: currentVideo.frameRate || 30,
+                filename: currentVideo.filename,
+                video_id: currentVideo.id,
+                sequence_order: 0  // First video in sequence
+              }
             });
           }
         });
@@ -665,25 +704,33 @@ const HILTestExecutionComplete: React.FC = () => {
   useEffect(() => {
     if (testInProgress && videoRef.current) {
       const video = videoRef.current;
-      
+
       const handleCanPlay = () => {
         console.log(`📹 Video ${currentVideoIndex + 1} can play`);
         setVideoReady(true);
       };
-      
+
       const handleLoadStart = () => {
         console.log(`📹 Video ${currentVideoIndex + 1} load started`);
         setVideoReady(false);
       };
-      
+
       video.addEventListener('canplay', handleCanPlay);
       video.addEventListener('loadstart', handleLoadStart);
-      
+
+      // ✅ NEW: Notify backend when advancing to next video
+      if (currentVideoIndex > 0 && currentTestSession) {
+        const currentVideo = videoPlaylist[currentVideoIndex];
+        if (currentVideo) {
+          notifyVideoStart(currentVideo);
+        }
+      }
+
       // Check if video is already ready
       if (video.readyState >= 3) {
         setVideoReady(true);
       }
-      
+
       return () => {
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('loadstart', handleLoadStart);
@@ -691,6 +738,46 @@ const HILTestExecutionComplete: React.FC = () => {
     }
   }, [currentVideoIndex, testInProgress]);
   
+  // Notify backend when advancing to next video in sequence
+  const notifyVideoStart = async (video: VideoFile) => {
+    try {
+      const videoData = {
+        video_id: video.id,
+        duration_s: video.duration ? video.duration / 1000 : undefined,
+        duration: video.duration ? video.duration / 1000 : undefined,
+        fps: video.frameRate || 30,
+        filename: video.filename,
+        resolution: `${video.width || 1920}x${video.height || 1080}`,
+        sequence_order: currentVideoIndex
+      };
+
+      console.log(`📡 Notifying backend of video ${currentVideoIndex + 1} start:`, videoData);
+
+      const response = await fetch(`/api/hil-test-complete/session/${currentTestSession!.id}/video/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(videoData)
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to notify video start: ${await response.text()}`);
+      } else {
+        console.log(`✅ Backend notified of video ${currentVideoIndex + 1} start`);
+      }
+
+      // Also emit WebSocket event
+      if (wsConnected) {
+        wsEmit('video_started', {
+          sessionId: currentTestSession!.id,
+          videoStartTime: Date.now(),
+          video_data: videoData
+        });
+      }
+    } catch (error) {
+      console.error('Error notifying video start:', error);
+    }
+  };
+
   // Complete test when all videos are played
   const completeTest = async () => {
     try {
@@ -698,13 +785,13 @@ const HILTestExecutionComplete: React.FC = () => {
         const completionData = await apiService.post(`/api/v1/test-sessions/${currentTestSession.id}/complete`);
         setTestReport(completionData.final_report);
       }
-      
+
       await exitFullScreen();
       setTestInProgress(false);
       setTestPaused(false);
       setVideoReady(false);
       setSuccessMessage('HIL test completed successfully - Comprehensive report generated');
-      
+
     } catch (err: any) {
       setError(`Failed to complete test: ${err.message}`);
     }

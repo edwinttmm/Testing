@@ -109,17 +109,45 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
-    """Database dependency with enhanced error handling and connection management"""
+    """Get database session with proper cleanup on errors."""
     # Use unified database system if available
     if USE_UNIFIED_DATABASE:
         try:
             db_manager = get_database_manager()
-            with db_manager.get_session() as session:
+            session_cm = db_manager.get_session()
+            session = session_cm.__enter__()
+            exception_occurred = False
+
+            try:
+                # Verify connection is alive
+                session.execute(text("SELECT 1"))
                 yield session
-            return
+            except Exception as inner_e:
+                exception_occurred = True
+                logger.error(f"Database session error during operation: {inner_e}")
+
+                # Exit context manager with exception
+                try:
+                    session_cm.__exit__(type(inner_e), inner_e, inner_e.__traceback__)
+                except Exception as cleanup_error:
+                    logger.error(f"Error during session cleanup: {cleanup_error}")
+                    pass  # Suppress cleanup errors
+
+                raise  # Re-raise original exception
+
+            finally:
+                # Normal cleanup if no exception
+                if not exception_occurred:
+                    try:
+                        session_cm.__exit__(None, None, None)
+                    except Exception as cleanup_error:
+                        logger.error(f"Error during normal session cleanup: {cleanup_error}")
+                        pass  # Suppress cleanup errors
+
+            return  # Now safe - after proper cleanup
         except Exception as e:
             logger.error(f"Unified database error, falling back to legacy: {str(e)}")
-    
+
     # Legacy database system (fallback)
     db = SessionLocal()
     try:
@@ -127,15 +155,27 @@ def get_db():
         db.execute(text("SELECT 1"))
         yield db
     except SQLAlchemyError as e:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass  # Suppress rollback errors during cleanup
         logger.error(f"Database error in get_db: {str(e)}")
         raise
     except Exception as e:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass  # Suppress rollback errors during cleanup
         logger.error(f"Unexpected error in get_db: {str(e)}")
         raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as close_e:
+            # Suppress "Cannot operate on a closed database" errors - session already closed
+            error_msg = str(close_e).lower()
+            if "closed database" not in error_msg and "invalid" not in error_msg:
+                logger.warning(f"Error closing database connection: {str(close_e)}")
 
 def get_database_health() -> dict:
     """Check database connectivity and return health status with detailed information"""

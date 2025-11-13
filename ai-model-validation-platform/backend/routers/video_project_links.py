@@ -14,7 +14,7 @@ from datetime import datetime
 import logging
 
 from database import SessionLocal
-from models import Video, Project, VideoProjectLink
+from models import Video, Project, VideoProjectLink, Annotation
 from schemas import ProjectResponse, VideoFile
 
 logger = logging.getLogger(__name__)
@@ -105,21 +105,37 @@ async def get_project_videos(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # Get all videos linked to this project
-        videos = db.query(Video).join(
+        # Get videos linked via many-to-many table
+        linked_videos = db.query(Video).join(
             VideoProjectLink, VideoProjectLink.video_id == Video.id
         ).filter(
             VideoProjectLink.project_id == project_id
         ).order_by(desc(Video.created_at)).all()
-        
+
+        linked_ids = {video.id for video in linked_videos}
+
+        # Include legacy videos that still have project_id set directly and are not already included
+        direct_videos_query = db.query(Video).filter(
+            Video.project_id == project_id
+        )
+        if linked_ids:
+            direct_videos_query = direct_videos_query.filter(~Video.id.in_(linked_ids))
+        direct_videos = direct_videos_query.order_by(desc(Video.created_at)).all()
+
+        videos = linked_videos + direct_videos
+
         logger.info(f"Found {len(videos)} videos for project {project_id}")
-        
-        # Convert to VideoFile format
+
         video_files = []
         for video in videos:
             # Get all projects this video is linked to (for shared status)
             linked_projects = db.query(func.count(VideoProjectLink.project_id)).filter(
                 VideoProjectLink.video_id == video.id
+            ).scalar() or 0
+
+            # Count annotations for ground truth summary
+            annotation_count = db.query(func.count(Annotation.id)).filter(
+                Annotation.video_id == video.id
             ).scalar() or 0
             
             video_file = VideoFile(
@@ -130,10 +146,12 @@ async def get_project_videos(
                 size=video.file_size,
                 status=video.status,
                 createdAt=video.created_at.isoformat() if video.created_at else None,
+                url=getattr(video, 'url', None) or video.file_path or f"/uploads/{video.filename}",
                 # Additional metadata
                 isShared=linked_projects > 1,
                 linkedProjectCount=linked_projects,
-                ground_truth_generated=video.ground_truth_generated,
+                ground_truth_generated=annotation_count > 0,
+                ground_truth_count=annotation_count,
                 validation_status=video.validation_status
             )
             video_files.append(video_file)

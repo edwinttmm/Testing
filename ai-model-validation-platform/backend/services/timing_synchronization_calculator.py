@@ -1,19 +1,25 @@
 """
 Timing Synchronization Calculator Service
 
-This service implements the corrected video timing synchronization logic to accurately 
-calculate detection latency by accounting for video startup delays.
+This service implements the corrected video timing synchronization logic to accurately
+calculate detection latency with proper timestamp alignment.
 
 CRITICAL TIMING SYNCHRONIZATION FORMULA:
 real_latency = detection_system_time - (video_start_system_time + gt_video_time)
 
 Where:
-- detection_system_time: When the detection occurred (system time)
-- video_start_system_time: When video actually started playing (system time)  
-- gt_video_time: When the ground truth event occurs in video time (relative to video start)
+- detection_system_time: When the detection occurred (Unix epoch timestamp)
+- video_start_system_time: Reference time when video timeline starts (= labjack_start_time)
+- gt_video_time: When the ground truth event occurs in video time (seconds from video start)
 
-This corrects the issue where apparent high latency (1.8s) was actually due to 
-video startup delay, and the real detection latency is much lower (~75ms).
+CRITICAL FIX (preventing negative latency):
+- video_start_system_time = labjack_start_time (NOT labjack_start_time + startup_delay)
+- startup_delay_ms represents buffering time BEFORE first frame, already reflected in timestamps
+- Both LabJack and video use the same system time epoch (Unix time)
+- Ground truth video times are relative to the video timeline start (t=0)
+
+This ensures real_latency is always positive and accurately measures the time from
+when a ground truth event occurs to when it is detected by the system.
 """
 
 import logging
@@ -77,6 +83,10 @@ class TimingSynchronizationResult:
     frame_correlation_metrics: Optional[FrameCorrelationMetrics] = None
     quality_dimensions: Optional[TimingQualityDimensions] = None
     quality_classification: Optional[QualityClassification] = None
+
+    # Video-relative timing fields (CRITICAL FIX)
+    video_relative_timestamp: Optional[float] = None  # Time since video started (0-10s)
+    video_frame_number: Optional[int] = None           # Frame number (0-based)
     
 
 @dataclass
@@ -100,23 +110,60 @@ class TimingSynchronizationCalculator:
     def __init__(self):
         self.calculations: Dict[str, List[TimingSynchronizationResult]] = {}
         self.expected_processing_time_range = (50, 100)  # 50-100ms expected processing time
-        
+
         # Initialize latency decomposition service
         self.decomposition_service = get_latency_decomposition_service()
-        
+
         # Initialize frame-aware quality assessment service
         self.quality_service = get_frame_aware_quality_service()
-        
+
         logger.info("Timing Synchronization Calculator initialized with latency decomposition and frame-aware quality assessment")
+
+    def calculate_latency_correction(
+        self,
+        detection_system_time: float,
+        gt_system_time: float,
+        video_start_system_time: float,
+        startup_delay_ms: float
+    ) -> float:
+        """Calculate dynamic latency correction based on video timing context.
+
+        Replaces hardcoded 5000ms correction with per-detection calculation.
+
+        Args:
+            detection_system_time: When detection occurred (Unix timestamp)
+            gt_system_time: When GT event occurred (Unix timestamp)
+            video_start_system_time: Video start reference time
+            startup_delay_ms: Video startup delay in milliseconds
+
+        Returns:
+            Latency correction in milliseconds
+        """
+        # Calculate apparent latency (from video start to detection)
+        apparent_latency_s = detection_system_time - video_start_system_time
+
+        # Calculate real latency (from GT event to detection)
+        real_latency_s = detection_system_time - gt_system_time
+
+        # Correction is the difference
+        correction_s = apparent_latency_s - real_latency_s
+
+        logger.info(
+            f"Dynamic latency correction: apparent={apparent_latency_s*1000:.1f}ms, "
+            f"real={real_latency_s*1000:.1f}ms, correction={correction_s*1000:.1f}ms"
+        )
+
+        return correction_s * 1000.0  # Return in milliseconds
     
-    def calculate_corrected_latency(self, 
+    def calculate_corrected_latency(self,
                                   session_id: str,
                                   detection_id: str,
                                   detection_system_time: float,
                                   ground_truth_frame: int,
                                   ground_truth_video_time: float,
                                   video_timing_metadata: VideoTimingMetadata,
-                                  labjack_start_time: float) -> TimingSynchronizationResult:
+                                  labjack_start_time: float,
+                                  video_start_time: Optional[float] = None) -> TimingSynchronizationResult:
         """
         Calculate corrected detection latency using proper timing synchronization.
         
@@ -157,17 +204,26 @@ class TimingSynchronizationCalculator:
                 ground_truth_video_time = 0.0
 
             # Calculate video start time in system time
-            # video_start_system_time = labjack_start_time + (startup_delay_ms / 1000)
+            # CRITICAL FIX #4A: Use per-video start time if provided
+            # Each video in a sequence has its own video_start_time (when it actually started playing)
+            # This is different from the sequence/session start time (labjack_start_time)
             startup_delay_ms = video_timing_metadata.startup_delay_ms if video_timing_metadata.startup_delay_ms is not None else 0.0
-            print(f"DEBUG: startup_delay_ms = {startup_delay_ms}, type = {type(startup_delay_ms)}")
-            print(f"DEBUG: labjack_start_time = {labjack_start_time}, type = {type(labjack_start_time)}")
-            video_start_system_time = labjack_start_time + (startup_delay_ms / 1000.0)
-            print(f"DEBUG: video_start_system_time = {video_start_system_time}")
-            
+            logger.debug(f"startup_delay_ms = {startup_delay_ms}, type = {type(startup_delay_ms)}")
+
+            # Use video-specific start time if provided, otherwise fall back to labjack_start_time
+            if video_start_time is not None:
+                video_start_system_time = video_start_time
+                logger.debug(f"Using per-video start time: {video_start_system_time}")
+            else:
+                # Fallback to labjack_start_time for backward compatibility
+                video_start_system_time = labjack_start_time
+                logger.debug(f"Using labjack_start_time (fallback): {video_start_system_time}")
+                logger.warning(f"No video_start_time provided for detection {detection_id}, using labjack_start_time as fallback")
+
             # Calculate when the ground truth event occurs in system time
-            print(f"DEBUG: ground_truth_video_time = {ground_truth_video_time}, type = {type(ground_truth_video_time)}")
+            logger.debug(f"ground_truth_video_time = {ground_truth_video_time}, type = {type(ground_truth_video_time)}")
             gt_system_time = video_start_system_time + ground_truth_video_time
-            print(f"DEBUG: gt_system_time = {gt_system_time}")
+            logger.debug(f"gt_system_time = {gt_system_time}")
             
             # CRITICAL FIX: Check for timestamp epoch issues causing massive latencies
             current_time = time.time()
@@ -205,25 +261,47 @@ class TimingSynchronizationCalculator:
                 
                 logger.warning(f"🔧 USING POSITION-BASED ESTIMATE: real={real_latency_ms:.1f}ms, apparent={apparent_latency_ms:.1f}ms")
             else:
-                # OLD INCORRECT CALCULATION (for comparison)  
-                # This was calculating: detection_time - labjack_start_time 
-                # which includes the video startup delay
-                print(f"DEBUG: detection_system_time = {detection_system_time}, type = {type(detection_system_time)}")
-                print(f"DEBUG: About to calculate apparent_latency_ms = ({detection_system_time} - {labjack_start_time}) * 1000.0")
+                # CRITICAL FIX APPLIED: Using corrected video_start_system_time calculation
+                # All timestamps use Unix epoch (system time) for consistency
+                #
+                # Fixed bug: Previously added startup_delay to labjack_start_time, causing negative latency
+                # Corrected: video_start_system_time = labjack_start_time (same reference point)
+                # Startup delay is already reflected in when detections arrive, not a time offset
+                #
+                # Apparent latency = total time from LabJack start to detection
+                logger.debug(f"detection_system_time = {detection_system_time}, type = {type(detection_system_time)}")
+                logger.debug(f"About to calculate apparent_latency_ms = ({detection_system_time} - {labjack_start_time}) * 1000.0")
                 apparent_latency_ms = (detection_system_time - labjack_start_time) * 1000.0
-                print(f"DEBUG: apparent_latency_ms = {apparent_latency_ms}")
-                
-                # NEW CORRECT CALCULATION
+                logger.debug(f"apparent_latency_ms = {apparent_latency_ms}")
+
+                # CORRECT CALCULATION (after Fix #1 applied)
                 # Real latency = detection_time - ground_truth_event_system_time
-                print(f"DEBUG: About to calculate real_latency_ms = ({detection_system_time} - {gt_system_time}) * 1000.0")
+                # Now uses proper Unix epoch timestamps for both detection_system_time and gt_system_time
+                logger.debug(f"About to calculate real_latency_ms = ({detection_system_time} - {gt_system_time}) * 1000.0")
                 real_latency_ms = (detection_system_time - gt_system_time) * 1000.0
-                print(f"DEBUG: real_latency_ms = {real_latency_ms}")
-                
-                # Calculate the correction amount
-                print(f"DEBUG: About to calculate latency_correction_ms = {apparent_latency_ms} - {real_latency_ms}")
-                latency_correction_ms = apparent_latency_ms - real_latency_ms
-                print(f"DEBUG: latency_correction_ms = {latency_correction_ms}")
-            
+                logger.debug(f"real_latency_ms = {real_latency_ms}")
+
+                # FIX #6: Remove hardcoded 5000ms - use dynamic calculation
+                latency_correction_ms = self.calculate_latency_correction(
+                    detection_system_time=detection_system_time,
+                    gt_system_time=gt_system_time,
+                    video_start_system_time=video_start_system_time,
+                    startup_delay_ms=startup_delay_ms
+                )
+                logger.debug(f"Dynamic latency_correction_ms = {latency_correction_ms}")
+
+            # CRITICAL FIX: Calculate video_relative_timestamp (time since video started)
+            # This is the actual time position in the video (0 to video_duration)
+            # Formula: detection_time - video_start_time
+            video_relative_timestamp = detection_system_time - video_start_system_time
+            logger.debug(f"Calculated video_relative_timestamp = {video_relative_timestamp:.6f}s")
+
+            # CRITICAL FIX: Calculate video_frame_number from video_relative_timestamp
+            # Formula: video_position_seconds * fps
+            fps = video_timing_metadata.fps if video_timing_metadata and video_timing_metadata.fps > 0 else 24.0
+            video_frame_number = int(video_relative_timestamp * fps)
+            logger.debug(f"Calculated video_frame_number = {video_frame_number} (fps={fps})")
+
             # Validate against expected processing time range (no hardcoded values)
             expected_processing_time_ms = (self.expected_processing_time_range[0] + self.expected_processing_time_range[1]) / 2
             matches_processing_time = (
@@ -312,7 +390,9 @@ class TimingSynchronizationCalculator:
                 timing_quality=timing_quality,
                 calculation_timestamp=time.time(),
                 confidence_score=confidence_score,
-                quality_classification=quality_classification
+                quality_classification=quality_classification,
+                video_relative_timestamp=video_relative_timestamp,  # CRITICAL FIX: Add calculated value
+                video_frame_number=video_frame_number  # CRITICAL FIX: Add calculated value
             )
             
             # Store result

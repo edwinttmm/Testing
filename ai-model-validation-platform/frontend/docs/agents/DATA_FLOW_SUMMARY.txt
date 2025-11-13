@@ -1,0 +1,140 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    FRONTEND DATA FLOW ANALYSIS SUMMARY                     ║
+║                         Session: c511302e                                  ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+📊 EXECUTIVE SUMMARY
+══════════════════════════════════════════════════════════════════════════════
+The frontend is working CORRECTLY. The zeros are REAL DATA from the backend.
+
+🔍 DATA FLOW TRACE
+══════════════════════════════════════════════════════════════════════════════
+
+Step 1: API Response
+────────────────────────────────────────────────────────────────────────────
+  GET /api/enhanced-hil/test-sessions/c511302e.../corrected-results
+  
+  Response includes:
+  ✅ sequence_results.per_video_results[0].ground_truth_metrics = {
+       total_ground_truth: 262,
+       true_positives: 0,      ← ZERO FROM BACKEND
+       false_positives: 144,
+       false_negatives: 262
+     }
+  ✅ sequence_results.per_video_results[1].ground_truth_metrics = {
+       total_ground_truth: 252,
+       true_positives: 0,      ← ZERO FROM BACKEND
+       false_positives: 49,
+       false_negatives: 252
+     }
+
+Step 2: Normalization (hilResultsNormalization.ts)
+────────────────────────────────────────────────────────────────────────────
+  normalizeSequenceResults(seqResults)
+  
+  ✅ Preserves ground_truth_metrics
+  ✅ Creates camelCase variants (groundTruthMetrics)
+  ✅ Creates comparison variants (ground_truth_comparison)
+  ✅ Data integrity maintained: 0 → 0
+
+Step 3: Defensive Filter (HILResults.tsx line 453)
+────────────────────────────────────────────────────────────────────────────
+  validatedPerVideo = rawPerVideo.filter((item) => {
+    return isVideo && !isDetection;
+  })
+  
+  ✅ Video items have video_id AND video_filename
+  ✅ Video items do NOT have detection_time_ms/voltage
+  ✅ Filter does NOT remove these items
+  ✅ ground_truth_metrics still present
+
+Step 4: State Storage (HILResults.tsx line 484)
+────────────────────────────────────────────────────────────────────────────
+  setPerVideoSummaries(sortedPerVideo)
+  
+  State now contains:
+  ✅ perVideoSummaries[0].ground_truth_metrics.true_positives = 0
+  ✅ perVideoSummaries[0].ground_truth_metrics.false_positives = 144
+  ✅ perVideoSummaries[1].ground_truth_metrics.true_positives = 0
+  ✅ perVideoSummaries[1].ground_truth_metrics.false_positives = 49
+
+Step 5: Aggregated Metrics Calculation (HILResults.tsx line 655)
+────────────────────────────────────────────────────────────────────────────
+  const totalTP = videos.reduce((sum, v) =>
+    sum + (v.ground_truth_metrics?.true_positives ?? 0), 0);
+  
+  Calculation:
+  totalTP = 0 + 0 = 0        ✅ CORRECT MATH
+  totalFP = 144 + 49 = 193   ✅ CORRECT MATH
+  totalFN = 262 + 252 = 514  ✅ CORRECT MATH
+  
+  precision = 0 / (0 + 193) = 0.0%     ✅ CORRECT
+  recall = 0 / (0 + 514) = 0.0%        ✅ CORRECT
+  f1 = 2 * (0 * 0) / (0 + 0) = 0.0%    ✅ CORRECT
+
+Step 6: UI Display (GroundTruthComparisonCards.tsx)
+────────────────────────────────────────────────────────────────────────────
+  <Typography>{f1Score.toFixed(1)}%</Typography>
+  
+  ✅ Displays: 0.0%
+  ✅ This is the CORRECT representation of the data
+
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                           ROOT CAUSE IDENTIFIED                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+❌ BACKEND GROUND TRUTH MATCHING IS BROKEN
+
+Evidence:
+  • 193 total detections across 2 videos
+  • 514 total ground truth events
+  • 0 matches found (0% match rate)
+  • All detections classified as FALSE POSITIVES
+  • All ground truth events classified as FALSE NEGATIVES
+
+This is physically impossible unless:
+  1. Ground truth matching algorithm has a bug
+  2. Timestamp coordinate systems are misaligned
+  3. Matching window is too narrow (e.g., <1ms)
+  4. Wrong video_id filtering in matching service
+
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                              RECOMMENDATION                                ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+🚫 DO NOT MODIFY FRONTEND - It's working correctly
+
+✅ INVESTIGATE BACKEND MATCHING:
+   • /backend/services/ground_truth_matching_service.py
+   • Why are 0 out of 193 detections matching ground truth?
+   • Are timestamps in the same reference frame?
+   • Is the matching window too strict?
+   • Is video_id filtering working correctly?
+
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                           VERIFICATION STEPS                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+To confirm frontend is working, check browser console for:
+
+  perVideoSummaries[0].ground_truth_metrics = {
+    total_ground_truth: 262,
+    true_positives: 0,           ← Should be 0 (from API)
+    false_positives: 144,        ← Should be 144 (from API)
+    false_negatives: 262         ← Should be 262 (from API)
+  }
+
+  totalTP: 0                     ← Should be 0 (0 + 0)
+  totalFP: 193                   ← Should be 193 (144 + 49)
+  totalFN: 514                   ← Should be 514 (262 + 252)
+
+  aggregatedMetrics = {
+    precision: 0.0,              ← Should be 0% (0/193)
+    recall: 0.0,                 ← Should be 0% (0/514)
+    f1Score: 0.0                 ← Should be 0% (no TPs)
+  }
+
+If these match, frontend is WORKING AS DESIGNED.

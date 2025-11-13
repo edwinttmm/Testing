@@ -1,0 +1,157 @@
+perVideoResults Data Flow - FIXED Architecture
+===============================================
+
+Backend API Response
+└─────────────────────────────────────────┐
+                                          │
+                              ┌───────────▼────────────┐
+                              │ VideoSequenceResults   │
+                              │                        │
+                              │ ✅ perVideoResults OR  │
+                              │ ✅ per_video_results   │
+                              └───────────┬────────────┘
+                                          │
+                              ┌───────────▼────────────┐
+                              │   HILResults.tsx       │
+                              │   sequenceResults      │
+                              └───────────┬────────────┘
+                                          │
+            ┌─────────────────────────────┼─────────────────────────────┐
+            │                             │                             │
+    ┌───────▼────────┐          ┌────────▼────────┐          ┌────────▼────────┐
+    │ Fallback Check │          │ Data Extraction │          │  Preservation   │
+    │                │          │                 │          │                 │
+    │ ✅ CamelCase   │          │ rawPerVideo     │          │ Spread Operator │
+    │ ✅ Snake_case  │          │ validatedPerVid │          │ ...video        │
+    └───────┬────────┘          │ sortedPerVideo  │          └────────┬────────┘
+            │                   └────────┬────────┘                   │
+            │                            │                            │
+            └────────────────────────────┼────────────────────────────┘
+                                         │
+                            ┌────────────▼────────────┐
+                            │ effectivePerVideoSumm.  │
+                            │      (useMemo)          │
+                            │                         │
+                            │ ✅ videoName preserved  │
+                            │ ✅ ground_truth_comp    │
+                            │    merged (not replaced)│
+                            │ ✅ detectionEvents      │
+                            │    explicitly kept      │
+                            └────────────┬────────────┘
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    │                    │                    │
+        ┌───────────▼───────────┐  ┌────▼────┐  ┌───────────▼────────────┐
+        │   Video Selector      │  │videoTabs│  │   Detection Table      │
+        │   Dropdown            │  │         │  │   "Video" Column       │
+        │                       │  └────┬────┘  │                        │
+        │ ✅ Correct count      │       │       │ ✅ Correct names       │
+        │ ✅ Actual names       │       │       │ ✅ Video numbers       │
+        │ ✅ Detection counts   │       │       │    (1/3, 2/3, 3/3)     │
+        │ ✅ Pass/fail status   │       │       └────────────────────────┘
+        └───────────────────────┘       │
+                                        │
+                            ┌───────────▼────────────┐
+                            │   Metrics Cards        │
+                            │                        │
+                            │ ✅ Non-zero F1 scores  │
+                            │ ✅ Correct Precision   │
+                            │ ✅ Correct Recall      │
+                            │ ✅ TP/FP/FN counts     │
+                            └────────────────────────┘
+
+Critical Fix Points (Line Numbers)
+===================================
+
+Line 253: Field Name Fallback
+┌────────────────────────────────────────┐
+│ (sequenceResults?.perVideoResults ??   │
+│  sequenceResults?.per_video_results)   │
+└────────────────────────────────────────┘
+         ✅ Checks BOTH variants
+
+Lines 335-342: ground_truth_comparison Merge
+┌────────────────────────────────────────┐
+│ ground_truth_comparison: {             │
+│   ...(video.ground_truth_comparison ?? │
+│       {}),                             │
+│   ...metrics,                          │
+│ }                                      │
+└────────────────────────────────────────┘
+         ✅ Preserves backend fields
+
+Lines 362-365: detectionEvents Preservation
+┌────────────────────────────────────────┐
+│ ...(backendDetectionEvents && {        │
+│   detection_events: backendDetectionEvents, │
+│   detectionEvents: backendDetectionEvents   │
+│ })                                     │
+└────────────────────────────────────────┘
+         ✅ Explicit preservation
+
+Debug Logging Flow
+==================
+
+Step 1: Source Data Logging (Line 255-267)
+┌──────────────────────────────────────────────────┐
+│ [effectivePerVideoSummaries] Source data:        │
+│ {                                                │
+│   hasPerVideoSummaries: false,                   │
+│   sequenceResultsPerVideoResults: 3,             │
+│   sourceListLength: 3,                           │
+│   firstVideo: {                                  │
+│     videoId: "abc123",                           │
+│     videoName: "Video 1",                        │
+│     hasGroundTruthComparison: true,              │
+│     hasDetectionEvents: true                     │
+│   }                                              │
+│ }                                                │
+└──────────────────────────────────────────────────┘
+
+Step 2: Per-Video Transformation Logging (Line 367-383)
+┌──────────────────────────────────────────────────┐
+│ [effectivePerVideoSummaries] Video 1/3:          │
+│ {                                                │
+│   videoId: "abc123",                             │
+│   videoName: "Video 1",                          │
+│   hasGroundTruthComparison: true,                │
+│   groundTruthMetrics: {                          │
+│     tp: 10, fp: 2, fn: 1, f1: 87.0              │
+│   },                                             │
+│   hasDetectionEvents: true,                      │
+│   detectionEventsCount: 15                       │
+│ }                                                │
+└──────────────────────────────────────────────────┘
+
+Before vs After Comparison
+==========================
+
+BEFORE FIX:
+┌─────────────────────────────────────┐
+│ Video Selector                      │
+│ [Empty or shows "Loading..."]       │
+│                                     │
+│ Metrics:                            │
+│ F1: 0%  Precision: 0%  Recall: 0%   │
+│                                     │
+│ Detection Table:                    │
+│ Video: "Unknown"                    │
+│ Video: "Unknown"                    │
+│ Video: "Unknown"                    │
+└─────────────────────────────────────┘
+
+AFTER FIX:
+┌─────────────────────────────────────┐
+│ Video Selector                      │
+│ ▼ Video 1 (15 detections) ✅        │
+│   Video 2 (12 detections) ✅        │
+│   Video 3 (18 detections) ✅        │
+│                                     │
+│ Metrics:                            │
+│ F1: 87.0%  Precision: 83.3%  Recall: 90.9% │
+│                                     │
+│ Detection Table:                    │
+│ Video: "Video 1" (1/3)              │
+│ Video: "Video 2" (2/3)              │
+│ Video: "Video 3" (3/3)              │
+└─────────────────────────────────────┘

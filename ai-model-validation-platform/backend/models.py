@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from passlib.context import CryptContext
 import uuid
+from sqlalchemy.ext.mutable import MutableDict
 
 from database import Base
 
@@ -187,6 +188,10 @@ class GroundTruthObject(Base):
     difficult = Column(Boolean, default=False)  # Whether this is a difficult detection
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Soft delete fields - Issue #6
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)  # NULL = active, timestamp = soft deleted
+    deleted_by = Column(String(255), nullable=True)  # User ID who performed soft delete
+
     video = relationship("Video", back_populates="ground_truth_objects")
 
     # Enhanced composite indexes for performance-critical queries
@@ -201,6 +206,7 @@ class GroundTruthObject(Base):
         Index('idx_gt_video_validated_timestamp', 'video_id', 'validated', 'timestamp'),  # Complex filtering
         Index('idx_gt_video_tracking_id', 'video_id', 'tracking_id'),  # For VRU tracking across frames
         Index('idx_gt_tracking_timestamp', 'tracking_id', 'timestamp'),  # For temporal VRU tracking
+        Index('idx_gt_deleted_at', 'deleted_at'),  # For soft delete queries - Issue #6
     )
 
 class TestSession(Base):
@@ -217,7 +223,45 @@ class TestSession(Base):
     completed_at = Column(DateTime(timezone=True), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
+    # MULTI-VIDEO SEQUENCE SUPPORT
+    has_video_sequence = Column(Boolean, default=False, index=True)  # Whether this session uses video sequences
+    sequence_id = Column(String(36), nullable=True, index=True)  # Unique sequence identifier for multi-video tests
+    sequence_metadata = Column(MutableDict.as_mutable(JSON), nullable=True)  # Metadata for video sequence: video_ids, timing, progress
+    max_latency_threshold_ms = Column(Float, nullable=True, index=True)  # Maximum latency threshold for sequence
+    description = Column(Text, nullable=True)  # Test session description
+    test_configuration = Column(MutableDict.as_mutable(JSON), nullable=True)  # Persisted configuration blob
+    expected_detections = Column(Integer, nullable=True)
+    actual_detections = Column(Integer, nullable=True)
+
+    # LEGACY OVERALL STATUS (kept for backward compatibility)
+    pass_fail_result = Column(String, default="pending", index=True)
+    overall_score = Column(Float, nullable=True, index=True)
+
+    # DUAL EVALUATION STATUS FIELDS
+    accuracy_result = Column(String, default="pending", index=True)
+    latency_result = Column(String, default="pending", index=True)
+    overall_test_result = Column(String, default="pending", index=True)
+
+    # DUAL EVALUATION METRICS
+    accuracy_f1_score = Column(Float, nullable=True, index=True)
+    accuracy_precision = Column(Float, nullable=True)
+    accuracy_recall = Column(Float, nullable=True)
+    latency_mean_ms = Column(Float, nullable=True, index=True)
+    latency_max_ms = Column(Float, nullable=True)
+    latency_percent_within_threshold = Column(Float, nullable=True)
+    tp_count = Column(Integer, nullable=True, index=True)
+    fp_count = Column(Integer, nullable=True)
+    fn_count = Column(Integer, nullable=True)
+
+    # HUMAN-READABLE DETAILS
+    accuracy_details = Column(MutableDict.as_mutable(JSON), nullable=True)
+    latency_details = Column(MutableDict.as_mutable(JSON), nullable=True)
+    overall_details = Column(MutableDict.as_mutable(JSON), nullable=True)
+
+    # DUAL-EVALUATION DETAILED METRICS (added 2025-11-11)
+    evaluation_details = Column(MutableDict.as_mutable(JSON), nullable=True)  # Detailed evaluation metrics, reasoning, and threshold data
+
     # ENHANCED PRECISION TIMING FIELDS FOR HIL VALIDATION
     latency_threshold_ms = Column(Integer, default=100, index=True)  # Pass/Fail threshold for latency
     video_start_timestamp = Column(Float, nullable=True, index=True)  # Session video start time reference
@@ -244,10 +288,25 @@ class TestSession(Base):
     presentation_delay_ns = Column(String, nullable=True, index=True)  # T1-T0: Nanosecond precision delay
     presentation_delay_quality = Column(String, nullable=True, index=True)  # 'high', 'medium', 'low'
 
+    # VALIDATION FAILURE TRACKING - Critical for production error handling
+    failure_reason = Column(Text, nullable=True, index=True)  # Human-readable failure reason
+    failure_details = Column(JSON, nullable=True)  # Structured failure data for debugging
+    failed_at = Column(DateTime(timezone=True), nullable=True, index=True)  # When the failure occurred
+    retry_count = Column(Integer, default=0)  # Number of retry attempts
+    last_retry_at = Column(DateTime(timezone=True), nullable=True)  # Last retry timestamp
+
+    # APPROVAL WORKFLOW FIELDS
+    approval_status = Column(String, default='pending', index=True)  # 'pending', 'approved', 'rejected'
+    approved_by = Column(String, nullable=True, index=True)  # User ID or email who approved/rejected
+    approved_at = Column(DateTime(timezone=True), nullable=True, index=True)  # Timestamp of approval/rejection
+    approval_comments = Column(Text, nullable=True)  # Optional comments from approver
+    rejection_reason = Column(Text, nullable=True)  # Reason for rejection if applicable
+
     project = relationship("Project", back_populates="test_sessions")
     detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
     results = relationship("TestResult", back_populates="test_session", cascade="all, delete-orphan")
     detection_comparisons = relationship("DetectionComparison", back_populates="test_session", cascade="all, delete-orphan")
+    video_sequences = relationship("VideoTestSequence", back_populates="test_session", cascade="all, delete-orphan")
 
     # Composite index for common queries
     __table_args__ = (
@@ -256,6 +315,14 @@ class TestSession(Base):
         Index('idx_testsession_type_status', 'session_type', 'status'),  # Filter by session type and status
         Index('idx_testsession_type_created', 'session_type', 'created_at'),  # Session type with time
         Index('idx_testsession_user_sessions', 'session_type', 'status', 'created_at'),  # UI filtering
+        Index('idx_testsession_sequence_flag', 'has_video_sequence', 'status'),  # Video sequence filtering
+        Index('idx_testsession_approval_workflow', 'approval_status', 'approved_at', 'status'),  # Approval workflow
+        Index('idx_testsession_accuracy_result', 'accuracy_result'),
+        Index('idx_testsession_latency_result', 'latency_result'),
+        Index('idx_testsession_overall_result', 'overall_test_result'),
+        Index('idx_testsession_accuracy_f1', 'accuracy_f1_score'),
+        Index('idx_testsession_latency_mean', 'latency_mean_ms'),
+        Index('idx_testsession_tp_count', 'tp_count'),
     )
 
 class DetectionEvent(Base):
@@ -264,13 +331,24 @@ class DetectionEvent(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=True, index=True)  # FIXED: Added video_id relationship
+    sequence_video_result_id = Column(String(36), ForeignKey("sequence_video_results.id", ondelete="SET NULL"), nullable=True, index=True)  # Multi-video sequence support
     timestamp = Column(Float, nullable=False, index=True)  # Index for temporal queries
     validation_result = Column(String, index=True)  # Index for filtering by validation result ('Pass', 'Fail')
     ground_truth_match_id = Column(String(36), ForeignKey("ground_truth_objects.id", ondelete="SET NULL"), index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
+    # LATENCY FIELDS - CANONICAL FIELD IS actual_latency_ms
+    # PRIMARY: Use this field for all latency calculations and displays
+    actual_latency_ms = Column(Float, nullable=True, index=True,
+                               comment="CANONICAL: Actual measured latency from video event to hardware detection (milliseconds)")
+
+    # DEPRECATED: Legacy fields maintained for backward compatibility only
+    latency_ns = Column(String, nullable=True,
+                       comment="DEPRECATED: Use actual_latency_ms. Kept for backward compatibility.")
+    processing_time_ms = Column(Float, nullable=True,
+                               comment="DEPRECATED: This is processing time, not latency. Use actual_latency_ms.")
+
     # ENHANCED PRECISION TIMING FIELDS - HIL VALIDATION
-    latency_ns = Column(String, nullable=True)  # Nanosecond precision latency (stored as string for precision)
     labjack_timestamp = Column(Float, nullable=True, index=True)  # LabJack detection timestamp
     labjack_timestamp_ns = Column(String, nullable=True)  # Nanosecond precision LabJack timestamp
     video_start_time = Column(Float, nullable=True, index=True)  # Video start reference time
@@ -295,7 +373,22 @@ class DetectionEvent(Base):
     actual_latency_ms = Column(Float, nullable=True, index=True)  # Actual measured latency from video start (milliseconds)
     video_frame_number = Column(Integer, nullable=True, index=True)  # Video frame number corresponding to detection time
     timing_sync_quality = Column(String, default="unknown", index=True)  # Quality: 'high', 'medium', 'low', 'unknown'
-    
+
+    # MULTI-VIDEO SEQUENCE TIMING FIELDS
+    sequence_timestamp = Column(Float, nullable=True, index=True)  # Timestamp relative to sequence start (seconds)
+    sequence_timestamp_ns = Column(String, nullable=True)  # Nanosecond precision sequence-relative timestamp
+    video_play_offset_ms = Column(Float, nullable=True)  # Offset from sequence start when this video began playing
+    correlation_method = Column(String, default="timestamp", index=True)  # 'timestamp', 'frame_number'
+    sequence_id = Column(String(36), nullable=True, index=True)  # Sequence identifier for multi-video tests
+
+    # LABJACK DETECTION FIELDS
+    unix_timestamp = Column(Float, nullable=True, index=True)  # Unix timestamp of detection (for LabjJack)
+    signal_type = Column(String, nullable=True, index=True)  # Signal type: GPIO, Network, Serial, CAN Bus
+    channel = Column(Integer, nullable=True, index=True)  # LabjJack channel number
+    signal_value = Column(Float, nullable=True)  # Signal value (voltage, etc.)
+    detection_timestamp = Column(DateTime(timezone=True), nullable=True, index=True)  # Detection timestamp (UTC)
+    detection_metadata = Column(JSON, nullable=True)  # Additional metadata for detection (renamed from 'metadata' to avoid SQLAlchemy reserved word conflict)
+
     # T3 YOLO DETECTION TIMING FIELDS - Phase 2 Implementation
     t3_detection_timestamp = Column(Float, nullable=True, index=True)  # T3: Precise YOLO detection timestamp
     t3_detection_timestamp_ns = Column(String, nullable=True, index=True)  # T3: Nanosecond precision YOLO detection timestamp
@@ -345,9 +438,11 @@ class DetectionEvent(Base):
     detection_type = Column(String, nullable=True, index=True, default='automatic')  # 'automatic' or 'manual'
 
     # RELATIONSHIPS - FIXED: Added missing video relationship with CASCADE
+    # Note: Use .options(selectinload(...)) in queries for eager loading, not lazy parameter
     test_session = relationship("TestSession", back_populates="detection_events")
     video = relationship("Video")  # Video relationship for data integrity
     ground_truth_match = relationship("GroundTruthObject", foreign_keys=[ground_truth_match_id])
+    sequence_video_result = relationship("SequenceVideoResult", back_populates="detection_events")  # Multi-video sequence relationship
 
     # Comprehensive composite indexes for performance-critical queries - UPDATED FOR LABJACK
     __table_args__ = (
@@ -386,7 +481,129 @@ class DetectionEvent(Base):
         Index('idx_detection_spatial_center', 'bounding_box_x', 'bounding_box_y'),  # Spatial center queries
         Index('idx_detection_session_class_timestamp', 'test_session_id', 'class_label', 'timestamp'),  # Complex filtering
         Index('idx_detection_confidence_validation_timestamp', 'confidence', 'validation_result', 'timestamp'),  # Analytics
+
+        # MULTI-VIDEO SEQUENCE INDEXES
+        Index('idx_detection_sequence_video_result', 'sequence_video_result_id'),
+        Index('idx_detection_sequence_timestamp', 'sequence_timestamp'),
+        Index('idx_detection_video_relative_timestamp', 'video_relative_timestamp'),
+        Index('idx_detection_correlation_method', 'correlation_method'),
+        Index('idx_detection_seq_video_validation', 'sequence_video_result_id', 'validation_result'),
+        Index('idx_detection_seq_video_latency', 'sequence_video_result_id', 'actual_latency_ms'),
     )
+
+class VideoTestSequence(Base):
+    """Multi-video test sequence container for sequential HIL testing"""
+    __tablename__ = "video_test_sequences"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+
+    # Sequence configuration
+    video_ids = Column(JSON, nullable=False)  # Ordered list of video IDs
+    sequence_order = Column(JSON, nullable=False)  # Order mapping: [{video_id, order, duration_ms}]
+    max_latency_ms = Column(Integer, default=100, index=True)  # Latency threshold for all videos
+
+    # Sequence status
+    status = Column(String, default="pending", index=True)  # 'pending', 'running', 'completed', 'failed', 'cancelled'
+    current_video_index = Column(Integer, default=0)  # Current video being tested
+    total_videos = Column(Integer, nullable=False)
+    completed_videos = Column(Integer, default=0)
+
+    # Sequence timing - overall sequence timestamps
+    sequence_start_time = Column(Float, nullable=True, index=True)  # Unix timestamp when sequence started
+    sequence_start_time_ns = Column(String, nullable=True)  # Nanosecond precision start time
+    sequence_end_time = Column(Float, nullable=True)  # Unix timestamp when sequence ended
+    sequence_end_time_ns = Column(String, nullable=True)  # Nanosecond precision end time
+    total_duration_ms = Column(Float, nullable=True)  # Total sequence duration
+
+    # ISSUE #6 FIX: Add sequenceElapsedTime field to persist frontend timing data
+    sequence_elapsed_time_ms = Column(Float, nullable=True)  # Frontend-calculated elapsed time in sequence
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    test_session = relationship("TestSession", back_populates="video_sequences")
+    video_results = relationship("SequenceVideoResult", back_populates="video_sequence", cascade="all, delete-orphan")
+
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_video_seq_session', 'test_session_id'),
+        Index('idx_video_seq_status', 'status'),
+        Index('idx_video_seq_session_status', 'test_session_id', 'status'),
+        Index('idx_video_seq_created', 'created_at'),
+        Index('idx_video_seq_progress', 'current_video_index', 'total_videos'),
+        Index('idx_video_seq_timing', 'sequence_start_time'),
+    )
+
+
+class SequenceVideoResult(Base):
+    """Individual video results within a multi-video sequence"""
+    __tablename__ = "sequence_video_results"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    video_sequence_id = Column(String(36), ForeignKey("video_test_sequences.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Sequence position
+    sequence_order = Column(Integer, nullable=False, index=True)  # Position in sequence (0-indexed)
+
+    # Video timing within sequence
+    video_start_time = Column(Float, nullable=True, index=True)  # Unix timestamp when this video started
+    video_start_time_ns = Column(String, nullable=True)  # Nanosecond precision start time
+    video_end_time = Column(Float, nullable=True)  # Unix timestamp when this video ended
+    video_end_time_ns = Column(String, nullable=True)  # Nanosecond precision end time
+    actual_duration_ms = Column(Float, nullable=True)  # Actual video playback duration
+    video_play_offset_ms = Column(Float, nullable=True)  # Offset from sequence start (dynamic calculation)
+
+    # Video status
+    video_status = Column(String, default="pending", index=True)  # 'pending', 'playing', 'completed', 'failed'
+    validation_result = Column(String, nullable=True, index=True)  # 'Pass', 'Fail', 'Error'
+
+    # Detection metrics per video
+    expected_detection_count = Column(Integer, default=0)  # Expected detections from ground truth
+    actual_detection_count = Column(Integer, default=0)  # Actual detections recorded
+    passed_detections = Column(Integer, default=0)  # Detections that passed latency threshold
+    failed_detections = Column(Integer, default=0)  # Detections that failed latency threshold
+
+    # Latency statistics per video
+    avg_latency_ms = Column(Float, nullable=True, index=True)  # Average latency for this video
+    max_latency_ms = Column(Float, nullable=True)  # Maximum latency for this video
+    min_latency_ms = Column(Float, nullable=True)  # Minimum latency for this video
+    pass_rate_percent = Column(Float, nullable=True, index=True)  # Pass rate for this video
+    latency_threshold_ms = Column(Integer, nullable=True)  # Threshold used for this video
+
+    # FRONTEND TIMING ANALYSIS - Detection Window Calculation
+    frontend_playing_delay_ms = Column(Float, nullable=True, index=True)  # Milliseconds between video load and playing event (T1-T0 presentation delay)
+
+    # Processing metadata
+    processing_time_ms = Column(Float, nullable=True)  # Time taken to process this video
+    error_message = Column(Text, nullable=True)  # Error details if video failed
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    video_sequence = relationship("VideoTestSequence", back_populates="video_results")
+    detection_events = relationship("DetectionEvent", back_populates="sequence_video_result", cascade="all, delete-orphan")
+
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_seq_video_result_sequence', 'video_sequence_id'),
+        Index('idx_seq_video_result_video', 'video_id'),
+        Index('idx_seq_video_result_order', 'video_sequence_id', 'sequence_order'),
+        Index('idx_seq_video_result_status', 'video_status'),
+        Index('idx_seq_video_result_validation', 'validation_result'),
+        Index('idx_seq_video_result_latency', 'avg_latency_ms'),
+        Index('idx_seq_video_result_pass_rate', 'pass_rate_percent'),
+        Index('idx_seq_video_result_timing', 'video_start_time'),
+        Index('idx_seq_video_result_sequence_status', 'video_sequence_id', 'video_status'),
+        Index('idx_seq_video_result_detection_counts', 'expected_detection_count', 'actual_detection_count'),
+    )
+
 
 class Annotation(Base):
     """Ground Truth Annotation Model with detection ID tracking"""
@@ -753,6 +970,29 @@ class VideoStatusTransition(Base):
         Index('idx_status_transition_reason', 'transition_reason'),
         Index('idx_status_transition_triggered_by', 'triggered_by'),
     )
+
+class SessionCompletionState(Base):
+    """
+    Track completion progress for idempotent retry.
+
+    Stores which steps have been completed during session finalization,
+    allowing retries to skip already-completed steps and preventing
+    duplicate operations.
+    """
+    __tablename__ = "session_completion_states"
+
+    session_id = Column(String(36), primary_key=True)
+    step_completed = Column(String, nullable=False, index=True)  # 'validation', 'matching', 'metrics', 'storage'
+    last_attempt = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Enhanced indexes for completion tracking
+    __table_args__ = (
+        Index('idx_completion_state_step', 'step_completed'),
+        Index('idx_completion_state_attempt', 'last_attempt'),
+        Index('idx_completion_state_session_step', 'session_id', 'step_completed'),
+    )
+
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

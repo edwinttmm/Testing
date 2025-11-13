@@ -3,6 +3,21 @@ import { AppError, ErrorFactory } from '../utils/errorTypes';
 import { getConfigValueSync, isConfigInitialized } from '../utils/configurationManager';
 import { fixVideoObjectUrl } from '../utils/videoUrlFixer';
 import { ApiErrorData } from '../types/common';
+
+// Pagination types
+interface PaginatedResponse<T> {
+  results?: T[];
+  detections?: any[];
+  perVideoResults?: any[];
+  pagination: {
+    limit: number;
+    cursor: string | null;
+    next_cursor: string | null;
+    has_more: boolean;
+    count: number;
+  };
+  [key: string]: any;
+}
 import {
   Project,
   ProjectCreate,
@@ -107,7 +122,7 @@ class ApiService {
 
   constructor() {
     this.logger = new ComponentLogger('ApiService');
-    
+
     // Always use explicit base URL to avoid proxy issues
     const useDevProxy = false; // Force disable proxy to fix routing issues
     // Compute base URL with environment overrides
@@ -196,6 +211,45 @@ class ApiService {
         }, error as Error);
       }
     }
+  }
+
+  /**
+   * Helper function to fetch all pages of paginated data
+   * @param endpoint - API endpoint (e.g., '/api/test-sessions/123/results')
+   * @param limit - Number of items per page (default: 100)
+   * @returns Array of all results across all pages
+   */
+  async fetchAllPages<T>(endpoint: string, limit: number = 100): Promise<T[]> {
+    const allResults: T[] = [];
+    let cursor: string | null = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      try {
+        const url = cursor
+          ? `${endpoint}?limit=${limit}&cursor=${cursor}`
+          : `${endpoint}?limit=${limit}`;
+
+        const response = await this.api.get<PaginatedResponse<T>>(url);
+        const data = response.data;
+
+        // Extract results from different possible response fields
+        const results = data.results || data.detections || data.perVideoResults || [];
+        allResults.push(...(results as T[]));
+
+        // Update pagination state
+        cursor = data.pagination?.next_cursor || null;
+        hasMore = data.pagination?.has_more || false;
+      } catch (error) {
+        this.logger.logger.error('Error fetching paginated data', {
+          action: 'fetch_all_pages_error',
+          metadata: { endpoint, cursor, error }
+        });
+        throw error;
+      }
+    }
+
+    return allResults;
   }
 
   private setupInterceptors() {
@@ -1146,9 +1200,14 @@ class ApiService {
   }
 
   // Enhanced HIL endpoints with ground truth integration
-  async getEnhancedHILResults(sessionId: string): Promise<any> {
+  async getEnhancedHILResults(sessionId: string, videoId?: string): Promise<any> {
     try {
-      const response = await this.api.get(`/api/enhanced-hil/test-sessions/${sessionId}/corrected-results`);
+      // PRIORITY 3 FIX: Add video_id parameter support for multi-video filtering
+      const params = videoId ? { video_id: videoId } : {};
+      const response = await this.api.get(
+        `/api/enhanced-hil/test-sessions/${sessionId}/corrected-results`,
+        { params }
+      );
       return response.data;
     } catch (error: unknown) {
       console.warn(`Enhanced HIL results fetch failed for session ${sessionId}:`, error);
@@ -1156,12 +1215,196 @@ class ApiService {
     }
   }
 
-  async getEnhancedHILResultsWithGroundTruth(sessionId: string): Promise<any> {
+  async getEnhancedHILResultsWithGroundTruth(sessionId: string, videoId?: string): Promise<any> {
     try {
-      const response = await this.api.get(`/api/enhanced-hil/test-sessions/${sessionId}/ground-truth-comparison`);
+      // PRIORITY 3 FIX: Add video_id parameter support for multi-video filtering
+      const params = videoId ? { video_id: videoId } : {};
+      const response = await this.api.get(
+        `/api/enhanced-hil/test-sessions/${sessionId}/ground-truth-comparison`,
+        { params }
+      );
       return response.data;
     } catch (error: unknown) {
       console.warn(`Enhanced HIL ground truth comparison fetch failed for session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  // Video Sequence Management
+  async startVideoSequence(projectId: string, videoIds: string[]): Promise<{
+    sequenceId: string;
+    testSessionId: string;
+    videoPlaylist: Array<{
+      id: string;
+      filename: string;
+      sequenceIndex: number;
+      estimatedStartOffset: number;
+      fps: number;
+    }>;
+    message: string;
+  }> {
+    try {
+      const response = await this.api.post('/api/video-sequences/start', {
+        project_id: projectId,
+        video_ids: videoIds
+      });
+      return response.data;
+    } catch (error: unknown) {
+      console.warn('Video sequence start failed:', error);
+      throw error;
+    }
+  }
+
+  async getVideoSequenceResults(sequenceId: string): Promise<any> {
+    try {
+      const response = await this.api.get(`/api/video-sequences/${sequenceId}/results`);
+      return response.data;
+    } catch (error: unknown) {
+      console.warn(`Video sequence results fetch failed for sequence ${sequenceId}:`, error);
+      throw error;
+    }
+  }
+
+  async checkIfSessionIsSequence(sessionId: string): Promise<boolean> {
+    try {
+      const session = await this.getTestSession(sessionId);
+      // Check if session has sequence metadata
+      return (session as any).session_type === 'sequential_processing' ||
+             (session as any).has_video_sequence === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Record when a video in the sequence starts playback
+   * @param sequenceId - Sequence identifier
+   * @param videoId - Video identifier
+   * @param startedAt - Timestamp when video started (seconds)
+   */
+  async videoSequenceStarted(
+    sequenceId: string,
+    videoId: string,
+    startedAt: number
+  ): Promise<{ status: string; message: string }> {
+    try {
+      const response = await this.api.post(`/api/video-sequences/${sequenceId}/video-started`, {
+        videoId: videoId,
+        startedAt: startedAt,
+        sequenceElapsedTime: 0
+      });
+      return response.data;
+    } catch (error: unknown) {
+      console.error('Failed to record video sequence start:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Record when a video in the sequence ends playback
+   * @param sequenceId - Sequence identifier
+   * @param videoId - Video identifier
+   * @param endedAt - Timestamp when video ended (seconds)
+   * @param duration - Video duration in seconds
+   */
+  async videoSequenceEnded(
+    sequenceId: string,
+    videoId: string,
+    endedAt: number,
+    duration: number
+  ): Promise<{ status: string; message: string }> {
+    try {
+      const response = await this.api.post(`/api/video-sequences/${sequenceId}/video-ended`, {
+        videoId: videoId,
+        endedAt: endedAt,
+        actualDuration: duration,
+        sequenceElapsedTime: 0
+      });
+      return response.data;
+    } catch (error: unknown) {
+      console.error('Failed to record video sequence end:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Record a detection event during sequence playback
+   * @param sequenceId - Sequence identifier
+   * @param detection - Detection event data
+   */
+  async recordSequenceDetection(
+    sequenceId: string,
+    detection: {
+      videoId: string;
+      frameNumber: number;
+      timestamp: number;
+      detectionTimeMs: number;
+      latencyMs?: number;
+      confidence?: number;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<{ status: string; detectionId: string }> {
+    try {
+      const response = await this.api.post(`/api/video-sequences/${sequenceId}/detection`, {
+        video_id: detection.videoId,
+        frame_number: detection.frameNumber,
+        timestamp: detection.timestamp,
+        detection_time_ms: detection.detectionTimeMs,
+        latency_ms: detection.latencyMs,
+        confidence: detection.confidence,
+        metadata: detection.metadata
+      });
+      return response.data;
+    } catch (error: unknown) {
+      console.error('Failed to record sequence detection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current status of a video sequence test
+   * @param sequenceId - Sequence identifier
+   * @returns Current sequence status and progress
+   */
+  async getSequenceStatus(sequenceId: string): Promise<{
+    sequenceId: string;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+    currentVideoIndex: number;
+    totalVideos: number;
+    currentVideoId?: string;
+    startTime?: string;
+    endTime?: string;
+    detectionCount?: number;
+    error?: string;
+  }> {
+    try {
+      const response = await this.api.get(`/api/video-sequences/${sequenceId}/status`);
+      return response.data;
+    } catch (error: unknown) {
+      console.error('Failed to get sequence status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop a running video sequence test
+   * @param sequenceId - Sequence identifier
+   * @param reason - Reason for stopping
+   * @param force - Force stop even if processing
+   */
+  async stopVideoSequence(
+    sequenceId: string,
+    reason?: string,
+    force: boolean = false
+  ): Promise<{ status: string; message: string; finalResults?: unknown }> {
+    try {
+      const response = await this.api.post(`/api/video-sequences/${sequenceId}/stop`, {
+        reason,
+        force
+      });
+      return response.data;
+    } catch (error: unknown) {
+      console.error('Failed to stop video sequence:', error);
       throw error;
     }
   }
@@ -1456,9 +1699,40 @@ class ApiService {
     return response.data;
   }
 
-  async createTestSession(testSession: TestSessionCreate): Promise<TestSession> {
+  async createTestSession(testSession: TestSessionCreate & { force_start?: boolean }): Promise<TestSession> {
     const response = await this.api.post<TestSession>('/api/test-sessions', testSession);
     return response.data;
+  }
+
+  /**
+   * Approve or reject test session results
+   * @param sessionId - Test session ID
+   * @param approval - Approval request data
+   * @returns Approval response with updated status
+   */
+  async approveTestSession(
+    sessionId: string,
+    approval: {
+      approverId: string;
+      action: 'approve' | 'reject';
+      comments?: string;
+      rejectionReason?: string;
+    }
+  ): Promise<{
+    approvalStatus: string;
+    approvedBy?: string;
+    approvedAt?: string;
+    approvalComments?: string;
+    rejectionReason?: string;
+    message: string;
+  }> {
+    try {
+      const response = await this.api.post(`/api/test-sessions/${sessionId}/approval`, approval);
+      return response.data;
+    } catch (error: unknown) {
+      console.error('Failed to approve/reject test session:', error);
+      throw this.handleError(error);
+    }
   }
 
   async getTestResults(sessionId: string): Promise<Record<string, unknown>> {
@@ -1583,13 +1857,54 @@ class ApiService {
     }
   }
 
-  // Get detection results for a test session  
-  async getTestSessionDetections(sessionId: string): Promise<Record<string, unknown>[]> {
+  // Get detection results for a test session
+  async getTestSessionDetections(sessionId: string, filters?: { video_id?: string }): Promise<Record<string, unknown>[]> {
     try {
-      const response = await this.api.get(`/api/test-sessions/${sessionId}/detections`);
+      const params = new URLSearchParams();
+      if (filters?.video_id) {
+        params.append('video_id', filters.video_id);
+      }
+
+      const url = `/api/test-sessions/${sessionId}/detections${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await this.api.get(url);
       return response.data.detections || [];
     } catch (error: unknown) {
       console.error('Failed to fetch session detections:', error);
+      const errorData = isAxiosError(error) ? safeExtractErrorData(error.response) : null;
+      throw ErrorFactory.createApiError(errorData || {}, {}, { originalError: error });
+    }
+  }
+
+  async getTestSessionEvents(sessionId: string, limit: number = 1000, filters?: { video_id?: string; offset?: number }): Promise<Record<string, unknown>[]> {
+    try {
+      const params: Record<string, string | number> = {
+        limit
+      };
+
+      if (filters?.offset !== undefined) {
+        params.offset = filters.offset;
+      }
+
+      if (filters?.video_id) {
+        params.video_id = filters.video_id;
+      }
+
+      const response = await this.api.get(`/api/test-sessions/${sessionId}/events`, {
+        params
+      });
+      if (hasResponseData(response)) {
+        // Handle wrapped format: {events: [...]}
+        if (Array.isArray(response.data?.events)) {
+          return response.data.events;
+        }
+        // Handle plain array format: [...] (backend returns this)
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+      }
+      return [];
+    } catch (error: unknown) {
+      console.error('Failed to fetch session events:', error);
       const errorData = isAxiosError(error) ? safeExtractErrorData(error.response) : null;
       throw ErrorFactory.createApiError(errorData || {}, {}, { originalError: error });
     }
@@ -1780,6 +2095,31 @@ class ApiService {
     };
   }> {
     return this.cachedRequest('GET', '/api/enhanced-test-workflow/results');
+  }
+
+  // Ground Truth Validation endpoint (Issue #3 frontend)
+  async validateGroundTruth(videoIds: string[]): Promise<{
+    has_issues: boolean;
+    videos_without_gt: Array<{
+      video_id: string;
+      video_name: string;
+      reason: string;
+    }>;
+    videos_with_gt: Array<{
+      video_id: string;
+      video_name: string;
+      detection_count: number;
+    }>;
+    summary: {
+      total_videos: number;
+      videos_with_ground_truth: number;
+      videos_without_ground_truth: number;
+      total_ground_truth_events: number;
+    };
+  }> {
+    return this.cachedRequest('POST', '/api/test-sessions/validate-ground-truth', {
+      video_ids: videoIds
+    });
   }
 
   // Enhanced Test Session Management - integrate with existing sessions
@@ -2136,6 +2476,7 @@ export const getTestSessions = apiServiceInstance.getTestSessions.bind(apiServic
 export const getEnhancedTestSessions = apiServiceInstance.getEnhancedTestSessions.bind(apiServiceInstance);
 export const getTestSession = apiServiceInstance.getTestSession.bind(apiServiceInstance);
 export const createTestSession = apiServiceInstance.createTestSession.bind(apiServiceInstance);
+export const approveTestSession = apiServiceInstance.approveTestSession.bind(apiServiceInstance);
 export const getTestResults = apiServiceInstance.getTestResults.bind(apiServiceInstance);
 export const getDashboardStats = apiServiceInstance.getDashboardStats.bind(apiServiceInstance);
 export const organizeVideoLibrary = apiServiceInstance.organizeVideoLibrary.bind(apiServiceInstance);
@@ -2144,6 +2485,7 @@ export const runDetectionPipeline = apiServiceInstance.runDetectionPipeline.bind
 export const getAvailableModels = apiServiceInstance.getAvailableModels.bind(apiServiceInstance);
 export const getVideoDetections = apiServiceInstance.getVideoDetections.bind(apiServiceInstance);
 export const getTestSessionDetections = apiServiceInstance.getTestSessionDetections.bind(apiServiceInstance);
+export const getTestSessionEvents = apiServiceInstance.getTestSessionEvents.bind(apiServiceInstance);
 export const processSignal = apiServiceInstance.processSignal.bind(apiServiceInstance);
 export const getSupportedProtocols = apiServiceInstance.getSupportedProtocols.bind(apiServiceInstance);
 export const configurePassFailCriteria = apiServiceInstance.configurePassFailCriteria.bind(apiServiceInstance);
@@ -2184,6 +2526,7 @@ export const getEnhancedTestWorkflowResults = apiServiceInstance.getEnhancedTest
 export const createEnhancedTestSession = apiServiceInstance.createEnhancedTestSession.bind(apiServiceInstance);
 export const runEnhancedTestSession = apiServiceInstance.runEnhancedTestSession.bind(apiServiceInstance);
 export const getEnhancedTestSessionResults = apiServiceInstance.getEnhancedTestSessionResults.bind(apiServiceInstance);
+export const validateGroundTruth = apiServiceInstance.validateGroundTruth.bind(apiServiceInstance);
 
 // Boundary Box API Exports
 export const validateBoundingBox = apiServiceInstance.validateBoundingBox.bind(apiServiceInstance);
@@ -2208,5 +2551,15 @@ export const checkBoundarySnapping = apiServiceInstance.checkBoundarySnapping.bi
 export const processPedestrianDetectionFrame = apiServiceInstance.processPedestrianDetectionFrame.bind(apiServiceInstance);
 export const getBoundaryDetectionStatistics = apiServiceInstance.getBoundaryDetectionStatistics.bind(apiServiceInstance);
 export const validatePedestrianDetection = apiServiceInstance.validatePedestrianDetection.bind(apiServiceInstance);
+
+// Video Sequence Exports
+export const startVideoSequence = apiServiceInstance.startVideoSequence.bind(apiServiceInstance);
+export const getVideoSequenceResults = apiServiceInstance.getVideoSequenceResults.bind(apiServiceInstance);
+export const checkIfSessionIsSequence = apiServiceInstance.checkIfSessionIsSequence.bind(apiServiceInstance);
+export const videoSequenceStarted = apiServiceInstance.videoSequenceStarted.bind(apiServiceInstance);
+export const videoSequenceEnded = apiServiceInstance.videoSequenceEnded.bind(apiServiceInstance);
+export const recordSequenceDetection = apiServiceInstance.recordSequenceDetection.bind(apiServiceInstance);
+export const getSequenceStatus = apiServiceInstance.getSequenceStatus.bind(apiServiceInstance);
+export const stopVideoSequence = apiServiceInstance.stopVideoSequence.bind(apiServiceInstance);
 
 export default apiService;

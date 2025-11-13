@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+
+    <!-- AGGRESSIVE CACHE BUSTING -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico?v=%BUILD_TIME%" />
     <!-- Runtime Configuration Override - Load before any other scripts -->
-    <script src="%PUBLIC_URL%/config.js"></script>
+    <script src="%PUBLIC_URL%/config.js?v=%BUILD_TIME%"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta

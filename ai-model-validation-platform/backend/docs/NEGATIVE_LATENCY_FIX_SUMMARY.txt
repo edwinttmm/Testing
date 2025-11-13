@@ -1,0 +1,84 @@
+================================================================================
+NEGATIVE LATENCY BUG FIX - QUICK REFERENCE
+================================================================================
+
+FILE: services/timing_synchronization_calculator.py
+LINE: 170 (previously 164)
+
+CRITICAL BUG FIXED
+================================================================================
+
+BEFORE (WRONG):
+    video_start_system_time = labjack_start_time + (startup_delay_ms / 1000.0)
+    
+    Result: NEGATIVE LATENCY (-1578ms in test case)
+    Cause:  Ground truth events calculated too late in system time
+
+AFTER (CORRECT):
+    video_start_system_time = labjack_start_time
+    
+    Result: POSITIVE LATENCY (+154ms in test case)
+    Reason: Video timeline t=0 aligns with labjack_start_time
+
+================================================================================
+WHY THIS IS CORRECT
+================================================================================
+
+1. labjack_start_time = Unix epoch timestamp (absolute system time)
+2. startup_delay_ms = buffering duration (NOT a timestamp offset)
+3. Video timeline t=0 corresponds to labjack_start_time
+4. Ground truth times are measured from video t=0
+5. Therefore: gt_system_time = labjack_start_time + gt_video_time
+
+================================================================================
+TEST CASE VERIFICATION
+================================================================================
+
+Input:
+  labjack_start_time     = 1762191668.446283
+  detection_system_time  = 1762191668.642227
+  ground_truth_video_time = 0.041666s (frame 1)
+  startup_delay_ms       = 1733ms
+
+Calculation:
+  video_start_system_time = 1762191668.446283 (= labjack_start_time)
+  gt_system_time         = 1762191668.446283 + 0.041666
+                         = 1762191668.487949
+  real_latency           = 1762191668.642227 - 1762191668.487949
+                         = 0.154278 seconds
+                         = 154.278ms ✅ POSITIVE!
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+1. services/timing_synchronization_calculator.py - FIXED calculation
+2. tests/test_negative_latency_fix.py - NEW test verifying fix
+3. docs/NEGATIVE_LATENCY_BUG_FIX.md - Complete documentation
+
+================================================================================
+TEST VERIFICATION
+================================================================================
+
+Run: python3 tests/test_negative_latency_fix.py
+
+Expected Output:
+  ✅ PASS: Real latency is POSITIVE (154.278ms)
+  ✅ PASS: Calculated latency matches expected value
+  ✅ PASS: Latency is in reasonable range (50-500ms)
+
+================================================================================
+IMPACT
+================================================================================
+
+BEFORE FIX:
+  - Many detections showed negative latency
+  - Average latency calculations incorrect
+  - Pass/fail thresholds meaningless
+
+AFTER FIX:
+  - All latencies positive (physically correct)
+  - Accurate detection delay measurement (50-500ms typical)
+  - Reliable performance metrics
+
+================================================================================

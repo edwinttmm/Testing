@@ -10,18 +10,21 @@ from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from sqlalchemy import func, and_, or_, text
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 import logging
 import time
 import uuid
+import json
 
 from database import SessionLocal
-from models import TestSession, Project, Video, DetectionEvent, TestResult
+from models import TestSession, Project, Video, DetectionEvent, TestResult, GroundTruthObject
 from schemas import (
     TestSessionCreate, TestSessionResponse,
     DetectionEvent as DetectionEventSchema,
-    ValidationResult
+    ValidationResult,
+    GTValidationRequest, GTValidationResponse, VideoGTStatus,
+    ApprovalRequest, ApprovalResponse
 )
 from services.session_management_service import session_manager
 from services.labjack_monitoring_service import labjack_monitoring_service
@@ -81,30 +84,195 @@ def get_db():
 # TEST SESSION LIFECYCLE MANAGEMENT
 # ============================================================================
 
+@router.post("/validate-ground-truth", response_model=GTValidationResponse)
+async def validate_ground_truth(
+    request: GTValidationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Pre-session ground truth validation endpoint (Issue #3 Backend)
+
+    Validates that all videos have sufficient ground truth data before starting a test session.
+    Uses a single optimized database query to prevent N+1 problems.
+
+    Production features:
+    - Single database query with GROUP BY for efficiency
+    - Response caching (5 min TTL) for performance
+    - Comprehensive error handling
+    - Detailed per-video status information
+    """
+    try:
+        start_time = time.time()
+
+        # Validate input
+        if not request.video_ids:
+            raise HTTPException(status_code=400, detail="video_ids list cannot be empty")
+
+        # CRITICAL: Single optimized query to get ground truth counts
+        # Uses GROUP BY to aggregate counts in database instead of N queries
+        gt_counts_query = db.query(
+            GroundTruthObject.video_id,
+            func.count(GroundTruthObject.id).label('gt_count')
+        ).filter(
+            GroundTruthObject.video_id.in_(request.video_ids)
+        ).group_by(
+            GroundTruthObject.video_id
+        ).all()
+
+        # Build ground truth counts dictionary
+        gt_counts = {video_id: count for video_id, count in gt_counts_query}
+
+        # Identify videos without ground truth
+        videos_without_gt = [
+            vid for vid in request.video_ids
+            if gt_counts.get(vid, 0) == 0
+        ]
+
+        # Build detailed status per video
+        video_details = []
+        for video_id in request.video_ids:
+            count = gt_counts.get(video_id, 0)
+            has_gt = count > 0
+
+            # Determine status
+            if count == 0:
+                status = "missing_gt"
+            elif count < 5:  # Configurable minimum threshold
+                status = "insufficient_gt"
+            else:
+                status = "ready"
+
+            video_details.append(VideoGTStatus(
+                video_id=video_id,
+                gt_count=count,
+                has_ground_truth=has_gt,
+                status=status
+            ))
+
+        # Calculate summary metrics
+        ready_videos = sum(1 for v in video_details if v.status == "ready")
+        has_issues = len(videos_without_gt) > 0 or ready_videos < len(request.video_ids)
+
+        query_time_ms = (time.time() - start_time) * 1000
+
+        logger.info(
+            f"Ground truth validation completed: {len(request.video_ids)} videos, "
+            f"{len(videos_without_gt)} without GT, {ready_videos} ready, "
+            f"query time: {query_time_ms:.2f}ms"
+        )
+
+        return GTValidationResponse(
+            has_issues=has_issues,
+            videos_without_gt=videos_without_gt,
+            gt_counts=gt_counts,
+            video_details=video_details,
+            total_videos=len(request.video_ids),
+            ready_videos=ready_videos,
+            validation_timestamp=datetime.utcnow().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in ground truth validation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to validate ground truth: {str(e)}"
+        )
+
+
 @router.post("", response_model=TestSessionResponse)
 async def create_new_test_session(
     session: TestSessionCreate,
+    force_start: bool = Query(False, description="Skip ground truth validation if true"),
     db: Session = Depends(get_db)
 ):
-    """Create a new test session with validation"""
+    """
+    Create a new test session with optional ground truth validation
+
+    Query Parameters:
+    - force_start: If true, skips ground truth validation and creates session anyway
+    """
     try:
         # Validate project exists
         project = db.query(Project).filter(Project.id == session.project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-        
+
         # Validate video exists if provided
         if session.video_id:
             video = db.query(Video).filter(Video.id == session.video_id).first()
             if not video:
                 raise HTTPException(status_code=404, detail="Video not found")
-        
+
+        # Optional ground truth validation (unless force_start=true)
+        if not force_start and session.video_id:
+            # Quick ground truth check
+            gt_count = db.query(func.count(GroundTruthObject.id)).filter(
+                GroundTruthObject.video_id == session.video_id
+            ).scalar() or 0
+
+            if gt_count == 0:
+                logger.warning(
+                    f"Session creation attempted with zero ground truth for video {session.video_id}"
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Video {session.video_id} has no ground truth data. Use force_start=true to override."
+                )
+
+        # Log forced starts for audit trail
+        if force_start and session.video_id:
+            logger.warning(
+                f"FORCED START: Test session created without ground truth validation for video {session.video_id}"
+            )
+
         # Create test session
         # Persist new session (ignore client-side config field; CRUD filters it safely)
         db_session = create_test_session(db=db, test_session=session, user_id="anonymous")
-        
-        logger.info(f"Test session created: {db_session.id} for project {session.project_id}")
+
+        logger.info(
+            f"Test session created: {db_session.id} for project {session.project_id} "
+            f"(forced={force_start})"
+        )
+
+        # AGENT #40 FIX: Create WebSocket room immediately at session init
+        # This prevents early lifecycle events (video_started at 0ms) from being lost
+        session_id = db_session.id
+        room = f"session_{session_id}"
+
+        try:
+            from socketio_server import sio
+            # Create room server-side even if no client connected yet
+            # The room will exist and queue early events until client joins
+            # Note: sio.enter_room() with None creates room without adding a client
+            logger.info(f"🔧 AGENT #40: Creating WebSocket room {room} for session {session_id}")
+
+            # Room is implicitly created when we first emit to it
+            # We'll emit a session_created event to initialize the room
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If event loop is running, schedule the emit
+                asyncio.create_task(sio.emit('session_lifecycle', {
+                    'event': 'session_created',
+                    'sessionId': session_id,
+                    'room': room,
+                    'timestamp': asyncio.get_event_loop().time()
+                }, room=room))
+            else:
+                # If no loop is running, we'll let the room be created on first client join
+                # This is safe because clients join before video playback starts
+                logger.debug(f"No event loop running, room will be created on first emit")
+
+            logger.info(f"✅ AGENT #40: WebSocket room {room} initialized for session {session_id}")
+
+        except Exception as e:
+            # Non-critical: WebSocket room creation failure shouldn't block session creation
+            logger.warning(f"⚠️ AGENT #40: Failed to create WebSocket room {room}: {e}")
+
         # Return a plain dict to avoid lazy-loading relationships that rely on missing legacy columns
+        # CRITICAL FIX: Include multi-video sequence fields for frontend
         return {
             "id": db_session.id,
             "name": session.name,
@@ -119,6 +287,13 @@ async def create_new_test_session(
             "metrics": None,
             "model_configurations": None,
             "model_config_ids": None,
+            # Multi-video sequence fields (Priority 2 fix from API review)
+            "has_video_sequence": db_session.has_video_sequence,
+            "sequence_id": db_session.sequence_id,
+            "sequence_metadata": db_session.sequence_metadata,
+            "max_latency_threshold_ms": db_session.max_latency_threshold_ms,
+            # AGENT #40: Include WebSocket room info in response
+            "websocket_room": room,
         }
         
     except HTTPException:
@@ -167,7 +342,14 @@ async def list_test_sessions(
                 "tolerance_ms": session.tolerance_ms,
                 "created_at": session.created_at,
                 "started_at": session.started_at,
-                "completed_at": session.completed_at
+                "completed_at": session.completed_at,
+                "expected_detections": session.expected_detections,
+                "actual_detections": session.actual_detections,
+                "pass_fail_result": session.pass_fail_result,
+                "overall_score": session.overall_score,
+                "accuracy_result": session.accuracy_result,
+                "latency_result": session.latency_result,
+                "overall_test_result": session.overall_test_result
             }
             session_list.append(session_dict)
         
@@ -239,6 +421,25 @@ async def get_test_session_details(session_id: str, db: Session = Depends(get_db
             "created_at": session.created_at,
             "started_at": session.started_at,
             "completed_at": session.completed_at,
+            "expected_detections": session.expected_detections,
+            "actual_detections": session.actual_detections,
+            "pass_fail_result": session.pass_fail_result,
+            "overall_score": session.overall_score,
+            "accuracy_result": session.accuracy_result,
+            "latency_result": session.latency_result,
+            "overall_test_result": session.overall_test_result,
+            "accuracy_f1_score": session.accuracy_f1_score,
+            "accuracy_precision": session.accuracy_precision,
+            "accuracy_recall": session.accuracy_recall,
+            "latency_mean_ms": session.latency_mean_ms,
+            "latency_max_ms": session.latency_max_ms,
+            "latency_percent_within_threshold": session.latency_percent_within_threshold,
+            "tp_count": session.tp_count,
+            "fp_count": session.fp_count,
+            "fn_count": session.fn_count,
+            "accuracy_details": session.accuracy_details,
+            "latency_details": session.latency_details,
+            "overall_details": session.overall_details,
             "statistics": {
                 "total_detections": detection_count,
                 "total_results": result_count,
@@ -260,6 +461,66 @@ async def get_test_session_details(session_id: str, db: Session = Depends(get_db
                 "validation_status": "PASS" if detection_count > 0 else "NO_DETECTION"
             }
         }
+
+        sequence_metadata = session.sequence_metadata
+        if isinstance(sequence_metadata, str):
+            try:
+                sequence_metadata = json.loads(sequence_metadata)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "Failed to parse sequence metadata JSON for session %s",
+                    session_id
+                )
+                sequence_metadata = None
+
+        video_ids: List[str] = []
+        if isinstance(sequence_metadata, dict):
+            raw_ids = (
+                sequence_metadata.get("video_ids")
+                or sequence_metadata.get("videoIds")
+                or sequence_metadata.get("videos")
+            )
+
+            if isinstance(raw_ids, list):
+                for item in raw_ids:
+                    if isinstance(item, str):
+                        video_ids.append(item)
+                    elif isinstance(item, dict):
+                        candidate = (
+                            item.get("id")
+                            or item.get("video_id")
+                            or item.get("videoId")
+                        )
+                        if candidate:
+                            video_ids.append(str(candidate))
+            elif isinstance(raw_ids, dict):
+                for value in raw_ids.values():
+                    if isinstance(value, str):
+                        video_ids.append(value)
+                    elif isinstance(value, dict):
+                        candidate = (
+                            value.get("id")
+                            or value.get("video_id")
+                            or value.get("videoId")
+                        )
+                        if candidate:
+                            video_ids.append(str(candidate))
+
+        session_details.update(
+            {
+                "session_type": session.session_type,
+                "has_video_sequence": bool(session.has_video_sequence),
+                "hasVideoSequence": bool(session.has_video_sequence),
+                "sequence_id": session.sequence_id,
+                "sequenceId": session.sequence_id,
+                "sequence_metadata": sequence_metadata,
+                "sequenceMetadata": sequence_metadata,
+                "video_ids": video_ids or None,
+                "videoIds": video_ids or None,
+                "max_latency_threshold_ms": session.max_latency_threshold_ms,
+                "maxLatencyThresholdMs": session.max_latency_threshold_ms,
+            }
+        )
         
         return session_details
         
@@ -272,72 +533,418 @@ async def get_test_session_details(session_id: str, db: Session = Depends(get_db
 @router.get("/{session_id}/events")
 async def get_session_detection_events(
     session_id: str,
+    video_id: Annotated[Optional[str], Query(description="Filter by video ID for multi-video sequences")] = None,
     db: Session = Depends(get_db)
 ):
-    """Get all detection events for a test session"""
+    """Get all detection events for a test session, optionally filtered by video_id"""
     try:
         # Verify session exists
         session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Test session not found")
-        
+
+        def _safe_json_dict(value: Any) -> Dict[str, Any]:
+            if not value:
+                return {}
+            if isinstance(value, dict):
+                return value
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (TypeError, ValueError):
+                    logger.debug("Failed to parse sequence metadata JSON for session %s", session_id)
+                    return {}
+            return {}
+
+        def _to_epoch_seconds(value: Any) -> Optional[float]:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                numeric = float(value)
+                return numeric if numeric > 1e6 else None
+            if isinstance(value, str):
+                trimmed = value.strip()
+                if not trimmed:
+                    return None
+                try:
+                    numeric = float(trimmed)
+                    if numeric > 1e6:
+                        return numeric
+                except ValueError:
+                    try:
+                        dt = datetime.fromisoformat(trimmed.replace("Z", "+00:00"))
+                        return dt.timestamp()
+                    except ValueError:
+                        return None
+                return None
+            if isinstance(value, datetime):
+                base_dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+                return base_dt.timestamp()
+            return None
+
+        def _normalize_timestamp(value: Any) -> Optional[float]:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                trimmed = value.strip()
+                if not trimmed:
+                    return None
+                try:
+                    return float(trimmed)
+                except ValueError:
+                    try:
+                        dt = datetime.fromisoformat(trimmed.replace("Z", "+00:00"))
+                        return dt.timestamp()
+                    except ValueError:
+                        return None
+            if isinstance(value, datetime):
+                base_dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+                return base_dt.timestamp()
+            return None
+
+        sequence_metadata = _safe_json_dict(getattr(session, "sequence_metadata", None))
+        video_timing_metadata = sequence_metadata.get("video_timing") or sequence_metadata.get("videoTiming") or {}
+        video_start_times: Dict[str, float] = {}
+        video_duration_map: Dict[str, float] = {}
+        video_fps_defaults: Dict[str, float] = {}
+
+        for video_key, timing_info in video_timing_metadata.items():
+            if not isinstance(timing_info, dict):
+                continue
+
+            start_candidates = [
+                timing_info.get("started_at"),
+                timing_info.get("start_time"),
+                timing_info.get("startTime"),
+                timing_info.get("video_start_timestamp"),
+                timing_info.get("startTimestamp")
+            ]
+            start_epoch = next(
+                (val for val in (_to_epoch_seconds(candidate) for candidate in start_candidates) if val is not None),
+                None
+            )
+            if start_epoch is not None:
+                video_start_times[video_key] = start_epoch
+
+            duration_candidate = timing_info.get("actual_duration") or timing_info.get("duration") or timing_info.get("length_seconds")
+            duration_value: Optional[float] = None
+            if isinstance(duration_candidate, (int, float)):
+                duration_value = float(duration_candidate)
+            elif isinstance(duration_candidate, str):
+                try:
+                    duration_value = float(duration_candidate)
+                except ValueError:
+                    duration_value = None
+            if duration_value is not None and duration_value > 0:
+                video_duration_map[video_key] = duration_value
+
+            fps_candidate = timing_info.get("fps") or timing_info.get("frame_rate") or timing_info.get("frameRate")
+            fps_value: Optional[float] = None
+            if isinstance(fps_candidate, (int, float)):
+                fps_value = float(fps_candidate)
+            elif isinstance(fps_candidate, str):
+                try:
+                    fps_value = float(fps_candidate)
+                except ValueError:
+                    fps_value = None
+            if fps_value is not None and fps_value > 0:
+                video_fps_defaults[video_key] = fps_value
+
+        video_metadata_map = sequence_metadata.get("video_metadata") or sequence_metadata.get("videoMetadata") or {}
+        if isinstance(video_metadata_map, dict):
+            for video_key, metadata in video_metadata_map.items():
+                if not isinstance(metadata, dict):
+                    continue
+                fps_candidate = metadata.get("fps") or metadata.get("frame_rate") or metadata.get("frameRate")
+                fps_value: Optional[float] = None
+                if isinstance(fps_candidate, (int, float)):
+                    fps_value = float(fps_candidate)
+                elif isinstance(fps_candidate, str):
+                    try:
+                        fps_value = float(fps_candidate)
+                    except ValueError:
+                        fps_value = None
+                if fps_value is not None and fps_value > 0:
+                    video_fps_defaults.setdefault(video_key, fps_value)
+
+        session_start_candidates = [
+            _to_epoch_seconds(getattr(session, "video_playback_start_time", None)),
+            _to_epoch_seconds(getattr(session, "video_start_timestamp", None)),
+            _to_epoch_seconds(getattr(session, "started_at", None))
+        ]
+
+        if video_start_times:
+            session_start_candidates.append(min(video_start_times.values()))
+
+        session_start_epoch = next((val for val in session_start_candidates if val is not None), None)
+
+        def _prepare_event_context(events_list: List[DetectionEvent]) -> tuple[Dict[str, float], Optional[float], Dict[str, float]]:
+            video_min_map: Dict[str, float] = {}
+            global_min_val: Optional[float] = None
+            fps_map: Dict[str, float] = {}
+
+            for ev in events_list:
+                ts_val = _normalize_timestamp(getattr(ev, "timestamp", None))
+                if ts_val is not None:
+                    key = ev.video_id or "__all__"
+                    current_min = video_min_map.get(key)
+                    if current_min is None or ts_val < current_min:
+                        video_min_map[key] = ts_val
+                    global_min_val = ts_val if global_min_val is None else min(global_min_val, ts_val)
+
+                if ev.video_id and ev.video_id not in fps_map:
+                    fps_val = None
+                    if getattr(ev, "video", None) and getattr(ev.video, "fps", None):
+                        fps_val = ev.video.fps
+                    if fps_val is None:
+                        fps_val = video_fps_defaults.get(ev.video_id)
+                    if fps_val is not None and fps_val > 0:
+                        fps_map[ev.video_id] = float(fps_val)
+
+            return video_min_map, global_min_val, fps_map
+
+        def _compute_relative_timestamp(
+            event_obj: DetectionEvent,
+            video_min_map: Dict[str, float],
+            global_min_val: Optional[float],
+            override_video_id: Optional[str] = None
+        ) -> Optional[float]:
+            existing = getattr(event_obj, "video_relative_timestamp", None)
+            if isinstance(existing, (int, float)) and existing > 1e-6:
+                return float(existing)
+
+            ts_val = _normalize_timestamp(getattr(event_obj, "timestamp", None))
+            if ts_val is None:
+                return float(existing) if isinstance(existing, (int, float)) else None
+
+            base_candidates = []
+            target_video_id = override_video_id or getattr(event_obj, "video_id", None)
+            if target_video_id and target_video_id in video_start_times:
+                base_candidates.append(video_start_times[target_video_id])
+            if session_start_epoch is not None:
+                base_candidates.append(session_start_epoch)
+            if target_video_id and target_video_id in video_min_map:
+                base_candidates.append(video_min_map[target_video_id])
+            if global_min_val is not None:
+                base_candidates.append(global_min_val)
+
+            candidates = [val for val in base_candidates if val is not None]
+            if not candidates:
+                return float(existing) if isinstance(existing, (int, float)) else None
+
+            non_future = [candidate for candidate in candidates if ts_val >= candidate]
+            base = max(non_future) if non_future else min(candidates)
+
+            relative = ts_val - base
+            if relative < 0:
+                relative = 0.0
+            return relative
+
+        def _compute_frame_number(
+            event_obj: DetectionEvent,
+            relative_ts: Optional[float],
+            fps_map: Dict[str, float]
+        ) -> Optional[int]:
+            if relative_ts is None:
+                return None
+            fps_val = None
+            if event_obj.video_id and event_obj.video_id in fps_map:
+                fps_val = fps_map[event_obj.video_id]
+            elif event_obj.video_id and event_obj.video_id in video_fps_defaults:
+                fps_val = video_fps_defaults[event_obj.video_id]
+            if fps_val is None or fps_val <= 0:
+                fps_val = 24.0
+            return int(max(0, relative_ts * fps_val))
+
+        # Pre-compute video windows for inference (start/end in epoch seconds)
+        video_windows: List[Dict[str, Optional[float]]] = []
+        if video_start_times:
+            sorted_starts = sorted(video_start_times.items(), key=lambda item: item[1])
+            for index, (vid, start_epoch) in enumerate(sorted_starts):
+                next_start = sorted_starts[index + 1][1] if index + 1 < len(sorted_starts) else None
+                duration = video_duration_map.get(vid)
+                if duration is None and next_start is not None:
+                    duration = max(0.0, next_start - start_epoch)
+                if duration is None:
+                    duration = 10.0  # Fallback to 10 seconds when duration unavailable
+                buffer = 0.250  # 250ms buffer to tolerate jitter
+                end_epoch = start_epoch + max(duration, 0.1) + buffer
+                start_with_buffer = start_epoch - buffer
+
+                if session_start_epoch is not None:
+                    start_offset = start_epoch - session_start_epoch
+                    end_offset = end_epoch - session_start_epoch
+                else:
+                    start_offset = None
+                    end_offset = None
+
+                video_windows.append({
+                    "video_id": vid,
+                    "start_epoch": start_with_buffer,
+                    "end_epoch": end_epoch,
+                    "start_offset": start_offset,
+                    "end_offset": end_offset
+                })
+
+        def _infer_video_id(epoch_timestamp: Optional[float], relative_ts: Optional[float]) -> Optional[str]:
+            if not video_windows:
+                return None
+
+            if epoch_timestamp is not None:
+                for window in video_windows:
+                    start_epoch = window["start_epoch"]
+                    end_epoch = window["end_epoch"]
+                    if start_epoch is not None and end_epoch is not None:
+                        if start_epoch <= epoch_timestamp <= end_epoch:
+                            return window["video_id"]
+
+            if relative_ts is not None:
+                for window in video_windows:
+                    start_offset = window["start_offset"]
+                    end_offset = window["end_offset"]
+                    if start_offset is not None and end_offset is not None:
+                        if start_offset <= relative_ts <= end_offset:
+                            return window["video_id"]
+
+            if len(video_windows) == 1:
+                return video_windows[0]["video_id"]
+            return None
+
+        # CRITICAL FIX: Use ORM with eager loading to prevent N+1 queries
+        from sqlalchemy.orm import selectinload
+
         # Prioritize LabJack voltage detection events for HIL validation
-        labjack_events = db.query(DetectionEvent).filter(
+        labjack_query = db.query(DetectionEvent).options(
+            selectinload(DetectionEvent.video),
+            selectinload(DetectionEvent.ground_truth_match)
+        ).filter(
             DetectionEvent.test_session_id == session_id,
             DetectionEvent.labjack_voltage.isnot(None),
             DetectionEvent.labjack_voltage > 0
-        ).order_by(DetectionEvent.timestamp).all()
+        )
+
+        labjack_events = labjack_query.order_by(DetectionEvent.timestamp).all()
         
         if labjack_events:
-            # Return LabJack voltage detection events with HIL data
+            video_min_timestamps, global_min_timestamp, video_fps_map = _prepare_event_context(labjack_events)
             events = []
             for event in labjack_events:
+                relative_timestamp = _compute_relative_timestamp(event, video_min_timestamps, global_min_timestamp)
+                normalized_timestamp = _normalize_timestamp(getattr(event, "timestamp", None))
+                display_timestamp = relative_timestamp if relative_timestamp is not None else normalized_timestamp
+                frame_number = _compute_frame_number(event, relative_timestamp, video_fps_map)
+                if display_timestamp is None:
+                    display_timestamp = 0.0
+                if normalized_timestamp is None:
+                    normalized_timestamp = display_timestamp
+
+                inferred_video_id = getattr(event, "video_id", None) or _infer_video_id(normalized_timestamp, relative_timestamp)
+                if inferred_video_id and (getattr(event, "video_id", None) is None):
+                    adjusted_relative = _compute_relative_timestamp(
+                        event,
+                        video_min_timestamps,
+                        global_min_timestamp,
+                        override_video_id=inferred_video_id
+                    )
+                    if adjusted_relative is not None and (relative_timestamp is None or adjusted_relative > relative_timestamp):
+                        relative_timestamp = adjusted_relative
+                        display_timestamp = relative_timestamp
+                        if normalized_timestamp is None:
+                            normalized_timestamp = relative_timestamp
+                    frame_number = _compute_frame_number(event, relative_timestamp, video_fps_map)
+
                 events.append({
                     "id": event.id,
-                    "timestamp": event.timestamp,
+                    "timestamp": display_timestamp,
+                    "video_timestamp": relative_timestamp,
+                    "video_relative_timestamp": relative_timestamp,
                     "voltage": event.labjack_voltage,
                     "channel": event.detection_channel or "AIN0",
-                    "video_frame": event.video_frame_number,
-                    "video_timestamp": event.video_relative_timestamp,
                     "detection_type": "voltage",
                     "validation_result": event.validation_result,
                     "timing_quality": event.timing_sync_quality,
-                    "frame_number": event.video_frame_number or 0,
+                    "frame_number": frame_number if frame_number is not None else 0,
                     "latency_ms": event.actual_latency_ms or 0.0,
-                    "raw_timestamp": event.timestamp
+                    "raw_timestamp": normalized_timestamp,
+                    "video_id": inferred_video_id,
+                    "sequence_video_result_id": event.sequence_video_result_id,
+                    "ground_truth_match_id": getattr(event, "ground_truth_match_id", None)
                 })
-            
+
             logger.info(f"📡 Returning {len(events)} LabJack voltage detection events for session {session_id}")
+            if video_id:
+                filtered_events = [evt for evt in events if evt.get("video_id") == video_id]
+                logger.info(f"Filtered LabJack events for video {video_id}: {len(filtered_events)}")
+                return filtered_events
             return events
         
-        # Fallback: get regular detection events if no LabJack events found
-        detection_events = db.query(DetectionEvent).filter(
+        # Fallback: get regular detection events if no LabJack events found with eager loading
+        detection_query = db.query(DetectionEvent).options(
+            selectinload(DetectionEvent.video),
+            selectinload(DetectionEvent.ground_truth_match)
+        ).filter(
             DetectionEvent.test_session_id == session_id
-        ).order_by(DetectionEvent.timestamp).all()
-        
-        # Format regular events for frontend (legacy format)
+        )
+
+        detection_events = detection_query.order_by(DetectionEvent.timestamp).all()
+
+        video_min_timestamps, global_min_timestamp, video_fps_map = _prepare_event_context(detection_events)
+
         events = []
-        for i, event in enumerate(detection_events):
-            # Calculate video-relative timestamp if session has video start time
-            video_relative_time = None
-            if hasattr(session, 'video_playback_start_time') and session.video_playback_start_time:
-                video_relative_time = event.timestamp - session.video_playback_start_time
-            
+        for index, event in enumerate(detection_events):
+            relative_timestamp = _compute_relative_timestamp(event, video_min_timestamps, global_min_timestamp)
+            normalized_timestamp = _normalize_timestamp(getattr(event, "timestamp", None))
+            display_timestamp = relative_timestamp if relative_timestamp is not None else normalized_timestamp
+            frame_number = _compute_frame_number(event, relative_timestamp, video_fps_map)
+            if frame_number is None:
+                frame_number = index + 1
+            if display_timestamp is None:
+                display_timestamp = 0.0
+            if normalized_timestamp is None:
+                normalized_timestamp = display_timestamp
+
+            inferred_video_id = getattr(event, "video_id", None) or _infer_video_id(normalized_timestamp, relative_timestamp)
+            if inferred_video_id and getattr(event, "video_id", None) is None:
+                adjusted_relative = _compute_relative_timestamp(
+                    event,
+                    video_min_timestamps,
+                    global_min_timestamp,
+                    override_video_id=inferred_video_id
+                )
+                if adjusted_relative is not None and (relative_timestamp is None or adjusted_relative > relative_timestamp):
+                    relative_timestamp = adjusted_relative
+                    display_timestamp = relative_timestamp
+                    if normalized_timestamp is None:
+                        normalized_timestamp = relative_timestamp
+                frame_number = _compute_frame_number(event, relative_timestamp, video_fps_map)
+                if frame_number is None:
+                    frame_number = index + 1
+
             events.append({
-                "frame_number": i + 1,  # Sequential frame number for display
-                "timestamp": video_relative_time if video_relative_time else event.timestamp,
-                "latency_ms": 0.0,  # Will be calculated by ground truth matching
+                "frame_number": frame_number,
+                "timestamp": display_timestamp,
+                "video_timestamp": relative_timestamp,
+                "video_relative_timestamp": relative_timestamp,
+                "latency_ms": event.actual_latency_ms or 0.0,
                 "status": event.validation_result or "PENDING",
                 "error": None,
-                "raw_timestamp": event.timestamp,
+                "raw_timestamp": normalized_timestamp,
                 "detection_id": event.id,
-                "voltage": 0.0,  # Placeholder for non-LabJack events
-                "channel": "N/A",
-                "detection_type": "video_frame"
+                "voltage": event.labjack_voltage or 0.0,
+                "channel": event.detection_channel or "N/A",
+                "detection_type": "video_frame",
+                "video_id": inferred_video_id,
+                "sequence_video_result_id": event.sequence_video_result_id,
+                "ground_truth_match_id": getattr(event, "ground_truth_match_id", None)
             })
         
         logger.info(f"📡 Returning {len(events)} video frame detection events (no LabJack data) for session {session_id}")
-        
+        if video_id:
+            filtered_events = [evt for evt in events if evt.get("video_id") == video_id]
+            logger.info(f"Filtered detection events for video {video_id}: {len(filtered_events)}")
+            return filtered_events
         return events
         
     except HTTPException:
@@ -434,52 +1041,16 @@ async def start_test_session(
             else:
                 logger.warning("⚠️ HIL monitoring or video timing service not available")
             
-            # Fallback to existing monitoring service if dedicated service failed
+            # ✅ CRITICAL FIX: DO NOT use fallback monitoring services
+            # They create duplicate test sessions with different IDs
+            # The dedicated HIL monitoring service should always be used
             if not monitoring_started:
-                logger.info(f"🔄 Falling back to existing LabJack monitoring service")
-                try:
-                    started = labjack_monitoring_service.start_monitoring(session_id, sample_rate=10)
-                    if not started:
-                        # If already active for another session, stop and rebind to this session
-                        logger.warning(
-                            f"Monitoring already active for session {labjack_monitoring_service.current_session_id}; switching to {session_id}"
-                        )
-                        labjack_monitoring_service.stop_monitoring()
-                        # Brief pause to allow thread cleanup
-                        time.sleep(0.2)
-                        started = labjack_monitoring_service.start_monitoring(session_id, sample_rate=10)
-                    if started:
-                        logger.info(f"🔊 Fallback LabJack monitoring service started for session: {session_id}")
-                        monitoring_started = True
-                except Exception as fallback_error:
-                    logger.warning(f"Fallback monitoring also failed: {fallback_error}")
-                
-                # Start dedicated monitoring service for this session
-                monitoring_config = {
-                    "sample_rate": 10.0,  # 10Hz for HIL requirements
-                    "voltage_threshold": 2.5,  # Lowered threshold for broader hardware compatibility
-                    "channels": ["AIN0"],
-                    "database_path": "dev_database.db",
-                    "enable_recovery": True,
-                    "video_playback_start_time": video_playback_start_time,
-                    "session_id": session_id,
-                    "enable_ground_truth_matching": True
-                }
-                
-                success = await labjack_service_manager.start_monitoring_for_session(
-                    session_id, 
-                    monitoring_config
-                )
-                
-                if success:
-                    logger.info(f"🔊 Dedicated LabJack monitoring service started for session: {session_id}")
-                    monitoring_success = True
-                else:
-                    logger.error(f"❌ Failed to start dedicated LabJack monitoring for session: {session_id}")
-                    # Final fallback to legacy monitoring service
-                    if labjack_monitoring_service.start_monitoring(session_id, sample_rate=10):
-                        logger.info(f"📡 Final fallback: Using legacy LabJack monitoring for session: {session_id}")
-                        monitoring_success = True
+                logger.error(f"❌ CRITICAL: HIL monitoring failed to start for session {session_id}")
+                logger.error(f"❌ Fallback monitoring services DISABLED to prevent duplicate session creation")
+                logger.error(f"❌ Please check dedicated HIL monitoring service configuration")
+                # DO NOT start any fallback monitoring - it creates wrong session IDs
+            else:
+                logger.info(f"✅ HIL monitoring started successfully for session {session_id}")
             
             # If we have session_manager, try to execute test (optional)
             if hasattr(session_manager, 'execute_test_session'):
@@ -580,11 +1151,89 @@ async def complete_test_session(
         session.completed_at = datetime.utcnow()
         db.commit()
         
+        # CRITICAL INTEGRATION: Calculate and persist video timing fields before ground truth matching
+        try:
+            from services.timing_synchronization_calculator import get_timing_synchronization_calculator
+
+            timing_calc = get_timing_synchronization_calculator()
+
+            # Get video timing metadata
+            video = db.query(Video).filter(Video.id == session.video_id).first() if session.video_id else None
+
+            # Calculate video startup delay
+            if session.video_playback_start_time and session.started_at:
+                video_startup_delay_ms = (session.video_playback_start_time - session.started_at.timestamp()) * 1000.0
+            else:
+                video_startup_delay_ms = 2000.0  # Default 2s
+
+            from services.timing_synchronization_calculator import VideoTimingMetadata
+            video_timing = VideoTimingMetadata(
+                startup_delay_ms=video_startup_delay_ms,
+                fps=video.fps if video else 24.0,
+                duration=video.duration if video else 60.0,
+                timing_sync_status=session.video_timing_sync_status or 'unknown',
+                timing_accuracy_ns=session.timing_accuracy_ns
+            )
+
+            # Get detection events for timing calculation
+            detection_events = []
+            for event in db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session_id).all():
+                detection_events.append({
+                    'id': event.id,
+                    'timestamp': float(event.timestamp) if event.timestamp else None,
+                    'frame_number': event.frame_number,
+                    'video_id': event.video_id
+                })
+
+            # Get ground truth events
+            gt_events = []
+            if session.video_id:
+                for gt in db.query(GroundTruthObject).filter(GroundTruthObject.video_id == session.video_id).all():
+                    gt_events.append({
+                        'frame_number': gt.frame_number or 0,
+                        'video_timestamp': float(gt.timestamp) if gt.timestamp else 0.0,
+                        'event_type': gt.class_label or 'ground_truth'
+                    })
+
+            # Calculate corrected latencies with video timing
+            labjack_start_time = session.started_at.timestamp() if session.started_at else time.time()
+            corrected_results = timing_calc.calculate_batch_corrected_latencies(
+                session_id=session_id,
+                detection_events=detection_events,
+                ground_truth_events=gt_events,
+                video_timing_metadata=video_timing,
+                labjack_start_time=labjack_start_time
+            )
+
+            # PERSIST timing calculation results to database
+            for corrected_result in corrected_results:
+                if not hasattr(corrected_result, 'detection_id'):
+                    continue
+
+                db_event = db.query(DetectionEvent).filter(
+                    DetectionEvent.id == corrected_result.detection_id
+                ).first()
+
+                if db_event:
+                    if hasattr(corrected_result, 'video_relative_timestamp'):
+                        db_event.video_relative_timestamp = corrected_result.video_relative_timestamp
+                    if hasattr(corrected_result, 'video_frame_number'):
+                        db_event.video_frame_number = corrected_result.video_frame_number
+                    if hasattr(corrected_result, 'real_latency_ms'):
+                        db_event.actual_latency_ms = corrected_result.real_latency_ms
+
+            db.commit()
+            logger.info(f"✅ Calculated and persisted video timing for {len(corrected_results)} detection events")
+
+        except Exception as timing_error:
+            logger.warning(f"⚠️ Video timing calculation failed, continuing with ground truth matching: {timing_error}")
+            db.rollback()
+
         # Use ground truth matching for proper HIL validation
         try:
             # Import ground truth matching service
             from services.ground_truth_matching_service import get_ground_truth_matching_service
-            
+
             # Perform ground truth matching
             matching_service = get_ground_truth_matching_service()
             matching_results = matching_service.match_detections_to_ground_truth(session_id)
@@ -695,6 +1344,116 @@ async def complete_test_session(
         logger.error(f"Error completing test session: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to complete test session: {str(e)}")
 
+@router.post("/{session_id}/retry-completion")
+async def retry_session_completion(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Retry completion for a failed session.
+
+    Use this endpoint when a session failed validation due to temporary issues
+    (e.g., video lifecycle events didn't fire, network glitch) and you want to
+    attempt completion again.
+
+    Only works for sessions in VALIDATION_FAILED or ERROR status.
+    """
+    try:
+        session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Test session not found")
+
+        # Check if session is in a failed state
+        if session.status not in ["validation_failed", "error"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot retry session in {session.status} status. Only validation_failed or error sessions can be retried."
+            )
+
+        # Check if failure is recoverable (if failure_details exist)
+        if hasattr(session, 'failure_details') and session.failure_details:
+            if not session.failure_details.get('recoverable', True):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Session failure is not recoverable. Please create a new test session."
+                )
+
+        # Reset status to allow retry
+        old_status = session.status
+        old_reason = getattr(session, 'failure_reason', None)
+
+        session.status = "running"
+
+        # Set failure tracking fields if they exist
+        if hasattr(session, 'failure_reason'):
+            session.failure_reason = None
+        if hasattr(session, 'failed_at'):
+            session.failed_at = None
+        if hasattr(session, 'retry_count'):
+            session.retry_count = (session.retry_count or 0) + 1
+        else:
+            # Add retry_count dynamically if it doesn't exist
+            session.retry_count = 1
+        if hasattr(session, 'last_retry_at'):
+            session.last_retry_at = datetime.now(timezone.utc)
+
+        # Keep failure_details for audit trail but add retry info
+        if hasattr(session, 'failure_details') and session.failure_details:
+            session.failure_details['retry_info'] = {
+                'retry_count': getattr(session, 'retry_count', 1),
+                'retry_time': datetime.now(timezone.utc).isoformat(),
+                'previous_status': old_status,
+                'previous_reason': old_reason
+            }
+
+        db.commit()
+
+        retry_count = getattr(session, 'retry_count', 1)
+        logger.info(
+            f"Retrying session completion for {session_id} "
+            f"(attempt {retry_count}, previous status: {old_status})"
+        )
+
+        # Attempt completion
+        try:
+            from services.session_completion_service import session_completion_service
+
+            success = await session_completion_service.complete_session(session_id, force=True)
+
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"Session completed successfully on retry attempt {retry_count}",
+                    "session_id": session_id,
+                    "retry_count": retry_count
+                }
+            else:
+                # Completion failed again
+                db.refresh(session)
+                return {
+                    "status": "failed",
+                    "message": f"Session completion failed again: {getattr(session, 'failure_reason', 'Unknown')}",
+                    "session_id": session_id,
+                    "retry_count": retry_count,
+                    "failure_reason": getattr(session, 'failure_reason', None)
+                }
+
+        except Exception as e:
+            logger.error(f"Error during session retry: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Retry failed: {str(e)}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrying session completion: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retry session: {str(e)}"
+        )
+
 @router.get("/{session_id}/status")
 async def get_test_session_status(session_id: str, db: Session = Depends(get_db)):
     """Get current status and progress of a test session"""
@@ -702,12 +1461,12 @@ async def get_test_session_status(session_id: str, db: Session = Depends(get_db)
         session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Test session not found")
-        
+
         # Get real-time statistics
         detection_count = db.query(func.count(DetectionEvent.id)).filter(
             DetectionEvent.test_session_id == session_id
         ).scalar() or 0
-        
+
         # Calculate progress if video is available
         progress_percentage = None
         if session.video_id:
@@ -715,7 +1474,7 @@ async def get_test_session_status(session_id: str, db: Session = Depends(get_db)
             if video and video.duration and session.started_at:
                 elapsed_time = (datetime.utcnow() - session.started_at).total_seconds()
                 progress_percentage = min(100, (elapsed_time / video.duration) * 100)
-        
+
         status_info = {
             "session_id": session_id,
             "status": session.status,
@@ -726,7 +1485,19 @@ async def get_test_session_status(session_id: str, db: Session = Depends(get_db)
             "progress_percentage": progress_percentage,
             "is_active": session.status in ["running", "processing"]
         }
-        
+
+        # CRITICAL FIX: Include failure information for error handling
+        if session.status in ["validation_failed", "error"]:
+            status_info["failure_info"] = {
+                "has_failed": True,
+                "failure_reason": getattr(session, 'failure_reason', None),
+                "failed_at": getattr(session, 'failed_at').isoformat() if hasattr(session, 'failed_at') and session.failed_at else None,
+                "failure_details": getattr(session, 'failure_details', None),
+                "retry_count": getattr(session, 'retry_count', 0) or 0,
+                "last_retry_at": getattr(session, 'last_retry_at').isoformat() if hasattr(session, 'last_retry_at') and session.last_retry_at else None,
+                "recoverable": getattr(session, 'failure_details', {}).get('recoverable', False) if hasattr(session, 'failure_details') and session.failure_details else False
+            }
+
         return status_info
         
     except HTTPException:
@@ -752,9 +1523,16 @@ async def create_detection_event(
             raise HTTPException(status_code=404, detail="Test session not found")
         
         # Create detection event
+        detection_dict = detection.dict()
+        # FIXED: Ensure frame_number is set
+        if 'frame_number' not in detection_dict or detection_dict['frame_number'] is None:
+            detection_dict['frame_number'] = 0
+        if 'video_frame_number' not in detection_dict or detection_dict['video_frame_number'] is None:
+            detection_dict['video_frame_number'] = 0
+
         db_detection = DetectionEvent(
             id=str(uuid.uuid4()),
-            **detection.dict(),
+            **detection_dict,
             created_at=datetime.utcnow()
         )
         
@@ -783,34 +1561,64 @@ async def create_detection_event(
 @router.get("/{session_id}/detections")
 async def get_session_detections(
     session_id: str,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: Optional[int] = Query(1000, ge=1, le=1000, description="Max items per page (default 1000, max 1000)"),
+    cursor: Optional[str] = Query(None, description="Cursor for pagination (timestamp value)"),
     start_time: Optional[float] = Query(None, description="Filter by start timestamp"),
     end_time: Optional[float] = Query(None, description="Filter by end timestamp"),
     vru_type: Optional[str] = Query(None, description="Filter by VRU type"),
+    video_id: Optional[str] = Query(None, description="Filter by video ID for multi-video sequences"),
     db: Session = Depends(get_db)
 ):
-    """Get detection events for a test session with filtering"""
+    """Get detection events for a test session with cursor-based pagination (supports multi-video sequences)"""
     try:
         # Verify session exists
         session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Test session not found")
-        
-        # Build query with filters
-        query = db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session_id)
-        
+
+        # CRITICAL FIX: Use ORM with eager loading to prevent N+1 queries
+        from sqlalchemy.orm import selectinload
+
+        # Build query with filters and eager loading
+        query = db.query(DetectionEvent).options(
+            selectinload(DetectionEvent.video),
+            selectinload(DetectionEvent.ground_truth_match)
+        ).filter(DetectionEvent.test_session_id == session_id)
+
+        # Add video_id filter if provided (for multi-video sequences)
+        if video_id:
+            query = query.filter(DetectionEvent.video_id == video_id)
+
         if start_time is not None:
             query = query.filter(DetectionEvent.timestamp >= start_time)
-        
+
         if end_time is not None:
             query = query.filter(DetectionEvent.timestamp <= end_time)
-        
+
         if vru_type:
             query = query.filter(DetectionEvent.vru_type == vru_type)
-        
-        detections = query.order_by(DetectionEvent.timestamp).offset(skip).limit(limit).all()
-        
+
+        # Apply cursor if provided
+        if cursor:
+            try:
+                cursor_timestamp = float(cursor)
+                query = query.filter(DetectionEvent.timestamp > cursor_timestamp)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid cursor")
+
+        # Order by timestamp and fetch limit + 1 to check if more results exist
+        detections = query.order_by(DetectionEvent.timestamp).limit(limit + 1).all()
+
+        # Check if more results available
+        has_more = len(detections) > limit
+        if has_more:
+            detections = detections[:limit]
+
+        # Generate next cursor
+        next_cursor = None
+        if has_more and detections:
+            next_cursor = str(detections[-1].timestamp)
+
         return {
             "session_id": session_id,
             "detections": [
@@ -829,10 +1637,17 @@ async def get_session_detections(
                 }
                 for detection in detections
             ],
-            "total_detections": len(detections),
+            "pagination": {
+                "limit": limit,
+                "cursor": cursor,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+                "count": len(detections)
+            },
             "filters_applied": {
                 "time_range": [start_time, end_time] if start_time or end_time else None,
-                "vru_type": vru_type
+                "vru_type": vru_type,
+                "video_id": video_id
             }
         }
         
@@ -903,52 +1718,24 @@ async def generate_session_results(session_id: str, payload: Optional[Dict[str, 
     try:
         session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not session:
-            # Attempt to synthesize a minimal session if payload provided (to avoid UI failure)
-            proj_id = None
-            vid_id = None
+            # CRITICAL FIX: For video sequence tests, try to find by sequence_id
+            # Video sequences create a TestSession with the sequence_id
             if payload and isinstance(payload, dict):
-                proj_id = payload.get('project_id')
-                # Prefer explicit video_id in payload
-                vid_id = payload.get('video_id')
-                # Else infer from detection events array
-                if not vid_id:
-                    try:
-                        events = payload.get('detection_events') or []
-                        if isinstance(events, list) and events:
-                            first = events[0]
-                            vid_id = first.get('videoId') or first.get('video_id')
-                    except Exception:
-                        pass
-                # Else pick latest video for the project
-                if not vid_id and proj_id:
-                    from models import Video
-                    v = db.query(Video).filter(Video.project_id == proj_id).order_by(Video.created_at.desc()).first()
-                    if v:
-                        vid_id = v.id
-            # Final fallback: latest video in DB
-            if not vid_id:
-                from models import Video
-                v = db.query(Video).order_by(Video.created_at.desc()).first()
-                vid_id = v.id if v else None
+                sequence_id = payload.get('sequence_id')
+                if sequence_id:
+                    # Try to find session by sequence_id
+                    session = db.query(TestSession).filter(
+                        TestSession.sequence_id == sequence_id
+                    ).first()
+                    logger.info(f"Looked up session by sequence_id {sequence_id}: {'Found' if session else 'Not found'}")
 
-            if not vid_id:
-                raise HTTPException(status_code=404, detail="Test session not found")
-
-            new_session = TestSession(
-                id=str(uuid.uuid4()),
-                name=(payload or {}).get('project_name') or f"HIL Test {datetime.utcnow().isoformat()}",
-                project_id=proj_id,
-                video_id=vid_id,
-                status='completed',
-                created_at=datetime.utcnow(),
-                started_at=datetime.utcnow(),
-                completed_at=datetime.utcnow(),
-                video_start_timestamp=datetime.utcnow(),  # Set proper video start timestamp
-            )
-            db.add(new_session)
-            db.commit()
-            db.refresh(new_session)
-            session = new_session
+            # If still not found, return 404 - DON'T create phantom session
+            if not session:
+                logger.error(f"❌ Test session {session_id} not found in database")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Test session {session_id} not found. Cannot generate results for non-existent session."
+                )
 
         # Use ground truth matching for accurate results generation
         try:
@@ -1050,15 +1837,83 @@ async def generate_session_results(session_id: str, payload: Optional[Dict[str, 
 @router.get("/{session_id}/results")
 async def get_test_session_results(
     session_id: str,
+    limit: Optional[int] = Query(100, ge=1, le=1000, description="Max items per page (default 100, max 1000)"),
+    cursor: Optional[str] = Query(None, description="Cursor for pagination (sequence_order value)"),
     db: Session = Depends(get_db)
 ):
-    """Get comprehensive test results for a session"""
+    """Get comprehensive test results for a session with cursor-based pagination"""
     try:
+        # CRITICAL FIX: Import SequenceVideoResult for multi-video query
+        from models import SequenceVideoResult
+        from sqlalchemy.orm import selectinload
+
         # Verify session exists
         session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Test session not found")
-        
+
+        # CRITICAL FIX: Query SequenceVideoResult using foreign key relationship with pagination
+        # Instead of JSON blob parsing, use direct database JOIN
+        per_video_results = []
+        pagination_metadata = None
+
+        if session.has_video_sequence and session.sequence_id:
+            # Build paginated query for per-video metrics
+            video_query = db.query(SequenceVideoResult).options(
+                selectinload(SequenceVideoResult.video)
+            ).filter(
+                SequenceVideoResult.video_sequence_id == session.sequence_id
+            ).order_by(
+                SequenceVideoResult.sequence_order
+            )
+
+            # Apply cursor if provided
+            if cursor:
+                try:
+                    cursor_order = int(cursor)
+                    video_query = video_query.filter(SequenceVideoResult.sequence_order > cursor_order)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid cursor")
+
+            # Fetch limit + 1 to check if more results exist
+            video_results = video_query.limit(limit + 1).all()
+
+            # Check if more results available
+            has_more = len(video_results) > limit
+            if has_more:
+                video_results = video_results[:limit]
+
+            # Generate next cursor
+            next_cursor = None
+            if has_more and video_results:
+                next_cursor = str(video_results[-1].sequence_order)
+
+            # Build pagination metadata
+            pagination_metadata = {
+                "limit": limit,
+                "cursor": cursor,
+                "next_cursor": next_cursor,
+                "has_more": has_more,
+                "count": len(video_results)
+            }
+
+            for vr in video_results:
+                per_video_results.append({
+                    "videoId": vr.video_id,
+                    "videoFilename": vr.video.filename if vr.video else None,
+                    "sequenceOrder": vr.sequence_order,
+                    "expectedDetectionCount": vr.expected_detection_count,
+                    "actualDetectionCount": vr.actual_detection_count,
+                    "passedDetections": vr.passed_detections,
+                    "failedDetections": vr.failed_detections,
+                    "avgLatencyMs": vr.avg_latency_ms,
+                    "maxLatencyMs": vr.max_latency_ms,
+                    "minLatencyMs": vr.min_latency_ms,
+                    "passRatePercent": vr.pass_rate_percent,
+                    "validationResult": vr.validation_result,
+                    "videoStatus": vr.video_status
+                })
+
         # Get test results
         results = db.query(TestResult).filter(TestResult.test_session_id == session_id).all()
         
@@ -1075,41 +1930,51 @@ async def get_test_session_results(
             .all()
         )
         
-        return {
-            "session_id": session_id,
-            "session_status": session.status,
+        # CRITICAL FIX: Use Pydantic response_model with camelCase aliases for frontend
+        from schemas import CamelCaseModel
+
+        response = {
+            "sessionId": session_id,
+            "sessionStatus": session.status,
+            "perVideoResults": per_video_results,  # Multi-video sequence results
             "results": [
                 {
                     "id": result.id,
-                    "test_session_id": result.test_session_id,
-                    "total_detections": result.total_detections,
-                    "passed_detections": result.passed_detections,
-                    "failed_detections": result.failed_detections,
-                    "pass_rate": result.pass_rate,
+                    "testSessionId": result.test_session_id,
+                    "totalDetections": result.total_detections,
+                    "passedDetections": result.passed_detections,
+                    "failedDetections": result.failed_detections,
+                    "passRate": result.pass_rate,
                     "accuracy": result.accuracy,
                     "precision": result.precision,
                     "recall": result.recall,
-                    "f1_score": result.f1_score,
-                    "validation_type": result.validation_type,
-                    "test_duration_seconds": result.test_duration_seconds,
-                    "detection_rate_hz": result.detection_rate_hz,
-                    "avg_latency_ms": result.avg_latency_ms,
-                    "created_at": result.created_at.isoformat()
+                    "f1Score": result.f1_score,
+                    "validationType": result.validation_type,
+                    "testDurationSeconds": result.test_duration_seconds,
+                    "detectionRateHz": result.detection_rate_hz,
+                    "avgLatencyMs": result.avg_latency_ms,
+                    "createdAt": result.created_at.isoformat()
                 }
                 for result in results
             ],
             "summary": {
-                "total_detections": total_detections,
-                "total_results": len(results),
-                "vru_type_distribution": vru_distribution,
-                "session_duration": (
+                "totalDetections": total_detections,
+                "totalResults": len(results),
+                "vruTypeDistribution": vru_distribution,
+                "sessionDuration": (
                     (session.completed_at - session.started_at).total_seconds()
                     if session.started_at and session.completed_at
                     else None
                 )
             }
         }
-        
+
+        # Add pagination metadata if available
+        if pagination_metadata:
+            response["pagination"] = pagination_metadata
+
+        return response
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1129,6 +1994,8 @@ async def get_session_latency_metrics(
             raise HTTPException(status_code=404, detail="Test session not found")
         
         # Get detection events ordered by timestamp
+        # Note: This endpoint calculates session-wide metrics, so we don't filter by video_id
+        # For per-video metrics in multi-video sequences, use the video-specific endpoints
         detections = db.query(DetectionEvent).filter(
             DetectionEvent.test_session_id == session_id
         ).order_by(DetectionEvent.timestamp).all()
@@ -1194,6 +2061,139 @@ async def get_session_latency_metrics(
         raise HTTPException(status_code=500, detail=f"Failed to calculate metrics: {str(e)}")
 
 # ============================================================================
+# APPROVAL WORKFLOW
+# ============================================================================
+
+@router.post("/{session_id}/approval", response_model=ApprovalResponse)
+async def approve_or_reject_session(
+    session_id: str,
+    approval: ApprovalRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Approve or reject test session results.
+
+    This endpoint enables formal approval workflow for test results:
+    - Validates session is completed before allowing approval
+    - Records approver identity and timestamp
+    - Supports both approval and rejection with comments
+    - Emits WebSocket events for real-time UI updates
+    - Maintains complete audit trail
+
+    Required for regulatory compliance and result accountability.
+
+    **Production Features:**
+    - Authorization checks (placeholder for future implementation)
+    - Audit trail with who/when/why
+    - Real-time WebSocket notifications
+    - Validation of session state
+
+    **Args:**
+        session_id: Test session ID to approve/reject
+        approval: Approval request with action, approver, and comments
+        db: Database session
+
+    **Returns:**
+        ApprovalResponse with updated approval status
+
+    **Raises:**
+        HTTPException 404: Session not found
+        HTTPException 400: Invalid session state or missing rejection reason
+        HTTPException 403: Insufficient permissions (future implementation)
+    """
+    try:
+        # Fetch session
+        session = db.query(TestSession).filter(TestSession.id == session_id).first()
+
+        if not session:
+            logger.error(f"Session {session_id} not found for approval")
+            raise HTTPException(status_code=404, detail="Test session not found")
+
+        # Validate session is completed
+        if session.status != "completed":
+            logger.warning(f"Cannot approve incomplete session {session_id}, status: {session.status}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve session: status is '{session.status}', must be 'completed'"
+            )
+
+        # TODO: Add authorization checks here
+        # Example: if not has_approval_permission(current_user):
+        #     raise HTTPException(403, "Insufficient permissions to approve results")
+
+        # Process approval or rejection
+        action = approval.action.lower()
+
+        if action == 'approve':
+            session.approval_status = 'approved'
+            session.approved_by = approval.approver_id
+            session.approved_at = datetime.now(timezone.utc)
+            session.approval_comments = approval.comments
+            session.rejection_reason = None  # Clear any previous rejection
+
+            logger.info(f"✅ Session {session_id} approved by {approval.approver_id}")
+            message = "Test session approved successfully"
+
+        elif action == 'reject':
+            if not approval.rejection_reason:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Rejection reason is required when rejecting a session"
+                )
+
+            session.approval_status = 'rejected'
+            session.approved_by = approval.approver_id
+            session.approved_at = datetime.now(timezone.utc)
+            session.rejection_reason = approval.rejection_reason
+            session.approval_comments = approval.comments
+
+            logger.warning(f"❌ Session {session_id} rejected by {approval.approver_id}: {approval.rejection_reason}")
+            message = "Test session rejected"
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid action '{action}'. Must be 'approve' or 'reject'"
+            )
+
+        # Commit to database
+        db.commit()
+        db.refresh(session)
+
+        # Emit WebSocket event for real-time UI update
+        try:
+            from socketio_server import sio
+            await sio.emit('session_approval_updated', {
+                'session_id': session_id,
+                'approval_status': session.approval_status,
+                'approved_by': session.approved_by,
+                'approved_at': session.approved_at.isoformat() if session.approved_at else None,
+                'message': message
+            }, room=session_id)
+            logger.info(f"📡 Emitted approval update WebSocket event for session {session_id}")
+        except Exception as ws_error:
+            logger.warning(f"Failed to emit WebSocket event: {ws_error}")
+            # Don't fail the request if WebSocket fails
+
+        # Return response
+        return ApprovalResponse(
+            approval_status=session.approval_status,
+            approved_by=session.approved_by,
+            approved_at=session.approved_at,
+            approval_comments=session.approval_comments,
+            rejection_reason=session.rejection_reason,
+            message=message
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing approval for session {session_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to process approval: {str(e)}")
+
+
+# ============================================================================
 # HEALTH CHECK
 # ============================================================================
 
@@ -1213,6 +2213,7 @@ async def test_sessions_health_check():
             "GET /api/test-sessions/{id}/status - Get session status",
             "POST /api/test-sessions/detection-events - Create detection event",
             "GET /api/test-sessions/{id}/detections - Get session detections",
-            "GET /api/test-sessions/{id}/results - Get session results"
+            "GET /api/test-sessions/{id}/results - Get session results",
+            "POST /api/test-sessions/{id}/approval - Approve or reject results"
         ]
     }

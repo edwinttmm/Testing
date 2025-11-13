@@ -6,6 +6,7 @@ import {
   Box,
   LinearProgress,
 } from '@mui/material';
+import { formatResultLabel, normalizeResultStatus } from '../../utils/testSessionUtils';
 
 interface AccessibleCardProps {
   title: string;
@@ -57,55 +58,92 @@ interface SessionItemProps {
   sessionNumber: number;
   type: string;
   timeAgo: string;
-  accuracy: number;
+  accuracy?: number | null;
+  accuracyResult?: string | null;
+  latencyResult?: string | null;
+  overallResult?: string | null;
+  latencyMeanMs?: number | null;
 }
 
 export const AccessibleSessionItem: React.FC<SessionItemProps> = ({
   sessionNumber,
   type,
   timeAgo,
-  accuracy
-}) => (
-  <Box
-    sx={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      py: 1.5,
-      px: 1,
-      borderBottom: '1px solid #f0f0f0',
-      borderRadius: 1,
-      '&:hover': {
-        backgroundColor: 'action.hover',
-      },
-      '&:focus-within': {
-        outline: '2px solid',
-        outlineColor: 'primary.main',
-        outlineOffset: 2,
-      },
-    }}
-    role="listitem"
-    tabIndex={0}
-    aria-label={`Test Session ${sessionNumber}, ${type}, completed ${timeAgo}, ${accuracy}% accuracy`}
-  >
-    <Box>
-      <Typography variant="body2" fontWeight="medium" component="div">
-        Test Session #{sessionNumber}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" component="div">
-        {type} • {timeAgo}
+  accuracy,
+  accuracyResult,
+  latencyResult,
+  overallResult,
+  latencyMeanMs
+}) => {
+  const normalizedAccuracy = normalizeResultStatus(accuracyResult);
+  const normalizedLatency = normalizeResultStatus(latencyResult);
+  const normalizedOverall = normalizeResultStatus(overallResult);
+  const accuracyText = typeof accuracy === 'number' ? `${accuracy.toFixed(1)}%` : 'N/A';
+  const latencyText = latencyMeanMs != null ? `${latencyMeanMs.toFixed(1)} ms` : 'N/A';
+
+  const ariaParts = [
+    `Test Session ${sessionNumber}`,
+    type,
+    `completed ${timeAgo}`,
+    `Accuracy ${formatResultLabel(normalizedAccuracy)}${typeof accuracy === 'number' ? ` at ${accuracyText}` : ''}`,
+    `Latency ${formatResultLabel(normalizedLatency)}`,
+  ];
+  if (latencyMeanMs != null) {
+    ariaParts.push(`average latency ${latencyText}`);
+  }
+  if (normalizedOverall !== 'UNKNOWN') {
+    ariaParts.push(`Overall ${formatResultLabel(normalizedOverall)}`);
+  }
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.5,
+        py: 1.5,
+        px: 1,
+        borderBottom: '1px solid #f0f0f0',
+        borderRadius: 1,
+        '&:hover': {
+          backgroundColor: 'action.hover',
+        },
+        '&:focus-within': {
+          outline: '2px solid',
+          outlineColor: 'primary.main',
+          outlineOffset: 2,
+        },
+      }}
+      role="listitem"
+      tabIndex={0}
+      aria-label={ariaParts.join(', ')}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="body2" fontWeight="medium" component="div">
+            Test Session #{sessionNumber}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" component="div">
+            {type} • {timeAgo}
+          </Typography>
+        </Box>
+        <Typography 
+          variant="body2" 
+          color="success.main" 
+          fontWeight="medium"
+          aria-live="polite"
+        >
+          {accuracyText} F1
+        </Typography>
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        Accuracy {formatResultLabel(normalizedAccuracy)} • Latency {formatResultLabel(normalizedLatency)}
+        {latencyMeanMs != null ? ` (${latencyText})` : ''}
+        {normalizedOverall !== 'UNKNOWN' ? ` • Overall ${formatResultLabel(normalizedOverall)}` : ''}
       </Typography>
     </Box>
-    <Typography 
-      variant="body2" 
-      color="success.main" 
-      fontWeight="medium"
-      aria-live="polite"
-    >
-      {accuracy}% Accuracy
-    </Typography>
-  </Box>
-);
+  );
+};
 
 const AccessibleCard: React.FC<AccessibleCardProps> = ({ 
   title, 

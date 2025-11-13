@@ -39,6 +39,8 @@ Thumbs.db
 *.pid
 *.seed
 *.log
+nohup.out
+nohup*.out
 
 # Temporary files
 .tmp/
@@ -71,9 +73,11 @@ coordination/orchestration/*
 *.db
 *.db-journal
 *.db-wal
+*.db-shm
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
+*.sqlite-shm
 claude-flow
 claude-flow.bat
 claude-flow.ps1

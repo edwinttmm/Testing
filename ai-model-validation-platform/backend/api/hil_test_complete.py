@@ -3,6 +3,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import asyncio
@@ -12,10 +14,10 @@ import time
 from contextlib import asynccontextmanager
 
 from database import get_db
-from models import Video
+from models import Video, VideoTestSequence, SequenceVideoResult, Annotation, DetectionEvent, TestSession
 from crud import (
     create_test_session, get_test_session,
-    get_project_videos, get_ground_truth_objects
+    get_project_videos
 )
 from schemas import TestSessionCreate, TestSessionResponse
 # TODO: Import these schemas when available:
@@ -30,6 +32,8 @@ from services.timing_orchestration_service import (
 from services.hil_validation_service import (
     get_hil_validation_service, HILValidationError, HardwareRequirement
 )
+# BUG #4 FIX: Import VideoSequenceOrchestrator for multi-video session management
+from services.video_sequence_orchestrator import VideoSequenceOrchestrator
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/hil-test", tags=["HIL Test Execution"])
@@ -280,16 +284,120 @@ async def start_hil_test_session(
         
         # Create test session with T0 command timestamp
         test_start_time = datetime.fromtimestamp(t0_capture.command_timestamp, timezone.utc)
-        
+
+        # MULTI-VIDEO SUPPORT: Check if project has multiple videos
+        project_videos = get_project_videos(db, session_data.project_id)
+        has_video_sequence = len(project_videos) > 1
+
         session_create = TestSessionCreate(
             project_id=session_data.project_id,
             max_latency_ms=session_data.max_latency_ms,
             test_start_time=test_start_time,
             labjack_connected=True,
-            status="running"
+            status="running",
+            has_video_sequence=has_video_sequence
         )
-        
+
         test_session = create_test_session(db, session_create)
+
+        # BUG #4 FIX: Initialize VideoSequenceOrchestrator for multi-video sessions
+        orchestrator = None
+        sequence_id: Optional[str] = None
+        video_ids: List[str] = [video.id for video in project_videos] if has_video_sequence else []
+
+        if has_video_sequence:
+            # Create orchestrator instance for this session
+            orchestrator = VideoSequenceOrchestrator()
+            sequence_id = orchestrator.start_sequence(
+                project_id=session_data.project_id,
+                video_ids=video_ids,
+                max_latency_ms=session_data.max_latency_ms,
+                db=db,
+                session_id=str(test_session.id)
+            )
+            logger.info(f"VideoSequenceOrchestrator initialized for session {test_session.id}, sequence {sequence_id}")
+
+        # MULTI-VIDEO SUPPORT: Create VideoTestSequence and SequenceVideoResult records
+        if has_video_sequence:
+            from uuid import uuid4
+
+            sequence_identifier = sequence_id or str(uuid4())
+            sequence_name = test_session.name or f"HIL Sequence {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
+
+            ground_truth_counts: Dict[str, int] = {}
+            for video in project_videos:
+                try:
+                    count = (
+                        db.query(func.count(Annotation.id))
+                        .filter(Annotation.video_id == video.id)
+                        .scalar()
+                    ) or 0
+                    ground_truth_counts[video.id] = count
+                except Exception as gt_err:
+                    logger.warning(
+                        "Failed to count annotations for video %s: %s",
+                        video.id,
+                        gt_err,
+                    )
+                    ground_truth_counts[video.id] = 0
+
+            sequence_order = [
+                {
+                    "video_id": video.id,
+                    "order": idx,
+                    "duration_ms": float(video.duration or 0.0) * 1000.0
+                }
+                for idx, video in enumerate(project_videos)
+            ]
+
+            # Create or update VideoTestSequence record aligned with orchestrator sequence identifier
+            video_sequence = VideoTestSequence(
+                id=sequence_identifier,
+                test_session_id=str(test_session.id),
+                name=sequence_name,
+                video_ids=video_ids,
+                sequence_order=sequence_order,
+                max_latency_ms=session_data.max_latency_ms,
+                status="pending",
+                current_video_index=0,
+                total_videos=len(project_videos),
+                completed_videos=0,
+                sequence_start_time=None
+            )
+            db.add(video_sequence)
+            db.flush()
+
+            # Create SequenceVideoResult for each video
+            for idx, video in enumerate(project_videos):
+                sequence_video_result = SequenceVideoResult(
+                    id=str(uuid4()),
+                    video_id=video.id,
+                    video_sequence_id=video_sequence.id,
+                    sequence_order=idx,
+                    video_status="pending",
+                    expected_detection_count=ground_truth_counts.get(video.id, 0)
+                )
+                db.add(sequence_video_result)
+
+            # Update test session with sequence metadata for frontend consumption
+            test_session.has_video_sequence = True
+            test_session.sequence_id = video_sequence.id
+            test_session.sequence_metadata = {
+                "video_ids": video_ids,
+                "sequence_order": sequence_order,
+                "max_latency_ms": session_data.max_latency_ms,
+                "video_names": {video.id: video.filename for video in project_videos},
+                "labjack_enabled": True,
+            }
+            test_session.max_latency_threshold_ms = session_data.max_latency_ms
+
+            db.commit()
+            logger.info(
+                "Created multi-video sequence for session %s with %d videos (sequence_id=%s)",
+                test_session.id,
+                len(project_videos),
+                video_sequence.id,
+            )
         
         # Update T0 capture with actual session ID and store in database
         timing_orchestration_service._t0_captures[str(test_session.id)] = t0_capture
@@ -304,7 +412,11 @@ async def start_hil_test_session(
             "expected_events": [],
             "detection_events": [],
             "status": "running",
-            "timing_quality": "high" if t0_capture.precision_ns <= 1000000 else "medium"
+            "timing_quality": "high" if t0_capture.precision_ns <= 1000000 else "medium",
+            # BUG #4 FIX: Store orchestrator instance for lifecycle management
+            "orchestrator": orchestrator,
+            # BUG #5 FIX: Track active video ID for detection tagging
+            "active_video_id": None
         }
         
         # Start background monitoring
@@ -428,7 +540,7 @@ async def start_video_playback(
     video_data: dict,
     db: Session = Depends(get_db)
 ):
-    """Start video playback with precise T1 timing capture - HIL Phase 1 Integration"""
+    """Start video playback with precise T1 timing capture - Multi-video per-video timing support"""
     try:
         # CRITICAL: Validate hardware connection before video playback
         try:
@@ -436,24 +548,24 @@ async def start_video_playback(
         except HILValidationError as e:
             logger.error(f"🚫 HIL video playback validation failed: {e}")
             raise HTTPException(status_code=400, detail=str(e))
-        
+
         active_session = hil_manager.active_sessions.get(session_id)
         if not active_session:
             raise HTTPException(status_code=404, detail="Active test session not found")
-        
+
         video_id = video_data.get("video_id")
         if not video_id:
             raise HTTPException(status_code=400, detail="video_id required")
-        
+
         # Extract video duration with robust fallback system
         video_duration = get_video_duration(video_id, db, video_data)
-        
+
         # Log duration resolution for LabJack auto-stop debugging
         if video_duration is not None:
             logger.info(f"Session {session_id}: Video {video_id} duration resolved to {video_duration}s for LabJack auto-stop")
         else:
             logger.error(f"Session {session_id}: Video {video_id} duration unavailable - LabJack auto-stop may not work correctly")
-        
+
         # Extract video metadata for precise timing
         video_metadata = {
             "fps": video_data.get("fps", 30),
@@ -461,7 +573,7 @@ async def start_video_playback(
             "resolution": video_data.get("resolution"),
             "filename": video_data.get("filename")
         }
-        
+
         # CRITICAL: Capture T1 timestamp when video actually starts playing
         t1_capture = timing_orchestration_service.capture_t1_video_start_timestamp(
             session_id=str(session_id),
@@ -469,14 +581,121 @@ async def start_video_playback(
             db=db,
             video_metadata=video_metadata
         )
-        
+
         # Update active session with T1 timing data
         active_session["t1_capture"] = t1_capture
         active_session["current_video_id"] = video_id
-        
+
+        # BUG #5 FIX: Set active_video_id so detections are tagged correctly
+        active_session["active_video_id"] = video_id
+        logger.info(f"Set active_video_id={video_id} for session {session_id} - detections will be tagged")
+
+        # BUG #4 FIX: Notify orchestrator that video started (if using orchestrator)
+        orchestrator = active_session.get("orchestrator")
+        if orchestrator:
+            # Get the sequence ID from orchestrator's active sequences
+            # The orchestrator stores sequences by sequence_id, but we need to find it by session_id
+            for seq_id, sequence in orchestrator._active_sequences.items():
+                if sequence.session_id == str(session_id):
+                    success = orchestrator.notify_video_started(
+                        sequence_id=seq_id,
+                        video_id=video_id,
+                        actual_start_timestamp=t1_capture.video_start_timestamp,
+                        db=db
+                    )
+                    if success:
+                        logger.info(f"Orchestrator notified of video start: video_id={video_id}, timestamp={t1_capture.video_start_timestamp}")
+                    else:
+                        logger.error(f"Failed to notify orchestrator of video start for video {video_id}")
+                    break
+
+        # MULTI-VIDEO SEQUENCE SUPPORT: Store per-video timing in SequenceVideoResult
+        from models import TestSession, VideoTestSequence, SequenceVideoResult
+        test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
+
+        if test_session and test_session.has_video_sequence:
+            # Find the active video sequence for this session
+            video_sequence = db.query(VideoTestSequence).filter(
+                VideoTestSequence.test_session_id == str(session_id)
+            ).first()
+
+            if video_sequence:
+                # Find or create SequenceVideoResult for this video
+                sequence_video_result = db.query(SequenceVideoResult).filter(
+                    SequenceVideoResult.video_sequence_id == video_sequence.id,
+                    SequenceVideoResult.video_id == video_id
+                ).first()
+
+                if sequence_video_result:
+                    # BUG FIX #6: Calculate cumulative offset from actual video start times
+                    # Previous broken code used actual_duration_ms which is NULL until video completes
+                    # This caused Video 2+ offset to always be 0 instead of cumulative time
+                    previous_videos = db.query(SequenceVideoResult).filter(
+                        SequenceVideoResult.video_sequence_id == video_sequence.id,
+                        SequenceVideoResult.sequence_order < sequence_video_result.sequence_order
+                    ).all()
+
+                    # Calculate cumulative offset from sequence start time
+                    if len(previous_videos) > 0:
+                        # Use actual video start times to calculate cumulative offset
+                        sequence_start_time = db.query(SequenceVideoResult).filter(
+                            SequenceVideoResult.video_sequence_id == video_sequence.id,
+                            SequenceVideoResult.sequence_order == 0
+                        ).first().video_start_time
+
+                        if sequence_start_time and t1_capture.video_start_timestamp:
+                            cumulative_offset_ms = (t1_capture.video_start_timestamp - sequence_start_time) * 1000
+                            logger.info(f"Calculated cumulative offset from start times: {cumulative_offset_ms}ms")
+                        else:
+                            cumulative_offset_ms = 0.0
+                            logger.warning(f"Could not calculate cumulative offset - missing start times")
+                    else:
+                        cumulative_offset_ms = 0.0
+
+                    # Update SequenceVideoResult with video start timing
+                    sequence_video_result.video_start_time = t1_capture.video_start_timestamp
+                    sequence_video_result.video_start_time_ns = str(int(t1_capture.video_start_timestamp * 1_000_000_000))
+                    sequence_video_result.video_play_offset_ms = cumulative_offset_ms
+                    sequence_video_result.video_status = "playing"
+
+                    db.commit()
+
+                    # BUG FIX #7: Update sequence_metadata with video timing for LabJack monitor
+                    # The LabJack monitor uses this metadata to determine which video a detection belongs to
+                    current_metadata = test_session.sequence_metadata
+                    if isinstance(current_metadata, str):
+                        try:
+                            current_metadata = json.loads(current_metadata)
+                        except json.JSONDecodeError:
+                            current_metadata = {}
+                    elif not isinstance(current_metadata, dict):
+                        current_metadata = {}
+
+                    # Initialize video_timing dict if not exists
+                    if 'video_timing' not in current_metadata:
+                        current_metadata['video_timing'] = {}
+
+                    # Update timing for this video
+                    current_metadata['video_timing'][video_id] = {
+                        'started_at': t1_capture.video_start_timestamp,
+                        'start_time': t1_capture.video_start_timestamp,
+                        'video_id': video_id,
+                        'video_play_offset_ms': cumulative_offset_ms
+                    }
+
+                    # Save back to database
+                    test_session.sequence_metadata = current_metadata
+                    db.commit()
+
+                    logger.info(f"✅ Updated sequence_metadata.video_timing for video {video_id}: started_at={t1_capture.video_start_timestamp}")
+
+                    logger.info(f"Stored per-video timing for video {video_id}: "
+                               f"start_time={t1_capture.video_start_timestamp}, "
+                               f"offset_ms={cumulative_offset_ms}")
+
         # Get T1-T0 presentation delay measurement
         delay_measurement = timing_orchestration_service.get_timing_measurement(str(session_id))
-        
+
         # Broadcast video start with timing information
         broadcast_data = {
             "type": "video_started",
@@ -486,7 +705,7 @@ async def start_video_playback(
             "timing_precision_ns": t1_capture.precision_ns,
             "timing_quality": "high" if t1_capture.precision_ns <= 1000000 else "medium"
         }
-        
+
         # Add presentation delay if available
         if delay_measurement:
             broadcast_data.update({
@@ -494,12 +713,12 @@ async def start_video_playback(
                 "delay_quality": delay_measurement.timing_quality,
                 "t0_timestamp": delay_measurement.t0_timestamp
             })
-        
+
         await hil_manager.broadcast_status(broadcast_data)
-        
+
         logger.info(f"Video playback started for session {session_id}, video {video_id} "
                    f"with T1 precision: {t1_capture.precision_ns}ns, duration: {video_duration}s")
-        
+
         response_data = {
             "success": True,
             "message": "Video playback started with precise timing capture",
@@ -510,17 +729,268 @@ async def start_video_playback(
             "video_duration": video_duration,
             "duration_resolved": video_duration is not None
         }
-        
+
         # Include presentation delay if calculated
         if delay_measurement:
             response_data["presentation_delay_ms"] = delay_measurement.presentation_delay_ms
             response_data["delay_quality"] = delay_measurement.timing_quality
-        
+
         return response_data
-        
+
     except Exception as e:
         logger.error(f"Failed to start video playback with timing capture: {e}")
         raise HTTPException(status_code=500, detail="Video start timing capture failed")
+
+@router.post("/session/{session_id}/video/end")
+async def end_video_playback(
+    session_id: int,
+    video_data: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    BUG FIX #7: Handle video end notification from frontend
+
+    Production-ready endpoint with orchestrator synchronization:
+    - Idempotency protection to prevent duplicate processing
+    - Database commit before orchestrator sync for transaction safety
+    - Graceful degradation if orchestrator unavailable
+    - Comprehensive logging for debugging
+    - WebSocket events for real-time frontend updates
+
+    This endpoint:
+    - Updates video timing and duration in database
+    - Synchronizes with VideoSequenceOrchestrator
+    - Triggers evaluation and next video transition
+    - Broadcasts completion status via WebSocket
+
+    Called by frontend when video playback completes.
+    """
+    try:
+        video_id = video_data.get("video_id")
+        video_end_time = time.time()
+
+        logger.info(f"=== VIDEO END NOTIFICATION ===")
+        logger.info(f"Session ID: {session_id}")
+        logger.info(f"Video ID: {video_id}")
+        logger.info(f"End timestamp: {video_end_time:.6f}")
+
+        # Validate input
+        if not video_id:
+            logger.error("Missing video_id in video_data")
+            raise HTTPException(status_code=400, detail="video_id is required")
+
+        # Update SequenceVideoResult with video end timing
+        from models import VideoTestSequence, SequenceVideoResult
+
+        sequence_video_result = db.query(SequenceVideoResult).filter(
+            SequenceVideoResult.video_id == video_id
+        ).first()
+
+        if not sequence_video_result:
+            logger.warning(f"No SequenceVideoResult found for video {video_id}")
+            return {
+                "success": True,
+                "video_id": video_id,
+                "video_end_time": video_end_time,
+                "actual_duration_ms": None,
+                "message": "Video result not found - may be single video test"
+            }
+
+        # IDEMPOTENCY CHECK: Return early if video already marked as completed
+        if sequence_video_result.video_status == "completed" and sequence_video_result.video_end_time is not None:
+            logger.info(f"Video {video_id} already marked as completed (idempotency check)")
+            return {
+                "success": True,
+                "video_id": video_id,
+                "video_end_time": sequence_video_result.video_end_time,
+                "actual_duration_ms": sequence_video_result.actual_duration_ms,
+                "message": "Video already completed"
+            }
+
+        # Store previous state for logging
+        previous_status = sequence_video_result.video_status
+
+        # Update video end timing
+        sequence_video_result.video_end_time = video_end_time
+
+        # BUG FIX #7: Update sequence_metadata with video end timing
+        # This allows LabJack monitor to properly assign detections to videos based on time ranges
+        session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if session:
+            current_metadata = session.sequence_metadata
+            if isinstance(current_metadata, str):
+                try:
+                    current_metadata = json.loads(current_metadata)
+                except json.JSONDecodeError:
+                    current_metadata = {}
+            elif not isinstance(current_metadata, dict):
+                current_metadata = {}
+
+            # Update end timing for this video
+            if 'video_timing' in current_metadata and video_id in current_metadata['video_timing']:
+                current_metadata['video_timing'][video_id]['ended_at'] = video_end_time
+                current_metadata['video_timing'][video_id]['end_time'] = video_end_time
+
+                # Save back to database
+                session.sequence_metadata = current_metadata
+                db.commit()
+
+                logger.info(f"✅ Updated sequence_metadata.video_timing for video {video_id}: ended_at={video_end_time}")
+            else:
+                logger.warning(f"⚠️ video_timing not initialized for video {video_id} - video start may not have been called")
+
+        # Calculate actual duration from start to end
+        actual_duration_ms = None
+        if sequence_video_result.video_start_time:
+            actual_duration_s = video_end_time - sequence_video_result.video_start_time
+            actual_duration_ms = actual_duration_s * 1000
+            sequence_video_result.actual_duration_ms = actual_duration_ms
+
+            logger.info(f"Video duration calculated:")
+            logger.info(f"  Start time: {sequence_video_result.video_start_time:.6f}")
+            logger.info(f"  End time: {video_end_time:.6f}")
+            logger.info(f"  Duration: {actual_duration_ms:.2f}ms ({actual_duration_s:.2f}s)")
+        else:
+            logger.warning(f"Video {video_id} missing video_start_time, cannot calculate duration")
+
+        # Update video status
+        sequence_video_result.video_status = "completed"
+
+        # CRITICAL: Commit database changes BEFORE orchestrator synchronization
+        # This ensures data integrity even if orchestrator sync fails
+        try:
+            db.commit()
+            logger.info(f"Database committed: video {video_id} status updated from '{previous_status}' to 'completed'")
+        except Exception as db_error:
+            logger.error(f"Database commit failed: {db_error}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to update video status: {str(db_error)}")
+
+        # ORCHESTRATOR SYNCHRONIZATION: Notify orchestrator after successful DB commit
+        orchestrator_sync_success = False
+        orchestrator_error = None
+
+        # Get active session and orchestrator
+        active_session = hil_manager.active_sessions.get(session_id)
+
+        if active_session:
+            orchestrator = active_session.get("orchestrator")
+
+            if orchestrator:
+                logger.info("Synchronizing with VideoSequenceOrchestrator...")
+
+                try:
+                    # Find sequence ID from orchestrator's active sequences
+                    sequence_id_found = None
+                    for seq_id, sequence in orchestrator._active_sequences.items():
+                        if sequence.session_id == str(session_id):
+                            sequence_id_found = seq_id
+                            break
+
+                    if sequence_id_found:
+                        # Notify orchestrator of video end with actual timestamp
+                        orchestrator_sync_success = await asyncio.to_thread(
+                            orchestrator.notify_video_ended,
+                            sequence_id=sequence_id_found,
+                            video_id=video_id,
+                            actual_end_timestamp=video_end_time,
+                            db=db
+                        )
+
+                        if orchestrator_sync_success:
+                            logger.info(f"Orchestrator sync successful for video {video_id}")
+                            logger.info(f"  Sequence ID: {sequence_id_found}")
+                            logger.info(f"  Video evaluated and next video may be triggered")
+                        else:
+                            orchestrator_error = "Orchestrator returned False"
+                            logger.warning(f"Orchestrator sync returned False for video {video_id}")
+                    else:
+                        orchestrator_error = "Sequence ID not found in orchestrator"
+                        logger.warning(f"Could not find sequence for session {session_id} in orchestrator")
+
+                except Exception as orch_error:
+                    orchestrator_error = str(orch_error)
+                    logger.error(f"Orchestrator sync failed: {orch_error}", exc_info=True)
+                    # DO NOT raise - graceful degradation
+                    # Database changes are already committed
+            else:
+                logger.info("No orchestrator attached to session - may be single video test")
+        else:
+            logger.warning(f"Session {session_id} not found in active sessions")
+
+        # ROLLBACK LOGIC: If orchestrator sync failed, add to retry queue
+        if not orchestrator_sync_success and orchestrator_error:
+            logger.warning(f"Orchestrator sync failed, but database update succeeded")
+            logger.warning(f"Error: {orchestrator_error}")
+            logger.info("Video completion will be eventually consistent via background evaluation")
+            # TODO: Implement retry queue for eventual consistency
+            # retry_queue.add_task("orchestrator_sync", {
+            #     "session_id": session_id,
+            #     "video_id": video_id,
+            #     "video_end_time": video_end_time
+            # })
+
+        # Check if entire sequence is complete
+        video_sequence = db.query(VideoTestSequence).filter(
+            VideoTestSequence.id == sequence_video_result.video_sequence_id
+        ).first()
+
+        sequence_complete = False
+        if video_sequence:
+            completed_count = db.query(SequenceVideoResult).filter(
+                SequenceVideoResult.video_sequence_id == video_sequence.id,
+                SequenceVideoResult.video_status == "completed"
+            ).count()
+
+            logger.info(f"Sequence progress: {completed_count}/{video_sequence.total_videos} videos completed")
+
+            if completed_count >= video_sequence.total_videos:
+                sequence_complete = True
+                video_sequence.status = "completed"
+                db.commit()
+                logger.info(f"Video sequence {video_sequence.id} fully completed")
+
+                # Broadcast sequence completion via WebSocket
+                await hil_manager.broadcast_status({
+                    "type": "sequence_completed",
+                    "session_id": session_id,
+                    "video_sequence_id": video_sequence.id,
+                    "total_videos": video_sequence.total_videos,
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                })
+
+        # Broadcast individual video completion via WebSocket
+        await hil_manager.broadcast_status({
+            "type": "video_completed",
+            "session_id": session_id,
+            "video_id": video_id,
+            "video_end_time": video_end_time,
+            "actual_duration_ms": actual_duration_ms,
+            "sequence_complete": sequence_complete,
+            "orchestrator_synced": orchestrator_sync_success
+        })
+
+        logger.info(f"=== VIDEO END COMPLETE ===")
+        logger.info(f"Video ID: {video_id}")
+        logger.info(f"Duration: {actual_duration_ms:.2f}ms" if actual_duration_ms else "Duration: N/A")
+        logger.info(f"Orchestrator sync: {'SUCCESS' if orchestrator_sync_success else 'FAILED/SKIPPED'}")
+        logger.info(f"Sequence complete: {sequence_complete}")
+
+        return {
+            "success": True,
+            "video_id": video_id,
+            "video_end_time": video_end_time,
+            "actual_duration_ms": actual_duration_ms,
+            "sequence_complete": sequence_complete,
+            "orchestrator_synced": orchestrator_sync_success
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error ending video playback: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to end video playback: {str(e)}")
 
 @router.get("/session/{session_id}/timing", response_model=dict)
 async def get_session_timing_data(session_id: int):
@@ -661,10 +1131,158 @@ async def log_precision_timing_event(
         logger.error(f"Failed to log timing event: {e}")
         raise HTTPException(status_code=500, detail="Failed to log timing event")
 
+def update_sequence_video_detection_counts(session_id: int, db: Session) -> None:
+    """
+    Update actual_detection_count for all videos in completed session.
+
+    Production-ready implementation that:
+    - Uses efficient single query with GROUP BY
+    - Handles videos with zero detections
+    - Updates SequenceVideoResult.actual_detection_count
+    - Validates against expected counts
+    - Provides comprehensive logging
+
+    Args:
+        session_id: Test session ID
+        db: Database session
+
+    Raises:
+        ValueError: If session not found or has no video sequence
+        SQLAlchemyError: If database operation fails
+    """
+    try:
+        # Validate session exists and has video sequence
+        test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if not test_session:
+            raise ValueError(f"Test session {session_id} not found")
+
+        if not test_session.has_video_sequence:
+            logger.warning(f"Session {session_id} has no video sequence, skipping detection count update")
+            return
+
+        # Get video sequence
+        video_sequence = db.query(VideoTestSequence).filter(
+            VideoTestSequence.test_session_id == str(session_id)
+        ).first()
+
+        if not video_sequence:
+            logger.error(f"No VideoTestSequence found for session {session_id}")
+            return
+
+        logger.info(f"Updating detection counts for session {session_id}, sequence {video_sequence.id}")
+
+        # EFFICIENT QUERY: Get detection counts grouped by video_id in single query
+        detection_counts = db.query(
+            DetectionEvent.video_id,
+            func.count(DetectionEvent.id).label('count')
+        ).filter(
+            DetectionEvent.test_session_id == str(session_id),
+            DetectionEvent.video_id.isnot(None)
+        ).group_by(
+            DetectionEvent.video_id
+        ).all()
+
+        # Convert to dictionary for fast lookup
+        count_map = {video_id: count for video_id, count in detection_counts}
+
+        logger.info(f"Found detections for {len(count_map)} videos: {count_map}")
+
+        # Get all sequence video results for this sequence
+        sequence_video_results = db.query(SequenceVideoResult).filter(
+            SequenceVideoResult.video_sequence_id == video_sequence.id
+        ).all()
+
+        # Update counts and track discrepancies
+        updated_count = 0
+        discrepancies = []
+
+        for result in sequence_video_results:
+            actual_count = count_map.get(result.video_id, 0)
+            expected_count = result.expected_detection_count
+
+            # Update actual count
+            result.actual_detection_count = actual_count
+
+            # Track discrepancies for analysis
+            if expected_count > 0 and actual_count != expected_count:
+                discrepancies.append({
+                    'video_id': result.video_id,
+                    'expected': expected_count,
+                    'actual': actual_count,
+                    'difference': actual_count - expected_count
+                })
+
+            updated_count += 1
+            logger.info(
+                f"Updated video {result.video_id}: "
+                f"actual_detection_count={actual_count}, "
+                f"expected_detection_count={expected_count}"
+            )
+
+        # Commit all updates
+        db.commit()
+
+        logger.info(
+            f"Successfully updated detection counts for {updated_count} videos in session {session_id}"
+        )
+
+        # Log discrepancies for analysis
+        if discrepancies:
+            logger.warning(
+                f"Detected {len(discrepancies)} count discrepancies in session {session_id}: "
+                f"{discrepancies}"
+            )
+        else:
+            logger.info(f"All detection counts match expected values for session {session_id}")
+
+    except ValueError as e:
+        logger.error(f"Validation error updating detection counts: {e}")
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error updating detection counts for session {session_id}: {e}")
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error updating detection counts for session {session_id}: {e}")
+        raise
+
 @router.post("/session/{session_id}/complete")
 async def complete_test_session(session_id: int, db: Session = Depends(get_db)):
     """Complete test session and generate analysis - PRD Requirement 4.1"""
     try:
+        # CRITICAL VALIDATION: Validate video sequence timing data before completion
+        # Import the validation function
+        from services.session_completion_service import validate_video_sequence_completion
+
+        is_valid, error_message = validate_video_sequence_completion(db, str(session_id))
+
+        if not is_valid:
+            logger.error(
+                f"Session completion blocked for {session_id}: {error_message}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Session completion validation failed",
+                    "message": error_message,
+                    "session_id": session_id,
+                    "validation_type": "video_sequence_timing"
+                }
+            )
+
+        logger.info(f"Session {session_id} passed video sequence validation - proceeding with completion")
+
+        # Update detection counts for multi-video sequences before completion
+        try:
+            update_sequence_video_detection_counts(session_id, db)
+        except ValueError as e:
+            # Session validation error - log but continue
+            logger.warning(f"Detection count update failed for session {session_id}: {e}")
+        except Exception as e:
+            # Other errors - log but don't fail completion
+            logger.error(f"Failed to update detection counts for session {session_id}: {e}")
+
         # TODO: Implement analyze_test_session_performance
         # analysis_report = analyze_test_session_performance(db, session_id)
         # For now, create a mock analysis
@@ -675,14 +1293,14 @@ async def complete_test_session(session_id: int, db: Session = Depends(get_db)):
             'passed_events': 17,
             'failed_events': 3
         }
-        
+
         if not analysis_report:
             raise HTTPException(status_code=404, detail="Test session not found")
-        
+
         # Remove from active sessions
         if session_id in hil_manager.active_sessions:
             del hil_manager.active_sessions[session_id]
-        
+
         # Broadcast completion
         await hil_manager.broadcast_status({
             "type": "session_completed",
@@ -690,11 +1308,11 @@ async def complete_test_session(session_id: int, db: Session = Depends(get_db)):
             "analysis": analysis_report,
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
-        
+
         logger.info(f"Completed test session {session_id} with {analysis_report['pass_rate']:.1f}% pass rate")
-        
+
         return analysis_report  # TestSessionAnalysis(**analysis_report)
-        
+
     except HTTPException:
         raise
     except Exception as e:

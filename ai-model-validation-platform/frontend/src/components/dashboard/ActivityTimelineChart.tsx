@@ -37,6 +37,14 @@ import {
   Notifications,
 } from '@mui/icons-material';
 import { EnhancedDashboardStats, TestSession } from '../../services/types';
+import {
+  formatResultLabel,
+  getAccuracyPercent,
+  getAccuracyStatus,
+  getLatencyStatus,
+  getOverallStatus,
+  getLatencyMeanMs,
+} from '../../utils/testSessionUtils';
 
 interface ActivityEvent {
   id: string;
@@ -79,19 +87,55 @@ const ActivityTimelineChart: React.FC<ActivityTimelineChartProps> = ({
         const sessionTime = new Date(session.createdAt || now);
         sessionTime.setMinutes(sessionTime.getMinutes() - index * 15);
 
+        const accuracyPercent = getAccuracyPercent(session);
+        const accuracyStatus = getAccuracyStatus(session);
+        const latencyStatus = getLatencyStatus(session);
+        const overallStatus = getOverallStatus(session);
+        const latencyMean = getLatencyMeanMs(session);
+
+        const descriptionParts = [
+          `Accuracy ${formatResultLabel(accuracyStatus)}${typeof accuracyPercent === 'number' ? ` (${accuracyPercent.toFixed(1)}%)` : ''}`,
+          `Latency ${formatResultLabel(latencyStatus)}${typeof latencyMean === 'number' ? ` (${latencyMean.toFixed(1)} ms)` : ''}`,
+          `Project: ${session.projectId}`,
+        ];
+
+        let eventStatus: ActivityEvent['status'];
+        let color: string;
+        switch (overallStatus) {
+          case 'PASS':
+            eventStatus = 'success';
+            color = theme.palette.success.main;
+            break;
+          case 'CONDITIONAL_PASS':
+            eventStatus = 'warning';
+            color = theme.palette.warning.main;
+            break;
+          case 'FAIL':
+            eventStatus = 'error';
+            color = theme.palette.error.main;
+            break;
+          default:
+            eventStatus = 'info';
+            color = theme.palette.info.main;
+        }
+
         events.push({
           id: `session-${session.id}`,
           type: 'test_completed',
           title: `Test "${session.name}" Completed`,
-          description: `Accuracy: ${session.metrics?.accuracy?.toFixed(1) || 'N/A'}% | Project: ${session.projectId}`,
+          description: descriptionParts.join(' • '),
           timestamp: sessionTime,
-          status: (session.metrics?.accuracy || 0) > 80 ? 'success' : 
-                  (session.metrics?.accuracy || 0) > 60 ? 'warning' : 'error',
-          metadata: session.metrics,
+          status: eventStatus,
+          metadata: {
+            accuracyPercent,
+            accuracyStatus,
+            latencyStatus,
+            overallStatus,
+            latencyMeanMs: latencyMean,
+            sessionId: session.id,
+          },
           icon: <CheckCircle />,
-          color: (session.metrics?.accuracy || 0) > 80 ? theme.palette.success.main : 
-                 (session.metrics?.accuracy || 0) > 60 ? theme.palette.warning.main : 
-                 theme.palette.error.main,
+          color,
         });
       });
 

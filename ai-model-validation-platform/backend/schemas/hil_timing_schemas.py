@@ -69,6 +69,21 @@ class TestSessionResponseHIL(BaseModel):
     actual_detections: Optional[int] 
     pass_fail_result: Optional[str]
     overall_score: Optional[float]
+    accuracy_result: Optional[str]
+    latency_result: Optional[str]
+    overall_test_result: Optional[str]
+    accuracy_f1_score: Optional[float]
+    accuracy_precision: Optional[float]
+    accuracy_recall: Optional[float]
+    latency_mean_ms: Optional[float]
+    latency_max_ms: Optional[float]
+    latency_percent_within_threshold: Optional[float]
+    tp_count: Optional[int]
+    fp_count: Optional[int]
+    fn_count: Optional[int]
+    accuracy_details: Optional[Dict[str, Any]]
+    latency_details: Optional[Dict[str, Any]]
+    overall_details: Optional[Dict[str, Any]]
     
     # Timestamps
     started_at: Optional[datetime]
@@ -88,6 +103,21 @@ class TestSessionUpdateHIL(BaseModel):
     actual_detections: Optional[int] = Field(None, ge=0)
     pass_fail_result: Optional[str]
     overall_score: Optional[float] = Field(None, ge=0.0, le=100.0)
+    accuracy_result: Optional[str]
+    latency_result: Optional[str]
+    overall_test_result: Optional[str]
+    accuracy_f1_score: Optional[float]
+    accuracy_precision: Optional[float]
+    accuracy_recall: Optional[float]
+    latency_mean_ms: Optional[float]
+    latency_max_ms: Optional[float]
+    latency_percent_within_threshold: Optional[float]
+    tp_count: Optional[int]
+    fp_count: Optional[int]
+    fn_count: Optional[int]
+    accuracy_details: Optional[Dict[str, Any]]
+    latency_details: Optional[Dict[str, Any]]
+    overall_details: Optional[Dict[str, Any]]
     completed_at: Optional[datetime]
 
 # Enhanced Detection Event Schemas

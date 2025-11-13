@@ -253,7 +253,7 @@ class TestBatchVideoOperationsPerformance:
         # Get videos for concurrent updates
         videos_to_update = perf_db.query(Video).filter(
             Video.status == "uploaded"
-        ).limit(50).all()
+        ).limit(2000).all()
         
         def update_video_status_worker(video_ids: List[str]):
             """Worker function for concurrent updates"""
@@ -307,7 +307,7 @@ class TestVideoValidationWorkflowPerformance:
         # Select videos for full workflow testing
         uploaded_videos = perf_db.query(Video).filter(
             Video.status == "uploaded"
-        ).limit(50).all()
+        ).limit(2000).all()
         
         workflow_times = {
             "status_updates": [],

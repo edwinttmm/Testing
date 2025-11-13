@@ -32,7 +32,12 @@ export interface DetectionLatencyEvent {
   // Enhanced fields for ground truth integration
   voltage?: number;
   channel?: string;
-  actual_latency_ms?: string;
+  actual_latency_ms?: string | number;
+  // Backend standardized fields
+  detection_id?: string;
+  validation_type?: 'automatic' | 'manual' | 'hybrid';
+  validation_quality?: string;
+  timing_correction_summary?: string;
 }
 
 export interface LatencyStatistics {
@@ -43,6 +48,42 @@ export interface LatencyStatistics {
   p99: number;
   outlier_count: number;
   outlier_threshold_ms: number;
+}
+
+export type DualResultStatus = 'PASS' | 'CONDITIONAL_PASS' | 'FAIL' | 'PENDING' | 'UNKNOWN';
+
+export interface DualMetricCounts {
+  truePositives?: number;
+  falsePositives?: number;
+  falseNegatives?: number;
+}
+
+export interface DualAccuracySummary {
+  result?: DualResultStatus;
+  f1Score?: number;
+  precision?: number;
+  recall?: number;
+  counts?: DualMetricCounts;
+  details?: Record<string, unknown>;
+}
+
+export interface DualLatencySummary {
+  result?: DualResultStatus;
+  meanLatencyMs?: number;
+  maxLatencyMs?: number;
+  withinTolerancePercent?: number;
+  sampleCount?: number;
+  samplesByVideo?: Record<string, number>;
+  details?: Record<string, unknown>;
+}
+
+export interface DualEvaluationSummary {
+  accuracy?: DualAccuracySummary;
+  latency?: DualLatencySummary;
+  overall?: {
+    result?: DualResultStatus;
+    details?: Record<string, unknown>;
+  };
 }
 
 // Legacy AI validation types (maintained for compatibility)
@@ -142,17 +183,26 @@ export interface RunningMetrics {
 export interface DetectionEvent {
   id: string;
   timestamp: number;
-  frameNumber: number;
+  frameNumber?: number; // ISSUE #4 FIX: Mark as optional (can be null)
   eventType: 'detection' | 'ground_truth_match' | 'ground_truth_miss' | 'false_positive';
-  vruType: string;
+  vruType?: string; // ISSUE #4 FIX: Mark as optional (can be null)
   confidence?: number;
-  details: Record<string, unknown>;
+  details?: Record<string, unknown>; // ISSUE #4 FIX: Mark as optional
   // Failure snapshot fields
   failed?: boolean;
   screenshot_path?: string;
   screenshot_zoom_path?: string;
   failure_reason?: string;
   failure_type?: 'timing' | 'accuracy' | 'detection' | 'system';
+  // NEW BACKEND FIELDS (Issue #2 - Agent 1)
+  sequence_id?: string;  // NEW: Every detection now has this (links to video sequence)
+  sequenceId?: string;   // Camel case variant
+  sequence_video_result_id?: string;  // NEW: Links to specific video in sequence
+  sequenceVideoResultId?: string;     // Camel case variant
+  actual_latency_ms?: number;  // NEW: Unified latency field (replaces multiple variants)
+  actualLatencyMs?: number;    // Camel case variant
+  video_id?: string; // ISSUE #4 FIX: video_id can be null
+  videoId?: string; // ISSUE #4 FIX: videoId can be null
 }
 
 export interface AnomalyDetection {
@@ -864,6 +914,8 @@ export interface EnhancedHILResults {
     end_time?: string;
     operator?: string;
   };
+  dual_evaluation?: DualEvaluationSummary;
+  dualEvaluation?: DualEvaluationSummary;
 }
 
 // Ground Truth Event Structure
@@ -904,25 +956,59 @@ export interface GroundTruthComparisonMetrics {
 
 // Enhanced Detection Event with Ground Truth Integration
 export interface EnhancedDetectionEvent extends DetectionLatencyEvent {
+  // Backend standardized detection ID
+  detection_id?: string;
+
   // Enhanced timing fields
   real_latency_ms?: number;
   apparent_latency_ms?: number;
   timing_quality?: 'excellent' | 'good' | 'fair' | 'poor';
   confidence_score?: number;
+  confidence?: number; // Backend uses both field names
   processing_time_ms?: number;
-  
+
   // Ground truth matching
   ground_truth_match_id?: string;
   ground_truth_available?: boolean;
   match_distance_pixels?: number;
   match_iou_score?: number;
-  
+  iou_with_ground_truth?: number; // Backend camelCase alias
+
   // Video timing context
   video_frame?: number;
   voltage?: number;
   labjack_voltage?: number;
   channel?: string;
-  
+  video_id?: string;
+  videoId?: string;
+  sequence_video_result_id?: string;
+  sequenceVideoResultId?: string;
+
+  // Multi-video sequence fields (backend schema)
+  sequence_timestamp?: number;
+  sequence_timestamp_ns?: string;
+  video_relative_timestamp?: number;
+  video_relative_timestamp_ns?: string;
+  video_play_offset_ms?: number;
+  sequence_video_result_id?: string;
+
+  // Validation fields
+  validation_type?: 'automatic' | 'manual' | 'hybrid';
+  validation_status?: string;
+  validation_result?: string | boolean;
+  validation_quality?: string;
+  timing_correction_summary?: string;
+
+  // Detection metadata
+  class_label?: string;
+  class_name?: string;
+  vru_type?: string;
+  bounding_box?: Record<string, any>;
+  tracking_id?: string;
+  inference_session_id?: string;
+  detection_score?: number;
+  nms_score?: number;
+
   // Measured breakdown
   measured_breakdown?: {
     system_processing_ms: number | string;
@@ -1074,5 +1160,267 @@ export interface RawDataExport {
     sample_rate_hz: number;
     export_tool: string;
     export_version: string;
+  };
+}
+
+// Ground Truth Validation Types (Issue #3)
+export interface GTValidationRequest {
+  videoIds: string[];
+}
+
+export interface GTValidationResponse {
+  has_issues: boolean;
+  videos_without_gt: Array<{
+    video_id: string;
+    video_name: string;
+    reason: string;
+  }>;
+  videos_with_gt: Array<{
+    video_id: string;
+    video_name: string;
+    detection_count: number;
+  }>;
+  summary: {
+    total_videos: number;
+    videos_with_ground_truth: number;
+    videos_without_ground_truth: number;
+    total_ground_truth_events: number;
+  };
+}
+
+// Multi-Video Sequential Test Results Types
+// ISSUE #5 FIX: Define proper interface for detection events in sequences
+export interface SequenceDetectionEvent {
+  id: string;
+  timestamp: number;
+  // Backend multi-video sequence fields
+  video_relative_timestamp?: number | null;
+  videoRelativeTimestamp?: number | null;
+  sequence_timestamp?: number | null;
+  sequenceTimestamp?: number | null;
+  video_play_offset_ms?: number | null;
+  videoPlayOffsetMs?: number | null;
+  // Signal fields
+  signalType?: string | null;
+  channel?: number | string | null;
+  signalValue?: number | null;
+  voltage?: number | null;
+  // Detection fields - ISSUE #5 FIX: Properly typed
+  detection_id?: string;
+  detectionId?: string;
+  frame_number?: number | null;
+  frameNumber?: number | null;
+  validation_result?: 'Pass' | 'Fail' | 'Error' | string | boolean | null;
+  validationResult?: 'Pass' | 'Fail' | 'Error' | string | boolean | null;
+  validation_status?: string | null;
+  validationStatus?: string | null;
+  // Additional fields
+  vru_type?: string | null;
+  vruType?: string | null;
+  confidence?: number | null;
+  actual_latency_ms?: number | null;
+  actualLatencyMs?: number | null;
+}
+
+export interface GroundTruthMetrics {
+  total_ground_truth?: number;
+  totalGroundTruth?: number;
+  true_positives?: number;
+  truePositives?: number;
+  false_positives?: number;
+  falsePositives?: number;
+  false_negatives?: number;
+  falseNegatives?: number;
+  precision?: number;
+  recall?: number;
+  f1_score?: number;
+  f1Score?: number;
+}
+
+export interface PerVideoResult {
+  video_id?: string;
+  videoId?: string;
+  video_name?: string;
+  videoName?: string;
+  video_url?: string;
+  videoUrl?: string;
+  start_time?: number;
+  startTime?: number;
+  end_time?: number;
+  endTime?: number;
+  started_at_iso?: string;
+  startedAtIso?: string;
+  ended_at_iso?: string;
+  endedAtIso?: string;
+  video_number?: number;
+  videoNumber?: number;
+  video_order?: number;
+  videoOrder?: number;
+  sequence_index?: number;
+  sequenceIndex?: number;
+  status?: 'pass' | 'fail';
+  pass_fail?: 'pass' | 'fail' | 'pending' | 'error';
+  passFail?: 'pass' | 'fail' | 'pending' | 'error';
+  duration_seconds?: number;
+  durationSeconds?: number;
+  duration_formatted?: string;
+  durationFormatted?: string;
+  fps?: number;
+  frame_count?: number;
+  frameCount?: number;
+  resolution?: string;
+  total_detections?: number;
+  totalDetections?: number;
+  detection_count?: number;
+  detectionCount?: number;
+  expected_detection_count?: number;
+  expectedDetectionCount?: number;
+  actual_detection_count?: number;
+  actualDetectionCount?: number;
+  passed_detections?: number;
+  passedDetections?: number;
+  failed_detections?: number;
+  failedDetections?: number;
+  pass_rate?: number;
+  passRate?: number;
+  pass_rate_percent?: number;
+  passRatePercent?: number;
+  average_latency_ms?: number;
+  averageLatencyMs?: number;
+  median_latency_ms?: number;
+  medianLatencyMs?: number;
+  max_latency_ms?: number;
+  maxLatencyMs?: number;
+  min_latency_ms?: number;
+  minLatencyMs?: number;
+  latency_threshold_ms?: number;
+  latencyThresholdMs?: number;
+  // NEW BACKEND FIELDS (Issue #2 - Agent 1)
+  video_start_time?: number;  // NEW: Epoch timestamp for video start
+  videoStartTime?: number;    // Camel case variant
+  video_end_time?: number;    // NEW: Epoch timestamp for video end
+  videoEndTime?: number;      // Camel case variant
+  detection_events?: EnhancedDetectionEvent[] | SequenceDetectionEvent[];
+  detectionEvents?: SequenceDetectionEvent[];
+  video_status?: string;
+  videoStatus?: string;
+  ground_truth_comparison?: {
+    events_available?: number;
+    events_matched?: number;
+    precision?: number;
+    recall?: number;
+    f1_score?: number;
+  };
+  groundTruthComparison?: {
+    eventsAvailable?: number;
+    eventsMatched?: number;
+    precision?: number;
+    recall?: number;
+    f1Score?: number;
+  };
+  ground_truth_metrics?: GroundTruthMetrics;
+  groundTruthMetrics?: GroundTruthMetrics;
+  processing_start_time?: string;
+  processingStartTime?: string;
+  processing_end_time?: string;
+  processingEndTime?: string;
+  processing_error?: string;
+  processingError?: string;
+  metrics?: Record<string, unknown>;
+}
+
+export interface VideoSequenceResults {
+  sequence_id?: string;
+  sequenceId?: string;
+  session_id?: string;
+  sessionId?: string;
+  test_session_id?: string;
+  testSessionId?: string;
+  project_id?: string;
+  projectId?: string;
+  has_video_sequence?: boolean;
+  hasVideoSequence?: boolean;
+  sequence_status?: string;
+  sequenceStatus?: string;
+  total_videos?: number;
+  totalVideos?: number;
+  videos_completed?: number;
+  videosCompleted?: number;
+  videos_passed?: number;
+  videosPassed?: number;
+  videos_failed?: number;
+  videosFailed?: number;
+  overall_pass_rate?: number;
+  overallPassRate?: number;
+  sequence_started_at?: string;
+  sequenceStartedAt?: string;
+  sequence_completed_at?: string | null;
+  sequenceCompletedAt?: string | null;
+  sequence_duration_seconds?: number;
+  sequenceDurationSeconds?: number;
+  sequence_duration_formatted?: string;
+  sequenceDurationFormatted?: string;
+  total_duration?: number;
+  totalDuration?: number;
+  total_detections?: number;
+  totalDetections?: number;
+  total_passed_detections?: number;
+  totalPassedDetections?: number;
+  total_failed_detections?: number;
+  totalFailedDetections?: number;
+  average_latency_ms?: number;
+  averageLatencyMs?: number;
+  worst_latency_ms?: number;
+  worstLatencyMs?: number;
+  best_latency_ms?: number;
+  bestLatencyMs?: number;
+  combined_detection_events?: EnhancedDetectionEvent[];
+  aggregate_metrics?: Record<string, unknown>;
+  aggregateMetrics?: Record<string, unknown>;
+  sequence_summary?: {
+    overall_status: 'pass' | 'fail' | 'partial';
+    total_videos: number;
+    videos_passed: number;
+    videos_failed: number;
+    sequence_duration_seconds: number;
+    sequence_duration_formatted: string;
+    average_latency_ms: number;
+    worst_latency_ms: number;
+    best_latency_ms: number;
+    total_detections: number;
+    total_passed_detections: number;
+    total_failed_detections: number;
+    overall_pass_rate: number;
+  };
+  sequenceSummary?: {
+    overallStatus: 'pass' | 'fail' | 'partial';
+    totalVideos: number;
+    videosPassed: number;
+    videosFailed: number;
+    sequenceDurationSeconds: number;
+    sequenceDurationFormatted: string;
+    averageLatencyMs: number;
+    worstLatencyMs: number;
+    bestLatencyMs: number;
+    totalDetections: number;
+    totalPassedDetections: number;
+    totalFailedDetections: number;
+    overallPassRate: number;
+  };
+  per_video_results?: PerVideoResult[];
+  perVideoResults?: PerVideoResult[];
+  session_info?: {
+    project_name?: string;
+    name?: string;
+    operator?: string;
+    start_time?: string;
+    end_time?: string;
+  };
+  sessionInfo?: {
+    projectName?: string;
+    name?: string;
+    operator?: string;
+    startTime?: string;
+    endTime?: string;
   };
 }

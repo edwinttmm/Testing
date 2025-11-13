@@ -44,9 +44,25 @@ class PrecisionTimestamp:
 class FrameTimestamp:
     """Frame-specific timestamp for video synchronization"""
     frame_number: int
-    timestamp_ms: float
-    video_time_seconds: float
+    timestamp_ms: Optional[float] = None
+    video_time_seconds: Optional[float] = None
     precision_timestamp: Optional[PrecisionTimestamp] = None
+    video_timestamp_ms: Optional[float] = None
+    system_timestamp_ns: int = 0
+    monotonic_timestamp_ns: int = 0
+    frame_rate: Optional[float] = None
+    interpolated: bool = False
+    accuracy_estimate_ns: float = 0.0
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        """Maintain backwards compatibility with legacy fields"""
+        if self.video_timestamp_ms is None and self.timestamp_ms is not None:
+            self.video_timestamp_ms = self.timestamp_ms
+        if self.timestamp_ms is None and self.video_timestamp_ms is not None:
+            self.timestamp_ms = self.video_timestamp_ms
+        if self.video_time_seconds is None and self.video_timestamp_ms is not None:
+            self.video_time_seconds = self.video_timestamp_ms / 1000.0
     
     @classmethod
     def from_video_time(cls, frame_number: int, video_time_seconds: float) -> 'FrameTimestamp':
@@ -56,6 +72,7 @@ class FrameTimestamp:
             frame_number=frame_number,
             timestamp_ms=timestamp_ms,
             video_time_seconds=video_time_seconds,
+            video_timestamp_ms=timestamp_ms,
             precision_timestamp=PrecisionTimestamp.now()
         )
 

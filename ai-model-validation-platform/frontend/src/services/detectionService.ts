@@ -479,15 +479,33 @@ class DetectionService {
     });
   }
   
-  // WebSocket functionality completely removed - HTTP-only detection service
-  connectWebSocket(videoId: string, onUpdate: (data: DetectionUpdate) => void): void {
-    console.log('ℹ️ WebSocket functionality disabled - using HTTP-only detection workflow');
-    // No WebSocket connections will be established
+  // WebSocket real-time detection subscription for live updates
+  connectWebSocket(sessionId: string, onUpdate: (data: DetectionUpdate) => void): () => void {
+    console.log('🔌 Subscribing to real-time detection events for session:', sessionId);
+
+    // Import websocketService dynamically to avoid circular dependencies
+    import('./websocketService').then(({ default: websocketService }) => {
+      // Subscribe to session-specific detection events
+      websocketService.emit('join_session', { session_id: sessionId });
+      console.log('📡 Joined session room:', sessionId);
+    }).catch(err => {
+      console.error('❌ Failed to import websocketService:', err);
+    });
+
+    // Return unsubscribe function
+    return () => {
+      import('./websocketService').then(({ default: websocketService }) => {
+        websocketService.emit('leave_session', { session_id: sessionId });
+        console.log('🔕 Left session room:', sessionId);
+      }).catch(err => {
+        console.error('❌ Failed to leave session:', err);
+      });
+    };
   }
-  
+
   disconnectWebSocket(): void {
-    console.log('ℹ️ HTTP-only mode - no WebSocket connections to disconnect');
-    // No WebSocket cleanup needed
+    console.log('ℹ️ Detection WebSocket disconnected');
+    // Cleanup handled by unsubscribe function returned from connectWebSocket
   }
 }
 

@@ -20,9 +20,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db
 from models import (
     Project, Video, TestSession, DetectionEvent, TestResult, 
-    DetectionComparison, GroundTruthObject
+    DetectionComparison, GroundTruthObject, SequenceVideoResult
 )
-from src.services.ground_truth_matching_service import (
+from services.ground_truth_matching_service import (
     get_session_matching_results, get_detection_event_details, calculate_project_metrics
 )
 
@@ -210,27 +210,50 @@ async def get_session_results(
                 detail=f"Session {session_id} not found"
             )
         
+        if not matching_results:
+            logger.warning(f"No matching results found for session {session_id}, returning empty metrics")
+            ground_truth_total = 0
+            true_positives = false_negatives = false_positives = 0
+            precision_pct = recall_pct = f1_pct = 0.0
+            avg_latency = median_latency = latency_std = 0.0
+        else:
+            ground_truth_total = getattr(
+                matching_results,
+                "total_ground_truth",
+                matching_results.true_positives + matching_results.false_negatives
+            )
+            true_positives = matching_results.true_positives
+            false_negatives = matching_results.false_negatives
+            false_positives = matching_results.false_positives
+            precision_pct = round((matching_results.precision or 0.0) * 100, 1)
+            recall_pct = round((matching_results.recall or 0.0) * 100, 1)
+            f1_pct = round((matching_results.f1_score or 0.0) * 100, 1)
+            avg_latency = round(getattr(matching_results, "mean_latency_ms", 0.0), 1)
+            latency_std = round(getattr(matching_results, "std_latency_ms", 0.0), 1)
+            # SessionMetrics does not expose median latency; approximate with mean for now
+            median_latency = avg_latency
+
         return {
             "session_id": session_id,
             "session_name": session.name,
             "project_name": session.project.name if session.project else "Unknown Project",
             "status": session.status,
-            "ground_truth_total": matching_results.ground_truth_total,
-            "ground_truth_matched": matching_results.true_positives,
-            "ground_truth_missed": matching_results.false_negatives,
-            "extra_detections": matching_results.false_positives,
-            "precision": round(matching_results.precision * 100, 1),
-            "recall": round(matching_results.recall * 100, 1),
-            "f1_score": round(matching_results.f1_score * 100, 1),
-            "avg_latency_ms": round(matching_results.avg_latency_ms, 1),
-            "median_latency_ms": round(matching_results.median_latency_ms, 1),
-            "latency_std_ms": round(matching_results.latency_std_ms, 1),
+            "ground_truth_total": ground_truth_total,
+            "ground_truth_matched": true_positives,
+            "ground_truth_missed": false_negatives,
+            "extra_detections": false_positives,
+            "precision": precision_pct,
+            "recall": recall_pct,
+            "f1_score": f1_pct,
+            "avg_latency_ms": avg_latency,
+            "median_latency_ms": median_latency,
+            "latency_std_ms": latency_std,
             "detection_details": detection_details,
             "summary": {
-                "coverage_percentage": round(matching_results.recall * 100, 1),
-                "detection_accuracy": round(matching_results.precision * 100, 1),
-                "overall_performance": round(matching_results.f1_score * 100, 1),
-                "timing_performance": f"{matching_results.avg_latency_ms:.1f}ms ± {matching_results.latency_std_ms:.1f}ms"
+                "coverage_percentage": recall_pct,
+                "detection_accuracy": precision_pct,
+                "overall_performance": f1_pct,
+                "timing_performance": f"{avg_latency:.1f}ms ± {latency_std:.1f}ms"
             }
         }
         
@@ -423,6 +446,27 @@ async def get_detailed_session_results(
                 logger.warning(f"Error processing detection event {getattr(event, 'id', 'unknown')}: {event_error}")
                 continue
         
+        # Ensure sequence videos are represented even if no detections/tests were recorded
+        try:
+            if getattr(session, "has_video_sequence", False) and getattr(session, "sequence_id", None):
+                sequence_videos = db.query(SequenceVideoResult).filter(
+                    SequenceVideoResult.video_sequence_id == session.sequence_id
+                ).all()
+                for seq_video in sequence_videos:
+                    vid = getattr(seq_video, "video_id", None)
+                    if not vid or vid in video_results:
+                        continue
+                    video = db.query(Video).filter(Video.id == vid).first()
+                    video_results[vid] = {
+                        "video_id": vid,
+                        "video_filename": video.filename if video else "Unknown",
+                        "test_results": [],
+                        "detection_events": [],
+                        "detection_comparisons": []
+                    }
+        except Exception as seq_error:
+            logger.warning(f"Could not load sequence videos for session {session_id}: {seq_error}")
+        
         # Process detection comparisons with error handling
         for comparison in detection_comparisons:
             try:
@@ -455,7 +499,13 @@ async def get_detailed_session_results(
             failed_detections = total_detections - passed_detections
             success_rate = (passed_detections / total_detections * 100) if total_detections > 0 else 0
             
-            detection_types = list(set(d["object_type"] for d in detection_events))
+            detection_types = sorted({
+                str(d["object_type"])
+                for d in detection_events
+                if d.get("object_type")
+            })
+            if not detection_types:
+                detection_types = ["unknown"]
             
             # ENHANCED: Calculate average latency for passed tests (timestamp represents latency in enhanced tests)
             passed_latencies = [

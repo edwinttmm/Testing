@@ -85,9 +85,21 @@ class TimestampConverter:
             
             # Convert to nanoseconds for high precision
             video_relative_timestamp_ns = int(video_relative_timestamp * 1e9)
-            
-            # Calculate actual latency in milliseconds
-            actual_latency_ms = video_relative_timestamp * 1000
+
+            # ✅ CORRECTED: actual_latency_ms should be NULL here
+            # This function ONLY converts timestamps - it does NOT calculate latency
+            #
+            # Processing latency must be calculated from actual detection pipeline timing:
+            # - Option 1: Use t3_processing_time_ms from detection event (most accurate)
+            # - Option 2: Use processing_time_ms from detection metadata
+            # - Option 3: Use calibrated system latency from HILSystemConfig
+            #
+            # ❌ REMOVED: actual_latency_ms = 50.0  (was incorrect hardcoded value)
+            # ❌ REMOVED: actual_latency_ms = video_relative_timestamp * 1000  (was completely wrong - used video position as latency!)
+            #
+            # The calling code should populate actual_latency_ms from detection metadata,
+            # not from this timestamp conversion function.
+            actual_latency_ms = None  # Caller must provide actual measured latency
             
             # Determine timing quality based on precision
             timing_quality = self._assess_timing_quality(precision_ns or 1000000)  # Default to 1ms
@@ -96,9 +108,9 @@ class TimestampConverter:
             conversion_accuracy_ns = precision_ns or 1000000
             
             self.successful_conversions += 1
-            
+
             logger.debug(f"Converted Unix {unix_timestamp:.6f} to video-relative {video_relative_timestamp:.6f}s "
-                        f"({actual_latency_ms:.3f}ms latency)")
+                        f"(video position: {video_relative_timestamp*1000:.3f}ms)")
             
             return TimestampConversionResult(
                 success=True,

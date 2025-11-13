@@ -269,7 +269,10 @@ class RawLabJackLogger:
                     'channels': channels,
                     'sample_rate': sample_rate,
                     'compression_algorithm': compression_algorithm,
-                    'device_info': device_info
+                    'device_info': device_info,
+                    'detection_threshold': kwargs.get('detection_threshold', 3.3),
+                    'constant_voltage_mode': kwargs.get('constant_voltage_mode', False),
+                    'debounce_ms': kwargs.get('debounce_ms', 20 if not kwargs.get('constant_voltage_mode', False) else 0)  # FIXED: Changed from 100ms to 20ms for 24 FPS video (41.67ms frame period)
                 }
                 self.session_metrics[session_id] = PerformanceMetrics()
                 
@@ -546,14 +549,39 @@ class RawLabJackLogger:
                         pass
     
     def _check_detection_thresholds(self, session_id: str, voltages: List[float], timestamp_ns: int) -> None:
-        """Check for detection thresholds and trigger callbacks"""
+        """Check for detection thresholds and trigger callbacks with debounce protection"""
         try:
             # Simple threshold detection (can be enhanced with more sophisticated algorithms)
             config = self.session_configs.get(session_id, {})
-            threshold = config.get('detection_threshold', 2.5)  # Default 2.5V threshold
-            
+            threshold = config.get('detection_threshold', 3.3)  # Default 3.3V threshold (matches dedicated_labjack_monitor.py)
+
+            # CRITICAL FIX: Add constant_voltage_mode support to disable debounce
+            constant_voltage_mode = config.get('constant_voltage_mode', False)
+            if constant_voltage_mode:
+                debounce_ms = 0  # Disable debounce for continuous detection
+                logger.info(f"Constant voltage mode enabled for session {session_id} - debounce disabled")
+            else:
+                debounce_ms = config.get('debounce_ms', 20)  # FIXED: Changed from 100ms to 20ms for 24 FPS video (41.67ms frame period)
+                logger.debug(f"Normal mode for session {session_id} - debounce set to {debounce_ms}ms")
+
+            # Get last detection timestamp for this session
+            if not hasattr(self, '_last_detection_time'):
+                self._last_detection_time = {}
+
             for i, voltage in enumerate(voltages):
                 if voltage > threshold:
+                    # Check debounce - prevent duplicate detections within debounce window
+                    session_key = f"{session_id}_{i}"
+                    last_detection_ns = self._last_detection_time.get(session_key, 0)
+                    time_since_last_ms = (timestamp_ns - last_detection_ns) / 1_000_000
+
+                    if debounce_ms > 0 and time_since_last_ms < debounce_ms:
+                        logger.debug(f"Debouncing detection: {time_since_last_ms:.1f}ms since last (threshold: {debounce_ms}ms)")
+                        break  # Skip this detection - too close to previous one
+
+                    # Record this detection timestamp
+                    self._last_detection_time[session_key] = timestamp_ns
+
                     # Create detection event
                     detection_data = {
                         'session_id': session_id,
@@ -562,16 +590,18 @@ class RawLabJackLogger:
                         'timestamp_ns': timestamp_ns,
                         'timestamp': datetime.fromtimestamp(timestamp_ns / 1_000_000_000, tz=timezone.utc)
                     }
-                    
+
+                    logger.info(f"✅ Detection triggered: {voltage:.2f}V on channel {i} (threshold: {threshold}V, debounce: {debounce_ms}ms)")
+
                     # Notify callbacks
                     for callback in self.detection_callbacks:
                         try:
                             callback(detection_data)
                         except Exception as e:
                             logger.error(f"Detection callback error: {e}")
-                    
+
                     break  # Only one detection per sample
-            
+
         except Exception as e:
             logger.error(f"Detection threshold check failed: {e}")
     

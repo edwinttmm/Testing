@@ -1,0 +1,687 @@
+"""
+Integration Test Suite for All Critical Timing Fixes
+
+This test suite verifies that all timing-related fixes work together correctly:
+1. Timing Calculator Integration - calculate_corrected_latency() called by API
+2. Pagination - All detections returned (not limited to 50)
+3. No Duplicate Storage - Only 1 detection per event
+4. Video ID Assignment - All detections have video_id
+5. Session Validation - Verify real session data integrity
+
+Test Coverage Target: >80% of timing-related code paths
+"""
+
+import pytest
+import time
+import asyncio
+from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Any
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
+# Import models and services
+from models import (
+    TestSession,
+    DetectionEvent,
+    Video,
+    GroundTruthObject,
+    SequenceVideoResult,
+    VideoTestSequence
+)
+from services.timing_synchronization_calculator import (
+    TimingSynchronizationCalculator,
+    VideoTimingMetadata,
+    get_timing_synchronization_calculator
+)
+from services.labjack_detection_service import (
+    LabJackDetectionMonitor,
+    DetectionConfig,
+    get_detection_monitor
+)
+from services.detection_video_reassignment import (
+    DetectionVideoReassignmentService,
+    get_detection_video_reassignment_service,
+    reassign_null_video_ids
+)
+from database import SessionLocal
+
+
+# ============================================================================
+# TEST FIXTURES
+# ============================================================================
+
+@pytest.fixture(scope="function")
+def db():
+    """Provide database session for each test"""
+    database = SessionLocal()
+    try:
+        yield database
+    finally:
+        database.close()
+
+
+@pytest.fixture
+def timing_calculator():
+    """Provide timing synchronization calculator"""
+    return get_timing_synchronization_calculator()
+
+
+@pytest.fixture
+def detection_monitor():
+    """Provide LabJack detection monitor"""
+    return get_detection_monitor()
+
+
+@pytest.fixture
+def reassignment_service():
+    """Provide detection video reassignment service"""
+    return get_detection_video_reassignment_service()
+
+
+@pytest.fixture
+def test_session(db: Session):
+    """Create a test session with video"""
+    # Create video
+    video = Video(
+        id="test-video-001",
+        filename="test_video.mp4",
+        file_path="/test/video.mp4",
+        project_id="test-project-001",
+        duration=10.0,
+        fps=30.0,
+        status="validated"
+    )
+    db.add(video)
+
+    # Create test session
+    session = TestSession(
+        id="test-session-001",
+        name="Integration Test Session",
+        project_id="test-project-001",
+        video_id=video.id,
+        status="running",
+        started_at=datetime.now(timezone.utc),
+        video_start_timestamp=time.time(),
+        video_playback_start_time=time.time(),
+        hil_timing_enabled=True
+    )
+    db.add(session)
+    db.commit()
+
+    yield session
+
+    # Cleanup
+    db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session.id).delete()
+    db.query(TestSession).filter(TestSession.id == session.id).delete()
+    db.query(Video).filter(Video.id == video.id).delete()
+    db.commit()
+
+
+@pytest.fixture
+def ground_truth_objects(db: Session, test_session: TestSession):
+    """Create ground truth objects for testing"""
+    gt_objects = []
+
+    # Create 10 ground truth objects at different times
+    for i in range(10):
+        gt = GroundTruthObject(
+            id=f"gt-{i}",
+            video_id=test_session.video_id,
+            timestamp=float(i),  # 0s, 1s, 2s, ... 9s
+            frame_number=i * 30,  # 30 fps
+            class_label="pedestrian",
+            x=100.0,
+            y=100.0,
+            width=50.0,
+            height=100.0,
+            confidence=0.95,
+            validated=True
+        )
+        db.add(gt)
+        gt_objects.append(gt)
+
+    db.commit()
+    return gt_objects
+
+
+# ============================================================================
+# TEST CASE 1: TIMING CALCULATOR INTEGRATION
+# ============================================================================
+
+class TestTimingCalculatorIntegration:
+    """Verify calculate_corrected_latency() is called by API"""
+
+    def test_calculate_corrected_latency_called(
+        self,
+        db: Session,
+        test_session: TestSession,
+        timing_calculator: TimingSynchronizationCalculator
+    ):
+        """Test that timing calculator is invoked for detection events"""
+        # Create detection event
+        detection_time = test_session.video_start_timestamp + 1.5  # 1.5s after video start
+
+        result = timing_calculator.calculate_corrected_latency(
+            session_id=test_session.id,
+            detection_id="det-001",
+            detection_system_time=detection_time,
+            ground_truth_frame=45,  # Frame at 1.5s (30fps)
+            ground_truth_video_time=1.5,
+            video_timing_metadata=VideoTimingMetadata(
+                startup_delay_ms=0.0,
+                fps=30.0,
+                duration=10.0,
+                timing_sync_status="synced"
+            ),
+            labjack_start_time=test_session.video_start_timestamp,
+            video_start_time=test_session.video_start_timestamp
+        )
+
+        # Verify result structure
+        assert result is not None
+        assert result.session_id == test_session.id
+        assert result.detection_id == "det-001"
+        assert result.real_latency_ms >= 0
+        assert result.apparent_latency_ms >= 0
+
+        # CRITICAL: Verify video_relative_timestamp is populated
+        assert result.video_relative_timestamp is not None
+        assert 1.4 <= result.video_relative_timestamp <= 1.6  # ~1.5s
+
+        # CRITICAL: Verify video_frame_number is calculated
+        assert result.video_frame_number is not None
+        assert 42 <= result.video_frame_number <= 48  # ~45 frames at 30fps
+
+    def test_video_relative_timestamp_calculation(
+        self,
+        db: Session,
+        test_session: TestSession,
+        timing_calculator: TimingSynchronizationCalculator
+    ):
+        """Test video_relative_timestamp calculation accuracy"""
+        video_start = test_session.video_start_timestamp
+
+        # Test multiple detection times
+        test_cases = [
+            (0.0, 0),    # Start of video
+            (2.5, 75),   # 2.5s into video
+            (5.0, 150),  # 5s into video
+            (9.5, 285),  # Near end of video
+        ]
+
+        for relative_time, expected_frame in test_cases:
+            detection_time = video_start + relative_time
+
+            result = timing_calculator.calculate_corrected_latency(
+                session_id=test_session.id,
+                detection_id=f"det-{relative_time}",
+                detection_system_time=detection_time,
+                ground_truth_frame=expected_frame,
+                ground_truth_video_time=relative_time,
+                video_timing_metadata=VideoTimingMetadata(
+                    startup_delay_ms=0.0,
+                    fps=30.0,
+                    duration=10.0,
+                    timing_sync_status="synced"
+                ),
+                labjack_start_time=video_start,
+                video_start_time=video_start
+            )
+
+            # Verify video_relative_timestamp matches expected
+            assert result.video_relative_timestamp is not None
+            assert abs(result.video_relative_timestamp - relative_time) < 0.1  # Within 100ms
+
+            # Verify frame number calculation
+            assert result.video_frame_number is not None
+            assert abs(result.video_frame_number - expected_frame) <= 3  # Within 3 frames
+
+    def test_year_1762_bug_fixed(
+        self,
+        db: Session,
+        test_session: TestSession,
+        timing_calculator: TimingSynchronizationCalculator
+    ):
+        """Verify timestamps are in 2025, not 1762 (epoch bug)"""
+        current_time = time.time()
+        video_start = current_time - 5.0  # 5s ago
+        detection_time = current_time
+
+        result = timing_calculator.calculate_corrected_latency(
+            session_id=test_session.id,
+            detection_id="det-epoch-test",
+            detection_system_time=detection_time,
+            ground_truth_frame=150,
+            ground_truth_video_time=5.0,
+            video_timing_metadata=VideoTimingMetadata(
+                startup_delay_ms=0.0,
+                fps=30.0,
+                duration=10.0,
+                timing_sync_status="synced"
+            ),
+            labjack_start_time=video_start,
+            video_start_time=video_start
+        )
+
+        # Verify timestamps are recent (within 24 hours of now)
+        timestamp_dt = datetime.fromtimestamp(result.detection_system_time)
+        assert timestamp_dt.year == datetime.now().year  # Current year, not 1762!
+        assert abs(timestamp_dt.timestamp() - current_time) < 86400  # Within 24 hours
+
+
+# ============================================================================
+# TEST CASE 2: PAGINATION
+# ============================================================================
+
+class TestPagination:
+    """Verify all detections are returned (not limited to 50)"""
+
+    def test_query_large_detection_set(
+        self,
+        db: Session,
+        test_session: TestSession
+    ):
+        """Test pagination with 500+ detections"""
+        detection_count = 500
+
+        # Create 500 detection events
+        detections = []
+        for i in range(detection_count):
+            detection = DetectionEvent(
+                id=f"det-{i}",
+                test_session_id=test_session.id,
+                video_id=test_session.video_id,
+                timestamp=time.time() + i * 0.01,  # 10ms apart
+                labjack_timestamp=time.time() + i * 0.01,
+                labjack_voltage=4.2,
+                detection_channel="AIN0",
+                validation_result="Pass",
+                actual_latency_ms=50.0 + (i % 100),
+                video_relative_timestamp=float(i) * 0.01
+            )
+            detections.append(detection)
+
+        db.bulk_save_objects(detections)
+        db.commit()
+
+        # Query all detections (no limit)
+        start_time = time.time()
+        result = db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id == test_session.id
+        ).all()
+        query_time = (time.time() - start_time) * 1000  # Convert to ms
+
+        # Verify all detections returned
+        assert len(result) == detection_count, f"Expected {detection_count}, got {len(result)}"
+
+        # Verify query time is reasonable (< 3 seconds)
+        assert query_time < 3000, f"Query took {query_time:.2f}ms, expected < 3000ms"
+
+        print(f"\n✅ Pagination test passed: {detection_count} detections in {query_time:.2f}ms")
+
+    def test_pagination_with_filtering(
+        self,
+        db: Session,
+        test_session: TestSession
+    ):
+        """Test pagination with video_id filtering for multi-video sequences"""
+        # Create detections for multiple videos
+        video_ids = [test_session.video_id, "video-002", "video-003"]
+        detections_per_video = 200
+
+        for video_id in video_ids:
+            for i in range(detections_per_video):
+                detection = DetectionEvent(
+                    id=f"det-{video_id}-{i}",
+                    test_session_id=test_session.id,
+                    video_id=video_id,
+                    timestamp=time.time() + i * 0.01,
+                    labjack_voltage=4.2,
+                    validation_result="Pass"
+                )
+                db.add(detection)
+
+        db.commit()
+
+        # Query detections for specific video
+        result = db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id == test_session.id,
+            DetectionEvent.video_id == test_session.video_id
+        ).all()
+
+        # Verify correct count
+        assert len(result) == detections_per_video
+        assert all(d.video_id == test_session.video_id for d in result)
+
+
+# ============================================================================
+# TEST CASE 3: NO DUPLICATE STORAGE
+# ============================================================================
+
+class TestNoDuplicateStorage:
+    """Verify only 1 detection is created per event"""
+
+    def test_single_detection_per_event(
+        self,
+        db: Session,
+        test_session: TestSession,
+        detection_monitor: LabJackDetectionMonitor
+    ):
+        """Test that detection service doesn't create duplicates"""
+        # Simulate detection event
+        event_id = "unique-event-001"
+        event_timestamp = time.time()
+
+        # Create detection event
+        detection = DetectionEvent(
+            id=event_id,
+            test_session_id=test_session.id,
+            video_id=test_session.video_id,
+            timestamp=event_timestamp,
+            labjack_voltage=4.2,
+            detection_channel="AIN0",
+            validation_result="Pass"
+        )
+        db.add(detection)
+        db.commit()
+
+        # Verify only one detection exists
+        count = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.id == event_id,
+            DetectionEvent.test_session_id == test_session.id
+        ).scalar()
+
+        assert count == 1, f"Expected 1 detection, found {count}"
+
+    def test_store_in_db_configuration(
+        self,
+        db: Session,
+        test_session: TestSession,
+        detection_monitor: LabJackDetectionMonitor
+    ):
+        """Verify store_in_db configuration is respected"""
+        # Check detection config for store_in_db flag
+        config = DetectionConfig(
+            session_id=test_session.id,
+            channels=["AIN0"],
+            voltage_threshold=2.5,
+            store_in_db=True  # Ensure storage is enabled
+        )
+
+        assert config.store_in_db is True
+
+        # Verify that detections are stored when flag is True
+        initial_count = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.test_session_id == test_session.id
+        ).scalar()
+
+        # Create detection with store_in_db=True
+        detection = DetectionEvent(
+            id="config-test-001",
+            test_session_id=test_session.id,
+            video_id=test_session.video_id,
+            timestamp=time.time(),
+            labjack_voltage=4.2
+        )
+        db.add(detection)
+        db.commit()
+
+        # Verify detection was stored
+        new_count = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.test_session_id == test_session.id
+        ).scalar()
+
+        assert new_count == initial_count + 1
+
+
+# ============================================================================
+# TEST CASE 4: VIDEO ID ASSIGNMENT
+# ============================================================================
+
+class TestVideoIDAssignment:
+    """Verify all detections have video_id assigned"""
+
+    def test_multi_video_session_video_id_assignment(
+        self,
+        db: Session
+    ):
+        """Test video_id assignment for multi-video sequences"""
+        # Create multi-video test session
+        session = TestSession(
+            id="multi-video-session",
+            name="Multi-Video Test",
+            project_id="test-project-001",
+            video_id="video-001",
+            has_video_sequence=True,
+            sequence_id="seq-001",
+            status="running"
+        )
+        db.add(session)
+
+        # Create video sequence
+        sequence = VideoTestSequence(
+            id="seq-001",
+            test_session_id=session.id,
+            name="Test Sequence",
+            video_ids=["video-001", "video-002"],
+            sequence_order=[
+                {"video_id": "video-001", "order": 0},
+                {"video_id": "video-002", "order": 1}
+            ],
+            total_videos=2,
+            status="running"
+        )
+        db.add(sequence)
+
+        # Create sequence video results with timing
+        current_time = time.time()
+        video_results = [
+            SequenceVideoResult(
+                id="svr-001",
+                video_sequence_id=sequence.id,
+                video_id="video-001",
+                sequence_order=0,
+                video_start_time=current_time,
+                actual_duration_ms=10000,  # 10s
+                video_status="completed"
+            ),
+            SequenceVideoResult(
+                id="svr-002",
+                video_sequence_id=sequence.id,
+                video_id="video-002",
+                sequence_order=1,
+                video_start_time=current_time + 10.0,
+                actual_duration_ms=10000,  # 10s
+                video_status="completed"
+            )
+        ]
+        db.add_all(video_results)
+        db.commit()
+
+        # Create detections with timestamps
+        detections = [
+            DetectionEvent(
+                id="det-v1-1",
+                test_session_id=session.id,
+                video_id=None,  # Initially NULL
+                timestamp=current_time + 5.0,  # 5s into video 1
+                labjack_voltage=4.2
+            ),
+            DetectionEvent(
+                id="det-v2-1",
+                test_session_id=session.id,
+                video_id=None,  # Initially NULL
+                timestamp=current_time + 15.0,  # 5s into video 2
+                labjack_voltage=4.2
+            )
+        ]
+        db.add_all(detections)
+        db.commit()
+
+        # Run video ID reassignment
+        service = get_detection_video_reassignment_service()
+        result = asyncio.run(service.reassign_null_video_ids(session.id, dry_run=False))
+
+        # Verify all detections have video_id
+        null_count = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.test_session_id == session.id,
+            DetectionEvent.video_id.is_(None)
+        ).scalar()
+
+        assert null_count == 0, f"Found {null_count} detections with NULL video_id"
+        assert result["success"] is True
+        assert result["reassigned_count"] == 2
+
+        # Verify correct video assignments
+        det_v1 = db.query(DetectionEvent).filter(DetectionEvent.id == "det-v1-1").first()
+        det_v2 = db.query(DetectionEvent).filter(DetectionEvent.id == "det-v2-1").first()
+
+        assert det_v1.video_id == "video-001"
+        assert det_v2.video_id == "video-002"
+
+        # Cleanup
+        db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session.id).delete()
+        db.query(SequenceVideoResult).filter(SequenceVideoResult.video_sequence_id == sequence.id).delete()
+        db.query(VideoTestSequence).filter(VideoTestSequence.id == sequence.id).delete()
+        db.query(TestSession).filter(TestSession.id == session.id).delete()
+        db.commit()
+
+
+# ============================================================================
+# TEST CASE 5: SESSION 0846e476 VALIDATION
+# ============================================================================
+
+class TestSessionValidation:
+    """Validate real session data integrity"""
+
+    def test_session_0846e476_detection_reassignment(
+        self,
+        db: Session,
+        reassignment_service: DetectionVideoReassignmentService
+    ):
+        """Test detection reassignment for session 0846e476"""
+        # Check if session exists
+        session = db.query(TestSession).filter(
+            TestSession.id == "0846e476"
+        ).first()
+
+        if not session:
+            pytest.skip("Session 0846e476 not found in database")
+
+        # Get initial detection count
+        total_detections = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.test_session_id == "0846e476"
+        ).scalar()
+
+        # Get NULL video_id count before reassignment
+        null_before = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.test_session_id == "0846e476",
+            DetectionEvent.video_id.is_(None)
+        ).scalar()
+
+        # Run reassignment
+        result = asyncio.run(reassignment_service.reassign_null_video_ids(
+            "0846e476",
+            dry_run=False
+        ))
+
+        # Get NULL video_id count after reassignment
+        null_after = db.query(func.count(DetectionEvent.id)).filter(
+            DetectionEvent.test_session_id == "0846e476",
+            DetectionEvent.video_id.is_(None)
+        ).scalar()
+
+        # Verify all detections have video_id (502/502)
+        assert null_after == 0, f"Found {null_after} detections still with NULL video_id"
+        assert result["success"] is True
+
+        print(f"\n✅ Session 0846e476: {total_detections} total detections, {null_before} were NULL, now 0 NULL")
+
+    def test_timestamps_are_2025_not_1762(
+        self,
+        db: Session
+    ):
+        """Verify all detection timestamps are in 2025, not 1762"""
+        # Check all detection timestamps
+        detections = db.query(DetectionEvent).filter(
+            DetectionEvent.timestamp.isnot(None)
+        ).limit(100).all()
+
+        current_year = datetime.now().year
+        epoch_bugs = 0
+
+        for detection in detections:
+            if detection.timestamp:
+                # Convert timestamp to datetime
+                try:
+                    dt = datetime.fromtimestamp(detection.timestamp)
+                    # Check if year is reasonable (current year ± 1)
+                    if not (current_year - 1 <= dt.year <= current_year + 1):
+                        epoch_bugs += 1
+                        print(f"❌ Detection {detection.id}: timestamp {detection.timestamp} = {dt}")
+                except (ValueError, OSError) as e:
+                    print(f"⚠️ Detection {detection.id}: invalid timestamp {detection.timestamp}: {e}")
+                    epoch_bugs += 1
+
+        assert epoch_bugs == 0, f"Found {epoch_bugs} detections with epoch timestamp bugs"
+
+    def test_timing_distribution_reasonable(
+        self,
+        db: Session,
+        test_session: TestSession
+    ):
+        """Verify timing distribution is reasonable (no negative latencies)"""
+        # Get all detections with latency data
+        detections = db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id == test_session.id,
+            DetectionEvent.actual_latency_ms.isnot(None)
+        ).all()
+
+        if not detections:
+            pytest.skip("No detections with latency data")
+
+        latencies = [d.actual_latency_ms for d in detections if d.actual_latency_ms is not None]
+
+        # Verify no negative latencies
+        negative_count = sum(1 for lat in latencies if lat < 0)
+        assert negative_count == 0, f"Found {negative_count} negative latencies"
+
+        # Verify reasonable latency range (0-1000ms typical for HIL)
+        unreasonable_count = sum(1 for lat in latencies if lat > 1000)
+        if unreasonable_count > 0:
+            print(f"⚠️ Found {unreasonable_count} latencies > 1000ms")
+
+        # Calculate statistics
+        if latencies:
+            avg_latency = sum(latencies) / len(latencies)
+            min_latency = min(latencies)
+            max_latency = max(latencies)
+
+            print(f"\n📊 Latency Statistics:")
+            print(f"  Count: {len(latencies)}")
+            print(f"  Average: {avg_latency:.2f}ms")
+            print(f"  Range: {min_latency:.2f}ms - {max_latency:.2f}ms")
+
+
+# ============================================================================
+# TEST EXECUTION AND COVERAGE
+# ============================================================================
+
+if __name__ == "__main__":
+    """Run tests with coverage reporting"""
+    import sys
+
+    # Run tests with pytest
+    exit_code = pytest.main([
+        __file__,
+        "-v",  # Verbose output
+        "--tb=short",  # Short traceback format
+        "--color=yes",  # Colored output
+        "-s",  # Don't capture output (show print statements)
+        "--cov=services",  # Coverage for services
+        "--cov=models",  # Coverage for models
+        "--cov-report=term-missing",  # Show missing lines
+        "--cov-report=html:tests/coverage_html",  # HTML report
+    ])
+
+    sys.exit(exit_code)

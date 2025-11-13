@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 class IntegrationConfig:
     """Configuration for raw LabJack integration"""
     enable_detection_callbacks: bool = True
-    detection_threshold_volts: float = 2.5
+    detection_threshold_volts: float = 3.3
     debounce_time_ms: int = 50
     auto_session_coordination: bool = True
     performance_monitoring: bool = True
@@ -388,6 +388,17 @@ class RawLabJackIntegrationService:
     ) -> None:
         """Create detection event in database from raw detection"""
         try:
+            # When the dedicated HIL monitor is active it already persists fully-populated
+            # detection events (with video-relative timestamps). Skip the legacy fallback
+            # to avoid creating duplicate, unaligned rows that break ground-truth metrics.
+            mapping = self.session_mappings.get(raw_session_id)
+            if mapping and mapping.hil_session_active:
+                logger.debug(
+                    "Skipping legacy detection insert for session %s (video-sync monitor active)",
+                    test_session_id
+                )
+                return
+
             db = next(get_db())
             try:
                 # Create detection event

@@ -65,6 +65,7 @@ from crud import (
 )
 # Import Socket.IO integration
 from socketio_server import sio, create_socketio_app
+from services.websocket_rooms import set_socketio_server
 
 from services.ground_truth_service import GroundTruthService
 # from services.validation_service import ValidationService  # Temporarily disabled
@@ -84,6 +85,14 @@ try:
 except ImportError as e:
     print(f"Warning: ground_truth router not available: {e}")
     ground_truth_router = None
+
+# Import ground truth manual trigger router
+try:
+    from routers.ground_truth_manual_trigger import router as ground_truth_trigger_router
+    print("✅ Ground truth manual trigger router loaded")
+except ImportError as e:
+    print(f"Warning: ground_truth_manual_trigger router not available: {e}")
+    ground_truth_trigger_router = None
 
 # Import new architectural services
 from services.video_library_service import VideoLibraryManager
@@ -130,6 +139,13 @@ try:
 except ImportError:
     print("Warning: simple_results_api not available")
     simple_results_router = None
+
+# Import T3 detection API
+try:
+    from src.api.t3_detection_endpoints import router as t3_detection_router
+except ImportError:
+    print("Warning: t3_detection_endpoints not available")
+    t3_detection_router = None
 # Auto-install ML dependencies if needed
 try:
     import torch
@@ -208,6 +224,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("⚠️ Database startup completed with issues (continuing)")
     except Exception as e:
         logger.warning(f"⚠️ Database initialization warning (continuing): {e}")
+
+    # ✅ Initialize WebSocket room utilities for session isolation
+    try:
+        set_socketio_server(sio)
+        logger.info("✅ WebSocket room utilities initialized")
+    except Exception as e:
+        logger.warning(f"⚠️ WebSocket room utilities initialization failed: {e}")
+
+    # ✅ Register WebSocket emission with LabJack monitor for real-time detection updates
+    try:
+        from socketio_server import emit_detection_event
+        from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
+
+        monitor = get_dedicated_labjack_monitor(websocket_emit_fn=emit_detection_event)
+        logger.info("✅ WebSocket real-time detection broadcasting enabled")
+    except Exception as e:
+        logger.warning(f"⚠️ WebSocket detection broadcasting setup failed: {e}")
     
     # Minimal migrations for SQLite to ensure expected columns exist
     try:
@@ -422,6 +455,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:
         logger.warning(f"SQLite migration check failed or not needed: {e}")
     
+    # Start LabJack monitoring service automatically
+    # ✅ CRITICAL FIX: Auto-start monitoring service DISABLED
+    # This service was creating duplicate "HIL Test" sessions with different IDs,
+    # causing detection events to be stored in the wrong session.
+    # HIL monitoring should ONLY be started per-test via dedicated_labjack_monitor.py
+    logger.info("ℹ️ Standalone LabJack monitoring service auto-start DISABLED")
+    logger.info("ℹ️ HIL monitoring will be started per-test as needed")
+
     # Log startup completion
     logger.info("✅ Application startup completed successfully")
     logger.info("Application started", extra={
@@ -431,7 +472,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             'debug_mode': settings.api_debug
         }
     })
-    
+
     yield
     
     # Shutdown
@@ -594,6 +635,14 @@ async def get_video_file(video_id: str, db: Session = Depends(get_db)):
 # Include authentication router first
 app.include_router(auth_router)
 
+# Include Clock Synchronization API - CRITICAL for timestamp alignment
+try:
+    from routers.clock_sync import router as clock_sync_router
+    app.include_router(clock_sync_router)
+    logger.info("✅ Clock Synchronization API included - /api/clock-sync")
+except ImportError as e:
+    logger.error(f"❌ Failed to include Clock Sync API: {e}")
+
 # Include LabJack Hardware API routes - PRD Module 3.1 & 3.2
 try:
     from api.labjack_hardware_api import router as labjack_hardware_router
@@ -657,6 +706,21 @@ try:
 except ImportError as e:
     logger.error(f"❌ Failed to include Test Sessions API: {e}")
 
+# Include Video Sequence Testing Router for multi-video sequential HIL tests
+try:
+    from routers.video_sequence_testing import router as video_sequence_router
+    app.include_router(video_sequence_router)
+    logger.info("✅ Video Sequence Testing API routes included")
+    logger.info("    - POST /api/video-sequences/start - Start multi-video test sequence")
+    logger.info("    - POST /api/video-sequences/{id}/video-started - Record video start")
+    logger.info("    - POST /api/video-sequences/{id}/video-ended - Record video end")
+    logger.info("    - GET /api/video-sequences/{id}/status - Get sequence status")
+    logger.info("    - GET /api/video-sequences/{id}/results - Get complete results")
+    logger.info("    - POST /api/video-sequences/{id}/detection - Record detection event")
+    logger.info("    - POST /api/video-sequences/{id}/stop - Stop sequence early")
+except ImportError as e:
+    logger.error(f"❌ Failed to include Video Sequence Testing API: {e}")
+
 # Include Datasets Router for dataset annotation management
 try:
     from routers.datasets import router as datasets_router
@@ -674,12 +738,19 @@ app.include_router(comprehensive_results_router)
 app.include_router(enhanced_test_execution_router)
 app.include_router(project_session_router)
 
-# Include Ground Truth router  
+# Include Ground Truth router
 if ground_truth_router:
     app.include_router(ground_truth_router)
     logger.info("✅ Ground Truth API routes included")
 else:
     logger.warning("⚠️ Ground Truth API routes not available")
+
+# Include Ground Truth Manual Trigger router for backfill operations
+if ground_truth_trigger_router:
+    app.include_router(ground_truth_trigger_router, tags=["ground-truth-backfill"])
+    logger.info("✅ Ground Truth Manual Trigger API routes included (backfill support)")
+else:
+    logger.warning("⚠️ Ground Truth Manual Trigger API routes not available")
 
 # Include Video Project Links router for shared video architecture
 try:
@@ -811,6 +882,11 @@ app.include_router(simple_detection_router)
 app.include_router(basic_results_router)
 # Include simple results router for testing
 app.include_router(simple_results_router)
+
+# Include T3 detection API for HIL testing
+if t3_detection_router:
+    app.include_router(t3_detection_router)
+    print("✅ T3 Detection API endpoints registered at /api/t3")
 
 # Include Sequential Video Processing API
 try:
@@ -1417,38 +1493,26 @@ def secure_join_path(base_dir: str, filename: str) -> str:
 # These handlers are kept for compatibility but may be overridden by the middleware
 
 def get_db():
-    """Database dependency with enhanced error handling and connection management"""
+    """Get database session with protected cleanup operations."""
     db = SessionLocal()
     try:
-        # Test connection health before yielding
-        db.execute(text("SELECT 1"))
         yield db
-    except (OperationalError, TimeoutError) as e:
-        db.rollback()
-        logger.error(f"Database connection error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database temporarily unavailable. Please try again."
-        )
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.error(f"Database error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database operation failed"
-        )
     except Exception as e:
-        db.rollback()
-        logger.error(f"Unexpected database error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+        logger.error(f"Database error: {e}")
+        # Protected rollback - don't let it mask the original error
+        try:
+            db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Rollback failed: {rollback_error}")
+            pass  # Suppress rollback errors
+        raise  # Re-raise original exception
     finally:
+        # Protected close - don't let it mask any errors
         try:
             db.close()
         except Exception as close_error:
-            logger.warning(f"Error closing database connection: {close_error}")
+            logger.error(f"Session close failed: {close_error}")
+            pass  # Suppress close errors
 
 def ensure_central_store_project(db: Session):
     """Ensure the central store project exists in the database"""
@@ -3956,6 +4020,9 @@ try:
 except ImportError:
     logger.warning("Snapshot API routes not available")
 
+# Video Sequences Router - REMOVED (duplicate of video_sequence_testing router at line 662)
+# This was causing conflicts - video_sequence_testing.py is the correct database-backed implementation
+
 # Register WebSocket endpoints
 from services.websocket_service import handle_websocket_connection
 from fastapi import WebSocket
@@ -3989,6 +4056,29 @@ async def websocket_test_endpoint(websocket: WebSocket):
 async def websocket_test_session_endpoint_alt(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for test execution with session ID (alternative path)"""
     await handle_websocket_connection(websocket, "test_session", f"test_session_{session_id}")
+
+@app.websocket("/ws/test-sessions/{session_id}/detections")
+async def websocket_test_session_detections(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time detection events during HIL testing"""
+    await websocket.accept()  # Accept connection without authentication for now
+    logger.info(f"🔌 WebSocket connected for test session detections: {session_id}")
+
+    try:
+        while True:
+            # Keep connection alive and send heartbeat
+            data = await websocket.receive_text()
+            logger.debug(f"📨 Received WebSocket data for {session_id}: {data}")
+
+            # Echo back or send detection events
+            await websocket.send_json({
+                "type": "heartbeat",
+                "session_id": session_id,
+                "timestamp": datetime.now().isoformat()
+            })
+    except Exception as e:
+        logger.error(f"❌ WebSocket error for {session_id}: {e}")
+    finally:
+        logger.info(f"🔌 WebSocket disconnected for test session: {session_id}")
 
 logger.info("WebSocket endpoints registered")
 
@@ -4424,35 +4514,35 @@ async def get_video_ground_truth_events(
 ):
     """Get ground truth events for a video with timestamps and screenshots"""
     try:
-        # Get ground truth objects for the video
-        ground_truth_objects = db.query(GroundTruthObject).filter(
-            GroundTruthObject.video_id == video_id
-        ).order_by(GroundTruthObject.timestamp).all()
-        
-        if not ground_truth_objects:
-            return {"success": True, "data": {"ground_truth_events": []}}
-        
-        # Format ground truth events for frontend
+        annotations = db.query(Annotation).filter(
+            Annotation.video_id == video_id
+        ).order_by(Annotation.timestamp).all()
+
+        if not annotations:
+            return {"success": True, "data": {"ground_truth_events": [], "total_count": 0}}
+
         gt_events = []
-        for gt in ground_truth_objects:
+        for ann in annotations:
+            bbox = ann.bounding_box or {}
+            timestamp = ann.timestamp or 0.0
+            frame_number = ann.frame_number if ann.frame_number is not None else int(timestamp * 24)
             gt_events.append({
-                "id": gt.id,
-                "timestamp": gt.timestamp,
-                "video_frame": int(gt.timestamp * 24) if gt.timestamp else 0,  # Assuming 24 fps
-                "x": gt.x,
-                "y": gt.y,
-                "width": gt.width,
-                "height": gt.height,
-                "class_label": gt.class_label,
-                "confidence": gt.confidence,
-                "screenshot_path": getattr(gt, 'screenshot_path', None),
-                "screenshot_zoom_path": getattr(gt, 'screenshot_zoom_path', None),
-                "validated": gt.validated,
-                "description": f"Ground Truth: {gt.class_label} at {gt.timestamp:.2f}s"
+                "id": ann.id,
+                "timestamp": timestamp,
+                "video_frame": frame_number,
+                "class_label": ann.vru_type,
+                "confidence": bbox.get("confidence", 1.0),
+                "x": bbox.get("x", 0),
+                "y": bbox.get("y", 0),
+                "width": bbox.get("width", 0),
+                "height": bbox.get("height", 0),
+                "validated": ann.validated,
+                "bounding_box": bbox,
+                "description": f"Ground Truth: {ann.vru_type} at {timestamp:.2f}s"
             })
-        
+
         return {
-            "success": True, 
+            "success": True,
             "data": {
                 "ground_truth_events": gt_events,
                 "total_count": len(gt_events)

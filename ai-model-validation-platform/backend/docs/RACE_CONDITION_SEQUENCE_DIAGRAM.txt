@@ -1,0 +1,241 @@
+# Race Condition: Video 2 Detection Timing Bug
+
+## Sequence Diagram
+
+```
+┌─────────────┐  ┌──────────────────┐  ┌─────────────────────┐  ┌────────────────────┐
+│  Frontend   │  │   Orchestrator   │  │  Detection Service  │  │  Ground Truth      │
+│             │  │  (Main Thread)   │  │  (Background Thread)│  │  Matching Service  │
+└──────┬──────┘  └────────┬─────────┘  └──────────┬──────────┘  └─────────┬──────────┘
+       │                  │                        │                       │
+       │                  │                        │                       │
+       │ 1. Start Test    │                        │                       │
+       ├─────────────────>│                        │                       │
+       │                  │                        │                       │
+       │                  │ 2. start_monitoring()  │                       │
+       │                  ├───────────────────────>│                       │
+       │                  │                        │                       │
+       │                  │                        │ 3. _monitoring_loop() │
+       │                  │                        │    [STARTS]           │
+       │                  │                        │                       │
+       │ 4. Start Video 1 │                        │                       │
+       ├─────────────────>│                        │                       │
+       │                  │                        │                       │
+       │                  │ 5. notify_video_started(video1, t=0.0)         │
+       │                  │    metadata[video1].video_start_time = 0.0     │
+       │                  │    session.video_start_timestamp = 0.0         │
+       │                  │                        │                       │
+       │                  │                        │ 6. Detection @ t=1.5s │
+       │                  │                        │ ✅ video_id = video1  │
+       │                  │                        │ ✅ video_start = 0.0  │
+       │                  │                        │ ✅ rel_ts = 1.5s      │
+       │                  │                        │                       │
+       │ [30s passes...]  │                        │                       │
+       │                  │                        │                       │
+       │ 7. Video 1 ends  │                        │                       │
+       ├─────────────────>│                        │                       │
+       │                  │                        │                       │
+       │ 8. Start Video 2 │                        │                       │
+       ├─────────────────>│                        │                       │
+       │                  │                        │                       │
+       │                  │                        │ 9. Detection @ t=32.5s│
+       │                  │                        │ ✅ video_id = video2  │
+       │                  │                        │ ❌ _get_session_timing_info()│
+       │                  │                        │    returns video_start=0.0│
+       │                  │                        │ ❌ rel_ts = 32.5s    │
+       │                  │                        │    (should be 2.5s!)  │
+       │                  │                        │                       │
+       │                  │ 10. notify_video_started(video2, t=30.0) ⏰ TOO LATE!│
+       │                  │     metadata[video2].video_start_time = 30.0  │
+       │                  │     (Detection already created!)              │
+       │                  │                        │                       │
+       │                  │                        │ 11. More detections   │
+       │                  │                        │     @ t=33.0, 34.0... │
+       │                  │                        │     Still using       │
+       │                  │                        │     video_start=0.0!  │
+       │                  │                        │                       │
+       │ [Test ends]      │                        │                       │
+       │                  │                        │                       │
+       │ 12. Get Results  │                        │                       │
+       ├─────────────────>│                        │                       │
+       │                  │                        │                       │
+       │                  │ 13. match_detections_to_ground_truth()        │
+       │                  ├──────────────────────────────────────────────>│
+       │                  │                        │                       │
+       │                  │                        │  14. For Video 2 GT @ 2.5s:│
+       │                  │                        │      Detection rel_ts = 32.5s│
+       │                  │                        │      time_diff = 30s  │
+       │                  │                        │      tolerance = 0.1s │
+       │                  │                        │      ❌ NO MATCH!     │
+       │                  │                        │                       │
+       │                  │ 15. Results: 0 Video 2 matches ❌             │
+       │                  │<──────────────────────────────────────────────│
+       │                  │                        │                       │
+       │<─────────────────┤                        │                       │
+       │ 16. Response:    │                        │                       │
+       │     Video 1: ✅  │                        │                       │
+       │     Video 2: ❌  │                        │                       │
+       │                  │                        │                       │
+```
+
+## Bug Explanation
+
+### The Problem
+
+1. **LabJack monitoring runs continuously** in background thread
+2. **Detection service caches timing** from `TestSession.video_start_timestamp`
+3. **Orchestrator updates timing** when frontend calls `notify_video_started()`
+4. **Race condition**: Detections created BEFORE orchestrator notification arrives
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Detection Service: _get_session_timing_info()                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  session = db.query(TestSession).filter(...).first()            │
+│  return {                                                        │
+│      'video_start_timestamp': session.video_start_timestamp     │
+│  }                                                               │
+│                                                                  │
+│  ❌ This returns Video 1's start time (0.0) for ALL videos!     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ Detection Event Creation                                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  video_relative_timestamp = detection_time - video_start_time   │
+│                                                                  │
+│  For Video 2 detection @ t=32.5s:                               │
+│    video_relative_timestamp = 32.5 - 0.0 = 32.5s ❌             │
+│    (Should be: 32.5 - 30.0 = 2.5s ✅)                           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ Ground Truth Matching                                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Ground Truth @ 2.5s in Video 2                                 │
+│  Detection rel_ts = 32.5s                                       │
+│  time_diff = |2.5 - 32.5| = 30.0s                              │
+│  tolerance = 0.1s                                               │
+│                                                                  │
+│  if time_diff <= tolerance:  # 30.0 <= 0.1? NO ❌              │
+│      match = True                                               │
+│  else:                                                          │
+│      match = False  # FALSE NEGATIVE                            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Video 1 Works But Video 2 Doesn't
+
+**Video 1 (Works ✅)**:
+- Frontend calls `notify_video_started(video1, t=0.0)` BEFORE detections occur
+- `TestSession.video_start_timestamp = 0.0`
+- Detection service reads `video_start_timestamp = 0.0` ✅
+- Detections @ t=1.5s → rel_ts = 1.5 - 0.0 = 1.5s ✅
+- Ground truth @ 1.5s → time_diff = 0.0s ✅ MATCH!
+
+**Video 2 (Broken ❌)**:
+- Frontend calls `notify_video_started(video2, t=30.0)` AFTER detections occur
+- Detection service STILL reads `video_start_timestamp = 0.0` (stale cache) ❌
+- Detections @ t=32.5s → rel_ts = 32.5 - 0.0 = 32.5s ❌
+- Ground truth @ 2.5s → time_diff = 30.0s ❌ NO MATCH!
+
+### The Cache Staleness Issue
+
+```
+Time     Orchestrator State               Detection Service Cache
+─────────────────────────────────────────────────────────────────
+T=0      sequence_start = 0.0            video_start_timestamp = 0.0 ✅
+T=1      video1.start = 0.0              video_start_timestamp = 0.0 ✅
+T=30     video2.start = 30.0 ⏰         video_start_timestamp = 0.0 ❌ STALE!
+T=31     (notify_video_started called)   video_start_timestamp = 0.0 ❌ STILL STALE!
+T=32     video2.start = 30.0 ✅         video_start_timestamp = 0.0 ❌ CACHE NOT UPDATED!
+```
+
+**Root Cause**: Detection service queries `TestSession` table, but orchestrator only updates in-memory state!
+
+## The Fix
+
+### Option 1: Pass Orchestrator Reference (Recommended)
+
+```python
+# detection service queries orchestrator directly
+def _create_detection_event(self, session_id, timestamp, ...):
+    if self._orchestrator:
+        timing = self._orchestrator.get_timing_for_timestamp(
+            session_id, timestamp
+        )
+        video_start_time = timing['video_start_time']  # ✅ Always fresh!
+    else:
+        # fallback to database
+        video_start_time = self._get_session_timing_info(session_id)
+```
+
+### Option 2: Event-Driven Cache Refresh
+
+```python
+# orchestrator notifies detection service
+def notify_video_started(self, sequence_id, video_id, start_time):
+    # ... update state ...
+    self._detection_service.update_timing_cache(
+        session_id, video_id, start_time
+    )
+```
+
+### Option 3: Database Update (Requires Schema Change)
+
+```python
+# Update TestSession on every video transition
+def notify_video_started(self, sequence_id, video_id, start_time):
+    session = db.query(TestSession).filter(...).first()
+    session.current_video_id = video_id
+    session.current_video_start_time = start_time  # New column
+    db.commit()
+```
+
+---
+
+## Testing the Fix
+
+```python
+def test_video2_detection_timing():
+    # Start sequence with 2 videos
+    orchestrator.start_sequence(project_id, [video1_id, video2_id])
+
+    # Start monitoring
+    detection_service.start_monitoring(session_id)
+
+    # Start Video 1
+    orchestrator.notify_video_started(sequence_id, video1_id, t=0.0)
+
+    # Inject detection during Video 1
+    inject_labjack_detection(t=1.5, voltage=3.0)
+
+    # Check Video 1 detection
+    detections = get_detections(session_id)
+    assert detections[0].video_relative_timestamp == 1.5  # ✅
+
+    # Start Video 2
+    orchestrator.notify_video_started(sequence_id, video2_id, t=30.0)
+
+    # Inject detection during Video 2
+    inject_labjack_detection(t=32.5, voltage=3.0)
+
+    # Check Video 2 detection
+    video2_detections = [d for d in get_detections(session_id)
+                         if d.video_id == video2_id]
+    assert video2_detections[0].video_relative_timestamp == 2.5  # ✅ Should pass after fix
+
+    # Run ground truth matching
+    metrics = matching_service.match_detections_to_ground_truth(session_id)
+
+    # Both videos should have matches
+    assert metrics.matched_detections > 0  # ✅ Should pass after fix
+```

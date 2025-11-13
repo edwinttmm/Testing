@@ -594,7 +594,7 @@ async def get_t3_software_alerts(
 @router.get("/{session_id}/pipeline")
 async def get_t3_t4_timing_pipeline(
     session_id: str,
-    limit: int = Query(50, description="Maximum number of pipeline events to return"),
+    limit: int = Query(2000, description="Maximum number of pipeline events to return"),
     validation_result: Optional[str] = Query(None, description="Filter by validation result (pass/fail)"),
     db: Session = Depends(get_db)
 ):

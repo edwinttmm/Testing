@@ -3,10 +3,13 @@ Ground Truth Router - REST API Endpoints
 Handles ground truth video availability and annotation data
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
+import json
+import csv
+from io import StringIO
 
 from database import get_db
 from models import Video, GroundTruthObject, DetectionEvent
@@ -61,9 +64,12 @@ async def get_available_videos(
             )
         
         # Count ground truth objects per video
+        # Issue #6: Exclude soft-deleted records
         gt_counts = db.query(
             GroundTruthObject.video_id,
             func.count(GroundTruthObject.id).label('gt_count')
+        ).filter(
+            GroundTruthObject.deleted_at.is_(None)  # Only count active records
         ).group_by(GroundTruthObject.video_id).subquery()
         
         # Count detection events per video  
@@ -111,8 +117,10 @@ async def get_available_videos(
         video_files = []
         for video in videos:
             # Get total ground truth count for this video from all sources
+            # Issue #6: Exclude soft-deleted records
             gt_count = db.query(func.count(GroundTruthObject.id)).filter(
-                GroundTruthObject.video_id == video.id
+                GroundTruthObject.video_id == video.id,
+                GroundTruthObject.deleted_at.is_(None)  # Only count active records
             ).scalar() or 0
             
             ann_count = db.query(func.count(Annotation.id)).filter(
@@ -171,6 +179,7 @@ async def get_video_ground_truth_stats(
             raise HTTPException(status_code=404, detail="Video not found")
         
         # Get ground truth statistics
+        # Issue #6: Exclude soft-deleted records
         from sqlalchemy import func
         stats = db.query(
             func.count(GroundTruthObject.id).label('total_detections'),
@@ -178,14 +187,19 @@ async def get_video_ground_truth_stats(
             func.avg(GroundTruthObject.confidence).label('avg_confidence'),
             func.min(GroundTruthObject.timestamp).label('first_detection'),
             func.max(GroundTruthObject.timestamp).label('last_detection')
-        ).filter(GroundTruthObject.video_id == video_id).first()
+        ).filter(
+            GroundTruthObject.video_id == video_id,
+            GroundTruthObject.deleted_at.is_(None)  # Only include active records
+        ).first()
         
         # Get class distribution
+        # Issue #6: Exclude soft-deleted records
         class_distribution = db.query(
             GroundTruthObject.class_label,
             func.count(GroundTruthObject.id).label('count')
         ).filter(
-            GroundTruthObject.video_id == video_id
+            GroundTruthObject.video_id == video_id,
+            GroundTruthObject.deleted_at.is_(None)  # Only include active records
         ).group_by(GroundTruthObject.class_label).all()
         
         return {
@@ -226,35 +240,213 @@ async def health_check():
             "/api/ground-truth/videos/available",
             "/api/ground-truth/videos/{video_id}/stats",
             "/api/ground-truth/health",
+            "/api/ground-truth",
+            "/api/videos/{video_id}/ground-truth/validate",
             "/api/annotations/{annotation_id}"
         ]
     }
 
-@router.delete("/annotations/{annotation_id}")
-async def delete_ground_truth_annotation(
-    annotation_id: str,
+@router.post("")
+async def upload_ground_truth(
+    video_id: str = Query(..., description="Video ID to upload ground truth for"),
+    file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Delete a ground truth annotation/object"""
+    """
+    Upload ground truth objects for a video.
+
+    Accepts JSON or CSV files with ground truth annotations.
+    Creates GroundTruthObject records linked to the specified video.
+
+    Args:
+        video_id: The video ID to associate ground truth with
+        file: JSON or CSV file with ground truth data
+
+    Returns:
+        Upload result with objects created count
+    """
     try:
-        # Check if it's a ground truth object
-        ground_truth_obj = db.query(GroundTruthObject).filter(
-            GroundTruthObject.id == annotation_id
-        ).first()
-        
-        if ground_truth_obj:
-            db.delete(ground_truth_obj)
-            db.commit()
-            logger.info(f"Deleted ground truth object: {annotation_id}")
-            return {"success": True, "message": "Ground truth object deleted successfully"}
-        
-        # If not found, return 404
-        logger.warning(f"Annotation not found: {annotation_id}")
-        raise HTTPException(status_code=404, detail="Annotation not found")
-        
+        logger.info(f"📤 Uploading ground truth for video: {video_id}, filename: {file.filename}")
+
+        # Validate video exists
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            logger.error(f"❌ Video not found: {video_id}")
+            raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+        # Parse file based on extension
+        content = await file.read()
+
+        if file.filename.endswith('.json'):
+            try:
+                gt_data = json.loads(content.decode('utf-8'))
+                gt_objects = gt_data.get('objects', gt_data if isinstance(gt_data, list) else [])
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Invalid JSON file: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid JSON file: {str(e)}")
+        elif file.filename.endswith('.csv'):
+            try:
+                csv_data = StringIO(content.decode('utf-8'))
+                reader = csv.DictReader(csv_data)
+                gt_objects = list(reader)
+            except Exception as e:
+                logger.error(f"❌ Invalid CSV file: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
+        else:
+            logger.error(f"❌ Unsupported file format: {file.filename}")
+            raise HTTPException(status_code=400, detail="File must be .json or .csv")
+
+        # Create GroundTruthObject records
+        created_objects = []
+        skipped_count = 0
+
+        for obj in gt_objects:
+            # Extract timestamp (flexible format)
+            timestamp = None
+            if 'video_time_seconds' in obj:
+                timestamp = float(obj['video_time_seconds'])
+            elif 'timestamp' in obj:
+                timestamp = float(obj['timestamp'])
+            elif 'frame_number' in obj and video.fps:
+                timestamp = float(obj['frame_number']) / video.fps
+
+            if timestamp is None:
+                logger.warning(f"⚠️  Skipping object without timestamp: {obj}")
+                skipped_count += 1
+                continue
+
+            # Extract bounding box coordinates (support multiple field name formats)
+            x = float(obj.get('bbox_x', obj.get('x', 0)))
+            y = float(obj.get('bbox_y', obj.get('y', 0)))
+            width = float(obj.get('bbox_width', obj.get('width', 0)))
+            height = float(obj.get('bbox_height', obj.get('height', 0)))
+
+            # Create GT object using exact model field names
+            gt_obj = GroundTruthObject(
+                video_id=video_id,
+                timestamp=timestamp,
+                class_label=obj.get('class_label', obj.get('vru_type', obj.get('class', 'unknown'))),
+                frame_number=int(obj.get('frame_number', 0)) if obj.get('frame_number') else None,
+                tracking_id=obj.get('tracking_id'),
+                confidence=float(obj.get('confidence', 1.0)),
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                validated=bool(obj.get('validated', False)),
+                difficult=bool(obj.get('difficult', False))
+            )
+
+            db.add(gt_obj)
+            created_objects.append(gt_obj)
+
+        # Commit all objects
+        db.commit()
+
+        logger.info(f"✅ Created {len(created_objects)} ground truth objects for video {video_id}")
+        if skipped_count > 0:
+            logger.warning(f"⚠️  Skipped {skipped_count} objects without timestamps")
+
+        return {
+            'video_id': video_id,
+            'objects_created': len(created_objects),
+            'objects_skipped': skipped_count,
+            'filename': file.filename,
+            'status': 'success'
+        }
+
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error deleting annotation {annotation_id}: {str(e)}")
+        logger.error(f"❌ Error uploading ground truth: {str(e)}")
+        logger.exception("Full error details:")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload ground truth: {str(e)}"
+        )
+
+@router.get("/videos/{video_id}/ground-truth/validate")
+async def validate_ground_truth(
+    video_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate ground truth availability for a video.
+
+    Checks if ground truth data exists for the specified video.
+    Returns count of active (non-soft-deleted) ground truth objects.
+
+    Args:
+        video_id: The video ID to validate
+
+    Returns:
+        Validation result with ground truth count and status
+    """
+    try:
+        # Check if video exists
+        video = db.query(Video).filter(Video.id == video_id).first()
+        if not video:
+            logger.error(f"❌ Video not found for validation: {video_id}")
+            raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+        # Count GT objects (excluding soft-deleted)
+        from sqlalchemy import func
+        gt_count = db.query(func.count(GroundTruthObject.id)).filter(
+            GroundTruthObject.video_id == video_id,
+            GroundTruthObject.deleted_at.is_(None)  # Only count active records
+        ).scalar() or 0
+
+        logger.info(f"✅ Ground truth validation for video {video_id}: {gt_count} objects")
+
+        return {
+            'video_id': video_id,
+            'ground_truth_count': gt_count,
+            'has_ground_truth': gt_count > 0,
+            'status': 'valid' if gt_count > 0 else 'no_ground_truth'
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error validating ground truth for video {video_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to validate ground truth: {str(e)}"
+        )
+
+@router.delete("/annotations/{annotation_id}")
+async def delete_ground_truth_annotation(
+    annotation_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = "anonymous"  # TODO: Get from auth context
+):
+    """
+    Soft delete a ground truth annotation/object - Issue #6
+
+    This performs a soft delete by setting deleted_at timestamp.
+    The record remains in the database but is excluded from queries.
+    """
+    try:
+        # Use soft delete service helper
+        from services.ground_truth_service import soft_delete_ground_truth
+
+        result = soft_delete_ground_truth(
+            db=db,
+            ground_truth_id=annotation_id,
+            deleted_by=user_id
+        )
+
+        if result["success"]:
+            logger.info(f"Soft deleted ground truth object: {annotation_id} by user: {user_id}")
+            return result
+        else:
+            logger.warning(f"Failed to soft delete annotation {annotation_id}: {result.get('error')}")
+            raise HTTPException(status_code=400, detail=result.get("error", "Delete failed"))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error soft deleting annotation {annotation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

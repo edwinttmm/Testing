@@ -20,7 +20,6 @@ import {
   Paper,
   Skeleton,
 } from '@mui/material';
-import type { ChipPropsColorOverrides } from '@mui/material';
 import {
   PlayArrow,
   VideoLibrary,
@@ -35,6 +34,22 @@ import VideoSelectionDialog from '../components/VideoSelectionDialog';
 import VideoDeleteConfirmationDialog from '../components/VideoDeleteConfirmationDialog';
 import UnlinkVideoConfirmationDialog from '../components/UnlinkVideoConfirmationDialog';
 import { getErrorMessage } from '../utils/errorUtils';
+import {
+  formatResultLabel,
+  getAccuracyPercent,
+  getAccuracyStatus,
+  getF1Percent,
+  getFalseNegatives,
+  getFalsePositives,
+  getLatencyMeanMs,
+  getLatencyStatus,
+  getLatencyWithinPercent,
+  getOverallStatus,
+  getPrecisionPercent,
+  getRecallPercent,
+  getResultChipColor,
+  getTruePositives,
+} from '../utils/testSessionUtils';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -161,17 +176,17 @@ const ProjectDetail: React.FC = () => {
       setTestSessions(testSessionsData);
       
       // Calculate project statistics locally
-      const completedSessions = testSessionsData.filter(s => s.status === 'completed' && s.metrics);
-      
-      if (completedSessions.length === 0) {
-        setProjectStats({ totalTests: 0, averageAccuracy: 0, lastTestAccuracy: null, lastTestTime: null });
+      const completedSessions = testSessionsData.filter(s => s.status === 'completed');
+      const sessionsWithScores = completedSessions
+        .map(session => getF1Percent(session) ?? getAccuracyPercent(session))
+        .filter((value): value is number => typeof value === 'number');
+
+      if (sessionsWithScores.length === 0) {
+        setProjectStats({ totalTests: completedSessions.length, averageAccuracy: 0, lastTestAccuracy: null, lastTestTime: null });
       } else {
         const totalTests = completedSessions.length;
-        const averageAccuracy = completedSessions.reduce((sum, session) => {
-          return sum + (session.metrics?.accuracy || 0);
-        }, 0) / totalTests;
-        
-        // Find most recent test
+        const averageAccuracy = sessionsWithScores.reduce((sum, value) => sum + value, 0) / sessionsWithScores.length;
+
         const sortedSessions = [...completedSessions].sort((a, b) => {
           const timeA = a.completedAt || a.createdAt;
           const timeB = b.completedAt || b.createdAt;
@@ -179,18 +194,21 @@ const ProjectDetail: React.FC = () => {
           const timeBStr = typeof timeB === 'string' ? timeB : timeB?.toISOString?.() || '';
           return new Date(timeBStr).getTime() - new Date(timeAStr).getTime();
         });
-        
+
         const lastTest = sortedSessions[0];
-        const lastTestAccuracy = lastTest?.metrics?.accuracy || null;
+        const lastTestAccuracyValue = lastTest ? (getF1Percent(lastTest) ?? getAccuracyPercent(lastTest)) : null;
+        const lastTestAccuracy = lastTestAccuracyValue != null
+          ? Math.round(lastTestAccuracyValue * 10) / 10
+          : null;
         const lastTestTimeRaw = lastTest?.completedAt || lastTest?.createdAt || null;
         const lastTestTime = typeof lastTestTimeRaw === 'string'
           ? lastTestTimeRaw
           : lastTestTimeRaw?.toISOString?.() || null;
-        
+
         setProjectStats({
           totalTests,
           averageAccuracy: Math.round(averageAccuracy * 10) / 10,
-          lastTestAccuracy: lastTestAccuracy ? Math.round(lastTestAccuracy * 10) / 10 : null,
+          lastTestAccuracy,
           lastTestTime
         });
       }
@@ -619,69 +637,111 @@ const ProjectDetail: React.FC = () => {
                   <TableRow>
                     <TableCell>Test Name</TableCell>
                     <TableCell>Status</TableCell>
-                    <TableCell>Accuracy</TableCell>
-                    <TableCell>Precision</TableCell>
-                    <TableCell>Recall</TableCell>
-                    <TableCell>F1 Score</TableCell>
+                    <TableCell>Accuracy (F1)</TableCell>
+                    <TableCell>Latency</TableCell>
+                    <TableCell>Overall Result</TableCell>
                     <TableCell>Detections</TableCell>
                     <TableCell>Completed</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {testSessions.map((session) => (
-                    <TableRow key={session.id}>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="medium">
-                          {session.name}
-                        </Typography>
-                        {session.description && (
-                          <Typography variant="caption" color="text.secondary">
-                            {session.description}
+                  {testSessions.map((session) => {
+                    const accuracyStatus = getAccuracyStatus(session);
+                    const latencyStatus = getLatencyStatus(session);
+                    const overallStatus = getOverallStatus(session);
+                    const accuracyScore = getF1Percent(session) ?? getAccuracyPercent(session);
+                    const precisionScore = getPrecisionPercent(session);
+                    const recallScore = getRecallPercent(session);
+                    const latencyMean = getLatencyMeanMs(session);
+                    const latencyWithin = getLatencyWithinPercent(session);
+                    const tpCount = getTruePositives(session);
+                    const fpCount = getFalsePositives(session);
+                    const fnCount = getFalseNegatives(session);
+                    const actualDetections = session.actualDetections ?? (tpCount + fpCount);
+                    const expectedDetections = session.expectedDetections;
+
+                    const accuracyLabel = accuracyScore != null ? `${accuracyScore.toFixed(1)}%` : 'N/A';
+                    const precisionLabel = precisionScore != null ? `${precisionScore.toFixed(1)}%` : 'N/A';
+                    const recallLabel = recallScore != null ? `${recallScore.toFixed(1)}%` : 'N/A';
+                    const latencyLabel = latencyMean != null ? `${latencyMean.toFixed(1)} ms` : 'N/A';
+                    const latencyWithinLabel = latencyWithin != null ? `${latencyWithin.toFixed(1)}% within` : null;
+
+                    return (
+                      <TableRow key={session.id}>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight="medium">
+                            {session.name}
                           </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={session.status} 
-                          size="small" 
-                          color={getStatusColor(session.status)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {session.metrics?.accuracy 
-                          ? `${Math.round(session.metrics.accuracy * 10) / 10}%` 
-                          : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {session.metrics?.precision 
-                          ? `${Math.round(session.metrics.precision * 10) / 10}%` 
-                          : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {session.metrics?.recall 
-                          ? `${Math.round(session.metrics.recall * 10) / 10}%` 
-                          : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {session.metrics?.f1Score 
-                          ? `${Math.round(session.metrics.f1Score * 10) / 10}%` 
-                          : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {session.metrics?.totalDetections || 0}
-                      </TableCell>
-                      <TableCell>
-                        {formatTimeAgo(
-                          (() => {
-                            const dateValue = session.completedAt || session.createdAt;
-                            return typeof dateValue === 'string'
-                              ? dateValue
-                              : dateValue?.toISOString?.() || null;
-                          })()
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          {session.description && (
+                            <Typography variant="caption" color="text.secondary">
+                              {session.description}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={session.status} 
+                            size="small" 
+                            color={getStatusColor(session.status)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={`Accuracy ${formatResultLabel(accuracyStatus)}`}
+                            size="small"
+                            color={getResultChipColor(accuracyStatus)}
+                            sx={{ fontWeight: 600, mb: 0.5 }}
+                          />
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            F1 {accuracyLabel} • Precision {precisionLabel} • Recall {recallLabel}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={`Latency ${formatResultLabel(latencyStatus)}`}
+                            size="small"
+                            color={getResultChipColor(latencyStatus)}
+                            sx={{ fontWeight: 600, mb: 0.5 }}
+                          />
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Mean {latencyLabel}{latencyWithinLabel ? ` • ${latencyWithinLabel}` : ''}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={formatResultLabel(overallStatus)}
+                            size="small"
+                            color={getResultChipColor(overallStatus)}
+                            sx={{ fontWeight: 600 }}
+                          />
+                          {session.passFailResult && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Legacy: {session.passFailResult.toUpperCase()}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {actualDetections ?? 0}
+                            {expectedDetections != null ? ` / ${expectedDetections}` : ''} detections
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            TP {tpCount} • FP {fpCount} • FN {fnCount}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {formatTimeAgo(
+                            (() => {
+                              const dateValue = session.completedAt || session.createdAt;
+                              return typeof dateValue === 'string'
+                                ? dateValue
+                                : dateValue?.toISOString?.() || null;
+                            })()
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>

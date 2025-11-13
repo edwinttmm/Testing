@@ -157,10 +157,17 @@ class VideoTimingService:
                 sync_point_id = f"video_start_{session_id}_{video_id}"
                 sync_point = self._precision_service.create_sync_point(sync_point_id)
                 
-                # Record high-precision timestamps
-                # TIMING REGRESSION FIX: Use simple system timestamp to match original timing reference
-                start_timestamp = time.time()  # Fixed timing regression - revert to simple timestamp
-                start_timestamp_ns = self._precision_service.get_monotonic_timestamp_ns()
+                # Record synchronized timestamps using both wall clock and monotonic references
+                utc_timestamp = sync_point.utc_timestamp
+                start_timestamp = utc_timestamp.timestamp()  # Unix epoch (seconds)
+                start_timestamp_ns = int(start_timestamp * 1_000_000_000)  # Nanosecond precision in epoch domain
+                monotonic_reference_s = sync_point.monotonic_ns / 1e9
+
+                logger.info(
+                    "Video timing captured: epoch_start=%.9fs, monotonic_reference=%.9fs",
+                    start_timestamp,
+                    monotonic_reference_s
+                )
                 
                 # Extract video metadata
                 fps = video_metadata.get('fps') if video_metadata else None
@@ -173,8 +180,8 @@ class VideoTimingService:
                     start_timestamp=start_timestamp,
                     start_timestamp_ns=start_timestamp_ns,
                     precision_ns=int(self._precision_service.get_timing_accuracy_ns()),
-                    system_time_utc=datetime.now(timezone.utc).isoformat(),
-                    monotonic_time=sync_point.monotonic_ns / 1e9,
+                    system_time_utc=utc_timestamp.isoformat(),
+                    monotonic_time=monotonic_reference_s,
                     sync_point_id=sync_point_id,
                     frame_rate=fps,
                     duration_s=duration_s,

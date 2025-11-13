@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -44,6 +44,8 @@ interface FrameCorrelationEvent {
   channel?: string;
   label?: string;
   passed?: boolean;
+  validation_result?: string; // GT validation result: 'TP', 'FP', 'FN', 'TN', 'PASS', etc.
+  latency_result?: string; // Latency threshold result: 'pass' or 'fail'
   correlation_status?: 'aligned' | 'misaligned' | 'missing' | 'video_ended';
   frame_offset_ms?: number;
 }
@@ -55,6 +57,7 @@ interface FrameCorrelationTimelineProps {
     fps?: number;
     duration?: number;
     filename?: string;
+    video_start_timestamp_epoch_sec?: number; // CRITICAL: Required for epoch timestamp normalization
   };
   onEventSelect?: (event: FrameCorrelationEvent) => void;
   showFrameNumbers?: boolean;
@@ -75,43 +78,110 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
   const duration = videoMetadata?.duration ?? undefined;
   const totalFrames = typeof duration === 'number' && Number.isFinite(duration) ? Math.max(0, Math.round(duration * fps)) : undefined;
 
-  // Helper to clamp a frame number into valid video range if duration is known.
+  // FIXED: Don't cap frames at totalFrames - allow detections beyond video duration to be marked as "out_of_bounds"
+  // This prevents false bunching at final frame when LabJack monitor runs beyond video end
   const clampFrame = (frame: number): number => {
     if (!Number.isFinite(frame)) return 0;
-    if (totalFrames == null) return Math.max(0, Math.floor(frame));
-    return Math.min(Math.max(0, Math.floor(frame)), Math.max(0, totalFrames - 1));
+    return Math.max(0, Math.floor(frame));
   };
   
+  /**
+   * Normalize timestamp to video-relative seconds
+   * Handles epoch timestamps (> 100000) by converting to video-relative
+   */
+  const normalizeTimestamp = useCallback((timestamp: number, videoStartEpoch?: number): number => {
+    // If timestamp > 100000, it's epoch seconds - convert to video-relative
+    if (timestamp > 100000) {
+      if (videoStartEpoch && videoStartEpoch > 0) {
+        const videoRelative = timestamp - videoStartEpoch;
+        console.log(`[FrameCorrelation] Normalized epoch timestamp: ${timestamp.toFixed(2)}s → ${videoRelative.toFixed(3)}s (video-relative)`);
+        return videoRelative;
+      }
+      // No video start time available - can't normalize
+      console.warn(`[FrameCorrelation] Epoch timestamp ${timestamp.toFixed(2)}s detected but no video start time available`);
+      return 0;
+    }
+    // Already video-relative
+    return timestamp;
+  }, []);
+
   // Process and correlate events
   const correlatedEvents = useMemo(() => {
     const events: FrameCorrelationEvent[] = [];
-    
-    // Calculate last detection timestamp for boundary detection
-    const lastDetectionTime = detectionEvents.length > 0 ? 
-      Math.max(...detectionEvents.map(d => {
-        const frameNumRaw = d.video_frame_number ?? d.frame_number ?? 0;
-        const frameNum = clampFrame(Number(frameNumRaw));
-        // Prefer video-derived time; ignore absolute epoch timestamps
-        const rel = frameNum > 0 ? (frameNum / fps) : 0;
-        return rel;
-      })) : 0;
-    const videoEndMargin = 0.5; // 500ms grace period after last detection
-    
+
+    // Get video start epoch time for normalization (from metadata or derived from events)
+    let videoStartEpoch: number | undefined = videoMetadata?.video_start_timestamp_epoch_sec;
+
+    // Derive start epoch from detection events if not provided
+    if (!videoStartEpoch) {
+      const detectionWithRelative = detectionEvents.find(det => {
+        const raw = (det?.raw_timestamp ?? det?.timestamp);
+        const rel = (det?.video_timestamp ?? det?.video_relative_timestamp);
+        return typeof raw === 'number' && typeof rel === 'number';
+      });
+      if (detectionWithRelative) {
+        const raw = Number(detectionWithRelative.raw_timestamp ?? detectionWithRelative.timestamp);
+        const rel = Number(detectionWithRelative.video_timestamp ?? detectionWithRelative.video_relative_timestamp);
+        if (Number.isFinite(raw) && Number.isFinite(rel)) {
+          videoStartEpoch = raw - rel;
+        }
+      }
+    }
+
+    // If still unavailable, try ground truth events
+    if (!videoStartEpoch) {
+      const gtWithRelative = groundTruthEvents.find(gt => {
+        const raw = (gt?.raw_timestamp ?? gt?.timestamp);
+        const rel = (gt?.video_timestamp ?? gt?.video_relative_timestamp);
+        return typeof raw === 'number' && typeof rel === 'number';
+      });
+      if (gtWithRelative) {
+        const raw = Number(gtWithRelative.raw_timestamp ?? gtWithRelative.timestamp);
+        const rel = Number(gtWithRelative.video_timestamp ?? gtWithRelative.video_relative_timestamp);
+        if (Number.isFinite(raw) && Number.isFinite(rel)) {
+          videoStartEpoch = raw - rel;
+        }
+      }
+    }
+
+    // Log normalization context
+    console.log(`[FrameCorrelation] Starting correlation with:`, {
+      detectionCount: detectionEvents.length,
+      groundTruthCount: groundTruthEvents.length,
+      videoStartEpoch: videoStartEpoch?.toFixed(2),
+      fps
+    });
+
+    // FIX #19: Use video duration for boundary detection, not last detection time
+    const videoDuration = videoMetadata?.duration ?? Infinity;
+
+    console.log(`[FrameCorrelation] Video duration: ${Number.isFinite(videoDuration) ? videoDuration.toFixed(3) + 's' : 'unknown'}`);
+
     // Add ground truth events with boundary detection
     groundTruthEvents.forEach((gt: any) => {
-      const gtFrameRaw = gt.video_frame ?? gt.frame_number ?? 0;
-      const gtFrameNumber = clampFrame(Number(gtFrameRaw));
-      // Prefer frame-derived time to avoid epoch seconds leaking in
-      const gtTimeSeconds = gtFrameNumber > 0 ? (gtFrameNumber / fps) : (Number(gt.timestamp) || 0);
-      
-      // Determine if this ground truth is beyond monitoring boundary
+      const gtFrameRaw = Number(gt.video_frame ?? gt.frame_number ?? NaN);
+      const gtFrameValid =
+        Number.isFinite(gtFrameRaw) &&
+        gtFrameRaw >= 0 &&
+        (!Number.isFinite(totalFrames ?? NaN) || gtFrameRaw <= (totalFrames ?? 0) * 1.5);
+      const gtFrameNumber = gtFrameValid ? clampFrame(gtFrameRaw) : 0;
+
+      // CRITICAL FIX: Normalize ground truth timestamp
+      const rawGtTimestamp = Number(gt.timestamp ?? gt.video_timestamp ?? gt.video_relative_timestamp ?? gt.raw_timestamp) || 0;
+      const normalizedGtTime = normalizeTimestamp(rawGtTimestamp, videoStartEpoch);
+
+      // Prefer normalized timestamp; fall back to frame-derived time only if timestamp missing
+      const frameDerivedTime = gtFrameNumber > 0 && Number.isFinite(fps) ? (gtFrameNumber / fps) : undefined;
+      const gtTimeSeconds = Number.isFinite(normalizedGtTime) && normalizedGtTime >= 0 ? normalizedGtTime : (frameDerivedTime ?? 0);
+
+      // Determine if this ground truth is beyond actual video duration
       let gtCorrelationStatus: 'aligned' | 'video_ended' = 'aligned';
-      
-      // If ground truth is beyond last detection time + margin, mark as video_ended
-      if (gtTimeSeconds > (lastDetectionTime + videoEndMargin)) {
+
+      // FIX #19: Mark as video_ended ONLY if GT is beyond actual video duration
+      if (Number.isFinite(videoDuration) && gtTimeSeconds > videoDuration) {
         gtCorrelationStatus = 'video_ended';
       }
-      
+
       events.push({
         id: `gt-${gt.id || Math.random()}`,
         type: 'ground_truth',
@@ -122,40 +192,84 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
         correlation_status: gtCorrelationStatus
       });
     });
-    
+
     // Add detection events with correlation analysis
     detectionEvents.forEach((det: any) => {
-      const detectionFrameNumber = clampFrame(Number(det.video_frame_number ?? det.frame_number ?? 0));
-      const videoTimeSeconds = detectionFrameNumber > 0 ? (detectionFrameNumber / fps) : 0;
-      
+      const detectionFrameRaw = Number(det.video_frame_number ?? det.frame_number ?? NaN);
+      const frameThreshold = Number.isFinite(totalFrames ?? NaN)
+        ? (totalFrames ?? 0) * 1.5
+        : 10000;
+      const detectionFrameValid =
+        Number.isFinite(detectionFrameRaw) &&
+        detectionFrameRaw >= 0 &&
+        detectionFrameRaw <= frameThreshold;
+      const detectionFrameNumber = detectionFrameValid ? clampFrame(detectionFrameRaw) : 0;
+
+      // CRITICAL FIX: Normalize detection timestamp
+      const rawDetTimestamp = Number(det.timestamp ?? det.video_timestamp ?? det.video_relative_timestamp ?? det.raw_timestamp ?? 0);
+      const normalizedDetTime = normalizeTimestamp(rawDetTimestamp, videoStartEpoch);
+      const frameDerivedTime =
+        detectionFrameValid && detectionFrameNumber > 0 && Number.isFinite(fps)
+          ? detectionFrameNumber / fps
+          : undefined;
+      const videoTimeSeconds = Number.isFinite(normalizedDetTime) && normalizedDetTime >= 0 ? normalizedDetTime : (frameDerivedTime ?? 0);
+
       // Find closest ground truth event for correlation
       let closestGT = null;
       let minTimeDiff = Infinity;
-      
+
       groundTruthEvents.forEach((gt: any) => {
-        const gtFrame = gt.video_frame || gt.frame_number || 0;
+        const gtFrameRaw = Number(gt.video_frame ?? gt.frame_number ?? NaN);
+        const gtFrameValid =
+          Number.isFinite(gtFrameRaw) &&
+          gtFrameRaw >= 0 &&
+          (!Number.isFinite(totalFrames ?? NaN) || gtFrameRaw <= (totalFrames ?? 0) * 1.5);
+        const gtFrame = gtFrameValid ? clampFrame(gtFrameRaw) : 0;
+
+        // CRITICAL FIX: Normalize ground truth timestamp for comparison
+        const rawGtTimestamp = Number(gt.timestamp ?? gt.video_timestamp ?? gt.video_relative_timestamp ?? gt.raw_timestamp ?? 0);
+        const normalizedGtTime = normalizeTimestamp(rawGtTimestamp, videoStartEpoch);
+        const frameTime = gtFrame > 0 && Number.isFinite(fps) ? (gtFrame / fps) : undefined;
+        const gtTimeSeconds = Number.isFinite(normalizedGtTime) && normalizedGtTime >= 0 ? normalizedGtTime : (frameTime ?? 0);
+
         const frameDiff = Math.abs(detectionFrameNumber - gtFrame);
-        const timeDiff = Math.abs(videoTimeSeconds - (gt.timestamp || 0));
-        
+        const timeDiff = Math.abs(videoTimeSeconds - gtTimeSeconds);
+
+        // Log potential matches (within 1 second)
+        if (timeDiff < 1.0) {
+          console.log(`[FrameCorrelation] Potential match: Detection ${videoTimeSeconds.toFixed(3)}s vs GT ${gtTimeSeconds.toFixed(3)}s (diff: ${(timeDiff * 1000).toFixed(1)}ms)`);
+        }
+
         if (timeDiff < minTimeDiff) {
           minTimeDiff = timeDiff;
           closestGT = gt;
         }
       });
-      
+
       // Determine correlation status
       let correlationStatus: 'aligned' | 'misaligned' | 'missing' | 'video_ended' = 'missing';
       let frameOffsetMs = 0;
       let gtLatencyMs: number | undefined = undefined; // signed Δ vs nearest GT
-      
+
       if (closestGT) {
-        const closestGTFrame = clampFrame(Number(closestGT.video_frame ?? closestGT.frame_number ?? 0));
-        const closestGTTimeSec = closestGTFrame > 0 ? (closestGTFrame / fps) : (Number(closestGT.timestamp) || 0);
+        const closestGtFrameRaw = Number(closestGT.video_frame ?? closestGT.frame_number ?? NaN);
+        const closestGtFrameValid =
+          Number.isFinite(closestGtFrameRaw) &&
+          closestGtFrameRaw >= 0 &&
+          (!Number.isFinite(totalFrames ?? NaN) || closestGtFrameRaw <= (totalFrames ?? 0) * 1.5);
+        const closestGTFrame = closestGtFrameValid ? clampFrame(closestGtFrameRaw) : 0;
+
+        // CRITICAL FIX: Normalize closest GT timestamp
+        const rawClosestGtTimestamp = Number(closestGT.timestamp ?? closestGT.video_timestamp ?? closestGT.video_relative_timestamp ?? closestGT.raw_timestamp ?? 0);
+        const normalizedClosestGtTime = normalizeTimestamp(rawClosestGtTimestamp, videoStartEpoch);
+        const closestFrameTime = closestGTFrame > 0 && Number.isFinite(fps) ? (closestGTFrame / fps) : undefined;
+        const closestGTTimeSec = Number.isFinite(normalizedClosestGtTime) && normalizedClosestGtTime >= 0 ? normalizedClosestGtTime : (closestFrameTime ?? 0);
+
         const frameOffsetFrames = Math.abs(detectionFrameNumber - closestGTFrame);
         frameOffsetMs = (frameOffsetFrames / fps) * 1000;
         // Signed latency from GT to detection in ms
         gtLatencyMs = (videoTimeSeconds - closestGTTimeSec) * 1000;
-        
+
         if (frameOffsetMs <= (1000 / fps) * 2) { // Within 2 frames
           correlationStatus = 'aligned';
         } else if (frameOffsetMs <= (1000 / fps) * 5) { // Within 5 frames
@@ -164,7 +278,7 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
           correlationStatus = 'missing';
         }
       }
-      
+
       events.push({
         id: `det-${det.id || det.event_id || Math.random()}`,
         type: 'detection',
@@ -175,19 +289,30 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
         confidence: det.confidence || 0.8,
         // Show latency relative to nearest GT in this visualization
         latency_ms: gtLatencyMs,
-        // Preserve backend-reported real latency for reference/tooltips
-        real_latency_ms: det.real_latency_ms || det.detection_time_ms || det.corrected_latency?.real_latency_ms,
+        // Preserve backend-reported real latency for reference/tooltips (use actualLatencyMs from backend)
+        real_latency_ms: det.actualLatencyMs || det.actual_latency_ms || det.real_latency_ms || det.detection_time_ms,
         voltage: det.voltage || det.voltage_level,
         channel: det.channel || 'AIN0',
         passed: det.passed || det.validation_result === 'PASS',
+        validation_result: det.validation_result, // GT validation result from backend
+        latency_result: det.latency_result, // Latency threshold result from backend
         correlation_status: correlationStatus,
         frame_offset_ms: frameOffsetMs
       });
     });
-    
+
+    // Log final timestamp ranges
+    const detectionTimestamps = events.filter(e => e.type === 'detection').map(e => e.timestamp);
+    const gtTimestamps = events.filter(e => e.type === 'ground_truth').map(e => e.timestamp);
+
+    console.log(`[FrameCorrelation] Timestamp normalization complete:`);
+    console.log(`  Detection range: ${Math.min(...detectionTimestamps).toFixed(3)}s - ${Math.max(...detectionTimestamps).toFixed(3)}s`);
+    console.log(`  Ground truth range: ${Math.min(...gtTimestamps).toFixed(3)}s - ${Math.max(...gtTimestamps).toFixed(3)}s`);
+    console.log(`  Total events: ${events.length} (${events.filter(e => e.type === 'detection').length} detections, ${events.filter(e => e.type === 'ground_truth').length} GT)`);
+
     // Sort by timestamp
     return events.sort((a, b) => a.timestamp - b.timestamp);
-  }, [detectionEvents, groundTruthEvents, fps]);
+  }, [detectionEvents, groundTruthEvents, fps, normalizeTimestamp, videoMetadata]);
   
   // Calculate last detection time for UI display
   const lastDetectionTime = useMemo(() => {
@@ -467,21 +592,24 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
                     {event.type === 'detection' && (
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
                         {(() => {
-                          const toleranceMs = (2 / fps) * 1000; // ±2 frames
-                          const gtPass = typeof event.latency_ms === 'number' && Math.abs(event.latency_ms) <= toleranceMs;
+                          // Use the validation_result field from backend (TP/FP/FN/TN/PASS)
+                          const gtPass = event.validation_result === 'TP' || event.validation_result === 'PASS';
+                          const hasGtResult = event.validation_result !== null && event.validation_result !== undefined;
                           return (
-                            <Chip
-                              label={gtPass ? 'GT PASS' : 'GT FAIL'}
-                              color={gtPass ? 'success' : 'error'}
-                              size="small"
-                            />
+                            <Tooltip title={hasGtResult ? `Ground truth validation: ${event.validation_result}` : 'No GT validation result'}>
+                              <Chip
+                                label={hasGtResult ? (gtPass ? 'GT PASS' : 'GT FAIL') : 'GT N/A'}
+                                color={hasGtResult ? (gtPass ? 'success' : 'error') : 'default'}
+                                size="small"
+                              />
+                            </Tooltip>
                           );
                         })()}
-                        {typeof event.passed === 'boolean' && (
-                          <Tooltip title="Threshold status from backend (e.g., 100ms limit, voltage)">
+                        {event.latency_result && (
+                          <Tooltip title="Latency threshold status from backend (e.g., 100ms limit)">
                             <Chip
-                              label={event.passed ? 'thr PASS' : 'thr FAIL'}
-                              color={event.passed ? 'success' : 'error'}
+                              label={event.latency_result === 'pass' ? 'thr PASS' : 'thr FAIL'}
+                              color={event.latency_result === 'pass' ? 'success' : 'error'}
                               size="small"
                               variant="outlined"
                             />
@@ -510,8 +638,8 @@ const FrameCorrelationTimeline: React.FC<FrameCorrelationTimelineProps> = ({
         <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
           <Typography variant="caption" color="text.secondary">
             Frame correlation analysis: Detections are matched to ground truth events within a ±2 frame tolerance ({((2 / fps) * 1000).toFixed(1)}ms at {fps}fps).
-            Misaligned events may indicate timing synchronization issues. "Video Ended" events represent ground truth 
-            beyond the monitoring boundary (>{lastDetectionTime.toFixed(3)}s + 0.5s margin) and are excluded from alignment statistics.
+            Misaligned events may indicate timing synchronization issues. &quot;Video Ended&quot; events represent ground truth
+            beyond the monitoring boundary (&gt;{lastDetectionTime.toFixed(3)}s + 0.5s margin) and are excluded from alignment statistics.
           </Typography>
         </Box>
       </CardContent>

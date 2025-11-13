@@ -1,0 +1,60 @@
+[Unit]
+Description=HIL Backend API Service
+Documentation=https://github.com/yourorg/ai-model-validation-platform
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rigade
+Group=rigade
+WorkingDirectory=/home/rigade/Testing/ai-model-validation-platform/backend
+
+# Environment
+Environment="PATH=/usr/bin:/usr/local/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+
+# Load environment variables from .env file if exists
+EnvironmentFile=-/home/rigade/Testing/ai-model-validation-platform/backend/.env
+
+# Main process
+ExecStart=/usr/bin/python3 /home/rigade/Testing/ai-model-validation-platform/backend/main.py
+
+# Pre-start script to clear cache and prepare environment
+ExecStartPre=/bin/bash -c 'find /home/rigade/Testing/ai-model-validation-platform/backend -type f -name "*.pyc" -delete 2>/dev/null || true'
+ExecStartPre=/bin/bash -c 'find /home/rigade/Testing/ai-model-validation-platform/backend -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true'
+
+# Graceful shutdown
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=15
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/rigade/Testing/ai-model-validation-platform/backend/logs
+ReadWritePaths=/home/rigade/Testing/ai-model-validation-platform/backend/uploads
+ReadWritePaths=/home/rigade/Testing/ai-model-validation-platform/backend/dev_database.db
+ReadWritePaths=/home/rigade/Testing/ai-model-validation-platform/backend/screenshots
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hil-backend
+
+[Install]
+WantedBy=multi-user.target

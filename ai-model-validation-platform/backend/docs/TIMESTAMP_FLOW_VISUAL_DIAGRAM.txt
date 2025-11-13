@@ -1,0 +1,289 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║         COMPLETE DETECTION TIMESTAMP FLOW - VISUAL DIAGRAM                     ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+TIME AXIS (left to right) →
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 1: VIDEO SERVICE INITIALIZATION
+═══════════════════════════════════════════════════════════════════════════════
+
+T0: Video Timing Service Start
+    │
+    │ video_timing_service.py:162
+    │ labjack_start_time = time.time()  ◄── TIMESTAMP CAPTURED
+    │                                        (stored as reference time)
+    │
+    ├─── Service Init Delay (~5-10ms) ───────►│
+    │                                           │
+    │                                           T0+10ms
+    │                                           Video Player Start
+    │
+    ├─── Player Startup (~50-100ms) ──────────────────────►│
+    │                                                        │
+    │                                                        T0+110ms
+    │                                                        First Frame Ready
+    │
+    ├─── Frame Display (~16-33ms) ─────────────────────────────►│
+    │                                                             │
+    │                                                             T0+143ms
+    │                                                             ⚠️ ACTUAL PLAYBACK START
+    │                                                             ⚠️ NOT CAPTURED!
+    │
+═══════════════════════════════════════════════════════════════════════════════
+SYSTEMATIC ERROR ZONE: 71-143ms video startup NOT accounted for
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2: GROUND TRUTH EVENT TIMING
+═══════════════════════════════════════════════════════════════════════════════
+
+T1: Ground Truth Event in Video (e.g., 2.5 seconds into video)
+    │
+    │ timing_synchronization_calculator.py:164-169
+    │
+    │ video_start_system_time = labjack_start_time + (startup_delay_ms / 1000)
+    │                          = T0 + 1.8s (example startup_delay_ms)
+    │
+    │ gt_system_time = video_start_system_time + ground_truth_video_time
+    │                = T0 + 1.8s + 2.5s
+    │                = T0 + 4.3s  ◄── CALCULATED GT TIME
+    │
+    │                                      ⚠️ PROBLEM: Uses T0 (service start)
+    │                                      ⚠️          not T0+143ms (playback start)
+    │
+═══════════════════════════════════════════════════════════════════════════════
+GROUND TRUTH TIMING ERROR: If startup_delay_ms doesn't include video
+                           initialization (71-143ms), GT time is too early
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3: DETECTION PIPELINE
+═══════════════════════════════════════════════════════════════════════════════
+
+T2: Camera Sees Event
+    │
+    ├─── Camera Latency (~200ms) ────────────────────►│
+    │                                                   │
+    │                                                   T2+200ms
+    │                                                   Frame Captured
+    │
+    ├─── AI Processing (~50-100ms) ─────────────────────────►│
+    │                                                          │
+    │                                                          T2+300ms
+    │                                                          Voltage Signal Sent
+    │
+═══════════════════════════════════════════════════════════════════════════════
+EXPECTED TOTAL DETECTION LATENCY: ~250-300ms (Camera + AI)
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 4: HARDWARE TRIGGER & TIMESTAMP CAPTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+T3: LabJack Hardware Trigger
+    │
+    │ Hardware registers voltage signal
+    │ labjack_event.timestamp = T3  ◄── HARDWARE TIMESTAMP
+    │                                    (microsecond precision)
+    │
+    │ dedicated_labjack_monitor.py:367
+    │ try:
+    │     labjack_trigger_time = labjack_event.timestamp.timestamp()
+    │                          = T3  ◄── EXTRACTION SUCCESSFUL
+    │ except:
+    │     labjack_trigger_time = time.time()  ⚠️ WRONG if exception occurs!
+    │
+    ├─── Event Queue Delay (~0.5-1ms) ──────►│
+    │                                          │
+    │                                          T3+1ms
+    │                                          Event in Python Queue
+    │
+    ├─── Thread Scheduling (~0.5-2ms) ─────────────►│
+    │                                                 │
+    │                                                 T3+3ms
+    │                                                 Handler Thread Active
+    │
+    ├─── Python Processing (~0.5-1ms) ──────────────────►│
+    │                                                      │
+    │                                                      T3+4ms
+    │
+    │ dedicated_labjack_monitor.py:374
+    │ detection_record_time = time.time()  ◄── PROCESSING COMPLETION
+    │                       = T3 + 4ms
+    │
+═══════════════════════════════════════════════════════════════════════════════
+PROCESSING OVERHEAD: 1-5ms between hardware trigger and Python completion
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 5: DATABASE STORAGE (TWO TIMESTAMPS)
+═══════════════════════════════════════════════════════════════════════════════
+
+Database Record Created:
+    │
+    │ dedicated_labjack_monitor.py:636-653
+    │
+    ├─► timestamp             = labjack_trigger_time (T3) ✓ CORRECT
+    │                                                      ✓ Hardware trigger
+    │
+    ├─► labjack_timestamp     = labjack_trigger_time (T3) ✓ CORRECT
+    │                                                      ✓ Hardware trigger
+    │
+    ├─► labjack_timestamp_ns  = T3 * 1e9                  ✓ CORRECT
+    │                                                      ✓ Nanosecond precision
+    │
+    ├─► unix_timestamp        = detection_record_time     ✗ PROCESSING TIME
+    │                         = T3 + 4ms                   ✗ Includes overhead
+    │
+    └─► detection_timestamp   = datetime(T3 + 4ms)        ✗ PROCESSING TIME
+                                                           ✗ Includes overhead
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: Must use labjack_timestamp (T3) NOT unix_timestamp (T3+4ms)
+          for latency calculations to avoid +1-5ms systematic error
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 6: LATENCY CALCULATION
+═══════════════════════════════════════════════════════════════════════════════
+
+timing_synchronization_calculator.py:219
+
+real_latency_ms = (detection_system_time - gt_system_time) * 1000.0
+
+WHERE:
+    detection_system_time = ??? ◄── CRITICAL QUESTION:
+                                    Is this labjack_timestamp (T3) ✓ CORRECT
+                                    or unix_timestamp (T3+4ms)?  ✗ WRONG
+
+    gt_system_time = video_start_system_time + ground_truth_video_time
+                   = (labjack_start_time + startup_delay_ms/1000) + gt_video_time
+                   = (T0 + 1.8s) + 2.5s
+                   = T0 + 4.3s
+
+CALCULATION:
+    real_latency_ms = (T3 - (T0 + 4.3s)) * 1000
+
+═══════════════════════════════════════════════════════════════════════════════
+TOTAL LATENCY BREAKDOWN
+═══════════════════════════════════════════════════════════════════════════════
+
+Expected True Latency (Camera + AI only):
+    │
+    ├─► Camera Latency:          200ms
+    ├─► AI Processing:            75ms
+    ├─► Hardware Trigger:         <1ms
+    └─► TOTAL EXPECTED:           ~275ms
+
+Currently Reported Latency: 871ms (from logs)
+
+Systematic Errors in Current Implementation:
+    │
+    ├─► Video Start Mismatch:    +71-143ms  ◄── labjack_start_time too early
+    │                                            (service start vs playback start)
+    │
+    ├─► Wrong Timestamp Field:   +1-5ms     ◄── IF using unix_timestamp
+    │                                            instead of labjack_timestamp
+    │
+    ├─► Timestamp Fallback:      +1.5-4ms   ◄── IF exception occurs
+    │                                            (uses time.time() not hardware time)
+    │
+    ├─► Startup Delay Calc:      Variable   ◄── startup_delay_ms accuracy
+    │                                            depends on measurement method
+    │
+    └─► Thread Jitter:           ±0.5-2ms   ◄── OS scheduling variance
+
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+CORRECTED LATENCY CALCULATION (with all fixes)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. FIX: Capture actual video playback start time
+   video_playback_start = time.time()  # After first frame displayed
+
+2. FIX: Use hardware timestamp for detection
+   detection_system_time = labjack_timestamp  # NOT unix_timestamp
+
+3. FIX: Calculate GT time with actual playback start
+   gt_system_time = video_playback_start + ground_truth_video_time
+
+4. CALCULATE: Real latency
+   real_latency_ms = (detection_system_time - gt_system_time) * 1000.0
+                   = (T3 - (T0+143ms + 2.5s)) * 1000.0
+                   = ~275ms  ✓ CORRECT (matches expected)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+SUMMARY: TIMESTAMP SEMANTICS
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────┬──────────────────┬──────────────────────────────┐
+│ Timestamp Field         │ Represents       │ Use For                      │
+├─────────────────────────┼──────────────────┼──────────────────────────────┤
+│ labjack_timestamp       │ Hardware trigger │ ✓ Latency calculations       │
+│                         │ (T3)             │ ✓ Ground truth matching      │
+│                         │                  │ ✓ Performance validation     │
+├─────────────────────────┼──────────────────┼──────────────────────────────┤
+│ unix_timestamp          │ Processing done  │ ✗ NOT for latency            │
+│                         │ (T3 + 1-5ms)     │ ✓ Debugging only             │
+│                         │                  │ ✓ Processing overhead calc   │
+├─────────────────────────┼──────────────────┼──────────────────────────────┤
+│ labjack_start_time      │ Service start    │ ✗ NOT actual playback start  │
+│                         │ (T0)             │ ⚠️ Needs +71-143ms correction│
+└─────────────────────────┴──────────────────┴──────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+VERIFICATION REQUIRED
+═══════════════════════════════════════════════════════════════════════════════
+
+❓ QUESTION 1: Which timestamp field is used in enhanced_hil_results_endpoints.py?
+   → Check: Does query use labjack_timestamp or unix_timestamp?
+   → Expected: Should use labjack_timestamp (hardware time)
+
+❓ QUESTION 2: What does startup_delay_ms actually measure?
+   → Check: Does it include video initialization (71-143ms)?
+   → Expected: Should account for full delay from service start to playback
+
+❓ QUESTION 3: How often does timestamp extraction fail?
+   → Check: Log analysis for "Failed to extract timestamp" errors
+   → Expected: Should be 0% (hardware timestamp always available)
+
+❓ QUESTION 4: When is video_start_time actually set?
+   → Check: Is it service start or playback start?
+   → Expected: Should be playback start (after first frame)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+RECOMMENDED FIXES (Priority Order)
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ PRIORITY 1: Verify timestamp field usage in calculations
+   File: enhanced_hil_results_endpoints.py
+   Action: Confirm labjack_timestamp is used, not unix_timestamp
+
+✅ PRIORITY 2: Fix video start time capture
+   File: video_timing_service.py:162
+   Action: Capture timestamp AFTER video playback starts
+
+✅ PRIORITY 3: Remove timestamp extraction fallback
+   File: dedicated_labjack_monitor.py:371
+   Action: Don't use time.time() fallback - fail fast instead
+
+✅ PRIORITY 4: Add timing validation checks
+   File: dedicated_labjack_monitor.py:377
+   Action: Validate processing delay is <10ms, error if negative
+
+✅ PRIORITY 5: Document timestamp semantics
+   File: models.py (DetectionEvent class)
+   Action: Add clear docstring explaining which field to use
+
+═══════════════════════════════════════════════════════════════════════════════
+
+END OF VISUAL DIAGRAM
+Generated: 2025-10-29

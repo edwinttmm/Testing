@@ -1,0 +1,68 @@
+@startuml
+' ADAS Camera HIL Testing Platform Block Diagram
+title ADAS Camera HIL Testing Platform
+skinparam componentStyle rectangle
+skinparam noteBackgroundColor #FFF7CC
+skinparam noteBorderColor #AA8C00
+left to right direction
+
+actor "ADAS Test Engineer" as Engineer
+actor "Data Annotation Specialist" as Annotator
+
+rectangle "Data Management & Ground Truth" as DM {
+  rectangle "Video Ingestion\n(Upload, decode, catalog)" as VI
+  rectangle "Automated Annotation\n(AI bounding boxes + IDs)" as AA
+  rectangle "Annotation Validation & Editing UI" as AV
+  database "Video & Ground Truth Library" as VL
+}
+
+rectangle "Test Configuration" as TC {
+  rectangle "Project Workspace\n(Project builder & playlist)" as PW
+}
+
+rectangle "Test Execution" as TE {
+  rectangle "HIL Test Control UI\n(Session setup, LabJack status)" as HTC
+  rectangle "Playback & Sync Engine\n(Time 0 reference, expected events)" as PSE
+  rectangle "LabJack DAQ Interface\n(Signal capture, timestamps)" as LJ
+}
+
+rectangle "Analysis & Reporting" as AR {
+  rectangle "Performance Analyzer\n(Latency + detection outcomes)" as PA
+  rectangle "Report Generator\n(Summaries + failure snapshots)" as RG
+}
+
+Engineer --> VI : Upload footage
+Engineer --> PW : Build project playlists
+Engineer --> HTC : Launch HIL test run
+Engineer <-- RG : Review reports
+Annotator --> AV : Validate annotations
+
+VI --> AA : Processed videos
+AA --> AV : Pre-annotated footage
+AV --> VL : Validated ground truth
+VL --> PW : Select validated videos
+PW --> HTC : Playlist + latency threshold
+HTC --> PSE : Start playback session
+PSE --> LJ : Detection trigger expectations
+LJ --> PSE : Signal events + timestamps
+PSE --> PA : Expected event timeline
+LJ --> PA : Hardware signal log
+PA --> RG : Pass/fail + latency metrics
+RG --> VL : Failure snapshots metadata
+
+note top of PSE
+  Uses monotonic clock for sub-ms
+timestamp alignment
+end note
+
+note right of LJ
+  Interfaces with LabJack T7
+  Digital high/low capture
+end note
+
+note bottom of RG
+  Generates package of summary stats
+  and image excerpts for failures
+end note
+
+@enduml

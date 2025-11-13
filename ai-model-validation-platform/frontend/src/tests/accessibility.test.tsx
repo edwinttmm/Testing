@@ -202,9 +202,10 @@ describe('Accessibility Tests', () => {
       expect(listItem).toHaveAttribute('tabIndex', '0');
       expect(listItem).toHaveAttribute(
         'aria-label', 
-        'Test Session 1, Test Session, completed 2 hours ago, 92.5% accuracy'
+        'Test Session 1, Test Session, completed 2 hours ago, Accuracy Unknown at 92.5%, Latency Unknown'
       );
       
+      expect(screen.getByText('92.5% F1')).toBeInTheDocument();
       // Test focusability
       fireEvent.focus(listItem);
       expect(listItem).toHaveFocus();

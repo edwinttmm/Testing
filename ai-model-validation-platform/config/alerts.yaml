@@ -1,0 +1,247 @@
+# Production Alerting Configuration
+#
+# Configure alerting rules for Prometheus AlertManager or similar systems.
+# Adjust thresholds based on your SLAs and operational requirements.
+
+alerts:
+  # ============================================================================
+  # Critical Alerts (immediate action required)
+  # ============================================================================
+
+  - name: high_validation_failure_rate
+    severity: critical
+    description: More than 20% of sessions failing validation in last hour
+    condition: |
+      rate(hil_session_completions_total{status="validation_failed"}[1h]) /
+      rate(hil_session_completions_total[1h]) > 0.20
+    duration: 5m
+    annotations:
+      summary: "High validation failure rate detected"
+      description: "{{ $value | humanizePercentage }} of sessions failing validation"
+      runbook_url: "https://docs.company.com/runbooks/validation-failures"
+    actions:
+      - page_oncall
+      - post_to_slack
+
+  - name: database_connectivity_down
+    severity: critical
+    description: Database health checks failing
+    condition: |
+      up{job="hil-backend", endpoint="/health/ready"} == 0
+    duration: 1m
+    annotations:
+      summary: "Database connectivity lost"
+      description: "Backend cannot connect to PostgreSQL database"
+      runbook_url: "https://docs.company.com/runbooks/database-down"
+    actions:
+      - page_oncall
+      - post_to_slack
+
+  - name: memory_exhaustion
+    severity: critical
+    description: System memory usage above 95%
+    condition: |
+      hil_metrics_memory_percent_used > 95
+    duration: 3m
+    annotations:
+      summary: "Memory exhaustion imminent"
+      description: "Memory usage at {{ $value }}% - restart may be required"
+      runbook_url: "https://docs.company.com/runbooks/memory-exhaustion"
+    actions:
+      - page_oncall
+      - auto_restart_if_safe
+
+  # ============================================================================
+  # High Priority Alerts (action required within hours)
+  # ============================================================================
+
+  - name: session_timeout_spike
+    severity: high
+    description: More than 5 session timeouts in 10 minutes
+    condition: |
+      increase(hil_validation_failures_total{failure_reason="timeout"}[10m]) > 5
+    duration: 2m
+    annotations:
+      summary: "Session timeout spike detected"
+      description: "{{ $value }} sessions timed out in last 10 minutes"
+      runbook_url: "https://docs.company.com/runbooks/session-timeouts"
+    actions:
+      - post_to_slack
+      - email_team
+
+  - name: slow_matching_algorithm
+    severity: high
+    description: Ground truth matching taking longer than 5 seconds
+    condition: |
+      histogram_quantile(0.95, rate(hil_gt_matching_duration_seconds_bucket[5m])) > 5
+    duration: 5m
+    annotations:
+      summary: "Ground truth matching performance degraded"
+      description: "95th percentile matching time: {{ $value }}s"
+      runbook_url: "https://docs.company.com/runbooks/slow-matching"
+    actions:
+      - post_to_slack
+      - create_incident
+
+  - name: api_error_rate_elevated
+    severity: high
+    description: More than 5% of API requests failing
+    condition: |
+      rate(hil_api_requests_total{status_code=~"5.."}[5m]) /
+      rate(hil_api_requests_total[5m]) > 0.05
+    duration: 5m
+    annotations:
+      summary: "API error rate elevated"
+      description: "{{ $value | humanizePercentage }} of API requests failing"
+      runbook_url: "https://docs.company.com/runbooks/api-errors"
+    actions:
+      - post_to_slack
+      - email_team
+
+  # ============================================================================
+  # Warning Alerts (investigate when convenient)
+  # ============================================================================
+
+  - name: disk_space_low
+    severity: warning
+    description: Disk usage above 80%
+    condition: |
+      hil_metrics_disk_percent_used > 80
+    duration: 10m
+    annotations:
+      summary: "Disk space running low"
+      description: "Disk usage at {{ $value }}%"
+      runbook_url: "https://docs.company.com/runbooks/disk-space"
+    actions:
+      - post_to_slack
+
+  - name: slow_api_requests
+    severity: warning
+    description: More than 10 slow requests (>1s) in 5 minutes
+    condition: |
+      increase(hil_slow_requests_total[5m]) > 10
+    duration: 5m
+    annotations:
+      summary: "Elevated slow API request count"
+      description: "{{ $value }} requests took longer than 1 second"
+      runbook_url: "https://docs.company.com/runbooks/slow-requests"
+    actions:
+      - post_to_slack
+
+  - name: websocket_connection_drop
+    severity: warning
+    description: WebSocket connections dropped significantly
+    condition: |
+      rate(hil_websocket_errors_total[5m]) > 5
+    duration: 5m
+    annotations:
+      summary: "WebSocket connection issues"
+      description: "{{ $value }} WebSocket errors per second"
+      runbook_url: "https://docs.company.com/runbooks/websocket-errors"
+    actions:
+      - post_to_slack
+
+  - name: race_condition_frequency
+    severity: warning
+    description: Frequent race conditions detected (NULL video IDs)
+    condition: |
+      increase(hil_race_conditions_detected_total[10m]) > 20
+    duration: 5m
+    annotations:
+      summary: "Frequent race conditions detected"
+      description: "{{ $value }} race conditions in last 10 minutes"
+      runbook_url: "https://docs.company.com/runbooks/race-conditions"
+    actions:
+      - post_to_slack
+      - create_ticket
+
+  # ============================================================================
+  # Informational Alerts (awareness only)
+  # ============================================================================
+
+  - name: low_test_pass_rate
+    severity: info
+    description: Test pass rate below 70% over 24 hours
+    condition: |
+      hil_test_pass_rate{time_window="24h"} < 0.70
+    duration: 30m
+    annotations:
+      summary: "Test pass rate below target"
+      description: "Only {{ $value | humanizePercentage }} of tests passing"
+      runbook_url: "https://docs.company.com/runbooks/low-pass-rate"
+    actions:
+      - post_to_slack
+
+  - name: high_detection_latency
+    severity: info
+    description: Mean detection latency above 150ms
+    condition: |
+      histogram_quantile(0.50, rate(hil_detection_latency_milliseconds_bucket[10m])) > 150
+    duration: 15m
+    annotations:
+      summary: "Detection latency elevated"
+      description: "Median latency: {{ $value }}ms"
+      runbook_url: "https://docs.company.com/runbooks/high-latency"
+    actions:
+      - post_to_slack
+
+# ============================================================================
+# Alert Routing Configuration
+# ============================================================================
+
+routes:
+  - severity: critical
+    receivers:
+      - pagerduty_oncall
+      - slack_critical
+      - email_ops_team
+    repeat_interval: 15m
+
+  - severity: high
+    receivers:
+      - slack_alerts
+      - email_ops_team
+    repeat_interval: 1h
+
+  - severity: warning
+    receivers:
+      - slack_alerts
+    repeat_interval: 4h
+
+  - severity: info
+    receivers:
+      - slack_info
+    repeat_interval: 24h
+
+# ============================================================================
+# Receiver Configuration (examples)
+# ============================================================================
+
+receivers:
+  pagerduty_oncall:
+    type: pagerduty
+    service_key: ${PAGERDUTY_SERVICE_KEY}
+
+  slack_critical:
+    type: slack
+    webhook_url: ${SLACK_CRITICAL_WEBHOOK}
+    channel: "#incidents"
+    username: "HIL Alerts - CRITICAL"
+
+  slack_alerts:
+    type: slack
+    webhook_url: ${SLACK_ALERTS_WEBHOOK}
+    channel: "#hil-alerts"
+    username: "HIL Monitoring"
+
+  slack_info:
+    type: slack
+    webhook_url: ${SLACK_INFO_WEBHOOK}
+    channel: "#hil-info"
+    username: "HIL Info"
+
+  email_ops_team:
+    type: email
+    to: ops-team@company.com
+    from: alerts@company.com
+    smtp_smarthost: smtp.company.com:587

@@ -11,6 +11,17 @@ from schemas import TestSessionCreate
 
 logger = logging.getLogger(__name__)
 
+# Global sequence counter for lifecycle events
+_lifecycle_event_sequence = 0
+_sequence_lock = asyncio.Lock()
+
+async def get_next_sequence_number() -> int:
+    """Get next sequence number for lifecycle events (thread-safe)."""
+    global _lifecycle_event_sequence
+    async with _sequence_lock:
+        _lifecycle_event_sequence += 1
+        return _lifecycle_event_sequence
+
 # Create Socket.IO server with secure CORS configuration and enhanced settings
 sio = socketio.AsyncServer(
     async_mode='asgi',
@@ -105,29 +116,31 @@ async def connect(sid, environ, auth):
 async def disconnect(sid):
     """Handle client disconnections with comprehensive cleanup"""
     logger.info(f"Client {sid} disconnected")
-    
+
     try:
         # Clean up any active sessions for this client
         sessions_to_remove = []
         for session_id, session_data in active_sessions.items():
-            if (session_data.get('client_id') == sid or 
-                session_id == f"client_{sid}" or 
+            if (session_data.get('client_id') == sid or
+                session_id == f"client_{sid}" or
                 session_data.get('sid') == sid):
                 sessions_to_remove.append(session_id)
-        
+
         for session_id in sessions_to_remove:
+            # Leave session room before deleting
+            await sio.leave_room(sid, f"session_{session_id}")
             del active_sessions[session_id]
             logger.info(f"Cleaned up session {session_id} for disconnected client {sid}")
-        
+
         # Leave all rooms
         await sio.leave_room(sid, 'general')
-        
+
         # Notify other clients in relevant rooms about disconnection
         await sio.emit('client_disconnected', {
             'sid': sid,
             'timestamp': asyncio.get_event_loop().time()
         }, room='general', skip_sid=sid)
-        
+
     except Exception as e:
         logger.error(f"Error during client {sid} disconnection cleanup: {str(e)}")
 
@@ -200,8 +213,87 @@ async def stop_test_session(sid, data):
         }, room=sid)
 
 @sio.event
+async def join_session(sid, data):
+    """Client joins room for their test session - enables room-based event isolation"""
+    try:
+        session_id = data.get('session_id')
+
+        if not session_id:
+            await sio.emit('error', {
+                'message': 'session_id required to join session room'
+            }, room=sid)
+            return {'error': 'session_id required'}
+
+        # Validate session exists
+        db = SessionLocal()
+        try:
+            from models import TestSession
+            session = db.query(TestSession).filter(TestSession.id == session_id).first()
+
+            if not session:
+                await sio.emit('error', {
+                    'message': f'Invalid session_id: {session_id}'
+                }, room=sid)
+                return {'error': 'Invalid session_id'}
+
+            # Join session-specific room
+            room_name = f"session_{session_id}"
+            await sio.enter_room(sid, room_name)
+
+            logger.info(f"✅ Client {sid} joined session room: {room_name}")
+
+            # Send confirmation with session info
+            await sio.emit('joined_session', {
+                'session_id': session_id,
+                'status': session.status,
+                'room': room_name,
+                'timestamp': asyncio.get_event_loop().time()
+            }, room=sid)
+
+            return {'success': True, 'room': room_name}
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error handling join_session for client {sid}: {str(e)}")
+        await sio.emit('error', {
+            'message': f'Failed to join session: {str(e)}'
+        }, room=sid)
+        return {'error': str(e)}
+
+@sio.event
+async def leave_session(sid, data):
+    """Client leaves session room"""
+    try:
+        session_id = data.get('session_id')
+
+        if not session_id:
+            await sio.emit('error', {
+                'message': 'session_id required to leave session room'
+            }, room=sid)
+            return {'error': 'session_id required'}
+
+        room_name = f"session_{session_id}"
+        await sio.leave_room(sid, room_name)
+
+        logger.info(f"Client {sid} left session room: {room_name}")
+
+        await sio.emit('left_session', {
+            'session_id': session_id,
+            'room': room_name,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=sid)
+
+        return {'success': True}
+
+    except Exception as e:
+        logger.error(f"Error handling leave_session for client {sid}: {str(e)}")
+        return {'error': str(e)}
+
+@sio.event
 async def join_room(sid, data):
-    """Allow clients to join specific rooms"""
+    """Allow clients to join specific rooms (legacy support)"""
     room = data.get('room')
     if room:
         await sio.enter_room(sid, room)
@@ -406,7 +498,7 @@ async def subscribe_to_updates(sid, data):
     try:
         subscription_type = data.get('type')
         target_id = data.get('target_id')
-        
+
         if subscription_type == 'session' and target_id:
             room = f"test_session_{target_id}"
             await sio.enter_room(sid, room)
@@ -415,30 +507,109 @@ async def subscribe_to_updates(sid, data):
                 'target_id': target_id,
                 'room': room
             }, room=sid)
-            
+
         elif subscription_type == 'detections':
             await sio.enter_room(sid, 'detections')
             await sio.emit('subscription_confirmed', {
                 'type': 'detections',
                 'room': 'detections'
             }, room=sid)
-            
+
         elif subscription_type == 'general':
             await sio.enter_room(sid, 'general')
             await sio.emit('subscription_confirmed', {
                 'type': 'general',
                 'room': 'general'
             }, room=sid)
-            
+
         else:
             await sio.emit('subscription_error', {
                 'message': f'Unknown subscription type: {subscription_type}'
             }, room=sid)
-            
+
     except Exception as e:
         logger.error(f"Error handling subscription for {sid}: {str(e)}")
         await sio.emit('subscription_error', {
             'message': f'Subscription failed: {str(e)}'
+        }, room=sid)
+
+@sio.event
+async def subscribe_sequence(sid, data):
+    """Handle video sequence subscription requests for multi-video testing"""
+    try:
+        sequence_id = data.get('sequence_id')
+
+        if not sequence_id:
+            await sio.emit('subscription_error', {
+                'message': 'sequence_id is required for sequence subscription',
+                'error_type': 'missing_parameter'
+            }, room=sid)
+            return
+
+        # Validate sequence_id format
+        if not isinstance(sequence_id, str) or not sequence_id.strip():
+            await sio.emit('subscription_error', {
+                'message': 'Invalid sequence_id format',
+                'error_type': 'invalid_parameter'
+            }, room=sid)
+            return
+
+        # Join sequence-specific room
+        room = f"sequence_{sequence_id}"
+        await sio.enter_room(sid, room)
+
+        logger.info(f"Client {sid} subscribed to sequence {sequence_id}")
+
+        # Send subscription confirmation with metadata
+        await sio.emit('subscription_confirmed', {
+            'type': 'sequence',
+            'sequence_id': sequence_id,
+            'room': room,
+            'timestamp': asyncio.get_event_loop().time(),
+            'events': ['video_transition', 'video_completed', 'sequence_completed']
+        }, room=sid)
+
+    except Exception as e:
+        logger.error(f"Error handling sequence subscription for {sid}: {str(e)}")
+        await sio.emit('subscription_error', {
+            'message': f'Sequence subscription failed: {str(e)}',
+            'error_type': 'subscription_error',
+            'sequence_id': data.get('sequence_id')
+        }, room=sid)
+
+@sio.event
+async def unsubscribe_sequence(sid, data):
+    """Handle video sequence unsubscription requests"""
+    try:
+        sequence_id = data.get('sequence_id')
+
+        if not sequence_id:
+            await sio.emit('subscription_error', {
+                'message': 'sequence_id is required for sequence unsubscription',
+                'error_type': 'missing_parameter'
+            }, room=sid)
+            return
+
+        # Leave sequence-specific room
+        room = f"sequence_{sequence_id}"
+        await sio.leave_room(sid, room)
+
+        logger.info(f"Client {sid} unsubscribed from sequence {sequence_id}")
+
+        # Send unsubscription confirmation
+        await sio.emit('unsubscription_confirmed', {
+            'type': 'sequence',
+            'sequence_id': sequence_id,
+            'room': room,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=sid)
+
+    except Exception as e:
+        logger.error(f"Error handling sequence unsubscription for {sid}: {str(e)}")
+        await sio.emit('subscription_error', {
+            'message': f'Sequence unsubscription failed: {str(e)}',
+            'error_type': 'unsubscription_error',
+            'sequence_id': data.get('sequence_id')
         }, room=sid)
 
 # WebSocket event handlers for timing synchronization
@@ -481,69 +652,345 @@ async def subscribe_hardware_signals(sid, data):
 
 @sio.event
 async def video_started(sid, data):
-    """Handle video started events for timing synchronization"""
+    """Handle video started events for timing synchronization AND video_id assignment"""
     try:
         session_id = data.get('sessionId')
+        video_id = data.get('videoId')  # CRITICAL: Must include video_id for detection assignment
+        sequence_id = data.get('sequenceId')  # For multi-video sequences
         video_start_time = data.get('videoStartTime')
         setup_delay = data.get('setupDelay')
-        
+
         if not session_id:
             await sio.emit('error', {
                 'message': 'sessionId is required for video started event'
             }, room=sid)
             return
-        
-        logger.info(f"Video started event received from client {sid} for session {session_id}")
-        
+
+        # AGENT #40 FIX: Ensure room exists before emitting
+        # This safeguard prevents event loss if session was created but client hasn't joined yet
+        room = f"session_{session_id}"
+
+        # Check if room exists in manager
+        try:
+            # Get all rooms for the default namespace
+            namespace_rooms = sio.manager.rooms.get('/', {})
+
+            if room not in namespace_rooms:
+                # Room doesn't exist yet - create it by having a "system" client join
+                logger.warning(f"⚠️ AGENT #40: Room {room} doesn't exist, auto-creating for early event")
+                # The room will be implicitly created when we emit to it
+                # No need to explicitly create - Socket.IO handles this
+            else:
+                logger.debug(f"✅ AGENT #40: Room {room} exists with {len(namespace_rooms[room])} clients")
+
+        except Exception as room_check_error:
+            logger.debug(f"Room check skipped (this is normal): {room_check_error}")
+            # Continue - room will be created implicitly on emit
+
+        if not video_id:
+            logger.warning(f"Video started event missing video_id for session {session_id}")
+
+        # CLOCK SYNC VALIDATION: Verify frontend timestamp synchronization
+        if video_start_time:
+            try:
+                from services.clock_sync_service import validate_clock_sync, ClockSkewError, log_clock_drift_metrics
+
+                # Log drift metrics for monitoring
+                drift_metrics = log_clock_drift_metrics(
+                    frontend_timestamp=video_start_time,
+                    context=f"video_started_{video_id}"
+                )
+
+                # Validate clock sync (raises ClockSkewError if drift exceeds tolerance)
+                validate_clock_sync(
+                    frontend_timestamp=video_start_time,
+                    max_frontend_drift_seconds=5.0
+                )
+
+                logger.debug(f"✅ Clock sync validated for video_started (drift: {drift_metrics['frontend_drift_abs_ms']:.1f}ms)")
+
+            except ClockSkewError as clock_error:
+                logger.error(f"❌ CLOCK SKEW DETECTED on video_started event:")
+                logger.error(f"   Drift: {clock_error.drift_seconds:.3f}s exceeds 5.0s tolerance")
+                logger.error(f"   Session: {session_id}, Video: {video_id}")
+
+                # Reject the event and notify client
+                await sio.emit('error', {
+                    'message': f'Clock skew detected: {clock_error.drift_seconds:.3f}s drift exceeds tolerance',
+                    'error_type': 'clock_skew',
+                    'drift_seconds': clock_error.drift_seconds,
+                    'max_tolerance_seconds': 5.0
+                }, room=sid)
+                return
+
+        logger.info(f"Video started event received from client {sid} for session {session_id}, video {video_id}")
+
+        # ✅ CRITICAL FIX AGENT 2: Update TestSession.video_id for detection assignment
+        if session_id and video_id:
+            db = SessionLocal()
+            try:
+                from models import TestSession
+
+                # Update the session's current video_id
+                session = db.query(TestSession).filter(
+                    TestSession.id == session_id
+                ).first()
+
+                if session:
+                    session.video_id = video_id
+                    db.commit()
+                    logger.info(f"✅ AGENT 2: Updated TestSession.video_id={video_id} for session {session_id}")
+                else:
+                    logger.error(f"❌ AGENT 2: TestSession {session_id} not found")
+            except Exception as session_error:
+                logger.error(f"❌ AGENT 2: Failed to update TestSession.video_id: {session_error}")
+                db.rollback()
+            finally:
+                db.close()
+
+        # CRITICAL FIX: Notify orchestrator to enable video_id assignment for incoming detections
+        if sequence_id and video_id and video_start_time:
+            try:
+                from services.video_sequence_orchestrator import get_video_sequence_orchestrator
+                orchestrator = get_video_sequence_orchestrator()
+
+                # Open database session for orchestrator
+                db = SessionLocal()
+                try:
+                    success = orchestrator.notify_video_started(
+                        sequence_id=sequence_id,
+                        video_id=video_id,
+                        actual_start_timestamp=video_start_time,
+                        db=db
+                    )
+                    if success:
+                        logger.info(f"✅ Orchestrator notified: video {video_id} started in sequence {sequence_id}")
+                    else:
+                        logger.error(f"❌ Orchestrator failed to process video started event")
+                finally:
+                    db.close()
+            except Exception as orch_error:
+                logger.error(f"Failed to notify orchestrator of video start: {orch_error}")
+
+        # QUEEN'S PROTOCOL #37: Invalidate cache and pre-generate clamped windows
+        if session_id:
+            try:
+                from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
+                labjack_monitor = get_dedicated_labjack_monitor()
+                labjack_monitor.invalidate_sequence_cache(session_id)
+                logger.info(f"✅ QUEEN #37: Cache invalidated and windows pre-generated for session {session_id}")
+            except Exception as cache_error:
+                logger.error(f"❌ Failed to invalidate cache on video_started: {cache_error}")
+
         # Record video timing in synchronization service
         try:
             from services.timing_synchronization_service import timing_sync_service
             timing_sync_service.record_video_event(session_id, 'play_start', video_start_time)
-            
+
             if setup_delay:
                 logger.info(f"Video setup took {setup_delay:.1f}ms for session {session_id}")
         except Exception as timing_error:
             logger.warning(f"Failed to record video timing: {timing_error}")
-        
-        # Broadcast to session room
+
+        # Get sequence number for event ordering
+        sequence_number = await get_next_sequence_number()
+
+        # ISSUE #1 FIX: Change event names to match frontend expectations
+        # Frontend expects 'video_started' and 'video_ended' NOT 'video_transition'
+
+        # CRITICAL FIX #3: Broadcast with camelCase fields to match frontend
+        # PROTOCOL #39: Add sequence_number for frontend event ordering
         room = f"test_session_{session_id}"
-        await sio.emit('video_timing_update', {
-            'session_id': session_id,
-            'video_start_time': video_start_time,
-            'setup_delay': setup_delay,
+        await sio.emit('video_lifecycle', {
+            'event': 'video_started',
+            'sequence_number': sequence_number,
+            'sessionId': session_id,
+            'videoId': video_id,
+            'sequenceId': sequence_id,
+            'videoStartTime': video_start_time,
+            'setupDelay': setup_delay,
             'timestamp': asyncio.get_event_loop().time()
         }, room=room)
-        
-        # Send confirmation back to sender
+
+        # Send confirmation back to sender with camelCase
         await sio.emit('video_started_confirmed', {
-            'session_id': session_id,
-            'recorded_time': video_start_time,
+            'sessionId': session_id,
+            'videoId': video_id,
+            'sequenceId': sequence_id,
+            'recordedTime': video_start_time,
+            'sequence_number': sequence_number,
             'timestamp': asyncio.get_event_loop().time()
         }, room=sid)
-        
+
     except Exception as e:
         logger.error(f"Error handling video started event: {str(e)}")
         await sio.emit('error', {
             'message': f'Video started event handling failed: {str(e)}'
         }, room=sid)
 
+@sio.event
+async def video_ended(sid, data):
+    """Handle video ended events for lifecycle management and result evaluation"""
+    try:
+        session_id = data.get('sessionId')
+        video_id = data.get('videoId')
+        sequence_id = data.get('sequenceId')
+        video_end_time = data.get('videoEndTime')
+        actual_duration = data.get('actualDuration')
+
+        if not session_id:
+            await sio.emit('error', {
+                'message': 'sessionId is required for video ended event'
+            }, room=sid)
+            return
+
+        # AGENT #40 FIX: Ensure room exists before emitting
+        room = f"session_{session_id}"
+
+        try:
+            namespace_rooms = sio.manager.rooms.get('/', {})
+            if room not in namespace_rooms:
+                logger.warning(f"⚠️ AGENT #40: Room {room} doesn't exist for video_ended, auto-creating")
+            else:
+                logger.debug(f"✅ AGENT #40: Room {room} exists for video_ended event")
+        except Exception as room_check_error:
+            logger.debug(f"Room check skipped: {room_check_error}")
+
+        logger.info(f"Video ended event received from client {sid} for session {session_id}, video {video_id}")
+
+        # CRITICAL FIX: Persist video_end_time and actual_duration_ms to SequenceVideoResult table IMMEDIATELY
+        if sequence_id and video_id and video_end_time:
+            db = SessionLocal()
+            try:
+                from models import VideoTestSequence, SequenceVideoResult
+
+                # Find VideoTestSequence by sequence_id
+                video_sequence = db.query(VideoTestSequence).filter(
+                    VideoTestSequence.id == sequence_id
+                ).first()
+
+                if video_sequence:
+                    # Find SequenceVideoResult for this video
+                    video_result = db.query(SequenceVideoResult).filter(
+                        SequenceVideoResult.video_sequence_id == video_sequence.id,
+                        SequenceVideoResult.video_id == video_id
+                    ).first()
+
+                    if video_result:
+                        # Update video_end_time and calculate actual_duration_ms
+                        video_result.video_end_time = video_end_time
+                        video_result.video_status = "completed"
+
+                        # Calculate actual_duration_ms if video_start_time exists
+                        if video_result.video_start_time:
+                            video_result.actual_duration_ms = (video_end_time - video_result.video_start_time) * 1000.0
+                            logger.info(f"✅ PERSISTED video_end_time={video_end_time:.6f}, actual_duration_ms={video_result.actual_duration_ms:.2f} for video {video_id}")
+                        else:
+                            logger.warning(f"⚠️ video_start_time is NULL - cannot calculate actual_duration_ms for video {video_id}")
+
+                        db.commit()
+                    else:
+                        logger.error(f"❌ ERROR: SequenceVideoResult not found for video {video_id} in sequence {sequence_id}")
+                else:
+                    logger.error(f"❌ ERROR: VideoTestSequence not found for sequence_id {sequence_id}")
+            except Exception as db_error:
+                logger.error(f"❌ FAILED to persist video_end_time to database: {db_error}")
+                db.rollback()
+            finally:
+                db.close()
+
+        # CRITICAL FIX: Notify orchestrator to evaluate video results and stop detection assignment
+        if sequence_id and video_id and video_end_time:
+            try:
+                from services.video_sequence_orchestrator import get_video_sequence_orchestrator
+                orchestrator = get_video_sequence_orchestrator()
+
+                # Open database session for orchestrator
+                db = SessionLocal()
+                try:
+                    success = orchestrator.notify_video_ended(
+                        sequence_id=sequence_id,
+                        video_id=video_id,
+                        actual_end_timestamp=video_end_time,
+                        db=db
+                    )
+                    if success:
+                        logger.info(f"✅ Orchestrator notified: video {video_id} ended in sequence {sequence_id}")
+                        logger.info(f"   Actual duration: {actual_duration:.2f}s" if actual_duration else "   Duration not provided")
+                    else:
+                        logger.error(f"❌ Orchestrator failed to process video ended event")
+                finally:
+                    db.close()
+            except Exception as orch_error:
+                logger.error(f"Failed to notify orchestrator of video end: {orch_error}")
+
+        # QUEEN'S PROTOCOL #37: Invalidate cache and pre-generate clamped windows
+        if session_id:
+            try:
+                from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
+                labjack_monitor = get_dedicated_labjack_monitor()
+                labjack_monitor.invalidate_sequence_cache(session_id)
+                logger.info(f"✅ QUEEN #37: Cache invalidated and windows pre-generated for session {session_id}")
+            except Exception as cache_error:
+                logger.error(f"❌ Failed to invalidate cache on video_ended: {cache_error}")
+
+        # Get sequence number for event ordering
+        sequence_number = await get_next_sequence_number()
+
+        # Calculate duration in milliseconds for consistency
+        duration_ms = None
+        if actual_duration is not None:
+            duration_ms = actual_duration * 1000.0
+
+        # CRITICAL FIX #3: Emit 'video_ended' with camelCase to match frontend
+        # PROTOCOL #39: Add sequence_number for frontend event ordering
+
+        # Broadcast to session room with camelCase fields
+        room = f"test_session_{session_id}"
+        await sio.emit('video_lifecycle', {
+            'event': 'video_ended',
+            'sequence_number': sequence_number,
+            'sessionId': session_id,
+            'videoId': video_id,
+            'sequenceId': sequence_id,
+            'videoEndTime': video_end_time,
+            'actualDuration': actual_duration,
+            'duration_ms': duration_ms,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=room)
+
+        # Send confirmation back to sender with camelCase
+        await sio.emit('video_ended_confirmed', {
+            'sessionId': session_id,
+            'videoId': video_id,
+            'sequenceId': sequence_id,
+            'recordedTime': video_end_time,
+            'sequence_number': sequence_number,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=sid)
+
+    except Exception as e:
+        logger.error(f"Error handling video ended event: {str(e)}")
+        await sio.emit('error', {
+            'message': f'Video ended event handling failed: {str(e)}'
+        }, room=sid)
+
 # Enhanced utility functions
 async def emit_hil_status_update(session_id: str, status_data: dict):
-    """Emit HIL-specific status updates"""
+    """Emit HIL-specific status updates to session room only"""
     try:
         enhanced_data = {
             **status_data,
-            'session_id': session_id,
             'timestamp': asyncio.get_event_loop().time(),
             'update_type': 'hil_status'
         }
-        
-        room = f"test_session_{session_id}"
+
+        # Emit to session room only (no session_id in payload - already scoped by room)
+        room = f"session_{session_id}"
         await sio.emit('hil_status_update', enhanced_data, room=room)
-        await sio.emit('hil_status_update', enhanced_data, room='general')
-        
-        logger.debug(f"Emitted HIL status update for session {session_id}")
-        
+
+        logger.debug(f"Emitted HIL status update to session room {room}")
+
     except Exception as e:
         logger.error(f"Failed to emit HIL status update: {str(e)}")
 

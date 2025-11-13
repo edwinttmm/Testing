@@ -42,8 +42,8 @@
     "start:dev": "npm start",
     "start:open": "SKIP_PREFLIGHT_CHECK=true DISABLE_ESLINT_PLUGIN=true TSC_COMPILE_ON_ERROR=true ESLINT_NO_DEV_ERRORS=true GENERATE_SOURCEMAP=false PORT=3000 node --max-old-space-size=2048 node_modules/.bin/craco start",
     "start:docker": "SKIP_PREFLIGHT_CHECK=true DISABLE_GPU_CHECK=true node --max-old-space-size=4096 node_modules/.bin/craco start",
-    "build": "node --max-old-space-size=8192 node_modules/.bin/craco build",
-    "build:dev": "NODE_OPTIONS='--max-old-space-size=4096' GENERATE_SOURCEMAP=false craco build",
+    "build": "node --max-old-space-size=8192 node_modules/.bin/craco build && node scripts/inject-build-time.js",
+    "build:dev": "NODE_OPTIONS='--max-old-space-size=4096' GENERATE_SOURCEMAP=false craco build && node scripts/inject-build-time.js",
     "build:docker": "SKIP_PREFLIGHT_CHECK=true GENERATE_SOURCEMAP=false node --max-old-space-size=6144 node_modules/.bin/craco build",
     "test": "craco test",
     "test:docker": "craco test --watchAll=false --passWithNoTests",
@@ -76,7 +76,11 @@
     "test:simple-video": "node -r ts-node/register src/tests/runSimpleVideoTest.ts",
     "test:video-simple": "jest src/tests/video-sequential-simple.test.tsx --verbose --detectOpenHandles --forceExit",
     "start:minimal": "NODE_ENV=development npx webpack serve --config webpack.minimal.js",
-    "start:nuclear": "node start-nuclear.js"
+    "start:nuclear": "node start-nuclear.js",
+    "cache:clear": "bash scripts/nuclear-cache-clear.sh",
+    "cache:clear-full": "bash scripts/nuclear-cache-clear.sh --full",
+    "verify:fix": "bash scripts/verify-fix.sh",
+    "deploy:prod": "npm run cache:clear && npm run build && npx serve -s build"
   },
   "eslintConfig": {
     "extends": [

@@ -374,9 +374,12 @@ export function mapYoloClassToVRUType(className: string): string {
 
 /**
  * Type guard for valid WebSocket data
+ * Updated to allow more flexible data formats for various WebSocket events
  */
 export function isValidWebSocketData(data: unknown): data is Record<string, unknown> {
-  return isObject(data) && ('type' in data || 'event' in data);
+  // Allow objects with type, event, or any valid key-value pairs
+  // This supports various WebSocket message formats including subscriptions
+  return isObject(data);
 }
 
 /**

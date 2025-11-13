@@ -45,6 +45,15 @@ class WebSocketService {
   private lastError: Error | null = null;
   private connectionQueue: (() => void)[] = [];
 
+  // PROTOCOL #39: Event buffer and ordering for lifecycle events
+  private eventBuffer: Map<number, any> = new Map();
+  private lastProcessedSequence: number = 0;
+
+  // PROTOCOL #47: Auto-rejoin session rooms on reconnection
+  private currentSessionId: string | null = null;
+  private pendingEvents: any[] = [];
+  private isReconnecting: boolean = false;
+
   constructor(options: WebSocketServiceOptions = {}) {
     this.options = {
       autoConnect: true,
@@ -144,6 +153,67 @@ class WebSocketService {
     }
   }
 
+  // Join a test session room for event isolation
+  joinSession(sessionId: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || this.connectionState !== 'connected') {
+        reject(new Error('WebSocket not connected - cannot join session room'));
+        return;
+      }
+
+      if (!sessionId) {
+        reject(new Error('session_id required to join session room'));
+        return;
+      }
+
+      console.log(`📥 Joining session room: ${sessionId}`);
+
+      // Emit join_session event
+      this.socket.emit('join_session', { session_id: sessionId });
+
+      // Wait for confirmation with timeout
+      const timeout = setTimeout(() => {
+        reject(new Error('Session join timeout'));
+      }, 5000);
+
+      this.socket.once('session_joined', (data: any) => {
+        clearTimeout(timeout);
+        console.log(`✅ Joined session room: ${data.room || sessionId}`);
+        this.currentSessionId = sessionId;
+        resolve(true);
+      });
+    });
+  }
+
+  // Leave a test session room
+  leaveSession(sessionId: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        // Already disconnected, consider it success
+        resolve(true);
+        return;
+      }
+
+      if (!sessionId) {
+        reject(new Error('session_id required to leave session room'));
+        return;
+      }
+
+      console.log(`📤 Leaving session room: ${sessionId}`);
+
+      this.socket.emit('leave_session', { session_id: sessionId }, (response: any) => {
+        if (response && response.success) {
+          console.log(`✅ Successfully left session room: ${sessionId}`);
+          resolve(true);
+        } else {
+          const error = response?.error || 'Unknown error leaving session';
+          console.error(`❌ Failed to leave session room: ${error}`);
+          reject(new Error(error));
+        }
+      });
+    });
+  }
+
   connect(): Promise<boolean> {
     return new Promise((resolve, reject) => {
       // If URL not resolved yet, queue the connection
@@ -196,10 +266,9 @@ class WebSocketService {
           this.metrics.lastConnected = new Date();
           this.metrics.isStable = true;
           this.lastError = null;
-          
-          // Subscribe to general updates immediately after connection
-          this.socket?.emit('subscribe_to_updates', { type: 'general' });
-          
+
+          // Note: No longer subscribing to general updates - clients join session rooms instead
+
           this.startHeartbeat();
           this.notifySubscribers('connection', { status: 'connected', metrics: this.metrics });
           resolve(true);
@@ -250,18 +319,39 @@ class WebSocketService {
           this.notifySubscribers('connection', { status: 'reconnecting', attempt });
         });
 
+        // PROTOCOL #47: Track reconnection attempts
+        this.socket.on('reconnect_attempt', (attemptNumber) => {
+          console.log(`🔄 Reconnection attempt ${attemptNumber}/10`);
+        });
+
         // Successful reconnection
-        this.socket.on('reconnect', (attempt) => {
+        this.socket.on('reconnect', async (attempt) => {
           console.log(`✅ Socket.IO reconnected to ${this.url} after ${attempt} attempts`);
           this.connectionState = 'connected';
           this.metrics.lastConnected = new Date();
           this.metrics.isStable = true;
-          
-          // Re-subscribe to updates after reconnection
-          this.socket?.emit('subscribe_to_updates', { type: 'general' });
-          
+          this.isReconnecting = true;
+
+          // PROTOCOL #47: Auto-rejoin session room if we were in one
+          if (this.currentSessionId) {
+            console.log('🔄 WebSocket reconnected - auto-rejoining session room');
+            try {
+              await this.joinSession(this.currentSessionId);
+              console.log('✅ Auto-rejoin successful');
+
+              // Process buffered events
+              this.flushPendingEvents();
+            } catch (error) {
+              console.error('❌ Auto-rejoin failed:', error);
+            } finally {
+              this.isReconnecting = false;
+            }
+          } else {
+            this.isReconnecting = false;
+          }
+
           this.startHeartbeat();
-          this.notifySubscribers('connection', { status: 'reconnected', attempts: attempt });
+          this.notifySubscribers('connection', { status: 'reconnected', attempts: attempt, needsRejoin: !this.currentSessionId });
         });
 
         // Failed to reconnect
@@ -269,7 +359,9 @@ class WebSocketService {
           logWebSocketError('Socket.IO failed to reconnect after all attempts', 'Maximum reconnection attempts exceeded', { function: 'reconnect_failed', url: this.url });
           this.connectionState = 'error';
           this.metrics.isStable = false;
-          
+          this.isReconnecting = false;
+
+          console.error('❌ Reconnection failed after 10 attempts');
           this.notifySubscribers('connection', { status: 'reconnect_failed' });
         });
         
@@ -288,10 +380,16 @@ class WebSocketService {
         this.socket.on('subscription_confirmed', (data) => {
           console.log('✅ Subscription confirmed:', data);
         });
-        
+
         // Handle subscription errors
         this.socket.on('subscription_error', (data) => {
           console.error('❌ Subscription error:', data);
+        });
+
+        // Handle detection events for real-time updates
+        this.socket.on('detection_event', (data) => {
+          console.log('🎯 Detection event received:', data);
+          this.notifySubscribers('detection_event', data);
         });
 
         // Handle all incoming messages
@@ -320,17 +418,29 @@ class WebSocketService {
     });
   }
 
-  disconnect(): void {
+  disconnect(sessionId?: string): void {
     console.log('🔌 Disconnecting WebSocket from', this.url, '...');
-    
+
+    // Leave session room if sessionId provided
+    if (sessionId && this.socket) {
+      this.leaveSession(sessionId).catch(error => {
+        console.error('Error leaving session room during disconnect:', error);
+      });
+    }
+
+    // PROTOCOL #47: Clear session tracking
+    this.currentSessionId = null;
+    this.pendingEvents = [];
+    this.isReconnecting = false;
+
     this.stopHeartbeat();
     this.clearReconnectTimer();
-    
+
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
-    
+
     this.connectionState = 'disconnected';
     this.notifySubscribers('connection', { status: 'disconnected', reason: 'manual' });
   }
@@ -409,31 +519,43 @@ class WebSocketService {
     if (!this.subscribers.has(eventType)) {
       this.subscribers.set(eventType, new Set());
     }
-    
-    this.subscribers.get(eventType)!.add(callback as (data: unknown) => void);
-    
+
+    // PROTOCOL #47: Wrap callback to buffer events during reconnection
+    const wrappedCallback = (data: T) => {
+      if (this.isReconnecting) {
+        // Buffer events during reconnection
+        this.pendingEvents.push({ event: eventType, data });
+        console.log(`📦 Buffered event during reconnection: ${eventType}`);
+      } else {
+        // Process event normally
+        callback(data);
+      }
+    };
+
+    this.subscribers.get(eventType)!.add(wrappedCallback as (data: unknown) => void);
+
     console.log(`🔔 Subscribed to Socket.IO event: ${eventType} on ${this.url}`);
-    
+
     // Also subscribe on the socket if connected
     if (this.socket && this.connectionState === 'connected') {
-      this.socket.on(eventType, callback as (data: unknown) => void);
+      this.socket.on(eventType, wrappedCallback as (data: unknown) => void);
     }
 
     // Return unsubscribe function
     return () => {
       const subscribers = this.subscribers.get(eventType);
       if (subscribers) {
-        subscribers.delete(callback as (data: unknown) => void);
+        subscribers.delete(wrappedCallback as (data: unknown) => void);
         if (subscribers.size === 0) {
           this.subscribers.delete(eventType);
         }
       }
-      
+
       // Remove from socket too
       if (this.socket) {
-        this.socket.off(eventType, callback as (data: unknown) => void);
+        this.socket.off(eventType, wrappedCallback as (data: unknown) => void);
       }
-      
+
       console.log(`🔕 Unsubscribed from Socket.IO event: ${eventType} on ${this.url}`);
     };
   }
@@ -534,6 +656,143 @@ class WebSocketService {
       lastError: this.lastError?.message,
       subscriberCount: Array.from(this.subscribers.values()).reduce((total, set) => total + set.size, 0),
       queuedConnections: this.connectionQueue.length
+    };
+  }
+
+  /**
+   * PROTOCOL #39: Subscribe to lifecycle events with sequence number ordering
+   * Ensures events are processed in the correct order even if they arrive out of order
+   */
+  subscribeToLifecycleEvents(callback: (event: any) => void): () => void {
+    console.log('🔔 Subscribing to video_lifecycle events with sequence ordering');
+
+    return this.subscribe('video_lifecycle', (event: any) => {
+      const seq = event.sequence_number;
+
+      if (typeof seq !== 'number') {
+        console.warn('⚠️ Lifecycle event missing sequence_number, processing immediately:', event);
+        callback(event);
+        return;
+      }
+
+      // Buffer event
+      this.eventBuffer.set(seq, event);
+      console.log(`📥 Buffered lifecycle event: ${event.event} (seq: ${seq})`);
+
+      // Process in order
+      this.processBufferedEvents(callback);
+    });
+  }
+
+  /**
+   * PROTOCOL #39: Process buffered events in sequence order
+   * Maintains a buffer of up to 100 events and processes them in order
+   */
+  private processBufferedEvents(callback: (event: any) => void): void {
+    // Process events in sequence order
+    let nextSeq = this.lastProcessedSequence + 1;
+
+    while (this.eventBuffer.has(nextSeq)) {
+      const event = this.eventBuffer.get(nextSeq)!;
+      this.eventBuffer.delete(nextSeq);
+
+      console.log(`✅ Processing lifecycle event in order: ${event.event} (seq: ${nextSeq})`);
+      callback(event);
+
+      this.lastProcessedSequence = nextSeq;
+      nextSeq++;
+    }
+
+    // Cleanup old buffered events (keep last 100)
+    if (this.eventBuffer.size > 100) {
+      const oldestAllowed = this.lastProcessedSequence - 50;
+      for (const [seq] of this.eventBuffer) {
+        if (seq < oldestAllowed) {
+          console.log(`🧹 Cleaning up old buffered event (seq: ${seq})`);
+          this.eventBuffer.delete(seq);
+        }
+      }
+    }
+  }
+
+  /**
+   * PROTOCOL #47: Flush pending events after reconnection
+   * Process all buffered events that were received during reconnection
+   */
+  private flushPendingEvents(): void {
+    if (this.pendingEvents.length === 0) {
+      return;
+    }
+
+    console.log(`📤 Flushing ${this.pendingEvents.length} buffered events`);
+
+    // Group by event type
+    const eventGroups = new Map<string, any[]>();
+
+    for (const { event, data } of this.pendingEvents) {
+      if (!eventGroups.has(event)) {
+        eventGroups.set(event, []);
+      }
+      eventGroups.get(event)!.push(data);
+    }
+
+    // Process buffered events through subscribers
+    for (const [event, dataArray] of eventGroups) {
+      for (const data of dataArray) {
+        this.notifySubscribers(event, data);
+      }
+      console.log(`📤 Flushed ${dataArray.length} ${event} events`);
+    }
+
+    // Clear buffer
+    this.pendingEvents = [];
+  }
+
+  // Sequence subscription support for multi-video testing
+  // FIX #5: WebSocket Subscriptions - Subscribe to correct events (video_started, video_ended)
+  subscribeToSequence(sequenceId: string) {
+    if (!sequenceId) {
+      console.error('❌ Cannot subscribe to sequence: sequenceId is required');
+      return null;
+    }
+
+    console.log(`🎬 Subscribing to sequence: ${sequenceId}`);
+
+    // Emit subscription request to backend
+    this.emit('subscribe_sequence', { sequence_id: sequenceId });
+
+    // Return subscription handlers
+    return {
+      // PROTOCOL #39: Use lifecycle events with sequence numbers
+      onVideoStarted: (callback: (data: unknown) => void) => {
+        console.log(`📹 Setting up video started handler for sequence ${sequenceId}`);
+        return this.subscribeToLifecycleEvents((event: any) => {
+          if (event.event === 'video_started') {
+            callback(event);
+          }
+        });
+      },
+      // PROTOCOL #39: Use lifecycle events with sequence numbers
+      onVideoEnded: (callback: (data: unknown) => void) => {
+        console.log(`🎬 Setting up video ended handler for sequence ${sequenceId}`);
+        return this.subscribeToLifecycleEvents((event: any) => {
+          if (event.event === 'video_ended') {
+            callback(event);
+          }
+        });
+      },
+      onVideoCompleted: (callback: (data: unknown) => void) => {
+        console.log(`✅ Setting up video completed handler for sequence ${sequenceId}`);
+        return this.subscribe('video_completed', callback);
+      },
+      onSequenceCompleted: (callback: (data: unknown) => void) => {
+        console.log(`🏁 Setting up sequence completed handler for sequence ${sequenceId}`);
+        return this.subscribe('sequence_completed', callback);
+      },
+      unsubscribe: () => {
+        console.log(`🔕 Unsubscribing from sequence: ${sequenceId}`);
+        this.emit('unsubscribe_sequence', { sequence_id: sequenceId });
+      }
     };
   }
 }

@@ -6,7 +6,7 @@ Adds latency_ms, validation_result, threshold_ms, and video_start_time to stored
 Updates test_results table with comprehensive latency metrics fields.
 
 Revision ID: 0003_latency_validation_schema
-Revises: 0002_labjack_timing_schema
+Revises: 0002
 Create Date: 2025-09-09 14:30:00.000000
 """
 
@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = '0003_latency_validation_schema'
-down_revision = '0002_labjack_timing_schema'
+down_revision = '0002'
 branch_labels = None
 depends_on = None
 

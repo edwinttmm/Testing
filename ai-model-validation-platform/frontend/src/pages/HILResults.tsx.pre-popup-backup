@@ -1,0 +1,1375 @@
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Typography,
+  Container,
+  Paper,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  CircularProgress,
+  Alert,
+  AlertTitle,
+  Chip,
+  Stack,
+  Card,
+  CardContent,
+  Select,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent
+  FormControl
+} from '@mui/material';
+import { ArrowBack as ArrowBackIcon, Close as CloseIcon } from '@mui/icons-material';
+import { apiService } from '../services/api';
+import { EnhancedHILResults, VideoSequenceResults, EnhancedDetectionEvent, PerVideoResult } from '../types/enhanced-results';
+import FrameCorrelationTimeline from '../components/FrameCorrelationTimeline';
+import { TestStatusBanner } from '../components/TestStatusBanner';
+import { MetricsSummaryCards } from '../components/MetricsSummaryCards';
+import { DetectionTableRow } from '../components/DetectionTableRow';
+import { GroundTruthComparisonCards } from '../components/GroundTruthComparisonCards';
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return 0;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+    const dateParsed = Date.parse(trimmed);
+    if (!Number.isNaN(dateParsed)) {
+      return dateParsed / 1000;
+    }
+  }
+  return 0;
+};
+
+const normalizeDetectionEvent = (event: any, index: number): EnhancedDetectionEvent => {
+  const timestampCandidate =
+    event.video_relative_timestamp ??
+    event.videoRelativeTimestamp ??
+    event.frame_timestamp ??
+    event.timestamp ??
+    event.video_time_seconds ??
+    null;
+
+  let timestamp = toNumber(timestampCandidate);
+
+  if (!timestamp) {
+    const timeString = event.detection_time ?? event.detectionTime ?? event.labjack_trigger_time ?? event.labjackTriggerTime;
+    const parsed = toNumber(timeString);
+    if (parsed) {
+      timestamp = parsed;
+    }
+  }
+
+  if (!timestamp && typeof event.frame_number === 'number' && event.frame_number >= 0) {
+    const fps = toNumber(event.fps ?? event.frame_rate ?? 24);
+    timestamp = fps > 0 ? event.frame_number / fps : 0;
+  }
+
+  const confidenceScore =
+    event.confidence ??
+    event.confidence_score ??
+    event.detection_confidence ??
+    event.match_confidence ??
+    undefined;
+
+  const realLatency =
+    toNumber(
+      event.real_latency_ms ??
+      event.latency_ms ??
+      event.actualLatencyMs ??
+      event.detection_latency_ms ??
+      event.apparent_latency_ms ??
+      event.corrected_latency?.real_latency_ms ??
+      event.original_latency?.apparent_latency_ms
+    );
+
+  const detectionTimeMs = toNumber(event.detection_time_ms);
+
+  const voltageLevel = toNumber(
+    event.voltage_level ??
+    event.voltage ??
+    event.signal_value ??
+    event.signalValue ??
+    event.labjack_voltage
+  );
+
+  const rawResult = (event.result ?? event.validation_result ?? event.pass_fail ?? event.status ?? '').toString().toLowerCase();
+  const passed =
+    typeof event.passed === 'boolean'
+      ? event.passed
+      : rawResult === 'pass'
+        ? true
+        : rawResult === 'fail'
+          ? false
+          : undefined;
+
+  const normalizedResult =
+    rawResult === 'pass' || rawResult === 'fail'
+      ? (rawResult as 'pass' | 'fail')
+      : passed === undefined
+        ? 'pending'
+        : passed
+          ? 'pass'
+          : 'fail';
+
+  const id =
+    event.id ??
+    event.event_id ??
+    event.detection_id ??
+    event.detectionId ??
+    `detection-${index}`;
+
+  return {
+    ...(event ?? {}),
+    id,
+    timestamp,
+    detection_time_ms: detectionTimeMs || realLatency || toNumber(event.processing_time_ms),
+    real_latency_ms: realLatency,
+    actualLatencyMs: event.actualLatencyMs ?? realLatency,
+    voltage: voltageLevel,
+    voltage_level: voltageLevel,
+    passed,
+    result: normalizedResult,
+    ground_truth_match_id: event.ground_truth_match_id ?? event.groundTruthMatchId ?? event.match_id ?? null,
+    validation_result: event.validation_result ?? event.validationResult ?? undefined,
+    confidence: confidenceScore
+  } as EnhancedDetectionEvent;
+};
+
+const normalizeDetectionEvents = (events: any[] | undefined | null): EnhancedDetectionEvent[] => {
+  if (!Array.isArray(events) || events.length === 0) {
+    return [];
+  }
+  return events.map((event, index) => normalizeDetectionEvent(event, index));
+};
+
+const isDetectionLikeObject = (value: any): boolean => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const keys = Object.keys(value).map(key => key.toLowerCase());
+  const indicatorKeys = [
+    'real_latency',
+    'latency',
+    'voltage',
+    'labjack',
+    'threshold',
+    'channel',
+    'detection_time',
+    'result',
+    'passed'
+  ];
+
+  return indicatorKeys.some(indicator => keys.some(key => key.includes(indicator)));
+};
+
+const collectDetectionCandidates = (root: any, maxDepth = 4): any[] => {
+  if (!root || typeof root !== 'object' || maxDepth < 0) {
+    return [];
+  }
+
+  const seen = new WeakSet<object>();
+  const collected: any[] = [];
+
+  const traverse = (value: any, depth: number) => {
+    if (!value || typeof value !== 'object' || depth > maxDepth) {
+      return;
+    }
+
+    if (seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return;
+      }
+
+      const detectionItems = value.filter(item => isDetectionLikeObject(item));
+      if (detectionItems.length > 0) {
+        collected.push(...detectionItems);
+        return;
+      }
+
+      value.forEach(child => traverse(child, depth + 1));
+      return;
+    }
+
+    Object.values(value).forEach(child => traverse(child, depth + 1));
+  };
+
+  traverse(root, 0);
+  return collected;
+};
+
+/**
+ * HIL Results Page - Clean, Modern Implementation
+ *
+ * This component displays Hardware-in-the-Loop (HIL) test results with:
+ * - Clear pass/fail status
+ * - Summary metrics cards
+ * - Detection timeline visualization
+ * - Single, clean detection events table
+ * - Support for multi-video sequences
+ */
+const HILResults: React.FC = () => {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
+
+  // State management
+  const [enhancedResults, setEnhancedResults] = useState<EnhancedHILResults | null>(null);
+  const [sequenceResults, setSequenceResults] = useState<VideoSequenceResults | null>(null);
+  const [isSequence, setIsSequence] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [groundTruthEvents, setGroundTruthEvents] = useState<any[]>([]);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [baseDetections, setBaseDetections] = useState<EnhancedDetectionEvent[]>([]);
+  const [perVideoSummaries, setPerVideoSummaries] = useState<PerVideoResult[]>([]);
+  const [videoDetectionMap, setVideoDetectionMap] = useState<Record<string, EnhancedDetectionEvent[]>>({});
+  // Video popup state
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [selectedDetection, setSelectedDetection] = useState<EnhancedDetectionEvent | null>(null);
+  const [playbackVideoUrl, setPlaybackVideoUrl] = useState<string>(');
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
+  const [realtimeEnabled, setRealtimeEnabled] = useState(false);
+  const [availableVideos, setAvailableVideos] = useState<Array<{ id: string; filename: string; url: string }>>([]);
+
+  /**
+   * Load ground truth events for a specific video
+   */
+  const loadGroundTruthData = useCallback(async (videoId: string) => {
+    try {
+      console.log(`Loading ground truth data for video: ${videoId}`);
+      setGroundTruthEvents([]);
+      const response = await apiService.getGroundTruthEvents(videoId);
+
+      if (response?.success && response?.data?.ground_truth_events) {
+        const gtEvents = response.data.ground_truth_events;
+        console.log(`Loaded ${gtEvents.length} ground truth events`);
+        setGroundTruthEvents(gtEvents);
+        return gtEvents;
+      } else {
+        console.log('No ground truth data available for this video');
+        setGroundTruthEvents([]);
+        return [];
+      }
+    } catch (error) {
+      console.warn('Failed to load ground truth data:', error);
+      setGroundTruthEvents([]);
+      return [];
+    }
+  }, []);
+
+  /**
+   * Load detections for a specific video
+   */
+  const loadDetectionsForVideo = useCallback(async (videoId: string) => {
+    try {
+      console.log(`Loading detections for video: ${videoId}`);
+      const videoDetections = await apiService.getTestSessionEvents(
+        sessionId!,
+        2000,
+        { video_id: videoId }
+      );
+
+      const normalized = normalizeDetectionEvents(videoDetections);
+      console.log(`Loaded ${normalized.length} detections for video ${videoId}`);
+
+      // Update base detections with video-specific detections
+      setBaseDetections(normalized);
+
+      // Update video detection map
+      setVideoDetectionMap(prev => ({
+        ...prev,
+        [videoId]: normalized
+      }));
+    } catch (error) {
+      console.error(`Failed to load detections for video ${videoId}:`, error);
+      // Don't throw - just log the error and keep existing data
+    }
+  }, [sessionId]);
+
+  /**
+   * Handle video selection change (for multi-video sequences)
+   */
+  const handleVideoTabChange = useCallback((_: React.SyntheticEvent, newVideoId: string) => {
+    if (!newVideoId) return;
+    console.log(`Switching to video: ${newVideoId}`);
+    setSelectedVideoId(newVideoId);
+    setVideoId(newVideoId);
+
+    // Load ground truth and detections for the selected video
+    loadGroundTruthData(newVideoId);
+    loadDetectionsForVideo(newVideoId);
+  }, [loadGroundTruthData, loadDetectionsForVideo]);
+
+  /**
+   * Load HIL test results with ground truth comparison
+   */
+  const loadHILResults = useCallback(async () => {
+    if (!sessionId) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setGroundTruthEvents([]);
+      setIsSequence(false);
+      setSequenceResults(null);
+      setPerVideoSummaries([]);
+      setVideoDetectionMap({});
+      setSelectedVideoId(null);
+      setVideoId(null);
+      setBaseDetections([]);
+      setAvailableVideos([]);
+
+      console.log('Loading HIL results for session:', sessionId);
+
+      let enhancedData: EnhancedHILResults;
+      try {
+        enhancedData = await apiService.getEnhancedHILResultsWithGroundTruth(sessionId);
+        console.log('Enhanced HIL results loaded:', enhancedData);
+      } catch (error) {
+        console.warn('Ground truth endpoint failed, using basic results:', error);
+        enhancedData = await apiService.getEnhancedHILResults(sessionId);
+      }
+
+      setEnhancedResults(enhancedData);
+
+      const detectionCandidates: any[] = [];
+
+      const addCandidateEvents = (value: unknown) => {
+        if (Array.isArray(value) && value.length > 0) {
+          detectionCandidates.push(...value);
+        }
+      };
+
+      addCandidateEvents((enhancedData as any)?.detection_events);
+      addCandidateEvents((enhancedData as any)?.detectionEvents);
+      addCandidateEvents((enhancedData as any)?.combined_detection_events);
+      addCandidateEvents((enhancedData as any)?.combinedDetectionEvents);
+      addCandidateEvents((enhancedData as any)?.detection_statistics?.detection_events);
+      addCandidateEvents((enhancedData as any)?.detection_statistics?.combined_detection_events);
+      addCandidateEvents(collectDetectionCandidates(enhancedData));
+
+      let normalizedDetections = normalizeDetectionEvents(detectionCandidates);
+      let candidateEvents = detectionCandidates.slice();
+
+      if (normalizedDetections.length === 0) {
+        try {
+          const events = await apiService.getTestSessionEvents(sessionId, 2000);
+          normalizedDetections = normalizeDetectionEvents(events);
+          if (Array.isArray(events)) {
+            candidateEvents.push(...events);
+          }
+        } catch (eventsError) {
+          console.warn('Session events endpoint unavailable:', eventsError);
+        }
+      }
+
+      if (normalizedDetections.length === 0) {
+        try {
+          const fallbackDetections = await apiService.getTestSessionDetections(sessionId);
+          normalizedDetections = normalizeDetectionEvents(fallbackDetections);
+          if (Array.isArray(fallbackDetections)) {
+            candidateEvents.push(...fallbackDetections);
+          }
+        } catch (fallbackError) {
+          console.warn('Fallback detection fetch failed:', fallbackError);
+        }
+      }
+
+      if (normalizedDetections.length > 1) {
+        const deduped: EnhancedDetectionEvent[] = [];
+        const seenKeys = new Set<string>();
+        normalizedDetections.forEach(event => {
+          const key = event.id || `${event.timestamp}-${event.voltage ?? ''}-${event.real_latency_ms ?? ''}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            deduped.push(event);
+          }
+        });
+        normalizedDetections = deduped;
+      }
+
+      let session: any = null;
+      try {
+        session = await apiService.getTestSession(sessionId);
+
+        // Load available videos for the project if we have a project ID
+        if (session?.projectId || session?.project_id) {
+          const projectId = session.projectId || session.project_id;
+          console.log('🎥 Loading available videos for project:', projectId);
+          try {
+            const projectVideos = await apiService.getVideos(projectId);
+            console.log('🎥 Loaded project videos:', projectVideos);
+            const videoList = projectVideos.map((v: any) => ({
+              id: v.id,
+              filename: v.filename || v.name || v.originalName,
+              url: v.url || ''
+            }));
+            setAvailableVideos(videoList);
+          } catch (videoError) {
+            console.warn('Failed to load project videos:', videoError);
+          }
+        }
+      } catch (sessionError) {
+        console.warn('Failed to load session metadata:', sessionError);
+      }
+
+      const hasSequence = Boolean(session?.hasVideoSequence ?? session?.has_video_sequence);
+      const detectedSequenceId: string | null = session?.sequenceId ?? session?.sequence_id ?? null;
+      const sessionVideoId: string | null = session?.videoId ?? session?.video_id ?? null;
+
+      let sequenceMetadata: Record<string, any> | null = null;
+      let sequenceVideoIds: string[] = [];
+      try {
+        const rawMetadata = session?.sequence_metadata ?? session?.sequenceMetadata ?? null;
+        if (rawMetadata) {
+          sequenceMetadata = typeof rawMetadata === 'string' ? JSON.parse(rawMetadata) : rawMetadata;
+          const ids = sequenceMetadata?.video_ids ?? sequenceMetadata?.videoIds ?? sequenceMetadata?.videos ?? null;
+          if (Array.isArray(ids)) {
+            sequenceVideoIds = ids.filter((id: unknown) => typeof id === 'string');
+          }
+        }
+      } catch (metadataError) {
+        console.warn('Failed to parse sequence metadata', metadataError);
+        sequenceMetadata = null;
+        sequenceVideoIds = [];
+      }
+
+      if (hasSequence && detectedSequenceId) {
+        console.log('Multi-video sequence detected:', detectedSequenceId);
+        setIsSequence(true);
+
+        try {
+          const seqResults = await apiService.getVideoSequenceResults(detectedSequenceId);
+          setSequenceResults(seqResults);
+
+          const sequenceCombinedEvents = normalizeDetectionEvents(
+            [
+              ...(((seqResults as any)?.combined_detection_events) ?? []),
+              ...(((seqResults as any)?.combinedDetectionEvents) ?? []),
+              ...(((seqResults as any)?.detection_events) ?? []),
+              ...collectDetectionCandidates(seqResults)
+            ]
+          );
+
+          if (sequenceCombinedEvents.length > 0) {
+            const seenIds = new Set<string>(normalizedDetections.map(event => event.id));
+            sequenceCombinedEvents.forEach(event => {
+              if (!event.id || !seenIds.has(event.id)) {
+                normalizedDetections.push(event);
+                if (event.id) {
+                  seenIds.add(event.id);
+                }
+              }
+            });
+
+            if (normalizedDetections.length > 1) {
+              const dedupedSeq: EnhancedDetectionEvent[] = [];
+              const seenKeysSeq = new Set<string>();
+              normalizedDetections.forEach(event => {
+                const key = event.id || `${event.timestamp}-${event.voltage ?? ''}-${event.real_latency_ms ?? ''}`;
+                if (!seenKeysSeq.has(key)) {
+                  seenKeysSeq.add(key);
+                  dedupedSeq.push(event);
+                }
+              });
+              normalizedDetections = dedupedSeq;
+            }
+          }
+
+          const rawPerVideo = (seqResults?.perVideoResults ?? seqResults?.per_video_results ?? []) as PerVideoResult[];
+          let sortedPerVideo = [...rawPerVideo].sort((a, b) => {
+            const orderA = a.sequenceIndex ?? a.sequence_index ?? a.videoOrder ?? a.video_order ?? a.video_number ?? a.videoNumber ?? 0;
+            const orderB = b.sequenceIndex ?? b.sequence_index ?? b.videoOrder ?? b.video_order ?? b.video_number ?? b.videoNumber ?? 0;
+            return orderA - orderB;
+          });
+
+          if (sortedPerVideo.length === 0 && sequenceVideoIds.length > 0) {
+            sortedPerVideo = sequenceVideoIds.map((id, index) => ({
+              video_id: id,
+              videoId: id,
+              video_name: sequenceMetadata?.video_names?.[id] ?? sequenceMetadata?.videoNames?.[id] ?? sequenceMetadata?.video_metadata?.[id]?.name ?? `Video ${index + 1}`,
+              videoNumber: index + 1,
+              sequenceIndex: index,
+              passFail: 'pending',
+              detection_count: 0,
+              total_detections: 0
+            } as PerVideoResult));
+          }
+
+          setPerVideoSummaries(sortedPerVideo);
+
+          // Simplified video detection mapping
+          // Backend now handles filtering by video_id, so we don't need complex splitting logic
+          const detectionMap: Record<string, EnhancedDetectionEvent[]> = {};
+
+          // Group detections by video_id if present in detection events
+          const combinedEventsByVideo: Record<string, EnhancedDetectionEvent[]> = {};
+          normalizedDetections.forEach(event => {
+            const vid =
+              (event as any).video_id ??
+              (event as any).videoId ??
+              (event as any).sequence_video_id ??
+              (event as any).sequenceVideoId ??
+              null;
+            if (vid) {
+              if (!combinedEventsByVideo[vid]) {
+                combinedEventsByVideo[vid] = [];
+              }
+              combinedEventsByVideo[vid].push(event);
+            }
+          });
+
+          // Assign detections to videos
+          sortedPerVideo.forEach((video) => {
+            const id = video.videoId ?? video.video_id;
+            if (!id) return;
+
+            // Check if we have video-specific events from the API response
+            const videoSpecificEvents =
+              normalizeDetectionEvents((video as any)?.detectionEvents ?? (video as any)?.detection_events);
+            if (videoSpecificEvents.length > 0) {
+              detectionMap[id] = videoSpecificEvents;
+              return;
+            }
+
+            // Check if detections are already tagged with video_id
+            const combinedEventsForVideo = combinedEventsByVideo[id];
+            if (combinedEventsForVideo && combinedEventsForVideo.length > 0) {
+              detectionMap[id] = combinedEventsForVideo;
+              return;
+            }
+
+            // Otherwise, detection map will be populated when user selects a video
+            // The API will be called with video_id filter at that time
+            detectionMap[id] = [];
+          });
+
+          setVideoDetectionMap(detectionMap);
+
+          const firstVideoId = sortedPerVideo[0] ? (sortedPerVideo[0].videoId ?? sortedPerVideo[0].video_id ?? null) : null;
+          if (firstVideoId) {
+            setSelectedVideoId(firstVideoId);
+            setVideoId(firstVideoId);
+            await loadGroundTruthData(firstVideoId);
+          }
+        } catch (sequenceError) {
+          console.warn('Failed to load sequence results:', sequenceError);
+          setSequenceResults(null);
+          setPerVideoSummaries([]);
+        }
+      } else {
+        setIsSequence(false);
+        const fallbackVideoId = sessionVideoId;
+
+        if (fallbackVideoId) {
+          setVideoId(fallbackVideoId);
+          setSelectedVideoId(fallbackVideoId);
+          await loadGroundTruthData(fallbackVideoId);
+        }
+
+        if (fallbackVideoId && normalizedDetections.length > 0) {
+          setVideoDetectionMap({ [fallbackVideoId]: normalizedDetections });
+        } else {
+          setVideoDetectionMap(normalizedDetections.length > 0 ? { __all__: normalizedDetections } : {});
+        }
+      }
+      setBaseDetections([...normalizedDetections]);
+
+      setLoading(false);
+    } catch (err: any) {
+      console.error('Error loading HIL results:', err);
+      setError(err?.message || 'Failed to load HIL results');
+      setLoading(false);
+    }
+  }, [sessionId, loadGroundTruthData]);
+
+  // Load results on mount
+  useEffect(() => {
+    loadHILResults();
+  }, [loadHILResults]);
+
+  // Subscribe to real-time detection updates via WebSocket
+  useEffect(() => {
+    if (!sessionId || !realtimeEnabled) return;
+
+    console.log('🔌 HILResults: Subscribing to real-time detection updates for session:', sessionId);
+
+    // Import websocketService and subscribe to detection events
+    let unsubscribeDetections: (() => void) | null = null;
+
+    import('../services/websocketService').then(({ default: websocketService }) => {
+      // Subscribe to detection_event updates
+      unsubscribeDetections = websocketService.subscribe('detection_event', (data: any) => {
+        console.log('🎯 HILResults: Received detection event:', data);
+
+        // Normalize incoming detection event
+        const newDetection = normalizeDetectionEvent(data, baseDetections.length);
+
+        // Add to base detections
+        setBaseDetections(prev => {
+          const updated = [...prev, newDetection];
+          console.log('📊 Updated detection count:', updated.length);
+          return updated;
+        });
+
+        // Update video detection map if video ID is available
+        const videoIdFromEvent = (data as any).video_id ?? (data as any).videoId ?? selectedVideoId;
+        if (videoIdFromEvent) {
+          setVideoDetectionMap(prev => {
+            const existing = prev[videoIdFromEvent] || [];
+            return {
+              ...prev,
+              [videoIdFromEvent]: [...existing, newDetection]
+            };
+          });
+        }
+
+        // Refresh ground truth comparison if needed
+        if (groundTruthEvents.length > 0) {
+          console.log('🔄 New detection received, ground truth comparison may need update');
+        }
+      });
+
+      // Join session room for detection events
+      websocketService.emit('join_session', { session_id: sessionId });
+      console.log('📡 Joined session room for real-time detection updates');
+    }).catch(err => {
+      console.error('❌ Failed to set up WebSocket subscription:', err);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (unsubscribeDetections) {
+        unsubscribeDetections();
+        console.log('🔕 Unsubscribed from detection events');
+      }
+
+      import('../services/websocketService').then(({ default: websocketService }) => {
+        websocketService.emit('leave_session', { session_id: sessionId });
+        console.log('🔕 Left session room');
+      }).catch(err => {
+        console.error('❌ Failed to leave session:', err);
+      });
+    };
+  }, [sessionId, realtimeEnabled, selectedVideoId, baseDetections.length, groundTruthEvents.length]);
+
+  // Calculate aggregated metrics across all videos for multi-video sequences
+  const aggregatedMetrics = useMemo(() => {
+    if (!isSequence || !sequenceResults?.per_video_results) {
+      return null;
+    }
+
+    const videos = sequenceResults.per_video_results;
+
+    // Aggregate ground truth metrics
+    const totalTP = videos.reduce((sum, v) => sum + (v.ground_truth_comparison?.true_positives ?? v.groundTruthComparison?.truePositives ?? 0), 0);
+    const totalFP = videos.reduce((sum, v) => sum + (v.ground_truth_comparison?.false_positives ?? v.groundTruthComparison?.falsePositives ?? 0), 0);
+    const totalFN = videos.reduce((sum, v) => sum + (v.ground_truth_comparison?.false_negatives ?? v.groundTruthComparison?.falseNegatives ?? 0), 0);
+
+    const aggregatedPrecision = totalTP + totalFP > 0 ? (totalTP / (totalTP + totalFP)) * 100 : 0;
+    const aggregatedRecall = totalTP + totalFN > 0 ? (totalTP / (totalTP + totalFN)) * 100 : 0;
+    const aggregatedF1 = aggregatedPrecision + aggregatedRecall > 0
+      ? (2 * (aggregatedPrecision * aggregatedRecall) / (aggregatedPrecision + aggregatedRecall))
+      : 0;
+
+    // Aggregate detection metrics
+    const totalDetections = videos.reduce((sum, v) => sum + (v.total_detections ?? v.totalDetections ?? v.detection_count ?? v.detectionCount ?? 0), 0);
+    const totalPassed = videos.reduce((sum, v) => sum + (v.passed_detections ?? v.passedDetections ?? 0), 0);
+    const totalFailed = videos.reduce((sum, v) => sum + (v.failed_detections ?? v.failedDetections ?? 0), 0);
+    const overallPassRate = totalDetections > 0 ? (totalPassed / totalDetections) * 100 : 0;
+
+    // Aggregate latency metrics (calculate average of averages, weighted by detection count)
+    const totalLatencyWeighted = videos.reduce((sum, v) => {
+      const detCount = v.total_detections ?? v.totalDetections ?? v.detection_count ?? v.detectionCount ?? 0;
+      const avgLatency = v.average_latency_ms ?? v.averageLatencyMs ?? 0;
+      return sum + (avgLatency * detCount);
+    }, 0);
+    const avgLatency = totalDetections > 0 ? totalLatencyWeighted / totalDetections : 0;
+    const worstLatency = Math.max(...videos.map(v => v.max_latency_ms ?? v.maxLatencyMs ?? 0));
+    const bestLatency = Math.min(...videos.map(v => v.min_latency_ms ?? v.minLatencyMs ?? Infinity).filter(x => x < Infinity));
+
+    // Count videos by status
+    const videosPassed = videos.filter(v => {
+      const status = (v.status ?? v.pass_fail ?? v.passFail ?? '').toString().toLowerCase();
+      return status === 'pass';
+    }).length;
+
+    return {
+      aggregatedF1Score: aggregatedF1,
+      aggregatedPrecision,
+      aggregatedRecall,
+      totalTruePositives: totalTP,
+      totalFalsePositives: totalFP,
+      totalFalseNegatives: totalFN,
+      overallDetectionCount: totalDetections,
+      overallPassedCount: totalPassed,
+      overallFailedCount: totalFailed,
+      overallPassRate,
+      averageLatencyMs: avgLatency,
+      worstLatencyMs: worstLatency,
+      bestLatencyMs: bestLatency > 0 ? bestLatency : 0,
+      videosPassed,
+      totalVideos: videos.length
+    };
+  }, [isSequence, sequenceResults]);
+
+  // Destructure aggregated metrics for easy access
+  const {
+    aggregatedF1Score = 0,
+    aggregatedPrecision = 0,
+    aggregatedRecall = 0,
+    totalTruePositives = 0,
+    totalFalsePositives = 0,
+    totalFalseNegatives = 0,
+    overallDetectionCount: aggOverallDetectionCount = 0,
+    overallPassedCount = 0,
+    overallFailedCount = 0,
+    overallPassRate: aggOverallPassRate = 0,
+    averageLatencyMs: aggAverageLatencyMs = 0,
+    worstLatencyMs: aggWorstLatencyMs = 0,
+    bestLatencyMs: aggBestLatencyMs = 0,
+    videosPassed = 0,
+    totalVideos = 0
+  } = aggregatedMetrics || {};
+
+  // Calculate derived metrics
+  const allDetections = baseDetections;
+
+  const activeDetections = useMemo(() => {
+    if (selectedVideoId) {
+      const mapped = videoDetectionMap[selectedVideoId];
+      if (mapped && mapped.length > 0) {
+        return mapped;
+      }
+      // Fallback: if we selected a video but have no map, show all detections
+      return allDetections;
+    }
+
+    if (!isSequence) {
+      if (videoId && videoDetectionMap[videoId]) {
+        return videoDetectionMap[videoId];
+      }
+      const allFallback = videoDetectionMap['__all__'];
+      if (allFallback && allFallback.length > 0) {
+        return allFallback;
+      }
+    }
+
+    return allDetections;
+  }, [allDetections, isSequence, selectedVideoId, videoDetectionMap, videoId]);
+
+  const overallDetectionCount = allDetections.length;
+  const activeDetectionCount = activeDetections.length;
+
+  const activePassedDetections = activeDetections.filter(d => d?.passed || d?.result === 'pass').length;
+  // Calculate detection latency from individual detection events (fallback)
+  const activeAvgLatency = activeDetectionCount > 0
+    ? activeDetections.reduce((sum, d) => {
+        const rawLatency =
+          (d as any)?.real_latency_ms ??
+          (d as any)?.actualLatencyMs ??
+          (d as any)?.detection_time_ms ??
+          (d as any)?.corrected_latency?.real_latency_ms ??
+          0;
+        const numericLatency = typeof rawLatency === 'number' ? rawLatency : Number(rawLatency) || 0;
+        return sum + numericLatency;
+      }, 0) / activeDetectionCount
+    : 0;
+
+  // Extract real detection latency and video startup delay from enhanced results
+  const detectionLatency = enhancedResults?.detection_statistics?.corrected_results?.average_real_latency_ms ?? activeAvgLatency;
+  const videoStartupDelay = enhancedResults?.video_timing?.startup_delay_ms;
+
+  const activeMatchedCount = activeDetections.filter(d => (d as any)?.ground_truth_match_id || (d as any)?.groundTruthMatchId).length;
+  const activeExpectedCount = groundTruthEvents.length || activeDetectionCount;
+  const activeMatchRate = activeExpectedCount > 0 ? (activeMatchedCount / activeExpectedCount) * 100 : 0;
+
+  const overallCorrectedStats = enhancedResults?.detection_statistics?.corrected_results as any;
+  const overallPassedDetections = overallCorrectedStats?.passed_detections ?? allDetections.filter(d => d?.passed || d?.result === 'pass').length;
+  const overallFailedDetections = overallCorrectedStats?.failed_detections ?? Math.max(0, overallDetectionCount - overallPassedDetections);
+  const overallPassRate = sequenceResults?.overallPassRate
+    ?? sequenceResults?.overall_pass_rate
+    ?? overallCorrectedStats?.pass_rate
+    ?? (overallDetectionCount > 0 ? (overallPassedDetections / overallDetectionCount) * 100 : 0);
+
+  // Extract Ground Truth Comparison Metrics
+  const gtComparison = enhancedResults?.ground_truth_comparison;
+  const hasGroundTruth = Boolean(gtComparison && gtComparison.ground_truth_events_available > 0);
+
+  const precision = gtComparison?.precision ?? 0;
+  const recall = gtComparison?.recall ?? 0;
+  const f1Score = gtComparison?.f1_score ?? 0;
+  const truePositives = gtComparison?.true_positives ?? 0;
+  const falsePositives = gtComparison?.false_positives ?? 0;
+  const falseNegatives = gtComparison?.false_negatives ?? 0;
+  const totalGroundTruth = gtComparison?.ground_truth_events_available ?? 0;
+  const overallExpectedCount = gtComparison?.ground_truth_events_available ?? overallDetectionCount;
+  const overallMatchRate = gtComparison?.precision ?? (overallDetectionCount > 0 ? (overallPassedDetections / overallDetectionCount) * 100 : 0);
+
+  const aggregateMetrics = (sequenceResults?.aggregateMetrics ?? sequenceResults?.aggregate_metrics ?? {}) as Record<string, any>;
+  const latencyThresholdMs =
+    aggregateMetrics.max_latency_threshold_ms ??
+    aggregateMetrics.maxLatencyThresholdMs ??
+    aggregateMetrics.maxLatencyMs ??
+    (allDetections[0]?.threshold_ms ?? null);
+
+  const testPassed = overallFailedDetections === 0;
+  const criteriaBaseText = latencyThresholdMs
+    ? `Pass if corrected latency ≤ ${latencyThresholdMs}ms`
+    : 'Pass if all detections meet latency tolerance';
+  const criteriaText = overallFailedDetections > 0
+    ? `${criteriaBaseText} • ${overallFailedDetections} detection(s) exceeded the limit`
+    : criteriaBaseText;
+
+  const selectedVideoSummary = useMemo(() => {
+    if (!selectedVideoId) {
+      return null;
+    }
+    return perVideoSummaries.find(video => (video.videoId ?? video.video_id) === selectedVideoId) ?? null;
+  }, [perVideoSummaries, selectedVideoId]);
+
+  const videoTabs = useMemo(() => {
+    if (!isSequence) return [];
+    return perVideoSummaries
+      .map((video, index) => {
+        const id = video.videoId ?? video.video_id;
+        if (!id) return null;
+
+        const name =
+          video.videoName ??
+          video.video_name ??
+          `Video ${(video.sequenceIndex ?? video.sequence_index ?? video.videoNumber ?? video.video_number ?? index) + 1}`;
+
+        const detectionCount =
+          video.detectionCount ??
+          video.detection_count ??
+          video.total_detections ??
+          (videoDetectionMap[id]?.length ?? 0);
+
+        const statusRaw = (video.passFail ?? video.pass_fail ?? video.status ?? '') as string;
+        const normalizedStatus = typeof statusRaw === 'string' ? statusRaw.toLowerCase() : '';
+        const status: 'pass' | 'fail' | 'pending' =
+          normalizedStatus === 'pass' ? 'pass' : normalizedStatus === 'fail' ? 'fail' : 'pending';
+
+        return { id, name, detectionCount, status };
+      })
+      .filter(Boolean) as Array<{ id: string; name: string; detectionCount: number; status: 'pass' | 'fail' | 'pending'; }>;
+  }, [isSequence, perVideoSummaries, videoDetectionMap]);
+
+  const selectedVideoStatus = selectedVideoSummary
+    ? (() => {
+        const raw = (selectedVideoSummary.passFail ?? selectedVideoSummary.pass_fail ?? selectedVideoSummary.status ?? '') as string;
+        const normalized = raw.toLowerCase?.() ?? raw;
+        if (normalized === 'pass' || normalized === 'fail') {
+          return normalized as 'pass' | 'fail';
+        }
+        return 'pending';
+      })()
+    : null;
+
+  const selectedVideoPassRate = activeDetectionCount > 0 ? (activePassedDetections / activeDetectionCount) * 100 : 0;
+  const selectedVideoPassChipColor = selectedVideoPassRate >= 95 ? 'success' : selectedVideoPassRate >= 80 ? 'warning' : 'error';
+
+  // Helper functions to extract video information for detection rows
+  const getVideoName = useCallback((videoId: string | undefined): string => {
+    if (!videoId) return 'Unknown';
+    const video = perVideoSummaries.find(v =>
+      (v.video_id || v.videoId) === videoId
+    );
+    return video?.video_name || video?.videoName || video?.video_filename || 'Unknown';
+  }, [perVideoSummaries]);
+
+  const getVideoSequenceNumber = useCallback((videoId: string | undefined): number => {
+    if (!videoId) return 0;
+    const videoIndex = perVideoSummaries.findIndex(v =>
+      (v.video_id || v.videoId) === videoId
+    );
+    if (videoIndex === -1) return 0;
+    const video = perVideoSummaries[videoIndex];
+    return (video?.sequence_order || video?.sequenceOrder || video?.sequence_index || video?.sequenceIndex || videoIndex) + 1;
+  }, [perVideoSummaries]);
+
+  const handleDetectionClick = useCallback((detection: EnhancedDetectionEvent) => {
+    // Optional: Handle detection row click to show video or details
+    console.log('Detection clicked:', detection);
+  }, []);
+  const selectedVideoStatusColor = selectedVideoStatus === 'pass' ? 'success' : selectedVideoStatus === 'fail' ? 'error' : 'warning';
+
+  // Video metadata for timeline
+  const videoMetadata = useMemo(() => {
+    if (selectedVideoSummary) {
+      const metrics = (selectedVideoSummary.metrics ?? {}) as Record<string, any>;
+      const duration =
+        selectedVideoSummary.durationSeconds ??
+        selectedVideoSummary.duration_seconds ??
+        selectedVideoSummary.duration ??
+        metrics.actual_duration ??
+        metrics.expected_duration ??
+        undefined;
+      const fps = selectedVideoSummary.fps ?? metrics.fps ?? enhancedResults?.video_timing?.fps ?? 24;
+      const filename =
+        selectedVideoSummary.videoName ??
+        selectedVideoSummary.video_name ??
+        metrics.video_filename ??
+        metrics.videoFilePath ??
+        enhancedResults?.video_timing?.filename ??
+        'Unknown';
+      return {
+        fps,
+        duration,
+        filename
+      };
+    }
+
+    return {
+      fps: enhancedResults?.video_timing?.fps || 24,
+      duration: enhancedResults?.video_timing?.duration,
+      filename: enhancedResults?.video_timing?.filename || 'Unknown'
+    };
+  }, [selectedVideoSummary, enhancedResults]);
+
+  // Hardware status
+  const hardwareStatus = {
+    labJackConnected: enhancedResults?.hardware_status?.labjack_connected || false,
+    labJackModel: enhancedResults?.hardware_status?.model || 'Unknown'
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <Box textAlign="center">
+          <CircularProgress size={60} />
+          <Typography variant="h6" sx={{ mt: 2 }}>
+            Loading HIL Test Results...
+          </Typography>
+        </Box>
+      </Container>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          <Typography variant="h6">Error Loading Results</Typography>
+          <Typography variant="body2">{error}</Typography>
+        </Alert>
+        <IconButton onClick={() => navigate(-1)}>
+          <ArrowBackIcon />
+          <Typography sx={{ ml: 1 }}>Go Back</Typography>
+        </IconButton>
+      </Container>
+    );
+  }
+
+  // No results state
+  if (!enhancedResults) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Alert severity="warning">
+          <Typography variant="h6">No Results Available</Typography>
+          <Typography variant="body2">No test results found for session: {sessionId}</Typography>
+        </Alert>
+      </Container>
+    );
+  }
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Header */}
+      <AppBar position="static" color="transparent" elevation={0} sx={{ mb: 3 }}>
+        <Toolbar sx={{ px: 0 }}>
+          <IconButton onClick={() => navigate(-1)} edge="start">
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography variant="h4" sx={{ ml: 2, fontWeight: 'bold', flexGrow: 1 }}>
+            HIL Test Results
+          </Typography>
+          <Chip
+            label={realtimeEnabled ? 'Live Updates: ON' : 'Live Updates: OFF'}
+            color={realtimeEnabled ? 'success' : 'default'}
+            onClick={() => setRealtimeEnabled(!realtimeEnabled)}
+            sx={{ cursor: 'pointer' }}
+          />
+        </Toolbar>
+      </AppBar>
+
+      {/* Overall Test Status Banner */}
+      <TestStatusBanner
+        passed={testPassed}
+        detectionCount={overallDetectionCount}
+        expectedCount={overallExpectedCount}
+        matchRate={overallMatchRate}
+        passRate={overallPassRate}
+        failedCount={overallFailedDetections}
+        latencyThresholdMs={latencyThresholdMs ?? undefined}
+        criteriaText={criteriaText}
+      />
+
+      {/* Aggregated Metrics for Multi-Video Sequences */}
+      {isSequence && sequenceResults && aggregatedMetrics && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+            Overall Results Across All Videos
+          </Typography>
+          <Alert severity={aggOverallPassRate >= 90 ? 'success' : 'warning'} sx={{ mb: 2 }}>
+            <AlertTitle>
+              {aggOverallPassRate >= 90 ? '✓ TEST PASSED' : '⚠ TEST NEEDS REVIEW'}
+            </AlertTitle>
+            {videosPassed}/{totalVideos} videos passed • {aggOverallDetectionCount} detections •
+            Pass rate: {aggOverallPassRate.toFixed(1)}% • Avg latency: {aggAverageLatencyMs.toFixed(1)}ms
+          </Alert>
+
+          {(totalTruePositives > 0 || totalFalsePositives > 0 || totalFalseNegatives > 0) && (
+            <GroundTruthComparisonCards
+              f1Score={aggregatedF1Score}
+              precision={aggregatedPrecision}
+              recall={aggregatedRecall}
+              truePositives={totalTruePositives}
+              falsePositives={totalFalsePositives}
+              falseNegatives={totalFalseNegatives}
+              title="Aggregated Across All Videos"
+            />
+          )}
+        </Box>
+      )}
+
+      {/* Sequence Timeline */}
+      {isSequence && sequenceResults?.per_video_results && (
+        <Card sx={{ mb: 3 }} elevation={2}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+              📊 Multi-Video Sequence Overview
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 0.5 }}>
+              {sequenceResults.per_video_results.map((video, index) => {
+                const duration = video.duration_seconds ?? video.durationSeconds ?? 1;
+                const status = (video.status ?? video.pass_fail ?? video.passFail ?? 'pending').toString().toLowerCase();
+                const videoName = video.video_name ?? video.videoName ?? `V${index + 1}`;
+
+                return (
+                  <Box
+                    key={video.video_id ?? video.videoId ?? index}
+                    sx={{
+                      flex: duration,
+                      minWidth: 60,
+                      height: 50,
+                      bgcolor: status === 'pass' ? 'success.light' : status === 'fail' ? 'error.light' : 'warning.light',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      position: 'relative',
+                      '&:hover': {
+                        bgcolor: status === 'pass' ? 'success.main' : status === 'fail' ? 'error.main' : 'warning.main',
+                        color: 'white',
+                        cursor: 'pointer',
+                        transform: 'scale(1.05)',
+                        zIndex: 1,
+                        transition: 'all 0.2s'
+                      }
+                    }}
+                    title={`${videoName}\n${duration.toFixed(1)}s\nStatus: ${status}`}
+                  >
+                    <Typography variant="caption" fontWeight="bold">
+                      V{index + 1}
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem' }}>
+                      {duration.toFixed(1)}s
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Total Duration: {(sequenceResults.sequence_duration_seconds ?? sequenceResults.sequenceDurationSeconds ?? 0).toFixed(1)}s
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Avg Latency: {aggAverageLatencyMs.toFixed(1)}ms
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Worst: {aggWorstLatencyMs.toFixed(1)}ms
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Best: {aggBestLatencyMs > 0 ? aggBestLatencyMs.toFixed(1) : 'N/A'}ms
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* GROUND TRUTH COMPARISON - PRIMARY DISPLAY */}
+      {hasGroundTruth && (
+        <GroundTruthComparisonCards
+          precision={precision}
+          recall={recall}
+          f1Score={f1Score}
+          truePositives={truePositives}
+          falsePositives={falsePositives}
+          falseNegatives={falseNegatives}
+          totalGroundTruth={totalGroundTruth}
+        />
+      )}
+
+      {/* Signal Quality Metrics - SECONDARY */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
+          Signal Quality Metrics
+        </Typography>
+        <MetricsSummaryCards
+          detections={activeDetectionCount}
+          expected={activeExpectedCount}
+          avgLatency={activeAvgLatency}
+          matchRate={activeMatchRate}
+          hardwareStatus={hardwareStatus}
+          detectionLatency={detectionLatency}
+          videoStartupDelay={videoStartupDelay}
+        />
+      </Box>
+
+      {/* Video Selector Dropdown (for multi-video sequences) */}
+      {isSequence && videoTabs.length > 0 && (
+        <Paper sx={{ mb: 3, p: 2 }} elevation={2}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', minWidth: '120px' }}>
+              Select Video:
+            </Typography>
+            <FormControl fullWidth>
+              <Select
+                value={selectedVideoId ?? (videoTabs[0]?.id ?? '')}
+                onChange={(e) => {
+                  const newVideoId = e.target.value;
+                  setSelectedVideoId(newVideoId);
+                  const videoIndex = sequenceResults?.per_video_results?.findIndex(
+                    (v) => (v.video_id ?? v.videoId) === newVideoId
+                  ) ?? 0;
+                  handleVideoTabChange(null as any, newVideoId);
+                }}
+                displayEmpty
+                sx={{ backgroundColor: 'background.paper' }}
+              >
+                {sequenceResults?.per_video_results?.map((video, index) => {
+                  const videoId = video.video_id ?? video.videoId;
+                  const videoName = video.video_name ?? video.videoName ?? `Video ${index + 1}`;
+                  const status = (video.status ?? video.pass_fail ?? video.passFail ?? 'pending').toString().toLowerCase();
+                  const totalDet = video.actual_detection_count ?? video.total_detections ?? video.totalDetections ?? video.detection_count ?? video.detectionCount ?? 0;
+                  const expectedDet = video.expected_detection_count ?? video.expectedDetectionCount ?? 0;
+                  const avgLatency = video.average_latency_ms ?? video.avg_latency_ms ?? video.averageLatencyMs ?? 0;
+
+                  return (
+                    <MenuItem
+                      key={videoId ?? index}
+                      value={videoId ?? ''}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                        <Box>
+                          <Typography variant="body2" fontWeight="bold">
+                            Video {index + 1}: {videoName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {totalDet}/{expectedDet} detections • {avgLatency > 0 ? `${avgLatency.toFixed(1)}ms avg` : 'N/A'}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={status.toUpperCase()}
+                          size="small"
+                          color={status === 'completed' ? 'success' : status === 'fail' ? 'error' : 'warning'}
+                          sx={{ height: 24, fontSize: '0.7rem' }}
+                        />
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+          </Box>
+        </Paper>
+      )}
+
+      {/* Video Selector for Non-Sequence Tests (Single/Available Videos) */}
+      {!isSequence && availableVideos.length > 0 && (
+        <Paper sx={{ mb: 3, p: 2 }} elevation={2}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', minWidth: '120px' }}>
+              Select Video:
+            </Typography>
+            <FormControl fullWidth>
+              <Select
+                value={videoId || (availableVideos[0]?.id ?? '')}
+                onChange={(e) => {
+                  const newVideoId = e.target.value;
+                  setVideoId(newVideoId);
+                  setSelectedVideoId(newVideoId);
+                  // Reload ground truth and detections for new video
+                  loadGroundTruthData(newVideoId);
+                  loadDetectionsForVideo(newVideoId);
+                }}
+                displayEmpty
+                sx={{ backgroundColor: 'background.paper' }}
+              >
+                {availableVideos.map((video, index) => (
+                  <MenuItem key={video.id} value={video.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2">
+                        {index + 1}. {video.filename}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </Paper>
+      )}
+
+      {(isSequence && selectedVideoId) && (
+        <Box sx={{ mb: 3 }}>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip label={`Detections: ${activeDetectionCount}`} variant="outlined" />
+            <Chip
+              label={`Pass rate: ${selectedVideoPassRate.toFixed(1)}%`}
+              color={selectedVideoPassChipColor}
+              variant="outlined"
+            />
+            {selectedVideoStatus && (
+              <Chip
+                label={`Status: ${selectedVideoStatus.toUpperCase()}`}
+                color={selectedVideoStatusColor}
+                variant="outlined"
+              />
+            )}
+          </Stack>
+
+          {/* Per-Video Ground Truth Metrics */}
+          {selectedVideoSummary?.ground_truth_metrics && (
+            <Box sx={{ mt: 3 }}>
+              <GroundTruthComparisonCards
+                precision={selectedVideoSummary.ground_truth_metrics.precision ?? 0}
+                recall={selectedVideoSummary.ground_truth_metrics.recall ?? 0}
+                f1Score={selectedVideoSummary.ground_truth_metrics.f1_score ?? selectedVideoSummary.ground_truth_metrics.f1Score ?? 0}
+                truePositives={selectedVideoSummary.ground_truth_metrics.true_positives ?? selectedVideoSummary.ground_truth_metrics.truePositives ?? 0}
+                falsePositives={selectedVideoSummary.ground_truth_metrics.false_positives ?? selectedVideoSummary.ground_truth_metrics.falsePositives ?? 0}
+                falseNegatives={selectedVideoSummary.ground_truth_metrics.false_negatives ?? selectedVideoSummary.ground_truth_metrics.falseNegatives ?? 0}
+                totalGroundTruth={selectedVideoSummary.ground_truth_metrics.total_ground_truth ?? selectedVideoSummary.ground_truth_metrics.totalGroundTruth}
+                title={`Ground Truth Metrics - ${selectedVideoSummary.videoName ?? selectedVideoSummary.video_name ?? 'Selected Video'}`}
+              />
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {/* Timeline Visualization */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+          Detection Timeline
+        </Typography>
+        <FrameCorrelationTimeline
+          detectionEvents={activeDetections}
+          groundTruthEvents={groundTruthEvents}
+          videoMetadata={videoMetadata}
+        />
+      </Box>
+
+      {/* Single Clean Detection Table */}
+      <Paper sx={{ mb: 3 }} elevation={2}>
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: 'primary.50' }}>
+          <Typography variant="h6" fontWeight="bold">
+            Detection Events ({activeDetectionCount} total)
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            {isSequence && selectedVideoSummary
+              ? `Showing detection events for ${selectedVideoSummary.videoName ?? selectedVideoSummary.video_name ?? 'selected video'}`
+              : 'Showing all detection events captured during the test'}
+          </Typography>
+        </Box>
+        <TableContainer sx={{ maxHeight: 600 }}>
+          <Table stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 'bold' }}>#</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Video</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Time (s)</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Voltage (V)</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Latency (ms)</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Matched GT</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Result</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {activeDetections.length > 0 ? (
+                activeDetections.map((detection, index) => {
+                  const detectionVideoId = (detection as any).video_id || (detection as any).videoId;
+                  return (
+                    <DetectionTableRow
+                      key={detection.id || `detection-${index}`}
+                      index={index}
+                      detection={detection}
+                      videoName={getVideoName(detectionVideoId)}
+                      videoSequenceNumber={getVideoSequenceNumber(detectionVideoId)}
+                      totalVideos={perVideoSummaries.length}
+                      onClick={() => handleDetectionClick(detection)}
+                    />
+                  );
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    <Typography color="textSecondary" sx={{ py: 3 }}>
+                      No detection events found
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
+      {/* Session Information Footer */}
+      <Paper sx={{ p: 2, bgcolor: 'grey.50' }} elevation={1}>
+        <Typography variant="caption" color="textSecondary">
+          Session ID: {sessionId}
+          {enhancedResults?.session_info?.project_name && (
+            <> • Project: {enhancedResults.session_info.project_name}</>
+          )}
+          {enhancedResults?.session_info?.name && (
+            <> • Test: {enhancedResults.session_info.name}</>
+          )}
+        </Typography>
+      </Paper>
+    </Container>
+  );
+};
+
+export default HILResults;

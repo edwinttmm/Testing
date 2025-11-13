@@ -1,0 +1,132 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║  VIDEO 2 ZERO DETECTIONS - ROOT CAUSE ANALYSIS SUMMARY          ║
+║  Session: 463b7ec5-0cd6-4b6a-9776-d10f938b6422                  ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+🔴 CRITICAL BUG CONFIRMED
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ROOT CAUSE:
+  Video 2 never started playback because Video 1's lifecycle events
+  were never sent to the backend.
+
+SMOKING GUN EVIDENCE:
+  ✗ video_start_time = NULL for Video 1
+  ✗ video_end_time = NULL for Video 1
+  ✗ video_status = "pending" for both videos
+  ✗ completed_videos = 0 (should be 2)
+  ✗ current_video_index = 0 (never advanced to 1)
+  ✗ sequence status = "running" (should be "completed")
+
+IMPACT:
+  • All 134 detections assigned to Video 1 (wrong)
+  • Video 2 received 0 detections (wrong)
+  • Test session never completed
+  • Results are completely invalid
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EXPECTED LIFECYCLE:
+
+  Video 1:
+    1. loadAndPlayVideo(video1, 0)           ✓
+    2. POST /video-started                    ✗ NEVER CALLED
+    3. Backend sets video_start_time          ✗ NEVER SET
+    4. Video plays to completion              ? UNKNOWN
+    5. 'ended' event fires                    ✗ NEVER FIRED
+    6. handleVideoEnd() called                ✗ NEVER CALLED
+    7. POST /video-ended                      ✗ NEVER CALLED
+    8. Backend sets video_end_time            ✗ NEVER SET
+
+  Video 2:
+    9. loadAndPlayVideo(video2, 1)            ✗ NEVER CALLED
+    10. Video 2 starts playing                ✗ NEVER STARTED
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY VIDEO 2 NEVER STARTED:
+
+  Primary Failure Point:
+    Video 1's HTML5 <video> 'ended' event never fired
+
+  Possible Causes:
+    • User closed browser tab mid-test
+    • Component unmounted prematurely (React re-render)
+    • JavaScript error during video playback
+    • Network interruption during video stream
+    • Browser autoplay policy blocked video
+    • Manual test stop by user
+
+  Secondary Factor:
+    Error handling treats video lifecycle events as "non-critical"
+    → Silent failures prevent detection of problems
+    → No validation checks before advancing to next video
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY VIDEO 2 GOT 0 DETECTIONS:
+
+  Detection Assignment Logic:
+    for video in sequence_videos:
+      if video.video_start_time is None:
+        continue  # ← SKIP VIDEO 2 (no start time)
+
+      if video_start <= detection_time <= video_end:
+        return video.video_id
+
+  Result:
+    • Video 2 has video_start_time = NULL
+    • Detection assignment skips Video 2 entirely
+    • All detections default to Video 1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CODE LOCATIONS:
+
+  Frontend (SequentialVideoPlayer.tsx):
+    • Line 109-158:   sendVideoStartedEvent()
+    • Line 164-219:   sendVideoEndedEvent()
+    • Line 301-539:   loadAndPlayVideo()
+    • Line 544-669:   handleVideoEnd()
+    • Line 764:       video.addEventListener('ended', handleVideoEnd)
+
+  Backend (video_sequences.py):
+    • Line 119-189:   POST /video-started endpoint
+    • Line 192-284:   POST /video-ended endpoint
+
+  Detection Assignment (labjack_detection_service.py):
+    • assign_detection_to_video() - skips videos with NULL start_time
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RECOMMENDED FIXES:
+
+  1. Make Video Lifecycle Events CRITICAL (not "non-critical")
+     → Throw errors instead of logging warnings
+     → Stop test execution on failure
+
+  2. Add Event Listener Error Handling
+     → Wrap handleVideoEnd() in try-catch
+     → Report errors to parent component
+
+  3. Add Sequence State Validation
+     → Verify backend acknowledged video-ended before advancing
+     → Check completed_videos counter matches expected value
+
+  4. Add Backend State Monitoring
+     → Periodic health checks to detect state desync
+     → Compare frontend currentVideoIndex with backend state
+
+  5. Add Fallback Detection Assignment
+     → Use video duration to estimate boundaries if start_time is NULL
+     → Prevent all detections from being assigned to one video
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRIORITY: P0 - CRITICAL
+EFFORT: 8-12 hours (including testing)
+
+Full analysis: docs/VIDEO_2_NEVER_STARTED_ROOT_CAUSE_ANALYSIS.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -248,7 +248,7 @@ class TestDatabasePerformance:
             db = SessionLocal()
             try:
                 from models import TestSession
-                sessions = db.query(TestSession).limit(50).all()
+                sessions = db.query(TestSession).limit(2000).all()
                 return len(sessions)
             finally:
                 db.close()

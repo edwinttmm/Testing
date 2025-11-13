@@ -1,0 +1,951 @@
+openapi: 3.0.0
+info:
+  title: Multi-Video HIL Testing API
+  version: 1.0.0
+  description: |
+    API endpoints for Hardware-in-the-Loop (HIL) testing with multi-video sequence support.
+
+    ## Multi-Video Architecture
+
+    The system supports sequential playback of multiple videos in a single test session:
+
+    1. **Test Session Creation**: Create session with multiple video IDs
+    2. **Sequence Tracking**: Track video start/end times with nanosecond precision
+    3. **Per-Video Results**: Store detection counts, latency, and pass rates per video
+    4. **Video Filtering**: Filter results by specific video_id in multi-video sessions
+
+    ## Database Schema
+
+    - **TestSession**: has_video_sequence, sequence_id, sequence_metadata fields
+    - **VideoTestSequence**: Container for multi-video test sequences
+    - **SequenceVideoResult**: Per-video results within sequences
+    - **DetectionEvent**: Linked to specific video via video_id and sequence_video_result_id
+
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+tags:
+  - name: Test Sessions
+    description: Test session lifecycle management
+  - name: Video Sequences
+    description: Multi-video sequence tracking and management
+  - name: Enhanced HIL Results
+    description: Enhanced HIL results with ground truth comparison
+  - name: Detection Events
+    description: Detection event retrieval and filtering
+
+paths:
+  /api/test-sessions:
+    post:
+      summary: Create Test Session
+      description: |
+        Create a new test session with optional multi-video sequence support.
+
+        **Multi-Video Mode**:
+        - Provide `videoIds` array (instead of single `videoId`)
+        - Response includes `has_video_sequence=true`, `sequence_id`, and `sequence_metadata`
+        - System creates VideoTestSequence and SequenceVideoResult records
+
+        **Single Video Mode**:
+        - Provide single `videoId`
+        - Response includes `has_video_sequence=false`
+      tags:
+        - Test Sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestSessionCreate'
+            examples:
+              single_video:
+                summary: Single Video Test Session
+                value:
+                  name: "Single Video HIL Test"
+                  projectId: "proj-123"
+                  videoId: "video-abc"
+                  toleranceMs: 100
+              multi_video:
+                summary: Multi-Video Sequence Test Session
+                value:
+                  name: "Multi-Video HIL Test"
+                  projectId: "proj-123"
+                  videoIds: ["video-001", "video-002", "video-003"]
+                  toleranceMs: 100
+      responses:
+        '200':
+          description: Test session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestSessionResponse'
+              examples:
+                single_video_response:
+                  summary: Single Video Session Response
+                  value:
+                    id: "session-456"
+                    name: "Single Video HIL Test"
+                    projectId: "proj-123"
+                    videoId: "video-abc"
+                    status: "created"
+                    toleranceMs: 100
+                    createdAt: "2025-10-30T10:00:00Z"
+                    hasVideoSequence: false
+                    sequenceId: null
+                    sequenceMetadata: null
+                multi_video_response:
+                  summary: Multi-Video Session Response
+                  value:
+                    id: "session-789"
+                    name: "Multi-Video HIL Test"
+                    projectId: "proj-123"
+                    videoId: null
+                    status: "created"
+                    toleranceMs: 100
+                    createdAt: "2025-10-30T10:00:00Z"
+                    hasVideoSequence: true
+                    sequenceId: "seq-abc123"
+                    sequenceMetadata:
+                      videoIds: ["video-001", "video-002", "video-003"]
+                      totalVideos: 3
+                      sequenceOrder:
+                        - videoId: "video-001"
+                          order: 0
+                          durationMs: 30000
+                        - videoId: "video-002"
+                          order: 1
+                          durationMs: 25000
+                        - videoId: "video-003"
+                          order: 2
+                          durationMs: 35000
+                    maxLatencyThresholdMs: 100
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/video-sequences/{sequence_id}/video-started:
+    post:
+      summary: Record Video Start Event
+      description: |
+        Track when a video in a sequence starts playing.
+
+        **Purpose**:
+        - Record precise video start timestamp with nanosecond precision
+        - Update SequenceVideoResult.video_start_time
+        - Update VideoTestSequence.current_video_index
+        - Emit WebSocket event for real-time frontend updates
+
+        **Called by**: SequentialVideoPlayer component when video playback begins
+      tags:
+        - Video Sequences
+      parameters:
+        - name: sequence_id
+          in: path
+          required: true
+          description: Video sequence identifier
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoStartedRequest'
+            example:
+              videoId: "video-002"
+              startedAt: 1730307890.123456
+              sequenceElapsedTime: 30.5
+              timestamp: 1730307890.123456
+      responses:
+        '200':
+          description: Video start event recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoEventResponse'
+              example:
+                status: "acknowledged"
+                message: "Video video-002 start recorded"
+        '404':
+          description: Sequence or video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Video sequence seq-abc123 not found"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/video-sequences/{sequence_id}/video-ended:
+    post:
+      summary: Record Video End Event
+      description: |
+        Track when a video in a sequence ends playing.
+
+        **Purpose**:
+        - Record precise video end timestamp with nanosecond precision
+        - Update SequenceVideoResult.video_end_time and actual_duration_ms
+        - Increment VideoTestSequence.completed_videos
+        - Return next video ID if available
+        - Emit WebSocket event for real-time frontend updates
+
+        **Called by**: SequentialVideoPlayer component when video playback completes
+      tags:
+        - Video Sequences
+      parameters:
+        - name: sequence_id
+          in: path
+          required: true
+          description: Video sequence identifier
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoEndedRequest'
+            example:
+              videoId: "video-002"
+              endedAt: 1730307920.456789
+              actualDuration: 25.5
+              sequenceElapsedTime: 56.0
+              timestamp: 1730307920.456789
+      responses:
+        '200':
+          description: Video end event recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoEventResponse'
+              examples:
+                with_next_video:
+                  summary: More videos remaining in sequence
+                  value:
+                    status: "acknowledged"
+                    nextVideoId: "video-003"
+                    message: "Video video-002 completion recorded"
+                sequence_complete:
+                  summary: Last video in sequence
+                  value:
+                    status: "acknowledged"
+                    nextVideoId: null
+                    message: "Video video-003 completion recorded"
+        '404':
+          description: Sequence or video not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/video-sequences/{sequence_id}/status:
+    get:
+      summary: Get Sequence Status
+      description: |
+        Retrieve current status and progress of a video sequence.
+
+        **Returns**:
+        - Overall sequence status (pending, playing, completed, archived)
+        - Current video index and ID
+        - Completion progress (videos completed / total videos)
+        - Per-video results including detection counts and latency
+      tags:
+        - Video Sequences
+      parameters:
+        - name: sequence_id
+          in: path
+          required: true
+          description: Video sequence identifier
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sequence status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SequenceStatus'
+              example:
+                sequenceId: "seq-abc123"
+                testSessionId: "session-789"
+                status: "playing"
+                startedAt: "2025-10-30T10:00:00Z"
+                currentVideo: "video-002"
+                currentVideoIndex: 1
+                videosCompleted: 1
+                totalVideos: 3
+                videoIds: ["video-001", "video-002", "video-003"]
+                videos:
+                  - videoId: "video-001"
+                    sequenceOrder: 0
+                    status: "completed"
+                    startedAt: 1730307890.0
+                    endedAt: 1730307920.0
+                    durationMs: 30000
+                    detectionCount: 5
+                    passedDetections: 4
+                    failedDetections: 1
+                    avgLatencyMs: 78.5
+                    passRatePercent: 80.0
+                    validationResult: "pass"
+                  - videoId: "video-002"
+                    sequenceOrder: 1
+                    status: "playing"
+                    startedAt: 1730307920.0
+                    endedAt: null
+                    durationMs: null
+                    detectionCount: 0
+                    passedDetections: 0
+                    failedDetections: 0
+                    avgLatencyMs: null
+                    passRatePercent: null
+                    validationResult: null
+                  - videoId: "video-003"
+                    sequenceOrder: 2
+                    status: "pending"
+                    startedAt: null
+                    endedAt: null
+                    durationMs: null
+                    detectionCount: 0
+                    passedDetections: 0
+                    failedDetections: 0
+                    avgLatencyMs: null
+                    passRatePercent: null
+                    validationResult: null
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/enhanced-hil/test-sessions/{session_id}/corrected-results:
+    get:
+      summary: Get Enhanced HIL Results
+      description: |
+        Retrieve enhanced HIL test results with timing correction and optional video filtering.
+
+        **Multi-Video Support**:
+        - Include `video_id` query parameter to filter results for specific video
+        - Response includes `sequence_results` with per-video breakdown
+        - Detection events filtered by video_id when provided
+
+        **Timing Correction**:
+        - Corrects for video startup delay (871ms baseline)
+        - Provides both original and corrected latency measurements
+        - Includes ground truth comparison metrics
+      tags:
+        - Enhanced HIL Results
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          description: Test session identifier
+          schema:
+            type: string
+            format: uuid
+        - name: video_id
+          in: query
+          required: false
+          description: Filter results by specific video ID (for multi-video sequences)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Enhanced HIL results retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnhancedHILResults'
+              examples:
+                single_video:
+                  summary: Single Video Results
+                  value:
+                    sessionId: "session-456"
+                    validationType: "enhanced_latency_with_timing_correction"
+                    hasVideoSequence: false
+                    sequenceId: null
+                    sequenceResults: null
+                    timingCorrectionSummary:
+                      videoStartupDelayMs: 871.0
+                      averageLatencyCorrectionMs: 871.0
+                      methodology: "Corrects for video startup delay to reveal true detection latency"
+                    detectionStatistics:
+                      totalDetections: 10
+                      correctedResults:
+                        passedDetections: 9
+                        failedDetections: 1
+                        passRate: 90.0
+                        averageRealLatencyMs: 75.2
+                        medianRealLatencyMs: 73.5
+                multi_video_all:
+                  summary: Multi-Video Results (All Videos)
+                  value:
+                    sessionId: "session-789"
+                    validationType: "enhanced_latency_with_timing_correction"
+                    hasVideoSequence: true
+                    sequenceId: "seq-abc123"
+                    sequenceResults:
+                      totalVideos: 3
+                      currentVideoIndex: 2
+                      completedVideos: 2
+                      sequenceStatus: "playing"
+                      perVideoResults:
+                        - videoId: "video-001"
+                          sequenceOrder: 0
+                          videoStatus: "completed"
+                          actualDurationMs: 30000
+                          actualDetectionCount: 5
+                          passedDetections: 4
+                          failedDetections: 1
+                          avgLatencyMs: 78.5
+                          passRatePercent: 80.0
+                          validationResult: "pass"
+                        - videoId: "video-002"
+                          sequenceOrder: 1
+                          videoStatus: "completed"
+                          actualDurationMs: 25000
+                          actualDetectionCount: 3
+                          passedDetections: 3
+                          failedDetections: 0
+                          avgLatencyMs: 72.1
+                          passRatePercent: 100.0
+                          validationResult: "pass"
+                        - videoId: "video-003"
+                          sequenceOrder: 2
+                          videoStatus: "playing"
+                          actualDurationMs: null
+                          actualDetectionCount: 0
+                          passedDetections: 0
+                          failedDetections: 0
+                          avgLatencyMs: null
+                          passRatePercent: null
+                          validationResult: null
+                    detectionStatistics:
+                      totalDetections: 8
+                      correctedResults:
+                        passedDetections: 7
+                        failedDetections: 1
+                        passRate: 87.5
+                multi_video_filtered:
+                  summary: Multi-Video Results (Filtered by video_id)
+                  value:
+                    sessionId: "session-789"
+                    validationType: "enhanced_latency_with_timing_correction"
+                    hasVideoSequence: true
+                    sequenceId: "seq-abc123"
+                    sequenceResults:
+                      totalVideos: 3
+                      currentVideoIndex: 1
+                      completedVideos: 2
+                      sequenceStatus: "playing"
+                      perVideoResults:
+                        - videoId: "video-001"
+                          sequenceOrder: 0
+                          videoStatus: "completed"
+                          actualDetectionCount: 5
+                          passedDetections: 4
+                          failedDetections: 1
+                          avgLatencyMs: 78.5
+                          passRatePercent: 80.0
+                        - videoId: "video-002"
+                          sequenceOrder: 1
+                          videoStatus: "completed"
+                          actualDetectionCount: 3
+                          passedDetections: 3
+                          failedDetections: 0
+                          avgLatencyMs: 72.1
+                          passRatePercent: 100.0
+                        - videoId: "video-003"
+                          sequenceOrder: 2
+                          videoStatus: "playing"
+                          actualDetectionCount: 0
+                    detectionStatistics:
+                      totalDetections: 3
+                      correctedResults:
+                        passedDetections: 3
+                        failedDetections: 0
+                        passRate: 100.0
+                        averageRealLatencyMs: 72.1
+                    detections:
+                      - frameNumber: 5
+                        timestamp: 0.208
+                        videoId: "video-002"
+                        actualLatencyMs: 75.0
+                        validationResult: "pass"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/test-sessions/{session_id}/events:
+    get:
+      summary: Get Detection Events
+      description: |
+        Retrieve detection events for a test session with optional video filtering.
+
+        **Multi-Video Support**:
+        - Include `video_id` query parameter to filter events for specific video
+        - Returns only events matching the specified video_id
+
+        **Pagination**:
+        - Use `limit` and `offset` for pagination
+        - Default limit is 1000 events
+      tags:
+        - Detection Events
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          description: Test session identifier
+          schema:
+            type: string
+            format: uuid
+        - name: video_id
+          in: query
+          required: false
+          description: Filter events by video ID (for multi-video sequences)
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 1000
+        - name: offset
+          in: query
+          required: false
+          description: Number of events to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Detection events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DetectionEvent'
+              example:
+                - eventId: "det-001"
+                  frameNumber: 5
+                  timestamp: 0.208
+                  videoId: "video-002"
+                  actualLatencyMs: 75.0
+                  validationResult: "pass"
+                  className: "pedestrian"
+                  confidence: 0.95
+                - eventId: "det-002"
+                  frameNumber: 7
+                  timestamp: 0.289
+                  videoId: "video-002"
+                  actualLatencyMs: 72.1
+                  validationResult: "pass"
+                  className: "cyclist"
+                  confidence: 0.92
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    TestSessionCreate:
+      type: object
+      required:
+        - name
+        - projectId
+      properties:
+        name:
+          type: string
+          description: Test session name
+          minLength: 1
+          example: "Multi-Video HIL Test"
+        projectId:
+          type: string
+          format: uuid
+          description: Project identifier
+          example: "proj-123"
+        videoId:
+          type: string
+          format: uuid
+          description: Single video ID (for single-video mode)
+          nullable: true
+          example: "video-abc"
+        videoIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Multiple video IDs (for multi-video sequence mode)
+          nullable: true
+          example: ["video-001", "video-002", "video-003"]
+        toleranceMs:
+          type: integer
+          description: Latency tolerance threshold in milliseconds
+          minimum: 1
+          default: 100
+          example: 100
+        description:
+          type: string
+          description: Optional test session description
+          nullable: true
+
+    TestSessionResponse:
+      allOf:
+        - $ref: '#/components/schemas/TestSessionCreate'
+        - type: object
+          required:
+            - id
+            - status
+            - createdAt
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: Test session identifier
+              example: "session-789"
+            status:
+              type: string
+              enum: [created, pending, running, completed, failed, cancelled]
+              description: Test session status
+              example: "created"
+            createdAt:
+              type: string
+              format: date-time
+              description: Session creation timestamp
+              example: "2025-10-30T10:00:00Z"
+            startedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: Session start timestamp
+            completedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: Session completion timestamp
+            hasVideoSequence:
+              type: boolean
+              description: Whether this session uses multi-video sequences
+              example: true
+            sequenceId:
+              type: string
+              format: uuid
+              nullable: true
+              description: Video sequence identifier (if multi-video)
+              example: "seq-abc123"
+            sequenceMetadata:
+              type: object
+              nullable: true
+              description: Video sequence metadata including order and timing
+              properties:
+                videoIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Ordered list of video IDs
+                totalVideos:
+                  type: integer
+                  description: Total number of videos in sequence
+                sequenceOrder:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      videoId:
+                        type: string
+                      order:
+                        type: integer
+                      durationMs:
+                        type: integer
+            maxLatencyThresholdMs:
+              type: number
+              format: float
+              nullable: true
+              description: Maximum latency threshold for the sequence
+
+    VideoStartedRequest:
+      type: object
+      required:
+        - videoId
+      properties:
+        videoId:
+          type: string
+          format: uuid
+          description: Video identifier
+          example: "video-002"
+        startedAt:
+          type: number
+          format: double
+          description: Video start timestamp in seconds (preferred field)
+          example: 1730307890.123456
+        timestamp:
+          type: number
+          format: double
+          description: Legacy timestamp field (seconds)
+          example: 1730307890.123456
+        sequenceElapsedTime:
+          type: number
+          format: double
+          description: Elapsed time in sequence (seconds)
+          default: 0.0
+          example: 30.5
+        clientTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional ISO timestamp from frontend
+
+    VideoEndedRequest:
+      type: object
+      required:
+        - videoId
+      properties:
+        videoId:
+          type: string
+          format: uuid
+          description: Video identifier
+          example: "video-002"
+        endedAt:
+          type: number
+          format: double
+          description: Video end timestamp in seconds (preferred field)
+          example: 1730307920.456789
+        timestamp:
+          type: number
+          format: double
+          description: Legacy timestamp field (seconds)
+          example: 1730307920.456789
+        actualDuration:
+          type: number
+          format: double
+          description: Actual playback duration in seconds
+          example: 25.5
+        sequenceElapsedTime:
+          type: number
+          format: double
+          description: Elapsed time in sequence (seconds)
+          example: 56.0
+        clientTimestamp:
+          type: string
+          format: date-time
+          nullable: true
+          description: Optional ISO timestamp from frontend
+
+    VideoEventResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Event processing status
+          example: "acknowledged"
+        nextVideoId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Next video ID if available (null if sequence complete)
+          example: "video-003"
+        message:
+          type: string
+          nullable: true
+          description: Response message
+          example: "Video video-002 start recorded"
+
+    SequenceStatus:
+      type: object
+      properties:
+        sequenceId:
+          type: string
+          format: uuid
+        testSessionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, playing, completed, archived]
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        currentVideo:
+          type: string
+          format: uuid
+          nullable: true
+        currentVideoIndex:
+          type: integer
+          nullable: true
+        videosCompleted:
+          type: integer
+        totalVideos:
+          type: integer
+        videoIds:
+          type: array
+          items:
+            type: string
+        videos:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoResult'
+
+    VideoResult:
+      type: object
+      properties:
+        videoId:
+          type: string
+          format: uuid
+        sequenceOrder:
+          type: integer
+        status:
+          type: string
+          enum: [pending, playing, completed, failed]
+        startedAt:
+          type: number
+          format: double
+          nullable: true
+        endedAt:
+          type: number
+          format: double
+          nullable: true
+        durationMs:
+          type: number
+          format: double
+          nullable: true
+        detectionCount:
+          type: integer
+        passedDetections:
+          type: integer
+        failedDetections:
+          type: integer
+        avgLatencyMs:
+          type: number
+          format: double
+          nullable: true
+        passRatePercent:
+          type: number
+          format: double
+          nullable: true
+        validationResult:
+          type: string
+          enum: [pass, fail, pending]
+          nullable: true
+
+    EnhancedHILResults:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        validationType:
+          type: string
+        hasVideoSequence:
+          type: boolean
+        sequenceId:
+          type: string
+          format: uuid
+          nullable: true
+        sequenceResults:
+          $ref: '#/components/schemas/SequenceResults'
+        timingCorrectionSummary:
+          type: object
+        detectionStatistics:
+          type: object
+        detections:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetectionEvent'
+
+    SequenceResults:
+      type: object
+      nullable: true
+      properties:
+        totalVideos:
+          type: integer
+        currentVideoIndex:
+          type: integer
+        completedVideos:
+          type: integer
+        sequenceStatus:
+          type: string
+        perVideoResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoResult'
+
+    DetectionEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+        frameNumber:
+          type: integer
+        timestamp:
+          type: number
+          format: double
+        videoId:
+          type: string
+          format: uuid
+        actualLatencyMs:
+          type: number
+          format: double
+        validationResult:
+          type: string
+          enum: [pass, fail, pending]
+        className:
+          type: string
+        confidence:
+          type: number
+          format: float
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: "Resource not found"
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Video sequence seq-abc123 not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Failed to process request: database connection lost"
+
+security: []

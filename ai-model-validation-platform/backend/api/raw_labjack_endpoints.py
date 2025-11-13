@@ -52,7 +52,9 @@ class RawLoggingSessionRequest(BaseModel):
     compression_level: int = Field(default=6, ge=1, le=9, description="Compression level")
     buffer_size_samples: int = Field(default=10000, ge=1000, le=100000, description="Buffer size in samples")
     detection_threshold: Optional[float] = Field(None, description="Voltage detection threshold")
-    
+    constant_voltage_mode: bool = Field(default=False, description="Enable constant voltage mode (disables debounce)")
+    debounce_ms: Optional[int] = Field(None, description="Debounce period in milliseconds (ignored if constant_voltage_mode=True)")
+
     class Config:
         schema_extra = {
             "example": {
@@ -63,7 +65,9 @@ class RawLoggingSessionRequest(BaseModel):
                 "compression_algorithm": "adaptive",
                 "compression_level": 6,
                 "buffer_size_samples": 10000,
-                "detection_threshold": 2.5
+                "detection_threshold": 3.3,
+                "constant_voltage_mode": True,
+                "debounce_ms": 0
             }
         }
 
@@ -186,7 +190,9 @@ async def start_raw_logging_session(
             compression_algorithm=compression_algorithm,
             compression_level=request.compression_level,
             buffer_size_samples=request.buffer_size_samples,
-            detection_threshold=request.detection_threshold
+            detection_threshold=request.detection_threshold,
+            constant_voltage_mode=request.constant_voltage_mode,
+            debounce_ms=request.debounce_ms
         )
         
         if not session_id:

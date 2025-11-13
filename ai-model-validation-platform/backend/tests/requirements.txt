@@ -1,0 +1,28 @@
+# Test dependencies for ground truth fix tests
+
+# Testing framework
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+pytest-benchmark==4.0.0
+pytest-mock==3.12.0
+pytest-timeout==2.2.0
+
+# Test utilities
+faker==20.1.0
+factory-boy==3.3.0
+freezegun==1.4.0
+
+# Performance testing
+pytest-profiling==1.7.0
+memory-profiler==0.61.0
+
+# Coverage
+coverage[toml]==7.3.2
+
+# Database testing
+pytest-postgresql==5.0.0
+sqlalchemy-utils==0.41.1
+
+# HTTP mocking
+responses==0.24.1

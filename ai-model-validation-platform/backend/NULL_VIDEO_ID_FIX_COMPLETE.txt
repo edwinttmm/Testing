@@ -1,0 +1,77 @@
+NULL VIDEO ID RACE CONDITION FIX - IMPLEMENTATION COMPLETE
+==========================================================
+
+PROBLEM RESOLVED:
+- 501/502 detections had NULL video_id due to race condition
+- Detections arrived before video lifecycle events (onPlay) were processed
+- Ground truth matching failed due to missing video_id
+
+SOLUTION IMPLEMENTED:
+
+1. AUTOMATIC FIX (New Sessions)
+   ✅ Integrated into session completion service
+   ✅ Runs automatically when session completes
+   ✅ No manual intervention required
+   
+   File: services/session_completion_service.py (lines 266-293)
+
+2. MANUAL BACKFILL (Existing Sessions)
+   ✅ Created backfill script with dry-run support
+   ✅ Created verification script for validation
+   ✅ Comprehensive test suite for edge cases
+   
+   Files:
+   - scripts/backfill_null_video_ids.py (backfill script)
+   - scripts/verify_video_id_fix.py (verification)
+   - tests/test_video_id_reassignment.py (test suite)
+
+3. DOCUMENTATION
+   ✅ Complete implementation guide
+   ✅ Quick reference guide
+   ✅ Edge case documentation
+   
+   Files:
+   - docs/NULL_VIDEO_ID_FIX_SUMMARY.md (complete guide)
+   - docs/NULL_VIDEO_ID_QUICK_REFERENCE.md (quick ref)
+
+USAGE:
+
+For New Sessions:
+  → Automatic: Fix runs during session completion
+
+For Existing Sessions:
+  1. Check status: python3 scripts/backfill_null_video_ids.py --all --dry-run
+  2. Fix session: python3 scripts/backfill_null_video_ids.py --session-id <ID>
+  3. Verify: python3 scripts/verify_video_id_fix.py --session-id <ID>
+
+TESTING:
+  pytest tests/test_video_id_reassignment.py -v
+
+VERIFICATION:
+  python3 scripts/verify_video_id_fix.py --all
+
+EDGE CASES HANDLED:
+  ✅ Detection at exact video boundary
+  ✅ Detection before first video (10s fallback window)
+  ✅ Detection after last video (10s fallback window)
+  ✅ Detection in gap between videos
+  ✅ NULL timestamps
+  ✅ NULL start times
+  ✅ Overlapping buffer zones
+
+FILES:
+  Modified:
+    - services/session_completion_service.py
+  
+  Created:
+    - scripts/backfill_null_video_ids.py
+    - scripts/verify_video_id_fix.py
+    - tests/test_video_id_reassignment.py
+    - docs/NULL_VIDEO_ID_FIX_SUMMARY.md
+    - docs/NULL_VIDEO_ID_QUICK_REFERENCE.md
+    - NULL_VIDEO_ID_FIX_COMPLETE.txt (this file)
+
+  Existing (Reused):
+    - services/detection_video_reassignment.py
+
+READY FOR DEPLOYMENT ✅

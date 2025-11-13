@@ -66,6 +66,40 @@ class VRUSettings(BaseSettings):
     allowed_video_extensions: List[str] = Field(default_factory=lambda: [
         ".mp4", ".avi", ".mov", ".mkv", ".flv", ".webm"
     ])
+
+    @field_validator("allowed_video_extensions", mode="before")
+    @classmethod
+    def _normalize_allowed_video_extensions(cls, value):
+        """
+        Accept either JSON arrays or comma-separated strings from environment files.
+        The current production .env uses comma-separated extensions which would
+        otherwise trigger JSON decoding errors during settings initialisation.
+        """
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            # Try to parse JSON arrays first so we honour valid JSON overrides
+            if stripped.startswith("[") and stripped.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, list):
+                        return parsed
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    # Fall back to comma-separated parsing below
+                    pass
+            # Support simple comma-separated values, normalising leading dots
+            extensions = []
+            for part in stripped.split(","):
+                ext = part.strip()
+                if not ext:
+                    continue
+                if not ext.startswith("."):
+                    ext = f".{ext.lstrip('.')}"
+                extensions.append(ext)
+            return extensions
+        return value
     
     # Feature Flags
     enable_cvat_integration: bool = Field(default=False)

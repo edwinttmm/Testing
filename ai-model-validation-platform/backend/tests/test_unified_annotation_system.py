@@ -164,17 +164,17 @@ class TestUnifiedAnnotationSystem:
         """Test video annotations retrieval with filters"""
         mock_db.query.return_value.filter.return_value.count.return_value = 0
         mock_db.query.return_value.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
-        
+
         with patch('src.api.unified_annotation_endpoints.get_db', return_value=mock_db):
             response = client.get(
-                f"/api/annotations/videos/{sample_video.id}/annotations?validated_only=true&skip=10&limit=50"
+                f"/api/annotations/videos/{sample_video.id}/annotations?validated_only=true&skip=10&limit=2000"
             )
         
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["pagination"]["skip"] == 10
-        assert data["pagination"]["limit"] == 50
+        assert data["pagination"]["limit"] == 2000
 
     def test_get_annotation_success(self, client, mock_db, sample_annotation):
         """Test successful retrieval of specific annotation"""

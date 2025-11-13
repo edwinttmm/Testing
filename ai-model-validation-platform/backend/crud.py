@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import time
 
 from models import Project, Video, TestSession, DetectionEvent, GroundTruthObject, AuditLog, VideoProjectLink
 from schemas import (
@@ -154,15 +155,38 @@ def remove_video_from_project(db: Session, video_id: str, project_id: str, user_
     return False
 
 def get_project_videos(db: Session, project_id: str, user_id: str = "anonymous", skip: int = 0, limit: int = 100) -> List[Video]:
-    """Get all videos assigned to a specific project"""
+    """Get all videos assigned to a specific project with eager loading to prevent N+1 queries"""
+    from sqlalchemy.orm import selectinload, joinedload
+
     # Security check: ensure user owns the project
     project = get_project(db, project_id, user_id)
     if not project:
         return []
-    
-    return db.query(Video).join(VideoProjectLink).filter(
+
+    # PERFORMANCE FIX: Eager load all relationships to prevent N+1 queries
+    linked_videos = db.query(Video).join(VideoProjectLink).options(
+        selectinload(Video.annotations),
+        selectinload(Video.project_links),
+        joinedload(Video.project)
+    ).filter(
         VideoProjectLink.project_id == project_id
     ).offset(skip).limit(limit).all()
+
+    linked_ids = {video.id for video in linked_videos}
+
+    direct_query = db.query(Video).options(
+        selectinload(Video.annotations),
+        selectinload(Video.project_links),
+        joinedload(Video.project)
+    ).filter(
+        Video.project_id == project_id
+    )
+    if linked_ids:
+        direct_query = direct_query.filter(~Video.id.in_(linked_ids))
+
+    direct_videos = direct_query.offset(skip).limit(max(0, limit - len(linked_videos))).all()
+
+    return linked_videos + direct_videos
 
 def get_video_projects(db: Session, video_id: str, user_id: str = "anonymous") -> List[Project]:
     """Get all projects that contain a specific video (user security check)"""
@@ -198,20 +222,40 @@ def create_video_legacy(db: Session, project_id: str, filename: str, file_path: 
     return create_video(db, filename, file_path, file_size, [project_id] if project_id else None)
 
 def get_videos(db: Session, project_id: str = None, user_id: str = "anonymous", skip: int = 0, limit: int = 100) -> List[Video]:
+    """Get videos with eager loading to prevent N+1 queries"""
+    from sqlalchemy.orm import selectinload, joinedload
+    import time
+
+    start_time = time.time()
+
     # SECURITY FIX: Join through VideoProjectLink to ensure user can only access their videos
+    # PERFORMANCE FIX: Add eager loading for relationships
     if project_id:
         # Get videos for specific project
-        query = db.query(Video).join(VideoProjectLink).join(Project).filter(
+        query = db.query(Video).join(VideoProjectLink).join(Project).options(
+            selectinload(Video.ground_truth_objects),
+            selectinload(Video.project_links),
+            joinedload(Video.project)
+        ).filter(
             Project.owner_id == user_id,
             VideoProjectLink.project_id == project_id
         )
     else:
         # Get all videos accessible to user across all their projects
-        query = db.query(Video).join(VideoProjectLink).join(Project).filter(
+        query = db.query(Video).join(VideoProjectLink).join(Project).options(
+            selectinload(Video.ground_truth_objects),
+            selectinload(Video.project_links),
+            joinedload(Video.project)
+        ).filter(
             Project.owner_id == user_id
         ).distinct()  # Prevent duplicates if video is in multiple projects
-    
-    return query.offset(skip).limit(limit).all()
+
+    videos = query.offset(skip).limit(limit).all()
+
+    query_time = (time.time() - start_time) * 1000
+    logger.info(f"Retrieved {len(videos)} videos in {query_time:.2f}ms (with eager loading)")
+
+    return videos
 
 def get_video(db: Session, video_id: str, user_id: str = "anonymous") -> Optional[Video]:
     # SECURITY FIX: Join through VideoProjectLink to ensure user can only access their videos
@@ -262,9 +306,11 @@ def create_ground_truth_object(db: Session, video_id: str, timestamp: float,
 
 def get_ground_truth_objects(db: Session, video_id: str, user_id: str = "anonymous") -> List[GroundTruthObject]:
     # SECURITY FIX: Join through Video, VideoProjectLink, and Project to ensure user can only access their ground truth objects
+    # Issue #6: Exclude soft-deleted records
     return db.query(GroundTruthObject).join(Video).join(VideoProjectLink).join(Project).filter(
         GroundTruthObject.video_id == video_id,
-        Project.owner_id == user_id
+        Project.owner_id == user_id,
+        GroundTruthObject.deleted_at.is_(None)  # Only return active records
     ).all()
 
 # Test Session CRUD
@@ -272,10 +318,14 @@ def create_test_session(db: Session, test_session: TestSessionCreate, user_id: s
     # Safely map only known fields to the ORM model
     data = test_session.model_dump(exclude_none=True)
     # Remove client-side config blob if present
-    data.pop('config', None)
+    config_blob = data.pop('config', None)
     # Filter to model columns to avoid unexpected kwargs
     allowed = {col.name for col in TestSession.__table__.columns}
     filtered = {k: v for k, v in data.items() if k in allowed}
+    if config_blob is not None and 'test_configuration' in allowed:
+        filtered['test_configuration'] = config_blob
+    if not filtered.get("name"):
+        filtered["name"] = "HIL Test Session"
     db_session = TestSession(**filtered)
     db.add(db_session)
     db.commit()
@@ -283,8 +333,22 @@ def create_test_session(db: Session, test_session: TestSessionCreate, user_id: s
     return db_session
 
 def get_test_sessions(db: Session, project_id: str = None, video_id: str = None, user_id: str = "anonymous", skip: int = 0, limit: int = 100) -> List[TestSession]:
+    """Get test sessions with eager loading to prevent N+1 queries"""
+    from sqlalchemy.orm import selectinload, joinedload
+    import time
+
+    start_time = time.time()
+
     # SECURITY FIX: Join with Project to ensure user can only access their test sessions
-    query = db.query(TestSession).join(Project).filter(Project.owner_id == user_id)
+    # PERFORMANCE FIX: Add eager loading for relationships to prevent N+1 queries
+    query = db.query(TestSession).join(Project).options(
+        joinedload(TestSession.project),  # Join load project (1:1)
+        joinedload(TestSession.video),  # Join load video (1:1)
+        selectinload(TestSession.detection_events),  # Batch load detection events
+        selectinload(TestSession.results),  # Batch load test results
+        selectinload(TestSession.video_sequences)  # Batch load video sequences
+    ).filter(Project.owner_id == user_id)
+
     if project_id:
         query = query.filter(TestSession.project_id == project_id)
     if video_id:
@@ -294,7 +358,13 @@ def get_test_sessions(db: Session, project_id: str = None, video_id: str = None,
             Video.id == video_id
         ).subquery()
         query = query.filter(TestSession.video_id.in_(video_subquery))
-    return query.offset(skip).limit(limit).all()
+
+    sessions = query.offset(skip).limit(limit).all()
+
+    query_time = (time.time() - start_time) * 1000
+    logger.info(f"Retrieved {len(sessions)} test sessions in {query_time:.2f}ms (with eager loading)")
+
+    return sessions
 
 def get_test_session(db: Session, session_id: str, user_id: str = "anonymous") -> Optional[TestSession]:
     # SECURITY FIX: Join with Project to ensure user can only access their test sessions
@@ -314,6 +384,12 @@ def create_detection_event(db: Session, detection: DetectionEventSchema) -> Dete
                 data['video_id'] = session.video_id
         except Exception as e:
             logger.warning(f"Could not backfill detection.video_id from session: {e}")
+
+    # FIXED: Ensure frame_number is always set
+    if 'frame_number' not in data or data['frame_number'] is None:
+        data['frame_number'] = 0
+    if 'video_frame_number' not in data or data['video_frame_number'] is None:
+        data['video_frame_number'] = 0
 
     db_detection = DetectionEvent(**data)
     db.add(db_detection)
@@ -341,11 +417,20 @@ def create_detection_event(db: Session, detection: DetectionEventSchema) -> Dete
     return db_detection
 
 def get_detection_events(db: Session, test_session_id: str, user_id: str = "anonymous") -> List[DetectionEvent]:
+    """Get detection events for a test session with eager loading to prevent N+1 queries"""
+    from sqlalchemy.orm import selectinload, joinedload
+
     # SECURITY FIX: Join through TestSession and Project to ensure user can only access their detection events
-    return db.query(DetectionEvent).join(TestSession).join(Project).filter(
+    # PERFORMANCE FIX: Eager load all relationships to prevent N+1 queries
+    return db.query(DetectionEvent).join(TestSession).join(Project).options(
+        joinedload(DetectionEvent.test_session),  # Join load test session (1:1)
+        joinedload(DetectionEvent.video),  # Join load video (1:1)
+        selectinload(DetectionEvent.ground_truth_match),  # Batch load ground truth matches
+        selectinload(DetectionEvent.sequence_video_result)  # Batch load sequence results
+    ).filter(
         DetectionEvent.test_session_id == test_session_id,
         Project.owner_id == user_id
-    ).all()
+    ).order_by(DetectionEvent.timestamp).all()
 
 # Audit Log CRUD
 def create_audit_log(db: Session, audit_log: AuditLogCreate, user_id: str = None) -> AuditLog:
@@ -369,27 +454,46 @@ def get_audit_logs(db: Session, user_id: str = None, event_type: str = None,
 
 # Dashboard CRUD
 def get_dashboard_stats(db: Session, user_id: str):
-    """Get dashboard statistics for a user - Updated for many-to-many structure"""
-    from sqlalchemy import func
-    
-    project_count = db.query(func.count(Project.id)).filter(Project.owner_id == user_id).scalar() or 0
-    
-    # Get unique video count for user's projects through junction table
-    video_count = db.query(func.count(Video.id.distinct())).join(VideoProjectLink).join(Project).filter(
-        Project.owner_id == user_id
-    ).scalar() or 0
-    
-    # Get test session count for user's projects
-    test_session_count = db.query(func.count(TestSession.id)).join(Project).filter(Project.owner_id == user_id).scalar() or 0
-    
-    # Get detection event count for user's test sessions
-    detection_event_count = db.query(func.count(DetectionEvent.id)).join(TestSession).join(Project).filter(Project.owner_id == user_id).scalar() or 0
-    
+    """Get dashboard statistics for a user - Optimized with single query using subqueries"""
+    from sqlalchemy import func, select
+    import time
+
+    start_time = time.time()
+
+    # PERFORMANCE FIX: Use single query with multiple subqueries instead of 4 separate queries
+    # This reduces database round trips from 4 to 1
+
+    # Build subqueries for each stat
+    project_subq = select(func.count(Project.id)).where(Project.owner_id == user_id).scalar_subquery()
+
+    video_subq = select(func.count(Video.id.distinct())).select_from(
+        Video.__table__.join(VideoProjectLink).join(Project)
+    ).where(Project.owner_id == user_id).scalar_subquery()
+
+    test_session_subq = select(func.count(TestSession.id)).select_from(
+        TestSession.__table__.join(Project)
+    ).where(Project.owner_id == user_id).scalar_subquery()
+
+    detection_event_subq = select(func.count(DetectionEvent.id)).select_from(
+        DetectionEvent.__table__.join(TestSession).join(Project)
+    ).where(Project.owner_id == user_id).scalar_subquery()
+
+    # Execute single query with all subqueries
+    result = db.query(
+        project_subq.label('project_count'),
+        video_subq.label('video_count'),
+        test_session_subq.label('test_session_count'),
+        detection_event_subq.label('detection_event_count')
+    ).first()
+
+    query_time = (time.time() - start_time) * 1000
+    logger.info(f"Dashboard stats retrieved in {query_time:.2f}ms (1 query with subqueries)")
+
     return {
-        "project_count": project_count,
-        "video_count": video_count,
-        "test_session_count": test_session_count,
-        "detection_event_count": detection_event_count
+        "project_count": result.project_count or 0,
+        "video_count": result.video_count or 0,
+        "test_session_count": result.test_session_count or 0,
+        "detection_event_count": result.detection_event_count or 0
     }
 
 # Bulk Operations for Many-to-Many Structure

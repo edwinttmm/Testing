@@ -45,16 +45,33 @@ class GroundTruthCreate(BaseModel):
     confidence: Optional[float] = Field(None, ge=0, le=1)
     validated: bool = False
     difficult: bool = False
-    
+
     class Config:
         populate_by_name = True
-    
+
     @validator('class_label')
     def validate_class_label(cls, v):
+        """
+        Normalize class_label to prevent duplicates from enum vs string formats.
+
+        CRITICAL FIX: Issue #8 - Ground Truth Duplicate Prevention
+        - Handles 'VRUTypeEnum.CYCLIST' -> 'cyclist'
+        - Handles 'cyclist' -> 'cyclist'
+        - Prevents duplicate imports with different formats
+        """
         allowed_classes = ['pedestrian', 'cyclist', 'motorcyclist', 'wheelchair', 'scooter', 'animal', 'other']
-        if v.lower() not in allowed_classes:
+
+        # Strip enum prefix if present (VRUTypeEnum.CYCLIST -> CYCLIST)
+        if '.' in v:
+            v = v.split('.')[-1]
+
+        # Normalize to lowercase
+        normalized = v.lower()
+
+        if normalized not in allowed_classes:
             raise ValueError(f"Class label must be one of: {', '.join(allowed_classes)}")
-        return v.lower()
+
+        return normalized
 
 class GroundTruthUpdate(BaseModel):
     frame_number: Optional[int] = Field(None, ge=0, alias="frameNumber")
@@ -405,20 +422,25 @@ async def create_bulk_ground_truth(
     db: Session = Depends(get_db)
 ):
     """
-    Create multiple ground truth objects in a single transaction
+    Create multiple ground truth objects in a single transaction with duplicate detection
+
+    CRITICAL FIX: Issue #8 - Duplicate Prevention
+    - Checks for existing objects with same (video_id, timestamp, class_label, bbox)
+    - Skips duplicates instead of creating new records
+    - Returns count of created vs skipped objects
     """
     if not bulk_request.ground_truth_objects:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="No ground truth objects provided"
         )
-    
+
     if len(bulk_request.ground_truth_objects) > 1000:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Cannot create more than 1000 ground truth objects at once"
         )
-    
+
     try:
         # Validate video exists
         video = db.query(Video).filter(Video.id == bulk_request.video_id).first()
@@ -427,9 +449,10 @@ async def create_bulk_ground_truth(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Video with ID {bulk_request.video_id} not found"
             )
-        
+
         created_objects = []
-        
+        skipped_duplicates = 0
+
         for i, gt_data in enumerate(bulk_request.ground_truth_objects):
             try:
                 # Validate each ground truth object
@@ -437,7 +460,27 @@ async def create_bulk_ground_truth(
                     videoId=bulk_request.video_id,
                     **gt_data
                 )
-                
+
+                # DUPLICATE DETECTION: Check if object already exists
+                # Criteria: same video_id + timestamp + class_label + bounding box
+                existing = db.query(GroundTruthObject).filter(
+                    GroundTruthObject.video_id == bulk_request.video_id,
+                    GroundTruthObject.timestamp == gt_create.timestamp,
+                    GroundTruthObject.class_label == gt_create.class_label,
+                    GroundTruthObject.x == gt_create.bounding_box.x,
+                    GroundTruthObject.y == gt_create.bounding_box.y,
+                    GroundTruthObject.width == gt_create.bounding_box.width,
+                    GroundTruthObject.height == gt_create.bounding_box.height,
+                    GroundTruthObject.deleted_at.is_(None)  # Only check active records
+                ).first()
+
+                if existing:
+                    # Skip duplicate - already exists
+                    skipped_duplicates += 1
+                    logger.debug(f"Skipped duplicate GT object: video={bulk_request.video_id[:8]}, "
+                               f"timestamp={gt_create.timestamp:.3f}s, class={gt_create.class_label}")
+                    continue
+
                 db_gt = GroundTruthObject(
                     id=str(uuid.uuid4()),
                     video_id=bulk_request.video_id,
@@ -453,17 +496,21 @@ async def create_bulk_ground_truth(
                     difficult=gt_create.difficult,
                     created_at=datetime.utcnow()
                 )
-                
+
                 db.add(db_gt)
                 created_objects.append(db_gt)
-                
+
             except Exception as e:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Validation failed for ground truth object {i+1}: {str(e)}"
                 )
-        
+
         db.commit()
+
+        # Log duplicate statistics
+        if skipped_duplicates > 0:
+            logger.info(f"Bulk import: created {len(created_objects)}, skipped {skipped_duplicates} duplicates")
         
         # Refresh all created objects
         for gt in created_objects:
