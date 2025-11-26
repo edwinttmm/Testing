@@ -24,7 +24,7 @@ from sqlalchemy import text, func
 
 from database import SessionLocal
 from models import Video, GroundTruthObject, DetectionEvent, Annotation
-from config import Settings
+from config_settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class URLFixService:
     """
     Service for fixing localhost URLs in database records.
     """
-    
+
     def __init__(self, settings: Settings = None):
         self.settings = settings or Settings()
         # Disable URL fixing for localhost development

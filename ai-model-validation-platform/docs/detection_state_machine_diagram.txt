@@ -1,0 +1,356 @@
+# Detection State Machine Flow Diagram
+
+## High-Level Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     MONITORING LOOP                              │
+│                  (Lines 800-1100, 1200-1400)                    │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+                    ┌─────────────────┐
+                    │ Read Voltage    │
+                    │ (poll/stream)   │
+                    └─────────────────┘
+                              ↓
+                ┌─────────────────────────┐
+                │ voltage >= threshold?    │
+                │    (Line 971, 1314)     │
+                └─────────────────────────┘
+                    ↓              ↓
+                   NO             YES
+                    ↓              ↓
+              [SKIP EVENT]    [Continue]
+                              ↓
+                    ┌─────────────────────────────┐
+                    │   VIDEO WINDOW CHECK        │
+                    │  (Lines 990-1006, 1324)    │
+                    └─────────────────────────────┘
+                              ↓
+        ┌────────────────────┼────────────────────┐
+        ↓                    ↓                    ↓
+   TOO EARLY           IN WINDOW             TOO LATE
+(>2s before start)  [start-2s, end+buffer]  (after end)
+        ↓                    ↓                    ↓
+  [SKIP + LOG]          [Continue]          [SKIP + LOG]
+skipped_early++                            skipped_late++
+   (Line 995)                                (Line 1001)
+                              ↓
+                    ┌─────────────────────────────┐
+                    │  _should_record_detection() │
+                    │       (Line 1456)           │
+                    │    DEBOUNCE STATE MACHINE   │
+                    └─────────────────────────────┘
+                              ↓
+                    [See Detailed Diagram Below]
+                              ↓
+        ┌───────────────────┼───────────────────┐
+        ↓                   ↓                   ↓
+     NONE            "steady_high"      "threshold_cross"
+ [SUPPRESSED]        (Line 1534)          (Line 1552)
+        ↓                   ↓                   ↓
+   [SKIP]           [Create Event]       [Create Event]
+                    state='steady_high'  state='threshold_cross'
+                    (Line 1021)          (Line 1033)
+                              ↓                   ↓
+                    ┌─────────────────────────────┐
+                    │ _record_detection_event()   │
+                    │       (Line 1767)           │
+                    └─────────────────────────────┘
+                              ↓
+                    ┌─────────────────────────────┐
+                    │   Store in Memory List      │
+                    │    (Line 1778)              │
+                    └─────────────────────────────┘
+                              ↓
+                    ┌─────────────────────────────┐
+                    │  _schedule_db_storage()     │
+                    │    (Line 1805, 1818)        │
+                    └─────────────────────────────┘
+```
+
+---
+
+## Detailed Debounce State Machine
+
+### State Variables
+```
+State Storage:
+  self.last_detection_times: Dict[session_id → Dict[channel → datetime]]
+  self.last_continuous_emit_times: Dict[session_id → Dict[channel → datetime]]
+  self.last_steady_high_emit_times: Dict[session_id → Dict[channel → datetime]]
+
+Thread Safety:
+  with self.lock:  # All state access protected (Line 1468)
+```
+
+### State Machine Logic Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│            _should_record_detection(session, channel, time)      │
+│                        (Lines 1456-1552)                         │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+                    [Acquire Lock - Line 1468]
+                              ↓
+                ┌─────────────────────────┐
+                │ continuous_mode?        │
+                │    (Line 1469)          │
+                └─────────────────────────┘
+                    ↓              ↓
+                   YES            NO
+                    ↓              ↓
+        ┌─────────────────┐    [Continue to Debounce]
+        │ Check Interval   │
+        │  (Line 1480)    │
+        └─────────────────┘
+                ↓      ↓
+          THROTTLED   EMIT
+               ↓         ↓
+          Return NULL  Return "continuous"
+                              ↓
+                    ┌─────────────────────────────────┐
+                    │    DEBOUNCE CHECK               │
+                    │  (Lines 1516-1540)              │
+                    └─────────────────────────────────┘
+                              ↓
+        ┌─────────────────────────────────────────┐
+        │ last_detection = get_last_time(channel) │
+        │ delta = current_time - last_detection   │
+        │ debounce_delta = config.debounce_ms     │
+        └─────────────────────────────────────────┘
+                              ↓
+                ┌─────────────────────────┐
+                │ delta < debounce_delta? │
+                │    (Line 1521)          │
+                └─────────────────────────┘
+                    ↓              ↓
+                   YES            NO
+        [Within Debounce]    [Debounce Passed]
+                    ↓              ↓
+        ┌─────────────────┐  ┌────────────────────────┐
+        │ steady_high?    │  │ Update State:          │
+        │  (Line 1522)    │  │ last_detection[channel]│
+        └─────────────────┘  │      = current_time    │
+                ↓      ↓      │    (Line 1542)         │
+              YES    NO       └────────────────────────┘
+                ↓      ↓              ↓
+    ┌─────────────┐  ┌────┐  ┌────────────────────────┐
+    │Check steady │  │NULL│  │ Increment:             │
+    │  interval   │  └────┘  │ decision_stat[         │
+    │ (Line 1526) │          │  'threshold_cross']    │
+    └─────────────┘          │    (Line 1547)         │
+        ↓      ↓              └────────────────────────┘
+   EMIT    NULL               ↓
+     ↓                ┌────────────────────────┐
+Return               │ Return "threshold_cross"│
+"steady_high"        └────────────────────────┘
+(Line 1534)                   ↓
+                    [Release Lock]
+                              ↓
+                    [Event Creation]
+```
+
+---
+
+## State Transition Table
+
+| Current State | Input | Condition | Next State | Output | Line Ref |
+|--------------|-------|-----------|------------|--------|----------|
+| No prior detection | voltage >= threshold | delta = ∞ | last_detection = now | "threshold_cross" | 1542, 1552 |
+| last_detection = T₀ | voltage >= threshold | delta < 100ms | last_detection = T₀ (unchanged) | NULL (suppressed) | 1521, 1540 |
+| last_detection = T₀ | voltage >= threshold | delta < 100ms + steady_high | last_steady = now | "steady_high" | 1527, 1534 |
+| last_detection = T₀ | voltage >= threshold | delta >= 100ms | last_detection = now | "threshold_cross" | 1542, 1552 |
+
+---
+
+## Critical Timing Constraints
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              TIMING CONSTRAINT HIERARCHY                      │
+└──────────────────────────────────────────────────────────────┘
+
+1. GRACE_PERIOD (Outermost Filter)
+   ├─ Default: 2000ms (2 seconds)
+   ├─ Window: [video_start - 2s, video_end + buffer]
+   └─ Rejects: Detections outside this window
+
+2. DEBOUNCE (Primary Bottleneck) ⚠️ CRITICAL
+   ├─ Default: 100ms
+   ├─ Enforces: Minimum gap between "threshold_cross" events
+   ├─ Maximum Rate: 1000ms / 100ms = 10 Hz
+   └─ For 5s video: 10 Hz × 5s = 50 events maximum
+
+3. STEADY_HIGH_INTERVAL (Alternative Path)
+   ├─ Default: 5ms
+   ├─ Allows: 200 Hz sampling during "high" state
+   └─ Event Type: "steady_high" (not "threshold_cross")
+
+4. CONTINUOUS_INTERVAL (Continuous Mode)
+   ├─ Default: 5ms
+   ├─ Allows: 200 Hz continuous sampling
+   └─ Event Type: "continuous" (not "threshold_cross")
+
+┌──────────────────────────────────────────────────────────────┐
+│                    RATE LIMITING ANALYSIS                     │
+└──────────────────────────────────────────────────────────────┘
+
+Expected Input:
+  └─ 200 Hz sampling × 5s video = 1000 samples
+       ↓
+  [Voltage Threshold Filter]
+       ↓
+  800-1000 voltage crossings (assuming signal crosses threshold)
+       ↓
+  [Video Window Filter: 2s grace period]
+       ↓
+  ~700-900 detections within window
+       ↓
+  [Debounce Filter: 100ms minimum gap] ⚠️ BOTTLENECK
+       ↓
+  Maximum: 10 Hz × 5s = 50 events
+       ↓
+  Actual: 4 events (8% of maximum)
+
+Conclusion: Only 4 detections had >=100ms gap between them
+```
+
+---
+
+## State Persistence Analysis
+
+### When State is Created
+```
+Line 1516: session_detections = self.last_detection_times.setdefault(session_id, {})
+Line 1517: last_detection = session_detections.get(channel, datetime.min)
+```
+
+### When State is Updated
+```
+Line 1542: session_detections[channel] = current_time
+  ↓
+Only when: current_time - last_detection >= debounce_delta
+```
+
+### When State is Cleared
+```
+Line 2383: self.detection_events.pop(session_id, None)
+  ↓
+Called by: stop_monitoring(session_id)
+```
+
+### State Race Condition Prevention
+```
+Lines 1780-1782 (Comments):
+"REMOVED: last_detection_times update (now done atomically in _should_record_detection)"
+"This prevents duplicate detection race condition by ensuring check-and-update is atomic"
+"The update happens in _should_record_detection() inside the same lock as the check"
+```
+
+**Key Insight**: State update is atomic with the debounce check, preventing race conditions where multiple threads could record the same detection.
+
+---
+
+## Debugging Checkpoints
+
+### 1. Voltage Threshold Check
+```bash
+LOG: "🎯 DETECTION! {channel}: {voltage:.3f}V > {config.voltage_threshold}V threshold"
+LINE: 980
+MEANING: Voltage crossed threshold, proceeding to filters
+```
+
+### 2. Window Validation
+```bash
+LOG: "⏭️ Skipping early detection {time_diff:.3f}s before video start"
+LINE: 996-999
+MEANING: Detection rejected - too early
+
+LOG: "⏭️ Skipping late detection after video end"
+LINE: 1002-1005
+MEANING: Detection rejected - too late
+
+LOG: "✅ Pre-trigger detection allowed: {time_diff:.3f}s before start"
+LINE: 989, 1323
+MEANING: Early detection within grace period - allowed
+```
+
+### 3. Debounce State Machine
+```bash
+LOG: "⛔ [Decision] threshold suppressed by debounce"
+LINE: 1537
+MEANING: Detection suppressed - gap too small
+
+LOG: "🟢 [Decision] threshold_cross accepted"
+LINE: 1548
+MEANING: Detection accepted - gap sufficient
+
+LOG: "🟡 [Decision] steady_high emitted"
+LINE: 1529
+MEANING: Steady-high event emitted instead
+```
+
+### 4. Event Recording
+```bash
+LOG: "📝 Detection event recorded ({decision}): {voltage:.3f}V"
+LINE: 1038
+MEANING: Event successfully recorded
+
+LOG: "🎯 Detection event[{event.state}]: {channel} = {voltage:.3f}V"
+LINE: 1791
+MEANING: Event added to memory list
+```
+
+### 5. Statistics Summary
+```bash
+LOG: "stats_snapshot = self.decision_statistics.get(session_id, {})"
+LINE: 1790
+METRICS:
+  - 'threshold_cross': Number accepted
+  - 'debounce_skipped': Number suppressed
+  - 'steady_high': Number steady-high events
+  - 'continuous': Number continuous events
+  - 'continuous_throttled': Number continuous throttled
+```
+
+---
+
+## Example Scenario Analysis
+
+### Scenario: 5-Second Video, 200 Hz Sampling, 4 Events Recorded
+
+```
+Time (s)  Voltage  State              Action                Result
+──────────────────────────────────────────────────────────────────────
+0.000     3.0V     No prior detection  Gap = ∞             ✅ Event 1
+0.005     3.1V     last = 0.000s       Gap = 5ms < 100ms   ❌ SUPPRESS
+0.010     3.2V     last = 0.000s       Gap = 10ms < 100ms  ❌ SUPPRESS
+...
+0.095     3.3V     last = 0.000s       Gap = 95ms < 100ms  ❌ SUPPRESS
+0.100     3.4V     last = 0.000s       Gap = 100ms = 100ms ✅ Event 2
+0.105     3.5V     last = 0.100s       Gap = 5ms < 100ms   ❌ SUPPRESS
+...
+0.195     3.6V     last = 0.100s       Gap = 95ms < 100ms  ❌ SUPPRESS
+0.200     3.7V     last = 0.100s       Gap = 100ms = 100ms ✅ Event 3
+...
+4.900     4.0V     last = 4.800s       Gap = 100ms = 100ms ✅ Event 4
+4.905     4.1V     last = 4.900s       Gap = 5ms < 100ms   ❌ SUPPRESS
+...
+5.000     4.2V     last = 4.900s       Gap = 100ms = 100ms (video ends)
+──────────────────────────────────────────────────────────────────────
+
+Total Samples:     1000 (200 Hz × 5s)
+Voltage Crossings: 1000 (all above threshold)
+Window Validated:  1000 (all within video window)
+Debounce Passed:   4 (only those with 100ms+ gap)
+
+RESULT: 4 threshold_cross events recorded
+```
+
+**Key Insight**: The 4 events represent a sparse detection pattern where voltage crossings happened to be spaced exactly 100ms apart, possibly due to:
+- Signal characteristics (periodic pulses at 10 Hz)
+- Previous test state not cleared
+- Video timing misalignment causing most detections to fall outside window
+- Actual voltage signal had only 4 distinct rising edges

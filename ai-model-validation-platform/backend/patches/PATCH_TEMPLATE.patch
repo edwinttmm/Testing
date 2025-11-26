@@ -1,0 +1,17 @@
+# Template patch file - DO NOT APPLY
+# This is a template showing the expected format for patches
+# Actual patches will be generated after agent findings
+
+--- a/main.py
++++ b/main.py
+@@ -XXX,Y +XXX,Y @@
+ # Context line before changes
+
+-# Old code to be removed (if any)
++# New code to be added
++
++# Example: Adding a router registration
++from routers.monitoring import router as monitoring_router
++app.include_router(monitoring_router, prefix="/api/monitoring", tags=["monitoring"])
+
+ # Context line after changes

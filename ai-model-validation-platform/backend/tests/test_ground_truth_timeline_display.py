@@ -61,7 +61,7 @@ class GroundTruthTimelineDisplayTester:
         try:
             # Get available test sessions
             db = next(get_db())
-            sessions = db.query(TestSession).limit(5).all()
+            sessions = db.execute(select(TestSession).limit(5)).scalars().all()
             
             if not sessions:
                 self.log_test("API Enhanced HIL - No Sessions", "SKIP", "No test sessions found in database")
@@ -133,16 +133,16 @@ class GroundTruthTimelineDisplayTester:
             db = next(get_db())
             
             # Find a video with ground truth objects
-            video_with_gt = db.query(Video).join(GroundTruthObject).first()
+            video_with_gt = db.execute(select(Video).join(GroundTruthObject)).scalar_one_or_none()
             if not video_with_gt:
                 self.log_test("GT Data Structure - No GT Data", "SKIP", 
                             "No videos with ground truth data found")
                 return False
             
             # Get ground truth objects for this video
-            gt_objects = db.query(GroundTruthObject).filter(
-                GroundTruthObject.video_id == video_with_gt.id
-            ).order_by(GroundTruthObject.timestamp).all()
+            gt_objects = db.execute(select(GroundTruthObject).where(
+            GroundTruthObject.video_id == video_with_gt.id
+        )).scalars().order_by(GroundTruthObject.timestamp).all()
             
             if not gt_objects:
                 self.log_test("GT Data Structure - No GT Objects", "FAIL",
@@ -262,7 +262,7 @@ class GroundTruthTimelineDisplayTester:
             # Get test session with detection events
             db = next(get_db())
             
-            session_with_events = db.query(TestSession).join(DetectionEvent).first()
+            session_with_events = db.execute(select(TestSession).join(DetectionEvent)).scalar_one_or_none()
             if not session_with_events:
                 self.log_test("Timeline Display - No Session Data", "SKIP",
                             "No test sessions with detection events found")
@@ -358,7 +358,7 @@ class GroundTruthTimelineDisplayTester:
             
             # Step 1: Get available sessions
             db = next(get_db())
-            sessions = db.query(TestSession).limit(3).all()
+            sessions = db.execute(select(TestSession).limit(3)).scalars().all()
             
             if not sessions:
                 self.log_test("E2E Display - No Sessions", "SKIP", "No test sessions available")
@@ -477,7 +477,7 @@ class GroundTruthTimelineDisplayTester:
             
             # Get a test session ID
             db = next(get_db())
-            session = db.query(TestSession).first()
+            session = db.execute(select(TestSession)).scalar_one_or_none()
             
             if not session:
                 self.log_test("Browser Simulation - No Session", "SKIP", "No test session for navigation")

@@ -664,6 +664,8 @@ export interface DetectionEvent {
   boundingBox: BoundingBox;
   isGroundTruth: boolean;
   isCorrectDetection: boolean;
+  source?: 'ai' | 'labjack' | 'manual';  // Detection source
+  detection_type?: 'hardware' | 'software';  // Detection type (backend snake_case)
 }
 
 export interface TestMetrics {
@@ -793,6 +795,7 @@ export interface TestConfiguration {
   };
   outputFormat?: 'json' | 'xml' | 'csv';
   metadata?: Record<string, string | number | boolean>;
+  constantVoltageMode?: boolean; // Bypass debounce filter for constant voltage testing
 }
 
 // Dashboard Types - Aligned with backend snake_case

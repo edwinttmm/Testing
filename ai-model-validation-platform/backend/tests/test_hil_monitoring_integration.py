@@ -6,6 +6,7 @@ Tests for the fixed HIL test session workflow with dedicated monitoring service.
 Verifies that sessions properly integrate with monitoring and create detection events.
 """
 
+import os
 import pytest
 import asyncio
 import time
@@ -18,8 +19,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from services.dedicated_monitoring_service import DedicatedMonitoringService, MonitoringServiceIPC
-from services.monitoring_service_client import MonitoringServiceClient, MonitoringServiceManager
+from services.dedicated_labjack_monitor import DedicatedMonitoringService, MonitoringServiceIPC
+from services.labjack_monitor_client import MonitoringServiceClient, MonitoringServiceManager
 from services.monitoring_process_manager import MonitoringProcessManager
 from routers.test_sessions_fixed import start_test_session, complete_test_session
 

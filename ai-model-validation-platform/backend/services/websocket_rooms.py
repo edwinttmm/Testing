@@ -44,23 +44,29 @@ def notify_session_room(session_id: str, event: str, data: Dict[str, Any]) -> bo
     try:
         room_name = f"session_{session_id}"
 
+        # CRITICAL FIX: Prevent duplicate emissions when called from thread context
         # Use asyncio to emit if in async context, otherwise schedule
         try:
             loop = asyncio.get_event_loop()
+            # Check if we're in the main event loop AND it's running
             if loop.is_running():
                 # Already in async context - create task
                 asyncio.create_task(_sio.emit(event, data, room=room_name))
-            else:
-                # Not in async context - run until complete
-                loop.run_until_complete(_sio.emit(event, data, room=room_name))
+                logger.debug(f"Emitted {event} to session room {room_name} (task created)")
+                return True  # CRITICAL: Return here to prevent double emission
         except RuntimeError:
-            # No event loop - create new one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            pass  # No event loop exists, continue to create new one
+
+        # CRITICAL FIX: Only reach here if NOT in running async context
+        # Create new event loop for thread-safe emission
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
             loop.run_until_complete(_sio.emit(event, data, room=room_name))
+            logger.debug(f"Emitted {event} to session room {room_name} (new loop)")
+        finally:
             loop.close()
 
-        logger.debug(f"Emitted {event} to session room {room_name}")
         return True
 
     except Exception as e:
@@ -120,17 +126,25 @@ def broadcast_to_room(session_id: str, event: str, data: Dict[str, Any]) -> bool
 
         logger.info(f"Broadcasting {event} to {member_count} clients in room {room_name}")
 
+        # CRITICAL FIX: Prevent duplicate emissions when called from thread context
         # Use asyncio to emit
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 asyncio.create_task(_sio.emit(event, data, room=room_name))
-            else:
-                loop.run_until_complete(_sio.emit(event, data, room=room_name))
+                logger.debug(f"Broadcast {event} to room {room_name} (task created)")
+                return True  # CRITICAL: Return here to prevent double emission
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            pass  # No event loop exists, continue to create new one
+
+        # CRITICAL FIX: Only reach here if NOT in running async context
+        # Create new event loop for thread-safe emission
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
             loop.run_until_complete(_sio.emit(event, data, room=room_name))
+            logger.debug(f"Broadcast {event} to room {room_name} (new loop)")
+        finally:
             loop.close()
 
         return True

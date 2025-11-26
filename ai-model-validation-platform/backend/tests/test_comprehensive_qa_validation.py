@@ -28,14 +28,14 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.precision_timing_service import (
+from services.labjack_timing_service import (
     get_precision_timing_service,
     PrecisionTimestamp,
     validate_hil_timing_accuracy
 )
 from services.timing_synchronization_calculator import get_timing_synchronization_calculator
 from database import SessionLocal
-from models import GroundTruthObject, TestSession, DetectionEvent, VideoFile
+from models import GroundTruthObject, TestSession, DetectionEvent, Video
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class TestGroundTruthTimelineDisplay:
             db = SessionLocal()
             
             # Check ground truth objects exist
-            gt_objects = db.query(GroundTruthObject).all()
+            gt_objects = db.execute(select(GroundTruthObject)).scalars().all()
             assert len(gt_objects) > 0, "No ground truth objects found in database"
             
             # Validate data structure

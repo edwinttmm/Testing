@@ -11,10 +11,9 @@ from sqlalchemy.orm import Session
 
 from models import (
     TestSession,
-    GroundTruth,
+    GroundTruthObject,
     DetectionEvent,
-    TestResult,
-    EvaluationResult
+    TestResult
 )
 from schemas import TestSessionComplete
 
@@ -221,10 +220,10 @@ class TestDualEvaluationSystem:
         )
 
         # Verify accuracy metrics
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         tp_count = sum(1 for d in detections if d.is_true_positive)
         fp_count = sum(1 for d in detections if d.is_false_positive)
-        gt_count = db_session.query(GroundTruth).filter_by(session_id=session_id).count()
+        gt_count = db_session.execute(select(func.count()).select_from(GroundTruth).filter_by(session_id=session_id)).scalar()
         fn_count = gt_count - tp_count
 
         assert tp_count == 90, f"Expected 90 TP, got {tp_count}"
@@ -289,7 +288,7 @@ class TestDualEvaluationSystem:
         )
 
         # Verify TP/FP/FN are NOT affected by latency
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         tp_count = sum(1 for d in detections if d.is_true_positive)
         fp_count = sum(1 for d in detections if d.is_false_positive)
 
@@ -348,10 +347,10 @@ class TestDualEvaluationSystem:
         )
 
         # Verify metrics
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         tp_count = sum(1 for d in detections if d.is_true_positive)
         fp_count = sum(1 for d in detections if d.is_false_positive)
-        gt_count = db_session.query(GroundTruth).filter_by(session_id=session_id).count()
+        gt_count = db_session.execute(select(func.count()).select_from(GroundTruth).filter_by(session_id=session_id)).scalar()
         fn_count = gt_count - tp_count
 
         assert tp_count == 40
@@ -410,7 +409,7 @@ class TestDualEvaluationSystem:
         )
 
         # Verify metrics
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         tp_count = sum(1 for d in detections if d.is_true_positive)
         fp_count = sum(1 for d in detections if d.is_false_positive)
 
@@ -462,10 +461,10 @@ class TestDualEvaluationSystem:
         )
 
         # Verify metrics
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         tp_count = sum(1 for d in detections if d.is_true_positive)
         fp_count = sum(1 for d in detections if d.is_false_positive)
-        gt_count = db_session.query(GroundTruth).filter_by(session_id=session_id).count()
+        gt_count = db_session.execute(select(func.count()).select_from(GroundTruth).filter_by(session_id=session_id)).scalar()
         fn_count = gt_count - tp_count
 
         assert tp_count == 0, "Should have zero TP"
@@ -512,10 +511,10 @@ class TestDualEvaluationSystem:
         )
 
         # Capture initial TP/FP/FN counts
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         initial_tp = sum(1 for d in detections if d.is_true_positive)
         initial_fp = sum(1 for d in detections if d.is_false_positive)
-        gt_count = db_session.query(GroundTruth).filter_by(session_id=session_id).count()
+        gt_count = db_session.execute(select(func.count()).select_from(GroundTruth).filter_by(session_id=session_id)).scalar()
         initial_fn = gt_count - initial_tp
 
         # Modify latency values dramatically
@@ -525,7 +524,7 @@ class TestDualEvaluationSystem:
         db_session.commit()
 
         # Re-query and verify TP/FP/FN unchanged
-        detections = db_session.query(DetectionEvent).filter_by(session_id=session_id).all()
+        detections = db_session.execute(select(DetectionEvent).filter_by(session_id=session_id)).scalars().all()
         final_tp = sum(1 for d in detections if d.is_true_positive)
         final_fp = sum(1 for d in detections if d.is_false_positive)
         final_fn = gt_count - final_tp
@@ -616,9 +615,9 @@ class TestEvaluationResultStorage:
         db.commit()
 
         # Retrieve and verify
-        stored = db.query(EvaluationResult).filter_by(
+        stored = db.execute(select(EvaluationResult).filter_by(
             session_id=session.session_id
-        ).first()
+        )).scalar_one_or_none()
 
         assert stored is not None
         assert stored.accuracy_result == "PASS"

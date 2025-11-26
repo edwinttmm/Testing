@@ -406,9 +406,9 @@ class TestCameraLatencyFrameValidation:
         with_frames_matched = 0
         without_frames_matched = 0
         
-        all_detections = db_session.query(DetectionEvent).filter(
+        all_detections = db_session.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session.id
-        ).all()
+        )).scalars().all()
         
         for detection in all_detections:
             if detection.video_frame_number is not None:

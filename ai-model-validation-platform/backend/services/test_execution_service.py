@@ -361,8 +361,7 @@ class TestExecutionService:
         try:
             from database import SessionLocal
             from models import TestSession, DetectionEvent, TestResult
-            from datetime import datetime
-            
+
             db = SessionLocal()
             try:
                 # Get the test session
@@ -531,9 +530,8 @@ class TestExecutionService:
         try:
             from database import SessionLocal
             from models import TestSession, Video, Project
-            from datetime import datetime
             import uuid
-            
+
             db = SessionLocal()
             try:
                 # Get project info

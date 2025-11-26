@@ -1,0 +1,121 @@
+%% Timing and Synchronization Architecture Diagram
+%% Shows time flow and transformations across the system
+
+graph TB
+    subgraph "Hardware Layer"
+        LJ[LabJack Hardware]
+        LJ -->|Voltage Events<br/>Unix Epoch| LJ_START[labjack_start_time<br/>Session Reference]
+        LJ -->|Detection Events<br/>Unix Epoch| DET_HW[Hardware Detections]
+    end
+
+    subgraph "Video Layer - Sequential Videos"
+        V1[Video 1<br/>0-5.04s relative]
+        V2[Video 2<br/>5.04-10.08s relative]
+
+        V1 -->|System Time| V1_START[video1_start<br/>= labjack_start + 0s]
+        V2 -->|System Time| V2_START[video2_start<br/>= labjack_start + 5.04s]
+
+        V1_START -.->|PROBLEM| WRONG_REF["❌ Video 2 detections<br/>using Video 1 start"]
+        V2_START -.->|CORRECT| RIGHT_REF["✓ Should use<br/>Video 2 start"]
+    end
+
+    subgraph "Ground Truth Layer"
+        GT[Ground Truth Annotations]
+        GT -->|Frame Number| GT_FRAME[GT Frame: 25]
+        GT -->|Video-Relative Time| GT_TIME[GT Time: 0.833s]
+
+        GT_FRAME -->|Convert| GT_REL[GT @ 0.833s<br/>from video start]
+        GT_TIME -->|Already| GT_REL
+    end
+
+    subgraph "Synchronization Layer - timing_synchronization_calculator.py"
+        SYNC_START[1. Get Detection<br/>Unix Epoch]
+        SYNC_GT[2. Get GT<br/>Video-Relative]
+        SYNC_CONVERT[3. Convert GT to Unix Epoch<br/>gt_system_time =<br/>video_start + gt_video_time]
+        SYNC_CALC[4. Calculate Latency<br/>real_latency =<br/>detection_time - gt_system_time]
+
+        DET_HW --> SYNC_START
+        GT_REL --> SYNC_GT
+        SYNC_START --> SYNC_CONVERT
+        SYNC_GT --> SYNC_CONVERT
+        WRONG_REF -.->|Used Here| SYNC_CONVERT
+        SYNC_CONVERT --> SYNC_CALC
+
+        SYNC_CALC -->|Result| WRONG_LAT["❌ 6-9 seconds<br/>Should be 10-500ms"]
+    end
+
+    subgraph "Latency Decomposition - latency_decomposition_service.py"
+        DECOMP_INPUT[Input: real_latency<br/>6000ms]
+        DECOMP_OVERHEAD[Calculate Overheads:<br/>System: 0.003ms<br/>Processing: 7.6ms<br/>Network: minimal<br/>Total: ~207ms]
+        DECOMP_CAMERA[Calculate Camera:<br/>6000ms - 207ms = 5793ms]
+        DECOMP_CLAMP[Bounds Check:<br/>5793ms > 200ms max]
+        DECOMP_RESULT[Result:<br/>Camera: 200ms<br/>Unknown: 5593ms 97%]
+
+        WRONG_LAT --> DECOMP_INPUT
+        DECOMP_INPUT --> DECOMP_OVERHEAD
+        DECOMP_OVERHEAD --> DECOMP_CAMERA
+        DECOMP_CAMERA --> DECOMP_CLAMP
+        DECOMP_CLAMP -->|Clamp & Attribute| DECOMP_RESULT
+
+        DECOMP_RESULT -.->|MISATTRIBUTION| WRONG_DIAG["❌ Blames 'camera'<br/>for timestamp error"]
+    end
+
+    subgraph "Quality Assessment - frame_aware_quality_assessment.py"
+        QA_TIME[Time-Based Matching<br/>500ms window]
+        QA_FRAME[Frame-Based Matching<br/>Frame difference]
+        QA_TIME_FAIL[❌ FAILS<br/>No GT within 500ms]
+        QA_FRAME_PASS[✓ SUCCEEDS<br/>175-215 frame diff<br/>5.8-7.2 seconds]
+        QA_RESULT[Quality: unsuitable<br/>Timing: unreliable]
+
+        DECOMP_RESULT --> QA_TIME
+        DECOMP_RESULT --> QA_FRAME
+        QA_TIME --> QA_TIME_FAIL
+        QA_FRAME --> QA_FRAME_PASS
+        QA_TIME_FAIL --> QA_RESULT
+        QA_FRAME_PASS -.->|Proves Timestamps Wrong| PROOF["Frame math is correct<br/>Time math is wrong"]
+    end
+
+    subgraph "Detection Assignment - detection_video_reassignment.py"
+        ASSIGN_INPUT[Detections with<br/>Relative Timestamps]
+        ASSIGN_WINDOWS[Video Windows:<br/>Video1: 0-5.04s<br/>Video2: 5.04-10.08s<br/>Post-roll: 10.08s+]
+        ASSIGN_CALC[Calculate Position:<br/>detection_time - video_start]
+        ASSIGN_RESULT[8 detections<br/>→ Post-roll<br/>27 detections<br/>→ Video windows]
+
+        WRONG_REF -.->|Wrong start| ASSIGN_CALC
+        ASSIGN_INPUT --> ASSIGN_CALC
+        ASSIGN_CALC --> ASSIGN_WINDOWS
+        ASSIGN_WINDOWS --> ASSIGN_RESULT
+
+        ASSIGN_RESULT -.->|SYMPTOM| POST_ROLL["❌ 'Late' detections<br/>Really: wrong video_start"]
+    end
+
+    subgraph "Fix Recommendations"
+        FIX1[Fix #1: Per-Video Start Times<br/>get_video_start_time_for_detection]
+        FIX2[Fix #2: Frame-Based Calculation<br/>calculate_latency_from_frames]
+        FIX3[Fix #3: Remove Clamping<br/>Return validation error instead]
+        FIX4[Fix #4: Unified Timestamp Model<br/>UnifiedTimestamp dataclass]
+
+        WRONG_REF -.->|Needs| FIX1
+        QA_FRAME_PASS -.->|Use This| FIX2
+        DECOMP_CLAMP -.->|Fix This| FIX3
+    end
+
+    style LJ fill:#e1f5ff
+    style V1 fill:#fff5e1
+    style V2 fill:#fff5e1
+    style GT fill:#e8f5e8
+    style SYNC_CONVERT fill:#ffe1e1
+    style WRONG_LAT fill:#ff9999
+    style DECOMP_RESULT fill:#ff9999
+    style QA_TIME_FAIL fill:#ff9999
+    style QA_FRAME_PASS fill:#99ff99
+    style ASSIGN_RESULT fill:#ff9999
+    style FIX1 fill:#99ff99
+    style FIX2 fill:#99ff99
+    style FIX3 fill:#99ff99
+    style FIX4 fill:#99ff99
+    style WRONG_REF fill:#ff6666
+    style RIGHT_REF fill:#66ff66
+    style WRONG_DIAG fill:#ffcccc
+    style POST_ROLL fill:#ffcccc
+    style PROOF fill:#ccffcc

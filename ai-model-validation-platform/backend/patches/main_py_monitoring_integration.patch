@@ -1,0 +1,66 @@
+--- a/main.py
++++ b/main.py
+@@ -92,6 +92,13 @@ except ImportError as e:
+     print(f"Warning: ground_truth_manual_trigger router not available: {e}")
+     ground_truth_trigger_router = None
+
++# Import monitoring router
++try:
++    from routers.monitoring import router as monitoring_router
++    print("✅ Monitoring router loaded")
++except ImportError as e:
++    print(f"Warning: monitoring router not available: {e}")
++    monitoring_router = None
++
+ # Import new architectural services
+ from services.video_library_service import VideoLibraryManager
+ from services.dataset_annotation_service import DatasetAnnotationService
+@@ -762,6 +769,11 @@ except ImportError as e:
+     logger.warning(f"⚠️ Video Project Links API routes not available: {e}")
+
++# Include Monitoring router for system health and metrics
++if monitoring_router:
++    app.include_router(monitoring_router)
++    logger.info("✅ Monitoring API routes included at /api/monitoring")
++
+ # URGENT FIX: Add a direct endpoint for ground truth videos and delete annotation
+ @app.delete("/api/annotations/{annotation_id}")
+ async def delete_annotation(
+@@ -4500,6 +4512,38 @@ if __name__ == "__main__":
+     logger.info(f"ℹ️ Session management service initialized")
+     logger.info("=" * 80)
+
++@app.on_event("startup")
++async def initialize_monitoring_system():
++    """Initialize monitoring system with alert handlers and health checks"""
++    logger.info("=" * 80)
++    logger.info("Initializing Monitoring System...")
++    logger.info("=" * 80)
++
++    try:
++        # Register alert handlers from environment
++        from monitoring.example_handlers import register_handlers_from_env
++        handlers_count = register_handlers_from_env()
++        logger.info(f"✅ Registered {handlers_count} alert handler(s)")
++
++        # Log monitoring system status
++        from monitoring.metrics_collector import metrics_collector
++        from monitoring.alerts import alert_manager
++
++        logger.info(f"  📊 Metrics collector initialized")
++        logger.info(f"  🚨 Alert manager active with {len(alert_manager.handlers)} handlers")
++        logger.info(f"  🔔 Alert history: {len(alert_manager.alert_history)} entries")
++
++        # Initial health check
++        from monitoring.integration import run_health_check
++        run_health_check()
++        logger.info(f"  ✅ Initial health check completed")
++
++        logger.info("✅ Monitoring system initialized successfully")
++
++    except Exception as e:
++        logger.error(f"⚠️ Failed to initialize monitoring system: {e}", exc_info=True)
++        logger.warning("  Application will continue without full monitoring")
++
+ if __name__ == "__main__":
+     import uvicorn

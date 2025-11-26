@@ -51,9 +51,16 @@ class LabJackConfig:
     
     # Signal acquisition settings
     voltage_threshold: float = 2.5
-    sample_rate: int = 1000
+    sample_rate: int = 200
     channels: List[str] = field(default_factory=lambda: ["AIN0", "AIN1"])
-    
+
+    # Stream mode configuration (for high-speed sampling)
+    use_stream_mode: bool = True
+    stream_scans_per_read: int = 100
+    stream_settling_us: int = 0
+    stream_resolution_index: int = 0
+    stream_auto_fallback: bool = True
+
     # Simulation settings (for mock mode)
     simulation_mode: str = "detection_spikes"
     detection_probability: float = 0.05
@@ -85,9 +92,28 @@ class LabJackConfig:
         if not (self.min_sample_rate <= self.sample_rate <= self.max_sample_rate):
             logger.warning(f"Sample rate {self.sample_rate}Hz outside valid range, "
                           f"clamping to {self.min_sample_rate}-{self.max_sample_rate}Hz")
-            self.sample_rate = max(self.min_sample_rate, 
+            self.sample_rate = max(self.min_sample_rate,
                                  min(self.sample_rate, self.max_sample_rate))
-        
+
+        # Validate stream mode settings
+        if not (1 <= self.stream_scans_per_read <= 10000):
+            logger.warning(f"Stream scans per read {self.stream_scans_per_read} outside valid range, "
+                          "clamping to 1-10000")
+            self.stream_scans_per_read = max(1, min(self.stream_scans_per_read, 10000))
+
+        if self.stream_settling_us < 0:
+            logger.warning("Stream settling time must be non-negative, setting to 0")
+            self.stream_settling_us = 0
+
+        if not (0 <= self.stream_resolution_index <= 8):
+            logger.warning(f"Stream resolution index {self.stream_resolution_index} outside valid range, "
+                          "clamping to 0-8")
+            self.stream_resolution_index = max(0, min(self.stream_resolution_index, 8))
+
+        # Auto-disable stream mode for low sample rates
+        if self.use_stream_mode and self.sample_rate <= 100:
+            logger.info(f"Sample rate {self.sample_rate}Hz is low, stream mode may not be optimal")
+
         # Validate channels
         valid_channels = [f"AIN{i}" for i in range(14)]  # LabJack supports AIN0-AIN13
         self.channels = [ch for ch in self.channels if ch in valid_channels]
@@ -117,6 +143,11 @@ class LabJackConfig:
             "voltage_threshold": self.voltage_threshold,
             "sample_rate": self.sample_rate,
             "channels": self.channels,
+            "use_stream_mode": self.use_stream_mode,
+            "stream_scans_per_read": self.stream_scans_per_read,
+            "stream_settling_us": self.stream_settling_us,
+            "stream_resolution_index": self.stream_resolution_index,
+            "stream_auto_fallback": self.stream_auto_fallback,
             "simulation_mode": self.simulation_mode,
             "detection_probability": self.detection_probability,
             "noise_amplitude": self.noise_amplitude,
@@ -263,8 +294,13 @@ def load_config_from_env() -> LabJackConfig:
         bridge_reconnect_interval=int(os.getenv('LABJACK_BRIDGE_RECONNECT_INTERVAL', '5')),
         bridge_max_reconnects=int(os.getenv('LABJACK_BRIDGE_MAX_RECONNECTS', '10')),
         voltage_threshold=float(os.getenv('LABJACK_VOLTAGE_THRESHOLD', '2.5')),
-        sample_rate=int(os.getenv('LABJACK_SAMPLE_RATE', '1000')),
+        sample_rate=int(os.getenv('LABJACK_SAMPLE_RATE', '200')),
         channels=channels,
+        use_stream_mode=os.getenv('LABJACK_USE_STREAM_MODE', 'true').lower() == 'true',
+        stream_scans_per_read=int(os.getenv('LABJACK_STREAM_SCANS_PER_READ', '20')),
+        stream_settling_us=int(os.getenv('LABJACK_STREAM_SETTLING_US', '0')),
+        stream_resolution_index=int(os.getenv('LABJACK_STREAM_RESOLUTION_INDEX', '0')),
+        stream_auto_fallback=os.getenv('LABJACK_STREAM_AUTO_FALLBACK', 'true').lower() == 'true',
         simulation_mode=os.getenv('LABJACK_SIMULATION_MODE', 'detection_spikes'),
         detection_probability=float(os.getenv('LABJACK_DETECTION_PROBABILITY', '0.05')),
         noise_amplitude=float(os.getenv('LABJACK_NOISE_AMPLITUDE', '0.1')),
@@ -286,7 +322,16 @@ def load_config_from_env() -> LabJackConfig:
     logger.info(f"   - Voltage threshold: {config.voltage_threshold}V")
     logger.info(f"   - Sample rate: {config.sample_rate}Hz")
     logger.info(f"   - Channels: {', '.join(config.channels)}")
-    
+
+    # Log stream mode configuration
+    if config.use_stream_mode:
+        stream_mode = "Stream mode" if config.sample_rate > 100 else "Stream mode (may use polling)"
+        logger.info(f"   - Mode: {stream_mode}")
+        logger.info(f"   - Stream buffer: {config.stream_scans_per_read} scans")
+        logger.info(f"   - Stream resolution: {config.stream_resolution_index}")
+    else:
+        logger.info("   - Mode: Command-response (polling)")
+
     return config
 
 
@@ -309,6 +354,11 @@ def get_environment_status() -> Dict[str, Any]:
             "LABJACK_VOLTAGE_THRESHOLD": os.getenv('LABJACK_VOLTAGE_THRESHOLD'),
             "LABJACK_SAMPLE_RATE": os.getenv('LABJACK_SAMPLE_RATE'),
             "LABJACK_CHANNELS": os.getenv('LABJACK_CHANNELS'),
+            "LABJACK_USE_STREAM_MODE": os.getenv('LABJACK_USE_STREAM_MODE'),
+            "LABJACK_STREAM_SCANS_PER_READ": os.getenv('LABJACK_STREAM_SCANS_PER_READ'),
+            "LABJACK_STREAM_SETTLING_US": os.getenv('LABJACK_STREAM_SETTLING_US'),
+            "LABJACK_STREAM_RESOLUTION_INDEX": os.getenv('LABJACK_STREAM_RESOLUTION_INDEX'),
+            "LABJACK_STREAM_AUTO_FALLBACK": os.getenv('LABJACK_STREAM_AUTO_FALLBACK'),
             "LABJACK_AUTO_DETECT": os.getenv('LABJACK_AUTO_DETECT'),
             "LABJACK_SIMULATION_MODE": os.getenv('LABJACK_SIMULATION_MODE')
         },
@@ -376,6 +426,13 @@ LABJACK_BRIDGE_MAX_RECONNECTS=10
 LABJACK_VOLTAGE_THRESHOLD=2.5
 LABJACK_SAMPLE_RATE=1000
 LABJACK_CHANNELS=AIN0,AIN1
+
+# Stream Mode Configuration (for high-speed sampling > 100 Hz)
+LABJACK_USE_STREAM_MODE=true
+LABJACK_STREAM_SCANS_PER_READ=100
+LABJACK_STREAM_SETTLING_US=0
+LABJACK_STREAM_RESOLUTION_INDEX=0
+LABJACK_STREAM_AUTO_FALLBACK=true
 
 # Mock Mode Settings (used when LABJACK_MOCK_MODE=true)
 LABJACK_SIMULATION_MODE=detection_spikes

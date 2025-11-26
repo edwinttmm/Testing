@@ -6,7 +6,7 @@ Tests migration of existing video data to support new status system and validati
 """
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
 import json
@@ -164,8 +164,8 @@ class TestVideoStatusMigration:
         
         try:
             # Get legacy data
-            legacy_videos = old_db.query(Video).all()
-            legacy_project = old_db.query(Project).first()
+            legacy_videos = old_db.execute(select(Video)).scalars().all()
+            legacy_project = old_db.execute(select(Project)).scalar_one_or_none()
             
             # Migrate project
             new_project = Project(
@@ -210,7 +210,7 @@ class TestVideoStatusMigration:
                 migrated_videos.append(migrated_video)
             
             # Migrate ground truth objects
-            legacy_gt_objects = old_db.query(GroundTruthObject).all()
+            legacy_gt_objects = old_db.execute(select(GroundTruthObject)).scalars().all()
             for legacy_gt in legacy_gt_objects:
                 new_gt = GroundTruthObject(
                     id=legacy_gt.id,
@@ -230,7 +230,7 @@ class TestVideoStatusMigration:
             new_db.commit()
             
             # Validate migration results
-            migrated_videos_check = new_db.query(Video).all()
+            migrated_videos_check = new_db.execute(select(Video)).scalars().all()
             assert len(migrated_videos_check) == 4
             
             # Check specific status migrations
@@ -256,22 +256,22 @@ class TestVideoStatusMigration:
         
         try:
             # Get migrated videos
-            videos = new_db.query(Video).all()
+            videos = new_db.execute(select(Video)).scalars().all()
             
             # Apply post-migration validation logic
             for video in videos:
                 # If video has ground truth objects and is marked as completed,
                 # it should be eligible for validation
-                gt_count = new_db.query(GroundTruthObject).filter(
+                gt_count = session.execute(select(func.count()).select_from(GroundTruthObject).where(
                     GroundTruthObject.video_id == video.id
-                ).count()
+                )).scalar()
                 
                 if gt_count > 0 and video.processing_status == "completed":
                     # Check if all ground truth is validated
-                    validated_gt_count = new_db.query(GroundTruthObject).filter(
+                    validated_gt_count = new_db.execute(select(func.count()).select_from(GroundTruthObject).where(
                         GroundTruthObject.video_id == video.id,
                         GroundTruthObject.validated == True
-                    ).count()
+                    )).scalar()
                     
                     if validated_gt_count == gt_count:
                         # All ground truth is validated, video can be validated
@@ -284,7 +284,7 @@ class TestVideoStatusMigration:
             new_db.commit()
             
             # Verify validation logic application
-            video_2 = new_db.query(Video).filter(Video.id == "legacy-video-2").first()
+            video_2 = new_db.execute(select(Video).where(Video.id == "legacy-video-2")).scalar_one_or_none()
             assert video_2.status in ["validated", "pending_validation"]
             
         finally:
@@ -296,7 +296,7 @@ class TestVideoStatusMigration:
         old_db = OldSessionLocal()
         
         try:
-            original_videos = old_db.query(Video).all()
+            original_videos = old_db.execute(select(Video)).scalars().all()
             backup_data = []
             
             for video in original_videos:
@@ -425,8 +425,8 @@ class TestBatchVideoStatusMigration:
             assert migration_time < 1.0
             
             # Verify migration results
-            validated_count = db.query(Video).filter(Video.status == "validated").count()
-            uploaded_count = db.query(Video).filter(Video.status == "uploaded").count()
+            validated_count = db.execute(select(func.count()).select_from(Video).where(Video.status == "validated")).scalar()
+            uploaded_count = db.execute(select(func.count()).select_from(Video).where(Video.status == "uploaded")).scalar()
             
             assert validated_count == 25  # All "processed" videos
             assert uploaded_count == 45   # 30 original + 15 from null
@@ -440,7 +440,7 @@ class TestBatchVideoStatusMigration:
         
         try:
             # Count videos before migration
-            total_videos_before = db.query(Video).count()
+            total_videos_before = db.execute(select(func.count()).select_from(Video)).scalar()
             
             # Perform migration with transaction safety
             with db.begin():
@@ -463,21 +463,21 @@ class TestBatchVideoStatusMigration:
                 )
             
             # Verify data integrity
-            total_videos_after = db.query(Video).count()
+            total_videos_after = db.execute(select(func.count()).select_from(Video)).scalar()
             assert total_videos_before == total_videos_after
             
             # Check no null statuses remain
-            null_status_count = db.query(Video).filter(Video.status.is_(None)).count()
+            null_status_count = db.execute(select(func.count()).select_from(Video).where(Video.status.is_(None))).scalar()
             assert null_status_count == 0
             
-            null_processing_status_count = db.query(Video).filter(
-                Video.processing_status.is_(None)
-            ).count()
+            null_processing_status_count = db.execute(select(Video).where(
+            Video.processing_status.is_(None)
+        )).scalars().count()
             assert null_processing_status_count == 0
             
             # Verify all statuses are valid
             valid_statuses = {"uploaded", "processing", "validated", "error", "pending_validation"}
-            all_statuses = {v.status for v in db.query(Video).all()}
+            all_statuses = {v.status for v in db.execute(select(Video)).scalars().all()}
             assert all_statuses.issubset(valid_statuses)
             
         finally:
@@ -555,7 +555,7 @@ class TestVideoStatusMigrationValidation:
         """Helper method to validate video state consistency"""
         validation_issues = []
         
-        videos = db.query(Video).all()
+        videos = db.execute(select(Video)).scalars().all()
         
         for video in videos:
             # Rule 1: Validated videos should have ground truth

@@ -1,0 +1,78 @@
+{
+  "report_id": "e3258ab6-99e4-4792-91d1-26487dfeea82",
+  "test_session_id": "d4819542-51d5-4d2b-b3d8-0b7142afcc71",
+  "generated_at": "2025-11-25T13:07:09.881298",
+  "test_session": {
+    "id": "d4819542-51d5-4d2b-b3d8-0b7142afcc71",
+    "name": "Video Sequence Test - 2025-11-25 13:07",
+    "project_name": "Test",
+    "started_at": "2025-11-25T13:07:01.990488",
+    "completed_at": "2025-11-25T13:07:09.172155",
+    "status": "completed",
+    "latency_threshold_ms": 100
+  },
+  "metrics": {
+    "total_events": 36,
+    "passed_events": 34,
+    "failed_events": 2,
+    "high_latency_failures": 2,
+    "missed_detections": 0,
+    "pass_rate_percent": 94.44,
+    "fail_rate_percent": 5.56,
+    "average_latency_ms": 28.035,
+    "min_latency_ms": 0.209,
+    "max_latency_ms": 365.755,
+    "latency_threshold_ms": 100,
+    "latency_distribution": {
+      "0-50ms": 34,
+      "51-100ms": 0,
+      "101-200ms": 0,
+      "201-500ms": 2,
+      "500ms+": 0
+    },
+    "test_outcome": "PASS"
+  },
+  "success_summary": {
+    "summary_text": "34/36 detections passed with average latency of 12.6ms. Successful detections: 34 Unknown.",
+    "passed_count": 34,
+    "total_count": 36,
+    "average_success_latency_ms": 12.55,
+    "vru_breakdown": {
+      "Unknown": 34
+    },
+    "success_rate_percent": 94.44
+  },
+  "failure_events": [
+    {
+      "event_id": "39e018d8-330a-4eb6-af2b-512389299311",
+      "video_id": "10c2b16c-86fa-4140-b1cf-c0ea42f82ca5",
+      "timestamp": 1764076027.207234,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 216.74585342407227,
+      "threshold_ms": 100,
+      "labjack_timestamp": 1764076027.207234,
+      "frame_number": null,
+      "vru_type": null,
+      "detection_channel": "AIN0",
+      "voltage_level": null,
+      "created_at": "2025-11-25T13:07:07"
+    },
+    {
+      "event_id": "d831b6d9-fd03-479a-a08b-6c33941938b8",
+      "video_id": "10c2b16c-86fa-4140-b1cf-c0ea42f82ca5",
+      "timestamp": 1764076027.356243,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 365.7548427581787,
+      "threshold_ms": 100,
+      "labjack_timestamp": 1764076027.356243,
+      "frame_number": null,
+      "vru_type": null,
+      "detection_channel": "AIN0",
+      "voltage_level": null,
+      "created_at": "2025-11-25T13:07:07"
+    }
+  ],
+  "failure_snapshots": [],
+  "videos_tested": 1,
+  "total_events": 36
+}

@@ -48,10 +48,21 @@ class LabJackConfig:
     resolution_index: int = 0                   # ADC resolution (0=default, 8=fastest)
     settling_time_us: int = 0                   # Settling time in microseconds
     
-    # Sampling configuration  
+    # Sampling configuration
     sample_rate: int = 10000                    # Sample rate in Hz
     samples_per_read: int = 100                 # Samples per read operation
-    
+
+    # Stream mode configuration (used when sample_rate > 100 Hz)
+    use_stream_mode: bool = True                # Enable stream mode for high-speed sampling
+    stream_scans_per_read: int = 100            # Buffer size (samples to read per stream call)
+    stream_settling_us: int = 0                 # Stream settling time in microseconds
+    stream_resolution_index: int = 0            # Stream resolution: 0 (fastest) to 8 (most accurate)
+    stream_auto_fallback: bool = True           # Fallback to command-response if stream fails
+
+    # Note: Stream mode is automatically enabled when:
+    # - use_stream_mode = True AND sample_rate > 100 Hz
+    # Otherwise, command-response (polling) mode is used
+
     # Detection parameters
     edge_detection: str = "rising_edge"         # "rising_edge", "falling_edge", "high", "low"
     debounce_time_ms: float = 1.0              # Debounce time to prevent multiple triggers
@@ -93,6 +104,11 @@ def load_config_from_env() -> LabJackConfig:
     - LABJACK_TTL_CHANNEL: TTL input channel
     - LABJACK_VOLTAGE_THRESHOLD: TTL detection threshold
     - LABJACK_SAMPLE_RATE: Sampling rate in Hz
+    - LABJACK_USE_STREAM_MODE: Enable stream mode (true/false)
+    - LABJACK_STREAM_SCANS_PER_READ: Stream buffer size (samples per read)
+    - LABJACK_STREAM_SETTLING_US: Stream settling time (microseconds)
+    - LABJACK_STREAM_RESOLUTION_INDEX: Stream resolution (0-8)
+    - LABJACK_STREAM_AUTO_FALLBACK: Auto fallback to polling (true/false)
     - LABJACK_TIMING_PRECISION: Timing precision level
     - And more...
     """
@@ -114,7 +130,14 @@ def load_config_from_env() -> LabJackConfig:
         # Sampling settings
         sample_rate=int(os.getenv("LABJACK_SAMPLE_RATE", "10000")),
         samples_per_read=int(os.getenv("LABJACK_SAMPLES_PER_READ", "100")),
-        
+
+        # Stream mode settings
+        use_stream_mode=os.getenv("LABJACK_USE_STREAM_MODE", "true").lower() == "true",
+        stream_scans_per_read=int(os.getenv("LABJACK_STREAM_SCANS_PER_READ", "100")),
+        stream_settling_us=int(os.getenv("LABJACK_STREAM_SETTLING_US", "0")),
+        stream_resolution_index=int(os.getenv("LABJACK_STREAM_RESOLUTION_INDEX", "0")),
+        stream_auto_fallback=os.getenv("LABJACK_STREAM_AUTO_FALLBACK", "true").lower() == "true",
+
         # Detection settings
         edge_detection=os.getenv("LABJACK_EDGE_DETECTION", "rising_edge"),
         debounce_time_ms=float(os.getenv("LABJACK_DEBOUNCE_TIME_MS", "1.0")),
@@ -179,7 +202,21 @@ def validate_config(config: LabJackConfig) -> List[str]:
     # Validate sample rate
     if not (config.min_sample_rate <= config.sample_rate <= config.max_sample_rate):
         errors.append(f"sample_rate must be between {config.min_sample_rate} and {config.max_sample_rate}")
-    
+
+    # Validate stream mode settings
+    if config.stream_scans_per_read < 1 or config.stream_scans_per_read > 10000:
+        errors.append("stream_scans_per_read must be between 1 and 10000")
+
+    if config.stream_settling_us < 0:
+        errors.append("stream_settling_us must be non-negative")
+
+    if not (0 <= config.stream_resolution_index <= 8):
+        errors.append("stream_resolution_index must be between 0 and 8")
+
+    # Warn if stream mode is disabled but sample rate is high
+    if not config.use_stream_mode and config.sample_rate > 100:
+        errors.append("Warning: High sample rate (>100 Hz) without stream mode may cause performance issues")
+
     # Validate timing precision
     valid_precisions = ["millisecond", "microsecond", "nanosecond"]
     if config.timing_precision not in valid_precisions:
@@ -204,6 +241,10 @@ PRODUCTION_CONFIG = LabJackConfig(
     ttl_channel="DIO0",
     voltage_threshold=3.3,
     sample_rate=10000,
+    use_stream_mode=True,
+    stream_scans_per_read=200,
+    stream_settling_us=0,
+    stream_resolution_index=0,
     timing_precision="microsecond",
     log_level="INFO"
 )
@@ -214,6 +255,10 @@ DEVELOPMENT_CONFIG = LabJackConfig(
     ttl_channel="DIO0",
     voltage_threshold=2.5,
     sample_rate=1000,
+    use_stream_mode=True,
+    stream_scans_per_read=100,
+    stream_settling_us=0,
+    stream_resolution_index=1,
     timing_precision="microsecond",
     log_level="DEBUG"
 )
@@ -224,6 +269,10 @@ TEST_CONFIG = LabJackConfig(
     ttl_channel="DIO0",
     voltage_threshold=2.5,
     sample_rate=100,
+    use_stream_mode=False,  # Use polling mode for low sample rate
+    stream_scans_per_read=50,
+    stream_settling_us=10,
+    stream_resolution_index=2,
     timing_precision="millisecond",
     log_level="INFO"
 )

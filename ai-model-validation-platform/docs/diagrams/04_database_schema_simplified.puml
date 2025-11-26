@@ -1,0 +1,142 @@
+@startuml Database Schema - Simplified
+!theme plain
+title Database Schema - Core Tables (Simplified for Stakeholders)
+skinparam backgroundColor #FEFEFE
+
+skinparam class {
+    BackgroundColor #FFF3E0
+    BorderColor #FF9800
+}
+
+' Core Entities
+entity "Project" as project {
+    * id : UUID <<PK>>
+    --
+    name : String
+    description : Text
+    camera_model : String
+    camera_view : String
+    signal_type : String
+    status : String
+    created_at : DateTime
+}
+
+entity "Video" as video {
+    * id : UUID <<PK>>
+    --
+    * project_id : UUID <<FK>>
+    filename : String
+    duration : Float
+    fps : Float
+    resolution : String
+    status : String
+    ground_truth_generated : Boolean
+    hil_testing_ready : Boolean
+    created_at : DateTime
+}
+
+entity "TestSession" as session {
+    * id : UUID <<PK>>
+    --
+    * project_id : UUID <<FK>>
+    * video_id : UUID <<FK>>
+    name : String
+    status : String
+    tolerance_ms : Integer
+    --
+    **Results**
+    accuracy_f1_score : Float
+    latency_mean_ms : Float
+    latency_max_ms : Float
+    tp_count : Integer
+    fp_count : Integer
+    fn_count : Integer
+    overall_test_result : String
+    --
+    **Timing**
+    video_start_timestamp : Float
+    precision_timing_enabled : Boolean
+    created_at : DateTime
+}
+
+entity "DetectionEvent" as detection {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    video_id : UUID <<FK>>
+    timestamp : Float
+    **actual_latency_ms** : Float
+    is_false_positive : Boolean
+    validation_result : String
+    --
+    **LabJack Data**
+    labjack_timestamp : Float
+    labjack_voltage : Float
+    --
+    **Video Timing**
+    video_frame_number : Integer
+    video_relative_timestamp : Float
+    created_at : DateTime
+}
+
+entity "GroundTruthObject" as gt {
+    * id : UUID <<PK>>
+    --
+    * video_id : UUID <<FK>>
+    tracking_id : String
+    frame_number : Integer
+    timestamp : Float
+    class_label : String
+    x, y, width, height : Float
+    confidence : Float
+    validated : Boolean
+    deleted_at : DateTime
+    created_at : DateTime
+}
+
+entity "TestResult" as result {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    pass_rate : Float
+    avg_latency_ms : Float
+    max_latency_ms : Float
+    total_detections : Integer
+    passed_detections : Integer
+    failed_detections : Integer
+    threshold_ms : Integer
+    created_at : DateTime
+}
+
+' Relationships
+project ||--o{ video : contains
+project ||--o{ session : has
+video ||--o{ gt : has ground truth
+video ||--o{ session : tested in
+session ||--o{ detection : records
+session ||--|| result : produces
+
+' Notes
+note right of detection
+    **Canonical Field:**
+    actual_latency_ms is the
+    single source of truth
+    for latency measurements
+
+    is_false_positive replaces
+    10000ms sentinel value
+end note
+
+note right of gt
+    Soft Delete Support:
+    deleted_at = NULL means active
+    deleted_at = timestamp means deleted
+end note
+
+note bottom of session
+    Dual Evaluation:
+    - Accuracy (F1, Precision, Recall)
+    - Latency (Mean, Max, % in threshold)
+end note
+
+@enduml

@@ -140,7 +140,10 @@ class RawLabJackIntegrationService:
                     'channels': channels,
                     'voltage_threshold': self.config.detection_threshold_volts,
                     'debounce_ms': self.config.debounce_time_ms,
-                    'sample_rate': 10,  # Lower rate for detection
+                    # FIX: Increased from 10Hz to 100Hz to capture all GT objects
+                    # With 131 GT objects in 5s = 26.2 objects/s, we need ≥27Hz minimum
+                    # 100Hz gives sufficient margin for reliable matching and detection
+                    'sample_rate': 100,
                     'enable_websocket': True,
                     **(video_config or {})
                 }
@@ -155,42 +158,47 @@ class RawLabJackIntegrationService:
                 if not raw_session_id:
                     raise RuntimeError("Failed to start raw logging session")
                 
-                # Start HIL monitoring session if video config provided
+                # Start unified monitoring (HIL with video timing if video_config, otherwise basic detection)
                 hil_session_active = False
+                detection_session_active = False
+
                 if video_config:
+                    # Use HIL monitor with video timing synchronization
                     try:
-                        hil_success = self.dedicated_monitor.start_monitoring_with_video_sync(
+                        hil_success = await self.dedicated_monitor.start_monitoring_with_video_sync(
                             test_session_id, video_timing_config
                         )
                         hil_session_active = hil_success
-                        
+                        detection_session_active = hil_success  # HIL monitor handles both detection and video sync
+
                         if hil_success:
-                            logger.info(f"✅ HIL monitoring started for session {test_session_id}")
+                            logger.info(f"✅ HIL monitoring with video sync started for session {test_session_id}")
                         else:
                             logger.warning(f"⚠️ HIL monitoring failed for session {test_session_id}")
                     except Exception as e:
                         logger.error(f"HIL monitoring startup error: {e}")
-                
-                # Start basic detection monitoring
-                detection_session_active = False
-                try:
-                    detection_success = self.detection_service.start_monitoring(
-                        test_session_id,
-                        channels=channels,
-                        voltage_threshold=self.config.detection_threshold_volts,
-                        debounce_ms=self.config.debounce_time_ms,
-                        sample_rate=10,  # Standard detection rate
-                        store_in_db=True,
-                        enable_websocket=True
-                    )
-                    detection_session_active = detection_success
-                    
-                    if detection_success:
-                        logger.info(f"✅ Detection monitoring started for session {test_session_id}")
-                    else:
-                        logger.warning(f"⚠️ Detection monitoring failed for session {test_session_id}")
-                except Exception as e:
-                    logger.error(f"Detection monitoring startup error: {e}")
+                else:
+                    # No video config - use basic detection monitoring only
+                    try:
+                        detection_success = self.detection_service.start_monitoring(
+                            test_session_id,
+                            channels=channels,
+                            voltage_threshold=self.config.detection_threshold_volts,
+                            debounce_ms=self.config.debounce_time_ms,
+                            # FIX: Increased from 10Hz to 100Hz to capture all GT objects
+                            sample_rate=100,
+                            store_in_db=True,
+                            enable_websocket=True,
+                            use_stream_mode=True  # Enable stream mode for accuracy
+                        )
+                        detection_session_active = detection_success
+
+                        if detection_success:
+                            logger.info(f"✅ Detection monitoring started for session {test_session_id}")
+                        else:
+                            logger.warning(f"⚠️ Detection monitoring failed for session {test_session_id}")
+                    except Exception as e:
+                        logger.error(f"Detection monitoring startup error: {e}")
                 
                 # Create session mapping
                 session_mapping = SessionMapping(
@@ -241,8 +249,8 @@ class RawLabJackIntegrationService:
             if 'raw_session_id' in locals():
                 try:
                     self.raw_logger.stop_session(raw_session_id)
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error stopping raw logger session during cleanup: {e}")
             
             raise
     

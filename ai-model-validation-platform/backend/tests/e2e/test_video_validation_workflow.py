@@ -8,7 +8,7 @@ including database migrations, API interactions, and frontend integration.
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
 import json
@@ -18,7 +18,7 @@ from pathlib import Path
 from main import app
 from models import Base, Video, VideoValidationCriteria, VideoValidationResult, VideoStatusTransition
 from schemas_video_validation import VideoValidationStatus, ValidationStatus, ValidationType
-from config import get_db
+from database import get_db
 from scripts.migrate_video_validation_system import VideoValidationMigrator
 
 
@@ -389,7 +389,7 @@ class TestVideoValidationMigrationWorkflow:
         assert migration_results["errors_count"] == 0
         
         # Verify migration results
-        migrated_videos = test_db.query(Video).all()
+        migrated_videos = test_db.execute(select(Video)).scalars().all()
         video_by_id = {v.id: v for v in migrated_videos}
         
         # legacy-1: completed + ground_truth -> annotated
@@ -402,7 +402,7 @@ class TestVideoValidationMigrationWorkflow:
         assert video_by_id["legacy-3"].validation_status == "error"
         
         # Verify migration audit trails were created
-        transitions = test_db.query(VideoStatusTransition).all()
+        transitions = test_db.execute(select(VideoStatusTransition)).scalars().all()
         assert len(transitions) == 3  # One for each migrated video
     
     def test_migration_rollback(self, test_db):
@@ -428,7 +428,7 @@ class TestVideoValidationMigrationWorkflow:
         assert migration_results["migrated_count"] == 1
         
         # Verify migration
-        migrated_video = test_db.query(Video).filter(Video.id == "rollback-test").first()
+        migrated_video = test_db.execute(select(Video).where(Video.id == "rollback-test")).scalar_one_or_none()
         assert migrated_video.validation_status == "annotated"
         
         # Rollback 
@@ -436,7 +436,7 @@ class TestVideoValidationMigrationWorkflow:
         assert rollback_results["rollback_count"] == 1
         
         # Verify rollback
-        rolled_back_video = test_db.query(Video).filter(Video.id == "rollback-test").first()
+        rolled_back_video = test_db.execute(select(Video).where(Video.id == "rollback-test")).scalar_one_or_none()
         assert rolled_back_video.status == original_status
         assert not hasattr(rolled_back_video, 'validation_status') or rolled_back_video.validation_status is None
 
@@ -584,9 +584,9 @@ class TestVideoValidationAuditTrail:
             })
         
         # Verify audit trail
-        audit_trail = test_db.query(VideoStatusTransition).filter(
+        audit_trail = test_db.execute(select(VideoStatusTransition).where(
             VideoStatusTransition.video_id == video_id
-        ).order_by(VideoStatusTransition.changed_at).all()
+        )).scalars().order_by(VideoStatusTransition.changed_at).all()
         
         assert len(audit_trail) == len(transitions)
         

@@ -30,6 +30,7 @@ from datetime import datetime
 from enum import Enum
 import json
 from decimal import Decimal
+from config.timing_config import MATCHING_TOLERANCE_MS
 
 # =============================================================================
 # BASE SERIALIZER CONFIGURATION
@@ -288,7 +289,7 @@ class TestSessionSerializer(BaseAPISerializer):
     name: str = Field(..., description="Test session name", min_length=1)
     project_id: str = Field(..., description="Associated project ID")
     video_id: str = Field(..., description="Associated video ID")
-    tolerance_ms: Optional[int] = Field(100, description="Tolerance in milliseconds", ge=0)
+    tolerance_ms: Optional[int] = Field(MATCHING_TOLERANCE_MS, description="Tolerance in milliseconds", ge=0)
     status: str = Field(..., description="Session status")
     
     started_at: Optional[datetime] = Field(None, description="Session start timestamp")

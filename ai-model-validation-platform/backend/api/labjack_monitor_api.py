@@ -290,6 +290,10 @@ async def startup_monitor_service():
     if MONITOR_AVAILABLE:
         logger.info("🚀 Initializing LabJack monitoring service on startup")
         try:
+            # Clean up any zombie processes from previous runs
+            logger.info("🧹 Cleaning up orphaned monitoring processes from previous sessions")
+            labjack_monitor_manager.cleanup_zombie_processes()
+
             # Optionally start monitor process on startup
             # await labjack_monitor_manager.start_monitor_process()
             logger.info("✅ LabJack monitoring service ready")

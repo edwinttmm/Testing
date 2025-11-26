@@ -8,7 +8,7 @@ endpoint integration, database operations, and service layer interactions.
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
 import json
@@ -16,7 +16,7 @@ import json
 from main import app
 from models import Base, Video, VideoValidationCriteria, VideoValidationResult
 from schemas_video_validation import VideoValidationStatus, ValidationStatus, ValidationType
-from config import get_db
+from database import get_db
 
 
 # Test database setup

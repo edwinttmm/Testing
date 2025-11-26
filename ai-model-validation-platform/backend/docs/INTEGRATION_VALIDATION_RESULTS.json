@@ -1,0 +1,67 @@
+{
+  "validation_results": [
+    {
+      "test": "scipy_installation",
+      "passed": true,
+      "scipy_version": "1.16.1",
+      "hungarian_available": true,
+      "error": null
+    },
+    {
+      "test": "frame_number_calculation",
+      "passed": true,
+      "total_detections": 192,
+      "with_frame_numbers": 190,
+      "without_frame_numbers": 2,
+      "coverage_percentage": 98.95833333333334,
+      "error": null
+    },
+    {
+      "test": "detection_capture_rate",
+      "passed": false,
+      "total_gt_frames": 122,
+      "frames_with_detections": 95,
+      "capture_percentage": 77.8688524590164,
+      "error": null
+    },
+    {
+      "test": "gt_matching",
+      "passed": false,
+      "precision": 54.736842105263165,
+      "recall": 39.69465648854962,
+      "f1_score": 46.01769911504425,
+      "true_positives": 104,
+      "false_positives": 86,
+      "false_negatives": 158,
+      "error": null
+    },
+    {
+      "test": "monitoring_cleanup",
+      "passed": true,
+      "stop_monitoring_implemented": true,
+      "cleanup_in_session_complete": true,
+      "error": null
+    },
+    {
+      "test": "frontend_metrics",
+      "passed": true,
+      "api_endpoint_exists": true,
+      "returns_metrics_object": true,
+      "error": null
+    }
+  ],
+  "production_assessment": {
+    "total_tests": 6,
+    "passed_tests": 4,
+    "failed_tests": 2,
+    "critical_passed": 3,
+    "critical_total": 3,
+    "important_passed": 1,
+    "important_total": 3,
+    "production_readiness_score": 73.33333333333333,
+    "deployment_ready": false,
+    "timestamp": "2025-11-20T09:28:40.837072+00:00"
+  },
+  "session_id": "49e5d00f-eea7-44cb-a647-480268ef43ee",
+  "timestamp": "2025-11-20T09:28:40.837106+00:00"
+}

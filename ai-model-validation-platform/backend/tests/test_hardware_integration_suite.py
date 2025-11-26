@@ -25,9 +25,9 @@ from typing import List, Dict, Any, Optional
 from unittest.mock import Mock, patch
 
 # Hardware integration imports
-from services.labjack_service import LabJackService, ConnectionMode, ConnectionStatus
-from services.labjack_hardware_service import get_labjack_hardware_service
-from services.labjack_detection_service import LabJackDetectionMonitor
+from services.labjack_service_manager import LabJackService, ConnectionMode, ConnectionStatus
+from services.simple_labjack_detection import get_labjack_hardware_service
+from services.simple_labjack_detection import LabJackDetectionMonitor
 from services.hil_validation_service import HILValidationService
 
 import logging

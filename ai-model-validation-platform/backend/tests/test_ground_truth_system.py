@@ -122,9 +122,9 @@ class TestGroundTruthModels:
         db_session.commit()
         
         # Assert
-        retrieved = db_session.query(GroundTruthValidationWorkflow).filter(
+        retrieved = db_session.execute(select(GroundTruthValidationWorkflow).where(
             GroundTruthValidationWorkflow.id == workflow.id
-        ).first()
+        )).scalar_one_or_none()
         
         assert retrieved is not None
         assert retrieved.validation_status == ValidationStatus.PENDING
@@ -162,9 +162,9 @@ class TestGroundTruthModels:
         db_session.commit()
         
         # Assert
-        retrieved = db_session.query(ValidationHistory).filter(
+        retrieved = db_session.execute(select(ValidationHistory).where(
             ValidationHistory.workflow_id == workflow.id
-        ).first()
+        )).scalar_one_or_none()
         
         assert retrieved is not None
         assert retrieved.previous_status == ValidationStatus.PENDING
@@ -189,9 +189,9 @@ class TestGroundTruthModels:
         db_session.commit()
         
         # Assert
-        retrieved = db_session.query(GroundTruthBatch).filter(
+        retrieved = db_session.execute(select(GroundTruthBatch).where(
             GroundTruthBatch.id == batch.id
-        ).first()
+        )).scalar_one_or_none()
         
         assert retrieved is not None
         assert retrieved.batch_name == "Test Batch"
@@ -372,9 +372,9 @@ class TestMLGenerationService:
         assert detection_count > 0
         
         # Verify ground truth objects were created
-        created_objects = db_session.query(GroundTruthObject).filter(
+        created_objects = db_session.execute(select(GroundTruthObject).where(
             GroundTruthObject.video_id == sample_video.id
-        ).all()
+        )).scalars().all()
         assert len(created_objects) == detection_count
     
     def test_get_model_info(self, ml_generation_service):
@@ -702,9 +702,9 @@ class TestGroundTruthErrorHandling:
         await ground_truth_service.process_batch(batch.id)
         
         # Assert - batch should handle error gracefully
-        updated_batch = db_session.query(GroundTruthBatch).filter(
+        updated_batch = db_session.execute(select(GroundTruthBatch).where(
             GroundTruthBatch.id == batch.id
-        ).first()
+        )).scalar_one_or_none()
         assert updated_batch.status in ["completed_with_errors", "failed"]
 
 # Data Validation Tests

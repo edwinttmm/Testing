@@ -1,0 +1,17 @@
+[run]
+source = .
+omit =
+    tests/*
+    venv/*
+    */__pycache__/*
+    */site-packages/*
+    conftest.py
+    setup.py
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+[html]
+directory = htmlcov

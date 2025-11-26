@@ -959,6 +959,10 @@ export interface EnhancedDetectionEvent extends DetectionLatencyEvent {
   // Backend standardized detection ID
   detection_id?: string;
 
+  // Detection source
+  source?: 'ai' | 'labjack' | 'manual';  // Detection source
+  detection_type?: 'hardware' | 'software';  // Detection type (backend snake_case)
+
   // Enhanced timing fields
   real_latency_ms?: number;
   apparent_latency_ms?: number;
@@ -998,6 +1002,10 @@ export interface EnhancedDetectionEvent extends DetectionLatencyEvent {
   validation_result?: string | boolean;
   validation_quality?: string;
   timing_correction_summary?: string;
+  usable_for_validation?: boolean;
+  usableForValidation?: boolean;
+  timing_degraded?: boolean;
+  timingDegraded?: boolean;
 
   // Detection metadata
   class_label?: string;

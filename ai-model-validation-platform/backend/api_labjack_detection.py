@@ -44,10 +44,11 @@ class StartMonitoringRequest(BaseModel):
     channels: List[str] = Field(default=["AIN0", "AIN1"], description="LabJack channels to monitor")
     voltage_threshold: float = Field(default=2.5, ge=0.0, le=10.0, description="Detection voltage threshold in volts")
     debounce_ms: int = Field(default=100, ge=10, le=5000, description="Debounce time in milliseconds")
-    sample_rate: int = Field(default=1000, ge=100, le=10000, description="Sampling rate in Hz")
+    sample_rate: int = Field(default=200, ge=100, le=10000, description="Sampling rate in Hz")
     enable_websocket: bool = Field(default=True, description="Enable WebSocket notifications")
     store_in_db: bool = Field(default=True, description="Store events in database")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional session metadata")
+    constant_voltage_mode: bool = Field(default=False, description="Bypass debounce for constant voltage testing (100% detection rate)")
 
 
 class StopMonitoringRequest(BaseModel):
@@ -116,7 +117,8 @@ async def start_monitoring(
             sample_rate=request.sample_rate,
             enable_websocket=request.enable_websocket,
             store_in_db=request.store_in_db,
-            metadata=request.metadata
+            metadata=request.metadata,
+            constant_voltage_mode=request.constant_voltage_mode
         )
         
         if not success:

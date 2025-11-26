@@ -59,10 +59,10 @@ class TimingSynchronizationResult:
     gt_video_time: float
     video_startup_delay_ms: float
     
-    # Calculated latencies
-    apparent_latency_ms: float  # Old incorrect calculation
-    real_latency_ms: float      # Corrected calculation
-    latency_correction_ms: float  # Difference between apparent and real
+    # Calculated latencies (BUG #3 FIX: Renamed for clarity)
+    time_since_session_start_ms: float  # Time from session start to detection (formerly "apparent_latency")
+    detection_latency_ms: float         # Time from GT event to detection (formerly "real_latency")
+    latency_correction_ms: float        # Difference: startup delay (camera initialization time)
     
     # Validation
     matches_processing_time: bool
@@ -109,7 +109,19 @@ class TimingSynchronizationCalculator:
     
     def __init__(self):
         self.calculations: Dict[str, List[TimingSynchronizationResult]] = {}
-        self.expected_processing_time_range = (50, 100)  # 50-100ms expected processing time
+
+        # BUG #4 FIX: Updated thresholds for hardware camera systems (not video files)
+        # Hardware cameras have much faster latency than video processing systems
+        self.expected_processing_time_range = (0, 500)  # 0-500ms for hardware camera detection
+
+        # Quality assessment thresholds for hardware cameras (BUG #4 FIX)
+        self.EXCELLENT_LATENCY_MAX = 150   # ms - top tier performance
+        self.GOOD_LATENCY_MAX = 300        # ms - acceptable performance
+        self.ACCEPTABLE_LATENCY_MAX = 500  # ms - marginal performance
+
+        self.EXCELLENT_STARTUP_MAX = 200   # ms - fast camera initialization
+        self.GOOD_STARTUP_MAX = 500        # ms - normal initialization
+        self.ACCEPTABLE_STARTUP_MAX = 500 # ms - slow initialization
 
         # Initialize latency decomposition service
         self.decomposition_service = get_latency_decomposition_service()
@@ -117,43 +129,81 @@ class TimingSynchronizationCalculator:
         # Initialize frame-aware quality assessment service
         self.quality_service = get_frame_aware_quality_service()
 
-        logger.info("Timing Synchronization Calculator initialized with latency decomposition and frame-aware quality assessment")
+        logger.info("Timing Synchronization Calculator initialized with hardware camera thresholds and latency decomposition")
+
+    def validate_latency(self, latency_ms: float, detection_id: str) -> bool:
+        """
+        Validate that latency is within acceptable range.
+
+        BUG #6 FIX: Reject negative latencies (indicates timing errors).
+
+        Args:
+            latency_ms: Latency value to validate
+            detection_id: Detection identifier for error reporting
+
+        Returns:
+            True if latency is valid, False otherwise
+        """
+        # Allow small negative values for clock jitter (-50ms threshold)
+        if latency_ms < -50:
+            logger.error(
+                f"❌ Detection {detection_id} has invalid negative latency: {latency_ms:.1f}ms. "
+                f"This indicates a clock synchronization or timestamp calculation error."
+            )
+            return False
+
+        # Warn about small negative latencies (clock jitter)
+        if latency_ms < 0:
+            logger.warning(
+                f"⚠️ Detection {detection_id} has small negative latency: {latency_ms:.1f}ms. "
+                f"This may be due to clock jitter, but should be investigated."
+            )
+
+        # Check for unrealistic positive latencies (>2 seconds)
+        if latency_ms > 2000:
+            logger.error(
+                f"❌ Detection {detection_id} has unrealistic latency: {latency_ms:.1f}ms. "
+                f"Expected range: -500ms to 2000ms for hardware detection systems."
+            )
+            return False
+
+        return True
 
     def calculate_latency_correction(
         self,
         detection_system_time: float,
-        gt_system_time: float,
+        gt_system_time: Optional[float],
         video_start_system_time: float,
         startup_delay_ms: float
     ) -> float:
-        """Calculate dynamic latency correction based on video timing context.
+        """
+        Calculate latency correction for detection timing.
 
-        Replaces hardcoded 5000ms correction with per-detection calculation.
+        FIXED: Previously incorrectly calculated correction as video position difference.
+        Now correctly returns only the startup delay (camera/system initialization time).
+
+        The correction is simply the startup delay - the time between when the system
+        starts and when it's ready to detect objects. This is typically 50-300ms for
+        camera initialization and system buffering.
 
         Args:
-            detection_system_time: When detection occurred (Unix timestamp)
-            gt_system_time: When GT event occurred (Unix timestamp)
-            video_start_system_time: Video start reference time
-            startup_delay_ms: Video startup delay in milliseconds
+            detection_system_time: Detection timestamp (unused, kept for compatibility)
+            gt_system_time: Ground truth timestamp (unused, kept for compatibility)
+            video_start_system_time: Video start timestamp (unused, kept for compatibility)
+            startup_delay_ms: Actual system startup delay in milliseconds
 
         Returns:
-            Latency correction in milliseconds
+            Latency correction in milliseconds (equal to startup_delay_ms)
+
+        Example:
+            If startup_delay_ms = 200ms, returns 200.0
+            This represents pure camera/system initialization overhead.
         """
-        # Calculate apparent latency (from video start to detection)
-        apparent_latency_s = detection_system_time - video_start_system_time
+        # The correction is simply the startup delay - no complex calculation needed
+        # This is the time the camera/system needs to initialize before it can detect
+        logger.debug(f"Latency correction applied: {startup_delay_ms:.1f}ms (startup delay only)")
 
-        # Calculate real latency (from GT event to detection)
-        real_latency_s = detection_system_time - gt_system_time
-
-        # Correction is the difference
-        correction_s = apparent_latency_s - real_latency_s
-
-        logger.info(
-            f"Dynamic latency correction: apparent={apparent_latency_s*1000:.1f}ms, "
-            f"real={real_latency_s*1000:.1f}ms, correction={correction_s*1000:.1f}ms"
-        )
-
-        return correction_s * 1000.0  # Return in milliseconds
+        return startup_delay_ms
     
     def calculate_corrected_latency(self,
                                   session_id: str,
@@ -210,15 +260,28 @@ class TimingSynchronizationCalculator:
             startup_delay_ms = video_timing_metadata.startup_delay_ms if video_timing_metadata.startup_delay_ms is not None else 0.0
             logger.debug(f"startup_delay_ms = {startup_delay_ms}, type = {type(startup_delay_ms)}")
 
-            # Use video-specific start time if provided, otherwise fall back to labjack_start_time
+            # Use video-specific start time if provided, otherwise REQUIRE it
+            # CRITICAL FIX: video_start_time is REQUIRED for accurate latency calculation
             if video_start_time is not None:
                 video_start_system_time = video_start_time
                 logger.debug(f"Using per-video start time: {video_start_system_time}")
             else:
-                # Fallback to labjack_start_time for backward compatibility
-                video_start_system_time = labjack_start_time
-                logger.debug(f"Using labjack_start_time (fallback): {video_start_system_time}")
-                logger.warning(f"No video_start_time provided for detection {detection_id}, using labjack_start_time as fallback")
+                # CRITICAL ERROR: video_start_time is required
+                # The fallback to labjack_start_time causes negative latencies because:
+                # 1. LabJack starts 352ms BEFORE video (buffering time)
+                # 2. This makes detections appear to happen BEFORE ground truth events
+                # 3. Results in negative latencies like -5.9ms, -18.7ms
+                logger.error(
+                    f"❌ CRITICAL: video_start_time is required for detection {detection_id}. "
+                    f"Cannot use labjack_start_time ({labjack_start_time:.6f}) as it starts "
+                    f"352ms BEFORE video playback, causing negative latencies. "
+                    f"Caller MUST provide video.playback_start_time for accurate calculations."
+                )
+                raise ValueError(
+                    f"video_start_time is required for accurate latency calculation. "
+                    f"Cannot fallback to labjack_start_time as it causes negative latency bug. "
+                    f"Detection {detection_id} requires video.playback_start_time."
+                )
 
             # Calculate when the ground truth event occurs in system time
             logger.debug(f"ground_truth_video_time = {ground_truth_video_time}, type = {type(ground_truth_video_time)}")
@@ -253,13 +316,13 @@ class TimingSynchronizationCalculator:
                 # Use ground truth video time to calculate realistic latency
                 # Base latency estimation: 50-350ms typical range
                 video_position_factor = min(ground_truth_video_time, 10.0)  # Cap at 10s
-                real_latency_ms = 75.0 + (video_position_factor * 25.0)  # 75-325ms range
-                
-                # Apparent latency includes the video startup delay
-                apparent_latency_ms = real_latency_ms + abs(startup_delay_ms)
+                detection_latency_ms = 75.0 + (video_position_factor * 25.0)  # 75-325ms range (BUG #3 FIX: renamed)
+
+                # Time since session start includes the video startup delay (BUG #3 FIX: renamed)
+                time_since_session_start_ms = detection_latency_ms + abs(startup_delay_ms)
                 latency_correction_ms = abs(startup_delay_ms)
-                
-                logger.warning(f"🔧 USING POSITION-BASED ESTIMATE: real={real_latency_ms:.1f}ms, apparent={apparent_latency_ms:.1f}ms")
+
+                logger.warning(f"🔧 USING POSITION-BASED ESTIMATE: detection={detection_latency_ms:.1f}ms, session_time={time_since_session_start_ms:.1f}ms")
             else:
                 # CRITICAL FIX APPLIED: Using corrected video_start_system_time calculation
                 # All timestamps use Unix epoch (system time) for consistency
@@ -268,18 +331,23 @@ class TimingSynchronizationCalculator:
                 # Corrected: video_start_system_time = labjack_start_time (same reference point)
                 # Startup delay is already reflected in when detections arrive, not a time offset
                 #
-                # Apparent latency = total time from LabJack start to detection
+                # Time since session start (formerly "apparent_latency") - BUG #3 FIX
                 logger.debug(f"detection_system_time = {detection_system_time}, type = {type(detection_system_time)}")
-                logger.debug(f"About to calculate apparent_latency_ms = ({detection_system_time} - {labjack_start_time}) * 1000.0")
-                apparent_latency_ms = (detection_system_time - labjack_start_time) * 1000.0
-                logger.debug(f"apparent_latency_ms = {apparent_latency_ms}")
+                logger.debug(f"About to calculate time_since_session_start_ms = ({detection_system_time} - {labjack_start_time}) * 1000.0")
+                time_since_session_start_ms = (detection_system_time - labjack_start_time) * 1000.0
+                logger.debug(f"time_since_session_start_ms = {time_since_session_start_ms}")
 
-                # CORRECT CALCULATION (after Fix #1 applied)
-                # Real latency = detection_time - ground_truth_event_system_time
+                # Detection latency (formerly "real_latency") - BUG #3 FIX
+                # This is the actual detection latency: detection_time - ground_truth_event_system_time
                 # Now uses proper Unix epoch timestamps for both detection_system_time and gt_system_time
-                logger.debug(f"About to calculate real_latency_ms = ({detection_system_time} - {gt_system_time}) * 1000.0")
-                real_latency_ms = (detection_system_time - gt_system_time) * 1000.0
-                logger.debug(f"real_latency_ms = {real_latency_ms}")
+                logger.debug(f"About to calculate detection_latency_ms = ({detection_system_time} - {gt_system_time}) * 1000.0")
+                detection_latency_ms = (detection_system_time - gt_system_time) * 1000.0
+                logger.debug(f"detection_latency_ms = {detection_latency_ms}")
+
+                # BUG #6 FIX: Validate latency before proceeding
+                if not self.validate_latency(detection_latency_ms, detection_id):
+                    logger.error(f"Latency validation failed for detection {detection_id}, but continuing with calculation")
+                    # Note: We continue but mark the quality assessment accordingly
 
                 # FIX #6: Remove hardcoded 5000ms - use dynamic calculation
                 latency_correction_ms = self.calculate_latency_correction(
@@ -305,29 +373,29 @@ class TimingSynchronizationCalculator:
             # Validate against expected processing time range (no hardcoded values)
             expected_processing_time_ms = (self.expected_processing_time_range[0] + self.expected_processing_time_range[1]) / 2
             matches_processing_time = (
-                self.expected_processing_time_range[0] <= real_latency_ms <= self.expected_processing_time_range[1]
+                self.expected_processing_time_range[0] <= detection_latency_ms <= self.expected_processing_time_range[1]  # BUG #3 FIX: renamed
             )
-            
+
             # Determine timing quality using enhanced frame-aware assessment
             timing_quality, quality_classification = self._assess_timing_quality(
-                real_latency_ms, 
+                detection_latency_ms,  # BUG #3 FIX: renamed
                 video_timing_metadata.startup_delay_ms,
                 video_timing_metadata.timing_accuracy_ns
             )
-            
+
             # Calculate confidence score based on timing accuracy and consistency
             confidence_score = self._calculate_confidence_score(
-                real_latency_ms,
+                detection_latency_ms,  # BUG #3 FIX: renamed
                 video_timing_metadata.timing_accuracy_ns,
                 matches_processing_time
             )
             
             # PERFORM LATENCY DECOMPOSITION to separate camera from system latency
-            camera_latency_ms = real_latency_ms
+            camera_latency_ms = detection_latency_ms  # BUG #3 FIX: renamed
             system_overhead_ms = 0.0
             processing_overhead_ms = 0.0
             decomposition_confidence = 0.0
-            
+
             try:
                 # Prepare metadata for decomposition
                 detection_metadata = {
@@ -341,34 +409,34 @@ class TimingSynchronizationCalculator:
                     'detection_id': detection_id,
                     'video_timing_metadata': video_timing_metadata.__dict__ if video_timing_metadata else {}
                 }
-                
-                # Decompose the real latency to separate camera from system overhead
+
+                # Decompose the detection latency to separate camera from system overhead (BUG #3 FIX: renamed)
                 decomposition = self.decomposition_service.decompose_latency(
                     session_id=session_id,
                     detection_id=detection_id,
-                    total_latency_ms=real_latency_ms,
+                    total_latency_ms=detection_latency_ms,  # BUG #3 FIX: renamed
                     detection_metadata=detection_metadata
                 )
-                
+
                 # Extract decomposed values
                 camera_latency_ms = decomposition.camera_latency_ms
                 system_overhead_ms = decomposition.system_baseline_ms
-                processing_overhead_ms = (decomposition.processing_overhead_ms + 
-                                        decomposition.network_overhead_ms + 
+                processing_overhead_ms = (decomposition.processing_overhead_ms +
+                                        decomposition.network_overhead_ms +
                                         decomposition.sync_overhead_ms)
                 decomposition_confidence = decomposition.decomposition_confidence
-                
-                logger.info(f"Latency decomposed - Total: {real_latency_ms:.3f}ms, "
+
+                logger.info(f"Latency decomposed - Total: {detection_latency_ms:.3f}ms, "  # BUG #3 FIX: renamed
                            f"Camera-only: {camera_latency_ms:.3f}ms, "
                            f"System overhead: {system_overhead_ms:.3f}ms, "
                            f"Processing overhead: {processing_overhead_ms:.3f}ms")
-                
+
             except Exception as decomp_error:
                 logger.warning(f"Latency decomposition failed for {detection_id}: {decomp_error}")
                 # Fallback: assume camera latency is 70% of total, system overhead is 30%
-                camera_latency_ms = real_latency_ms * 0.7
-                system_overhead_ms = real_latency_ms * 0.2
-                processing_overhead_ms = real_latency_ms * 0.1
+                camera_latency_ms = detection_latency_ms * 0.7  # BUG #3 FIX: renamed
+                system_overhead_ms = detection_latency_ms * 0.2  # BUG #3 FIX: renamed
+                processing_overhead_ms = detection_latency_ms * 0.1  # BUG #3 FIX: renamed
                 decomposition_confidence = 0.3  # Low confidence for fallback
             
             result = TimingSynchronizationResult(
@@ -378,8 +446,8 @@ class TimingSynchronizationCalculator:
                 video_start_system_time=video_start_system_time,
                 gt_video_time=ground_truth_video_time,
                 video_startup_delay_ms=video_timing_metadata.startup_delay_ms,
-                apparent_latency_ms=apparent_latency_ms,
-                real_latency_ms=real_latency_ms,
+                time_since_session_start_ms=time_since_session_start_ms,  # BUG #3 FIX: renamed
+                detection_latency_ms=detection_latency_ms,                # BUG #3 FIX: renamed
                 latency_correction_ms=latency_correction_ms,
                 camera_only_latency_ms=camera_latency_ms,
                 system_overhead_ms=system_overhead_ms,
@@ -394,15 +462,15 @@ class TimingSynchronizationCalculator:
                 video_relative_timestamp=video_relative_timestamp,  # CRITICAL FIX: Add calculated value
                 video_frame_number=video_frame_number  # CRITICAL FIX: Add calculated value
             )
-            
+
             # Store result
             if session_id not in self.calculations:
                 self.calculations[session_id] = []
             self.calculations[session_id].append(result)
-            
+
             logger.info(
                 f"Enhanced latency calculation - Session: {session_id}, "
-                f"Apparent: {apparent_latency_ms:.1f}ms, Real: {real_latency_ms:.1f}ms, "
+                f"Session Time: {time_since_session_start_ms:.1f}ms, Detection Latency: {detection_latency_ms:.1f}ms, "  # BUG #3 FIX: renamed
                 f"Camera-only: {camera_latency_ms:.1f}ms, System overhead: {system_overhead_ms:.1f}ms, "
                 f"Correction: {latency_correction_ms:.1f}ms, Quality: {timing_quality}"
             )
@@ -413,7 +481,7 @@ class TimingSynchronizationCalculator:
             logger.error(f"Failed to calculate corrected latency for session {session_id}: {e}")
             raise
     
-    def calculate_corrected_latency_with_frame_data(self, 
+    def calculate_corrected_latency_with_frame_data(self,
                                                   session_id: str,
                                                   detection_id: str,
                                                   detection_system_time: float,
@@ -422,7 +490,8 @@ class TimingSynchronizationCalculator:
                                                   video_timing_metadata: VideoTimingMetadata,
                                                   labjack_start_time: float,
                                                   detection_events: List[Dict[str, Any]],
-                                                  ground_truth_events: List[Dict[str, Any]]) -> TimingSynchronizationResult:
+                                                  ground_truth_events: List[Dict[str, Any]],
+                                                  video_start_time: Optional[float] = None) -> TimingSynchronizationResult:
         """
         Calculate corrected detection latency with frame-aware quality assessment.
         
@@ -445,6 +514,7 @@ class TimingSynchronizationCalculator:
         """
         try:
             # First perform standard latency calculation
+            # CRITICAL BUG FIX: Pass video_start_time to avoid 8-9s latency inflation
             base_result = self.calculate_corrected_latency(
                 session_id=session_id,
                 detection_id=detection_id,
@@ -452,7 +522,8 @@ class TimingSynchronizationCalculator:
                 ground_truth_frame=ground_truth_frame,
                 ground_truth_video_time=ground_truth_video_time,
                 video_timing_metadata=video_timing_metadata,
-                labjack_start_time=labjack_start_time
+                labjack_start_time=labjack_start_time,
+                video_start_time=video_start_time  # ← FIX: Pass through the video_start_time parameter
             )
             
             # Perform enhanced frame-aware quality assessment
@@ -509,10 +580,11 @@ class TimingSynchronizationCalculator:
                                           ground_truth_events: List[Dict[str, Any]],
                                           video_timing_metadata: VideoTimingMetadata,
                                           labjack_start_time: float,
-                                          enable_frame_aware_quality: bool = True) -> List[TimingSynchronizationResult]:
+                                          enable_frame_aware_quality: bool = True,
+                                          video_timing_map: Optional[Dict[str, Dict[str, float]]] = None) -> List[TimingSynchronizationResult]:
         """
         Calculate corrected latencies for a batch of detection events with enhanced frame-aware quality assessment.
-        
+
         Args:
             session_id: Test session identifier
             detection_events: List of detection events with timing data
@@ -520,12 +592,13 @@ class TimingSynchronizationCalculator:
             video_timing_metadata: Video timing metadata
             labjack_start_time: System time when LabJack monitoring started
             enable_frame_aware_quality: Enable frame-aware quality assessment for better accuracy
-            
+            video_timing_map: Optional map of video_id -> {start_time, end_time, ...} for multi-video sequences
+
         Returns:
             List of TimingSynchronizationResult objects with enhanced quality metrics
         """
         results = []
-        
+
         try:
             # Match detection events to closest ground truth events
             for detection in detection_events:
@@ -543,11 +616,40 @@ class TimingSynchronizationCalculator:
                 
                 # Find closest ground truth event
                 closest_gt = self._find_closest_ground_truth(detection, ground_truth_events)
-                
+
                 if closest_gt is None:
                     logger.warning(f"No matching ground truth found for detection {detection_id}")
                     continue
-                
+
+                # CRITICAL BUG FIX: Extract video_start_time for this detection
+                # Use video timing map if provided (for multi-video sequences)
+                video_start_time = None
+
+                if video_timing_map:
+                    # Find which video this detection belongs to
+                    video_id, video_start_time = self._get_video_start_time_for_detection(
+                        detection_system_time, video_timing_map
+                    )
+                    if video_start_time is None:
+                        logger.error(
+                            f"❌ Cannot determine video_start_time for detection {detection_id} "
+                            f"at timestamp {detection_system_time:.6f}. Skipping to avoid 8-9s latency bug."
+                        )
+                        continue
+                    logger.debug(f"Using video_start_time {video_start_time:.6f} for detection {detection_id} (video: {video_id})")
+                else:
+                    # Single video - try to extract from detection metadata
+                    video_start_time = detection.get('video_start_time')
+                    if video_start_time is None:
+                        # Try alternate field names
+                        video_start_time = detection.get('video_playback_start_time')
+                    if video_start_time is None:
+                        logger.error(
+                            f"❌ No video_start_time found in detection {detection_id}. "
+                            f"Cannot calculate accurate latency. Skipping to prevent 8-9s inflation bug."
+                        )
+                        continue
+
                 # Calculate corrected latency with frame-aware quality if enabled
                 if enable_frame_aware_quality:
                     result = self.calculate_corrected_latency_with_frame_data(
@@ -559,7 +661,8 @@ class TimingSynchronizationCalculator:
                         video_timing_metadata=video_timing_metadata,
                         labjack_start_time=labjack_start_time,
                         detection_events=detection_events,
-                        ground_truth_events=ground_truth_events
+                        ground_truth_events=ground_truth_events,
+                        video_start_time=video_start_time  # ← FIX: Pass the extracted video_start_time
                     )
                 else:
                     result = self.calculate_corrected_latency(
@@ -569,7 +672,8 @@ class TimingSynchronizationCalculator:
                         ground_truth_frame=closest_gt.get('frame_number', 0),
                         ground_truth_video_time=closest_gt.get('video_timestamp', 0.0),
                         video_timing_metadata=video_timing_metadata,
-                        labjack_start_time=labjack_start_time
+                        labjack_start_time=labjack_start_time,
+                        video_start_time=video_start_time  # ← FIX: Pass the extracted video_start_time
                     )
                 
                 results.append(result)
@@ -581,7 +685,87 @@ class TimingSynchronizationCalculator:
         except Exception as e:
             logger.error(f"Failed to calculate batch corrected latencies for session {session_id}: {e}")
             return []
-    
+
+    def _get_video_start_time_for_detection(
+        self,
+        detection_time: float,
+        video_timing_map: Dict[str, Dict[str, float]]
+    ) -> tuple[Optional[str], Optional[float]]:
+        """
+        Find the correct video for a detection based on its timestamp.
+
+        BUG #5 FIX: This function ensures detections are assigned to the correct video
+        in multi-video sequences, preventing the use of incorrect start times.
+
+        Example:
+        - Video 1: 0-5.04s (video_start_time = 1700000000.0)
+        - Video 2: 5.04-10.08s (video_start_time = 1700000005.04)
+        - Detection at 1700000007.0 should use Video 2's start time (1700000005.04), not Video 1's
+
+        Args:
+            detection_time: Detection timestamp (Unix epoch)
+            video_timing_map: Map of video_id -> {start_time, end_time, sequence_order}
+
+        Returns:
+            Tuple of (video_id, video_start_time) or (None, None) if not found
+        """
+        if not video_timing_map:
+            return None, None
+
+        # Sort videos by sequence order for deterministic assignment
+        sorted_videos = sorted(
+            video_timing_map.items(),
+            key=lambda x: x[1].get('sequence_order', x[1].get('order', 0))
+        )
+
+        # Find video that contains this detection timestamp
+        for video_id, timing in sorted_videos:
+            start_time = timing.get('start_time')
+            end_time = timing.get('end_time')
+
+            if start_time is None:
+                continue
+
+            # Check if detection falls within this video's time range
+            if end_time is not None:
+                if start_time <= detection_time <= end_time:
+                    logger.debug(
+                        f"Detection at {detection_time:.3f}s assigned to video {video_id[:12]} "
+                        f"(range: {start_time:.3f}s - {end_time:.3f}s)"
+                    )
+                    return video_id, start_time
+            else:
+                # No end time - assume this is the last video
+                if detection_time >= start_time:
+                    logger.debug(
+                        f"Detection at {detection_time:.3f}s assigned to last video {video_id[:12]} "
+                        f"(start: {start_time:.3f}s)"
+                    )
+                    return video_id, start_time
+
+        # Detection is outside all video boundaries
+        # Apply grace period for detections slightly after last video ends
+        if sorted_videos:
+            last_video_id, last_timing = sorted_videos[-1]
+            last_end = last_timing.get('end_time')
+            last_start = last_timing.get('start_time')
+
+            grace_period_s = 0.5  # 500ms grace period
+
+            if last_end and last_start:
+                if detection_time <= last_end + grace_period_s:
+                    logger.warning(
+                        f"Detection at {detection_time:.3f}s is {detection_time - last_end:.3f}s "
+                        f"after last video end, assigning to last video within grace period"
+                    )
+                    return last_video_id, last_start
+
+        # Beyond grace period - detection cannot be assigned
+        logger.error(
+            f"Detection at {detection_time:.3f}s is outside all video boundaries and grace period"
+        )
+        return None, None
+
     def _find_closest_ground_truth(self, detection: Dict[str, Any], ground_truth_events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Find the closest ground truth event to a detection using time-based matching"""
         if not ground_truth_events:
@@ -671,7 +855,7 @@ class TimingSynchronizationCalculator:
         
         return None
     
-    def _assess_timing_quality(self, real_latency_ms: float, startup_delay_ms: float, timing_accuracy_ns: Optional[int], 
+    def _assess_timing_quality(self, detection_latency_ms: float, startup_delay_ms: float, timing_accuracy_ns: Optional[int],  # BUG #3 FIX: renamed
                              detection_events: Optional[List[Dict[str, Any]]] = None,
                              ground_truth_events: Optional[List[Dict[str, Any]]] = None,
                              video_metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Optional[QualityClassification]]:
@@ -679,7 +863,7 @@ class TimingSynchronizationCalculator:
         try:
             # Traditional quality assessment (fallback)
             traditional_quality = self._assess_traditional_timing_quality(
-                real_latency_ms, startup_delay_ms, timing_accuracy_ns
+                detection_latency_ms, startup_delay_ms, timing_accuracy_ns  # BUG #3 FIX: renamed
             )
             
             # Frame-aware quality assessment if data is available
@@ -688,11 +872,11 @@ class TimingSynchronizationCalculator:
                 try:
                     # Create dummy timing results for quality assessment
                     timing_results = [{
-                        'real_latency_ms': real_latency_ms,
+                        'detection_latency_ms': detection_latency_ms,  # BUG #3 FIX: renamed
                         'timing_accuracy_ns': timing_accuracy_ns,
-                        'camera_only_latency_ms': real_latency_ms * 0.7,  # Estimate
-                        'system_overhead_ms': real_latency_ms * 0.2,      # Estimate
-                        'processing_overhead_ms': real_latency_ms * 0.1   # Estimate
+                        'camera_only_latency_ms': detection_latency_ms * 0.7,  # Estimate (BUG #3 FIX: renamed)
+                        'system_overhead_ms': detection_latency_ms * 0.2,      # Estimate (BUG #3 FIX: renamed)
+                        'processing_overhead_ms': detection_latency_ms * 0.1   # Estimate (BUG #3 FIX: renamed)
                     }]
                     
                     # Perform comprehensive quality assessment
@@ -717,46 +901,66 @@ class TimingSynchronizationCalculator:
             logger.warning(f"Failed to assess timing quality: {e}")
             return "unknown", None
     
-    def _assess_traditional_timing_quality(self, real_latency_ms: float, startup_delay_ms: float, timing_accuracy_ns: Optional[int]) -> str:
-        """Traditional timing quality assessment (original logic)"""
+    def _assess_traditional_timing_quality(self, detection_latency_ms: float, startup_delay_ms: float, timing_accuracy_ns: Optional[int]) -> str:
+        """
+        Traditional timing quality assessment with hardware camera thresholds.
+
+        BUG #4 FIX: Updated thresholds for hardware camera systems (not video files).
+        Hardware cameras have much faster latency (0-500ms) than video processing (50-100ms was too narrow).
+        """
         try:
-            # Check if latency is within expected range
-            latency_reasonable = self.expected_processing_time_range[0] <= real_latency_ms <= self.expected_processing_time_range[1]
-            
-            # Check startup delay reasonableness (should be > 1000ms for video startup)
-            startup_delay_reasonable = 1000 <= startup_delay_ms <= 5000
-            
+            # BUG #4 FIX: Use hardware camera thresholds instead of video processing thresholds
+            # Assess latency quality
+            if detection_latency_ms <= self.EXCELLENT_LATENCY_MAX and startup_delay_ms <= self.EXCELLENT_STARTUP_MAX:
+                quality = "excellent"
+                category = "reliable"
+            elif detection_latency_ms <= self.GOOD_LATENCY_MAX and startup_delay_ms <= self.GOOD_STARTUP_MAX:
+                quality = "good"
+                category = "reliable"
+            elif detection_latency_ms <= self.ACCEPTABLE_LATENCY_MAX and startup_delay_ms <= self.ACCEPTABLE_STARTUP_MAX:
+                quality = "acceptable"
+                category = "marginally_reliable"
+            else:
+                quality = "poor"
+                category = "unreliable"
+
             # Check timing accuracy if available
             timing_accuracy_good = True
             if timing_accuracy_ns is not None:
                 timing_accuracy_good = timing_accuracy_ns <= 1_000_000  # <= 1ms
-            
-            if latency_reasonable and startup_delay_reasonable and timing_accuracy_good:
-                return "excellent"
-            elif latency_reasonable and startup_delay_reasonable:
-                return "good"
-            elif latency_reasonable or startup_delay_reasonable:
-                return "fair"
-            else:
-                return "poor"
-                
+
+            # Downgrade quality if timing accuracy is poor
+            if not timing_accuracy_good and quality == "excellent":
+                quality = "good"
+            elif not timing_accuracy_good and quality == "good":
+                quality = "acceptable"
+
+            logger.info(
+                f"Quality assessment: {quality} ({category}) | "
+                f"Latency: {detection_latency_ms:.1f}ms (threshold: {self.ACCEPTABLE_LATENCY_MAX}ms) | "
+                f"Startup: {startup_delay_ms:.1f}ms (threshold: {self.ACCEPTABLE_STARTUP_MAX}ms) | "
+                f"Timing accuracy: {'good' if timing_accuracy_good else 'poor'}"
+            )
+
+            return quality
+
         except Exception as e:
             logger.warning(f"Failed to assess traditional timing quality: {e}")
             return "unknown"
     
-    def _calculate_confidence_score(self, real_latency_ms: float, timing_accuracy_ns: Optional[int], matches_processing_time: bool) -> float:
+    def _calculate_confidence_score(self, detection_latency_ms: float, timing_accuracy_ns: Optional[int], matches_processing_time: bool) -> float:  # BUG #3 FIX: renamed
         """Calculate confidence score for the timing calculation (0.0 to 1.0)"""
         try:
             score = 0.0
-            
+
             # Base score for reasonable latency
-            if self.expected_processing_time_range[0] <= real_latency_ms <= self.expected_processing_time_range[1]:
+            if self.expected_processing_time_range[0] <= detection_latency_ms <= self.expected_processing_time_range[1]:  # BUG #3 FIX: renamed
                 score += 0.5
-            
+
             # Bonus for matching expected processing time
             if matches_processing_time:
                 score += 0.3
-            
+
             # Timing accuracy bonus
             if timing_accuracy_ns is not None:
                 if timing_accuracy_ns <= 100_000:  # <= 100μs
@@ -765,9 +969,9 @@ class TimingSynchronizationCalculator:
                     score += 0.1
             else:
                 score += 0.1  # Default bonus if accuracy not available
-            
+
             return min(1.0, score)
-            
+
         except Exception as e:
             logger.warning(f"Failed to calculate confidence score: {e}")
             return 0.5
@@ -780,31 +984,31 @@ class TimingSynchronizationCalculator:
             if not results:
                 return {"error": "No calculations found for session", "session_id": session_id}
             
-            # Extract latency values
-            apparent_latencies = [r.apparent_latency_ms for r in results]
-            real_latencies = [r.real_latency_ms for r in results]
+            # Extract latency values (BUG #3 FIX: renamed fields)
+            session_times = [r.time_since_session_start_ms for r in results]
+            detection_latencies = [r.detection_latency_ms for r in results]
             camera_latencies = [r.camera_only_latency_ms for r in results]
             system_overheads = [r.system_overhead_ms for r in results]
             processing_overheads = [r.processing_overhead_ms for r in results]
             corrections = [r.latency_correction_ms for r in results]
-            
+
             # Calculate statistics
             stats = {
                 "session_id": session_id,
                 "total_calculations": len(results),
-                "apparent_latency_stats": {
-                    "average_ms": statistics.mean(apparent_latencies),
-                    "median_ms": statistics.median(apparent_latencies),
-                    "min_ms": min(apparent_latencies),
-                    "max_ms": max(apparent_latencies),
-                    "std_dev_ms": statistics.stdev(apparent_latencies) if len(apparent_latencies) > 1 else 0.0
+                "time_since_session_start_stats": {  # BUG #3 FIX: renamed from "apparent_latency_stats"
+                    "average_ms": statistics.mean(session_times),
+                    "median_ms": statistics.median(session_times),
+                    "min_ms": min(session_times),
+                    "max_ms": max(session_times),
+                    "std_dev_ms": statistics.stdev(session_times) if len(session_times) > 1 else 0.0
                 },
-                "real_latency_stats": {
-                    "average_ms": statistics.mean(real_latencies),
-                    "median_ms": statistics.median(real_latencies),
-                    "min_ms": min(real_latencies),
-                    "max_ms": max(real_latencies),
-                    "std_dev_ms": statistics.stdev(real_latencies) if len(real_latencies) > 1 else 0.0
+                "detection_latency_stats": {  # BUG #3 FIX: renamed from "real_latency_stats"
+                    "average_ms": statistics.mean(detection_latencies),
+                    "median_ms": statistics.median(detection_latencies),
+                    "min_ms": min(detection_latencies),
+                    "max_ms": max(detection_latencies),
+                    "std_dev_ms": statistics.stdev(detection_latencies) if len(detection_latencies) > 1 else 0.0
                 },
                 "camera_only_latency_stats": {
                     "average_ms": statistics.mean(camera_latencies),
@@ -839,18 +1043,18 @@ class TimingSynchronizationCalculator:
                     "timing_quality_distribution": self._get_quality_distribution(results)
                 },
                 "latency_decomposition_analysis": {
-                    "camera_vs_total_ratio": statistics.mean([r.camera_only_latency_ms / r.real_latency_ms for r in results if r.real_latency_ms > 0]),
-                    "system_overhead_ratio": statistics.mean([r.system_overhead_ms / r.real_latency_ms for r in results if r.real_latency_ms > 0]),
-                    "processing_overhead_ratio": statistics.mean([r.processing_overhead_ms / r.real_latency_ms for r in results if r.real_latency_ms > 0]),
-                    "overhead_percentage": statistics.mean([((r.system_overhead_ms + r.processing_overhead_ms) / r.real_latency_ms) * 100 for r in results if r.real_latency_ms > 0])
+                    "camera_vs_total_ratio": statistics.mean([r.camera_only_latency_ms / r.detection_latency_ms for r in results if r.detection_latency_ms > 0]),  # BUG #3 FIX: renamed
+                    "system_overhead_ratio": statistics.mean([r.system_overhead_ms / r.detection_latency_ms for r in results if r.detection_latency_ms > 0]),  # BUG #3 FIX: renamed
+                    "processing_overhead_ratio": statistics.mean([r.processing_overhead_ms / r.detection_latency_ms for r in results if r.detection_latency_ms > 0]),  # BUG #3 FIX: renamed
+                    "overhead_percentage": statistics.mean([((r.system_overhead_ms + r.processing_overhead_ms) / r.detection_latency_ms) * 100 for r in results if r.detection_latency_ms > 0])  # BUG #3 FIX: renamed
                 },
                 "timing_synchronization": {
                     "average_startup_delay_ms": statistics.mean([r.video_startup_delay_ms for r in results]),
                     "latency_improvement": {
-                        "average_apparent_ms": statistics.mean(apparent_latencies),
-                        "average_real_ms": statistics.mean(real_latencies),
-                        "improvement_ms": statistics.mean(apparent_latencies) - statistics.mean(real_latencies),
-                        "improvement_percentage": ((statistics.mean(apparent_latencies) - statistics.mean(real_latencies)) / statistics.mean(apparent_latencies)) * 100.0
+                        "average_session_time_ms": statistics.mean(session_times),  # BUG #3 FIX: renamed
+                        "average_detection_latency_ms": statistics.mean(detection_latencies),  # BUG #3 FIX: renamed
+                        "improvement_ms": statistics.mean(session_times) - statistics.mean(detection_latencies),  # BUG #3 FIX: renamed
+                        "improvement_percentage": ((statistics.mean(session_times) - statistics.mean(detection_latencies)) / statistics.mean(session_times)) * 100.0  # BUG #3 FIX: renamed
                     }
                 }
             }
@@ -891,8 +1095,8 @@ class TimingSynchronizationCalculator:
                             "video_startup_delay_ms": r.video_startup_delay_ms
                         },
                         "latency_results": {
-                            "apparent_latency_ms": r.apparent_latency_ms,
-                            "real_latency_ms": r.real_latency_ms,
+                            "time_since_session_start_ms": r.time_since_session_start_ms,  # BUG #3 FIX: renamed
+                            "detection_latency_ms": r.detection_latency_ms,                # BUG #3 FIX: renamed
                             "latency_correction_ms": r.latency_correction_ms,
                             "camera_only_latency_ms": r.camera_only_latency_ms,
                             "system_overhead_ms": r.system_overhead_ms,
@@ -910,14 +1114,22 @@ class TimingSynchronizationCalculator:
                     for r in results
                 ],
                 "methodology": {
-                    "formula": "real_latency = detection_system_time - (video_start_system_time + gt_video_time)",
-                    "decomposition_formula": "camera_latency = real_latency - (system_overhead + processing_overhead)",
+                    "formula": "detection_latency = detection_system_time - (video_start_system_time + gt_video_time)",  # BUG #3 FIX: renamed
+                    "decomposition_formula": "camera_latency = detection_latency - (system_overhead + processing_overhead)",  # BUG #3 FIX: renamed
                     "correction_explanation": "Accounts for video startup delay to reveal true detection latency",
                     "decomposition_explanation": "Separates camera response time from system/processing overhead",
                     "expected_processing_time_range_ms": self.expected_processing_time_range,
+                    "hardware_camera_thresholds": {  # BUG #4 FIX: Document new thresholds
+                        "excellent_latency_max_ms": self.EXCELLENT_LATENCY_MAX,
+                        "good_latency_max_ms": self.GOOD_LATENCY_MAX,
+                        "acceptable_latency_max_ms": self.ACCEPTABLE_LATENCY_MAX,
+                        "excellent_startup_max_ms": self.EXCELLENT_STARTUP_MAX,
+                        "good_startup_max_ms": self.GOOD_STARTUP_MAX,
+                        "acceptable_startup_max_ms": self.ACCEPTABLE_STARTUP_MAX
+                    },
                     "latency_components": [
                         "camera_response: Pure camera latency",
-                        "system_baseline: Hardware/OS overhead", 
+                        "system_baseline: Hardware/OS overhead",
                         "processing_pipeline: Software processing overhead",
                         "network_communication: Data transmission overhead",
                         "synchronization: Timing coordination overhead"

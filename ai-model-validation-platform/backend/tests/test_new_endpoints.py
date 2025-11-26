@@ -24,7 +24,7 @@ def test_dataset_annotation_endpoint():
     db = SessionLocal()
     try:
         # Get a video with annotations
-        video = db.query(Video).join(Annotation).first()
+        video = db.execute(select(Video).join(Annotation)).scalar_one_or_none()
         if not video:
             print("❌ No video with annotations found")
             return False
@@ -79,7 +79,7 @@ def test_ai_detections_endpoint():
     db = SessionLocal()
     try:
         # Get a video that has test sessions
-        video = db.query(Video).join(TestSession).first()
+        video = db.execute(select(Video).join(TestSession)).scalar_one_or_none()
         if not video:
             print("❌ No video with test sessions found")
             return False
@@ -131,7 +131,7 @@ def test_test_sessions_video_filter():
     db = SessionLocal()
     try:
         # Get a video that has test sessions
-        video = db.query(Video).join(TestSession).first()
+        video = db.execute(select(Video).join(TestSession)).scalar_one_or_none()
         if not video:
             print("❌ No video with test sessions found")
             return False
@@ -168,9 +168,9 @@ def test_screenshot_paths():
     db = SessionLocal()
     try:
         # Find detection events with screenshot paths
-        detection_with_screenshot = db.query(DetectionEvent).filter(
+        detection_with_screenshot = db.execute(select(DetectionEvent).where(
             DetectionEvent.screenshot_path.isnot(None)
-        ).first()
+        )).scalars().first()
         
         if detection_with_screenshot:
             print(f"📸 Found detection with screenshot: {detection_with_screenshot.screenshot_path}")

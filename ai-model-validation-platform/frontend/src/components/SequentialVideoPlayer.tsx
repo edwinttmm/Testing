@@ -40,7 +40,7 @@ interface SequentialVideoPlayerProps {
   onError: (error: string) => void;
   onVideoStarted?: (videoId: string, videoIndex: number, startTime: number) => void;
   onVideoEnded?: (videoId: string, videoIndex: number, endTime: number) => void;
-  fullScreenMode?: boolean;
+  // NOTE: fullScreenMode removed - parent container handles fullscreen CSS/layout
 }
 
 interface VideoTransitionState {
@@ -62,15 +62,14 @@ const HEARTBEAT_INTERVAL_MS = 1000;
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_BASE_MS = 1000;
 
-export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
+export const SequentialVideoPlayer = React.memo<SequentialVideoPlayerProps>(({
   videoPlaylist,
   sequenceId,
   maxLatencyMs,
   onSequenceComplete,
   onError,
   onVideoStarted,
-  onVideoEnded,
-  fullScreenMode = false
+  onVideoEnded
 }) => {
   // State management
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
@@ -97,6 +96,22 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
   const videoTimingsRef = useRef<VideoTimingMetadata[]>([]);
   const currentVideoTimingRef = useRef<VideoTimingMetadata | null>(null);
   const activeWaitPromiseRef = useRef<Promise<number> | null>(null);
+  const lastVideoStartTimestampRef = useRef<number | null>(null);
+
+  // FIX #1: Prevent re-initialization guard
+  const hasInitializedRef = useRef(false);
+
+  // FIX #3: Ref fallback for sequence start time
+  const sequenceStartTimeRef = useRef<number | null>(null);
+
+  // FIX #4: Prevent API calls after unmount
+  const isMountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    // Reset monotonic tracking whenever a new sequence begins
+    lastVideoStartTimestampRef.current = null;
+  }, [sequenceId]);
 
   /**
    * Wait for the browser to fire the first playing event so we know frames are visible.
@@ -180,6 +195,12 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
    * Enhanced with better error notifications
    */
   const sendVideoStartedEvent = useCallback(async (videoId: string, timestamp: number) => {
+    // CRITICAL FIX: Check if component is still mounted before making API call
+    if (!isMountedRef.current) {
+      console.log('⏭️ Skipping video-started event - component unmounted');
+      return;
+    }
+
     // CRITICAL VALIDATION: sequenceId is REQUIRED for timing tracking
     if (!sequenceId || sequenceId.trim() === '') {
       const criticalError = '❌ CRITICAL: Cannot send video-started event - no sequence ID. Timing data will be lost!';
@@ -197,42 +218,65 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       throw new Error(criticalError); // BLOCKING: Throw error to prevent silent failure
     }
 
-    // Use captured timestamp (ms) to derive Unix seconds + ISO string
-    const startedAtUnixSeconds = Math.floor(timestamp / 1000);
-    const clientTimestamp = new Date(timestamp).toISOString();
-    const sequenceStartSeconds = sequenceStartUnixSeconds ?? startedAtUnixSeconds;
-    const sequenceElapsedSeconds = startedAtUnixSeconds - sequenceStartSeconds;
+    // FIX #2: Keep millisecond precision - DO NOT truncate with Math.floor()
+    // Backend stores Float timestamps and Hungarian matcher requires ±100ms accuracy
+    let normalizedTimestamp = timestamp;
+    const lastStartTimestamp = lastVideoStartTimestampRef.current;
+    if (lastStartTimestamp !== null && normalizedTimestamp <= lastStartTimestamp) {
+      normalizedTimestamp = lastStartTimestamp + 5; // Bump by 5ms to preserve ordering
+      console.warn(
+        '⚠️ Adjusted video-start timestamp to maintain monotonic order',
+        { videoId, originalTimestamp: timestamp, adjustedTimestamp: normalizedTimestamp }
+      );
+    }
+    lastVideoStartTimestampRef.current = normalizedTimestamp;
+
+    const startedAtSeconds = normalizedTimestamp / 1000;  // Full precision (e.g., 1763119711.531)
+    const clientTimestamp = new Date(normalizedTimestamp).toISOString();
+    const sequenceStartSeconds = sequenceStartUnixSeconds ?? startedAtSeconds;
+    const sequenceElapsedSeconds = startedAtSeconds - sequenceStartSeconds;
 
     // Set timestamps immediately for accurate tracking
-    setVideoStartUnix(startedAtUnixSeconds);
+    setVideoStartUnix(startedAtSeconds);
 
     if (sequenceStartUnixSeconds === null) {
       setSequenceStartUnix(sequenceStartSeconds);
     }
 
-    console.log('🎬 Sending video-started event to backend:', {
+    console.log('🎬 Sending video-started event to backend (with millisecond precision):', {
       sequenceId,
       videoId,
-      startedAt: startedAtUnixSeconds,
+      startedAt: startedAtSeconds,  // Full precision logged
       url: `/api/video-sequences/${sequenceId}/video-started`
     });
 
     try {
+      // CRITICAL FIX: Create AbortController for this request
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      // CRITICAL FIX: Check mounted status again before fetch (race condition protection)
+      if (!isMountedRef.current) {
+        console.log('⏭️ Skipping video-started event - component unmounted before fetch');
+        return;
+      }
+
       // FIX #20: Backend Pydantic model expects camelCase fields
       // VideoStartedRequest expects: videoId (str), startedAt (float), clientTimestamp (str)
+      // FIX #2: Send full precision timestamp (not truncated)
       const response = await apiService.post(`/api/video-sequences/${sequenceId}/video-started`, {
         videoId,
-        startedAt: startedAtUnixSeconds,
+        startedAt: startedAtSeconds,  // Full millisecond precision
         sequenceElapsedTime: sequenceElapsedSeconds,
         clientTimestamp
-      });
+      }, { signal: abortController.signal });
 
       console.log('✅ Video started event sent successfully');
       logger.info('Video started event sent', undefined, {
         context: 'SequentialVideoPlayer',
         videoId,
         timestamp,
-        startedAt: startedAtUnix
+        startedAt: startedAtSeconds
       });
     } catch (err) {
       // CRITICAL: Log detailed error for debugging
@@ -241,13 +285,13 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         error: errorMessage,
         videoId,
         sequenceId,
-        startedAt: startedAtUnix
+        startedAt: startedAtSeconds
       });
       logger.error('Failed to send video started event to backend', err as Error, {
         context: 'SequentialVideoPlayer',
         videoId,
         sequenceId,
-        startedAt: startedAtUnix
+        startedAt: startedAtSeconds
       });
 
       // Show warning to user with actionable message
@@ -263,6 +307,12 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
    * Enhanced with better error notifications
    */
   const sendVideoEndedEvent = useCallback(async (videoId: string, timestamp: number, actualPlaybackSeconds: number | null): Promise<string | null> => {
+    // CRITICAL FIX: Check if component is still mounted before making API call
+    if (!isMountedRef.current) {
+      console.log('⏭️ Skipping video-ended event - component unmounted');
+      return null;
+    }
+
     // CRITICAL VALIDATION: sequenceId is REQUIRED for timing tracking
     if (!sequenceId || sequenceId.trim() === '') {
       const criticalError = '❌ CRITICAL: Cannot send video-ended event - no sequence ID. Timing data will be lost!';
@@ -278,31 +328,41 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       return null;
     }
 
-    // CRITICAL: Calculate timestamps for accurate tracking
-    const endedAtUnixSeconds = Math.floor(timestamp / 1000);
+    // FIX #2: Keep millisecond precision for video end times too
+    const endedAtSeconds = timestamp / 1000;  // Full precision (no Math.floor)
     const clientTimestamp = new Date(timestamp).toISOString();
     const derivedDuration =
-      videoStartUnixSeconds !== null ? Math.max(endedAtUnixSeconds - videoStartUnixSeconds, 0) : null;
+      videoStartUnixSeconds !== null ? Math.max(endedAtSeconds - videoStartUnixSeconds, 0) : null;
     const actualDuration = actualPlaybackSeconds ?? derivedDuration;
-    const sequenceStartSeconds = sequenceStartUnixSeconds ?? endedAtUnixSeconds;
-    const sequenceElapsedSeconds = endedAtUnixSeconds - sequenceStartSeconds;
+    const sequenceStartSeconds = sequenceStartUnixSeconds ?? endedAtSeconds;
+    const sequenceElapsedSeconds = endedAtSeconds - sequenceStartSeconds;
 
-    console.log('🎬 Sending video-ended event to backend:', {
+    console.log('🎬 Sending video-ended event to backend (with millisecond precision):', {
       sequenceId,
       videoId,
-      endedAt: endedAtUnixSeconds,
+      endedAt: endedAtSeconds,  // Full precision logged
       actualDuration,
       url: `/api/video-sequences/${sequenceId}/video-ended`
     });
 
     try {
+      // CRITICAL FIX: Create AbortController for this request
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      // CRITICAL FIX: Check mounted status again before fetch (race condition protection)
+      if (!isMountedRef.current) {
+        console.log('⏭️ Skipping video-ended event - component unmounted before fetch');
+        return null;
+      }
+
       const response = await apiService.post<{ nextVideoId?: string | null; next_video_id?: string | null }>(`/api/video-sequences/${sequenceId}/video-ended`, {
         videoId,
-        endedAt: endedAtUnixSeconds,
+        endedAt: endedAtSeconds,
         actualDuration: actualDuration ?? undefined,
         sequenceElapsedTime: sequenceElapsedSeconds,
         clientTimestamp
-      });
+      }, { signal: abortController.signal });
 
       console.log('✅ Video ended event sent successfully');
 
@@ -313,7 +373,7 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         context: 'SequentialVideoPlayer',
         videoId,
         timestamp,
-        endedAt: endedAtUnixSeconds,
+        endedAt: endedAtSeconds,
         nextVideoId
       });
 
@@ -325,14 +385,14 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         error: errorMessage,
         videoId,
         sequenceId,
-        endedAt: endedAtUnixSeconds,
+        endedAt: endedAtSeconds,
         actualDuration
       });
       logger.error('Failed to send video ended event to backend', err as Error, {
         context: 'SequentialVideoPlayer',
         videoId,
         sequenceId,
-        endedAt: endedAtUnix
+        endedAt: endedAtSeconds
       });
 
       // Show warning to user with actionable message
@@ -347,6 +407,9 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
    * Send heartbeat with current status
    */
   const sendHeartbeat = useCallback(async () => {
+    // CRITICAL FIX: Don't send heartbeat if component unmounted
+    if (!isMountedRef.current) return;
+
     if (!currentVideo || !videoRef.current || !sequenceStartTimeMs) return;
 
     // BUG FIX #4: Use consistent high-precision timestamp
@@ -504,14 +567,21 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
     setCurrentVideo(video);
     setCurrentVideoIndex(index);
     setVideoProgress(0);
-    setRetryCount(0);
+    // FIX: Don't reset retry count here - it prevents retry exhaustion detection
+    // setRetryCount(0); // ❌ REMOVED: Causes infinite loop by resetting counter before retry logic checks
 
     try {
       console.log('🎬 Starting video load process...');
-      // Initialize sequence start time on first video
-      if (index === 0 && !sequenceStartTimeMs) {
+
+      // FIX: Use local variable for immediate access (solves React setState async issue)
+      let effectiveSequenceStartTime = sequenceStartTimeMs;
+
+      // FIX #2: Initialize sequence start time if not set (handles first video + async state edge cases)
+      if (!effectiveSequenceStartTime) {
         const startTime = getUnixTimestampMs();
-        setSequenceStartTime(startTime);
+        effectiveSequenceStartTime = startTime;  // ✅ Use immediately
+        setSequenceStartTime(startTime);  // Update state for React
+        sequenceStartTimeRef.current = startTime; // FIX #3: Store in ref for sync access
         logger.info('Sequence started with high-precision timing', undefined, {
           context: 'SequentialVideoPlayer',
           sequenceId,
@@ -519,15 +589,22 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         });
       }
 
+      // FIX #3: Fallback to ref if state hasn't updated yet (React async state)
+      if (!effectiveSequenceStartTime && sequenceStartTimeRef.current) {
+        effectiveSequenceStartTime = sequenceStartTimeRef.current;
+        console.log('Using ref fallback for sequence start time:', effectiveSequenceStartTime);
+      }
+
       // Calculate expected start time for this video
-      // FIX #4: Null Safety - Validate sequenceStartTimeMs before calculation
-      if (!sequenceStartTimeMs || typeof sequenceStartTimeMs !== 'number') {
+      // FIX: Use effectiveSequenceStartTime which is guaranteed to have a value
+      if (!effectiveSequenceStartTime || typeof effectiveSequenceStartTime !== 'number') {
         throw new Error('Sequence start time not initialized - cannot calculate expected start time');
       }
+
       const previousVideoDurations = videoTimingsRef.current
         .filter(t => t.duration !== null)
         .map(t => t.duration!);
-      const expectedStartTime = sequenceStartTimeMs +
+      const expectedStartTime = effectiveSequenceStartTime +
         previousVideoDurations.reduce((sum, duration) => sum + duration, 0);
 
       // Create timing metadata for this video
@@ -570,6 +647,44 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         videoRef.current?.addEventListener('error', handleError);
       });
 
+      // Wait for video to be ready before playing (proper event-based approach)
+      await new Promise<void>((resolve, reject) => {
+        if (!videoRef.current) {
+          reject(new Error('Video element not available'));
+          return;
+        }
+
+        // Check if video is already ready
+        if (videoRef.current.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+          resolve();
+          return;
+        }
+
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error('Video failed to load enough data'));
+        }, 15000);
+
+        const cleanup = () => {
+          clearTimeout(timeoutId);
+          videoRef.current?.removeEventListener('canplaythrough', onCanPlay);
+          videoRef.current?.removeEventListener('error', onError);
+        };
+
+        const onCanPlay = () => {
+          cleanup();
+          resolve();
+        };
+
+        const onError = () => {
+          cleanup();
+          reject(new Error('Video failed to load'));
+        };
+
+        videoRef.current.addEventListener('canplaythrough', onCanPlay);
+        videoRef.current.addEventListener('error', onError);
+      });
+
       // Play video and wait for the first playing event (ensures frames are on screen)
       const playResult = await safeVideoPlay(videoRef.current, {
         userInitiated: true,
@@ -592,7 +707,13 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         throw new Error(`Failed to play video: ${errorMsg}`);
       }
 
+      const playInitiatedAt = getUnixTimestampMs();
       const playbackStartedAt = await waitForPlaybackStart(videoRef.current);
+      const declaredStartTimestamp = Math.min(playInitiatedAt, playbackStartedAt);
+
+      // FIX #4: Send video-started event AFTER playback actually starts
+      // This ensures accurate timing and SequenceVideoResult creation happens before detections
+      await sendVideoStartedEvent(video.id, declaredStartTimestamp);
 
       // Record playback start with high precision (using actual playing timestamp)
       const updatedTiming = recordVideoPlaybackStart(
@@ -603,9 +724,6 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
 
       // Set video start time for UI state
       setVideoStartTime(updatedTiming.playbackStartTime!);
-
-      // Send video started event to backend
-      await sendVideoStartedEvent(video.id, updatedTiming.playbackStartTime!);
 
       // Notify parent component of video start
       if (onVideoStarted) {
@@ -686,6 +804,13 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
     waitForPlaybackStart
   ]);
 
+  const formatTimingValue = useCallback((value?: number | null, suffix = ''): string => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return `${value.toFixed(2)}${suffix}`;
+    }
+    return `n/a${suffix}`;
+  }, []);
+
   /**
    * Handle video end and advance to next video with enhanced timing tracking
    * FIX #1: Race Condition - Wait for cleanup before loading next video
@@ -711,9 +836,9 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       logger.info('Video playback ended with timing tracking', undefined, {
         context: 'SequentialVideoPlayer',
         videoId: currentVideo.id,
-        playbackEndTime: updatedTiming.playbackEndTime!.toFixed(2),
-        duration: updatedTiming.duration!.toFixed(2),
-        actualStartDelay: updatedTiming.actualStartDelay.toFixed(2)
+        playbackEndTime: formatTimingValue(updatedTiming.playbackEndTime),
+        duration: formatTimingValue(updatedTiming.duration),
+        actualStartDelay: formatTimingValue(updatedTiming.actualStartDelay)
       });
     }
 
@@ -757,15 +882,15 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
         totalVideos: videoPlaylist.length,
         nextVideoId,
         currentVideoIndex,
-        timingStats: {
-          totalExpectedDuration: timingStats.totalExpectedDuration.toFixed(2),
-          totalActualDuration: timingStats.totalActualDuration.toFixed(2),
-          totalLoadingDelay: timingStats.totalLoadingDelay.toFixed(2),
-          totalTransitionDelay: timingStats.totalTransitionDelay.toFixed(2),
-          averageLoadingDelay: timingStats.averageLoadingDelay.toFixed(2),
-          timingEfficiency: timingStats.timingEfficiency.toFixed(2) + '%'
-        }
-      });
+          timingStats: timingStats && {
+            totalExpectedDuration: formatTimingValue(timingStats.totalExpectedDuration),
+            totalActualDuration: formatTimingValue(timingStats.totalActualDuration),
+            totalLoadingDelay: formatTimingValue(timingStats.totalLoadingDelay),
+            totalTransitionDelay: formatTimingValue(timingStats.totalTransitionDelay),
+            averageLoadingDelay: formatTimingValue(timingStats.averageLoadingDelay),
+            timingEfficiency: formatTimingValue(timingStats.timingEfficiency, '%')
+          }
+        });
 
       // Export timing data for debugging
       const timingData = exportTimingData(videoTimingsRef.current);
@@ -811,6 +936,7 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
 
       // FIX #1: Race Condition - Wait for cleanup before loading next video
       setVideoStartUnix(null);
+      setRetryCount(0); // Reset retry counter on successful video completion
       await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for cleanup
       loadAndPlayVideo(nextVideo, nextIndex);
     } else {
@@ -833,7 +959,8 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
     loadAndPlayVideo,
     stopHeartbeat,
     sequenceId,
-    onVideoEnded
+    onVideoEnded,
+    formatTimingValue
   ]);
 
   /**
@@ -1033,6 +1160,12 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       return;
     }
 
+    // FIX #1: Prevent re-initialization if already started
+    if (hasInitializedRef.current) {
+      console.log('⏭️ Player already initialized, skipping re-initialization');
+      return;
+    }
+
     if (videoPlaylist.length === 0) {
       const error = 'No videos in playlist';
       console.error('❌ [SequentialVideoPlayer]', error);
@@ -1048,6 +1181,9 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
     // because it's already initialized to videoPlaylist[0] in useState
     console.log('🎬 Starting first video...', videoPlaylist[0]);
 
+    // Mark as initialized BEFORE starting playback
+    hasInitializedRef.current = true;
+
     // Wrap in try-catch to catch any synchronous errors
     try {
       loadAndPlayVideo(videoPlaylist[0], 0);
@@ -1056,12 +1192,24 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       const error = `Failed to start video playback: ${err instanceof Error ? err.message : 'Unknown error'}`;
       console.error('❌ [SequentialVideoPlayer]', error, err);
       logger.error('Failed to initialize playback', err as Error, { context: 'SequentialVideoPlayer' });
+      // FIX: Don't reset initialization flag on error - causes re-initialization loop
+      // hasInitializedRef.current = false; // ❌ REMOVED: Causes video 1↔2 loop
       setError(error);
       onError(error);
     }
 
     return () => {
       console.log('🎬 SequentialVideoPlayer UNMOUNTING');
+
+      // CRITICAL FIX: Mark component as unmounted FIRST to prevent new API calls
+      isMountedRef.current = false;
+
+      // CRITICAL FIX: Abort any in-flight API requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+        console.log('✅ Aborted in-flight API requests');
+      }
 
       // PROTOCOL #39: Unsubscribe from lifecycle events
       if (unsubscribeLifecycle) {
@@ -1087,13 +1235,14 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       // QUEEN'S PROTOCOL #38: STEP 2 - Clear SECOND (after persistence complete)
       videoTimingsRef.current = [];
       transitionHistoryRef.current = [];
+      hasInitializedRef.current = false; // Reset initialization flag
 
       stopHeartbeat();
       if (videoRef.current) {
         safeVideoStop(videoRef.current);
       }
     };
-  }, [sequenceId, videoPlaylist, sequenceStartUnixSeconds]); // Add sequenceStartUnixSeconds to deps
+  }, [sequenceId, sequenceStartUnixSeconds]); // FIX: Removed videoPlaylist to prevent re-initialization on reference change
 
   /**
    * Attach video event listeners
@@ -1119,337 +1268,25 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
     ? (getUnixTimestampMs() - sequenceStartTimeMs) / 1000
     : 0;
 
+  // CLEAN VIDEO ONLY - no overlays, no status, no controls
   return (
-    <div
-      className="sequential-video-player"
-      data-fullscreen={fullScreenMode ? 'true' : 'false'}
-    >
-      {/* Status Display */}
-      <div className="player-status">
-        <div className="status-header">
-          <h3>Sequential Playback</h3>
-          <div className="status-badge">
-            {isPlaying ? (
-              <span className="badge-playing">Playing</span>
-            ) : error ? (
-              <span className="badge-error">Error</span>
-            ) : (
-              <span className="badge-idle">Ready</span>
-            )}
-          </div>
-        </div>
-
-        {/* Current Video Info */}
-        {currentVideo && (
-          <div className="current-video-info">
-            <p className="video-count">
-              Video {currentVideoIndex + 1} of {videoPlaylist.length}
-            </p>
-            <p className="video-filename">{currentVideo.filename || currentVideo.originalName}</p>
-            <p className="video-timing">
-              {formatTime(currentVideoTime)} / {formatTime(currentVideoDuration)}
-            </p>
-          </div>
-        )}
-
-        {/* Error Display - Enhanced with better visibility */}
-        {error && (
-          <div className="error-message" role="alert" aria-live="assertive">
-            <p>{error}</p>
-            {retryCount > 0 && (
-              <p className="retry-info">
-                Retry attempt {retryCount} of {MAX_RETRY_ATTEMPTS}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Progress Bars */}
-        <div className="progress-section">
-          <div className="progress-item">
-            <label>Current Video Progress</label>
-            <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{ width: `${videoProgress}%` }}
-              />
-            </div>
-            <span className="progress-text">{videoProgress.toFixed(1)}%</span>
-          </div>
-
-          <div className="progress-item">
-            <label>Sequence Progress</label>
-            <div className="progress-bar">
-              <div
-                className="progress-fill sequence"
-                style={{ width: `${sequenceProgress}%` }}
-              />
-            </div>
-            <span className="progress-text">{sequenceProgress.toFixed(1)}%</span>
-          </div>
-        </div>
-
-        {/* Timing Info */}
-        <div className="timing-info">
-          <div className="timing-item">
-            <label>Sequence Elapsed</label>
-            <span>{formatTime(sequenceElapsedTime)}</span>
-          </div>
-          {estimatedTimeRemaining !== null && (
-            <div className="timing-item">
-              <label>Est. Time Remaining</label>
-              <span>{formatTime(estimatedTimeRemaining)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Completed Videos */}
-        <div className="completed-videos">
-          <p>Completed: {completedVideos.length} / {videoPlaylist.length}</p>
-        </div>
-      </div>
-
-      {/* Video Element */}
-      <div className="video-container">
-        <video
-          ref={videoRef}
-          className="video-player"
-          playsInline
-          controls={false}
-        />
-      </div>
-
-      {/* Styles */}
+    <div className="sequential-video-player-clean">
+      <video
+        ref={videoRef}
+        className="video-player-clean"
+        playsInline
+        controls={false}
+      />
       <style>{`
-        .sequential-video-player {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-          padding: 1rem;
-          background: #f5f5f5;
-          border-radius: 8px;
-          height: 100%;
-          box-sizing: border-box;
-          position: relative;
-        }
-
-        .sequential-video-player[data-fullscreen="true"] {
-          padding: 0;
-          background: transparent;
-          border-radius: 0;
-        }
-
-        .player-status {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-          padding: 1rem;
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-          transition: all 0.2s ease;
-          z-index: 3;
-        }
-
-        .sequential-video-player[data-fullscreen="true"] .player-status {
-          position: absolute;
-          top: 16px;
-          left: 16px;
-          max-width: min(420px, 90vw);
-          background: rgba(0, 0, 0, 0.6);
-          color: #fff;
-          border-radius: 12px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-        }
-
-        .sequential-video-player[data-fullscreen="true"] .player-status p,
-        .sequential-video-player[data-fullscreen="true"] .player-status label,
-        .sequential-video-player[data-fullscreen="true"] .player-status span,
-        .sequential-video-player[data-fullscreen="true"] .player-status h3 {
-          color: #fff;
-        }
-
-        .status-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .status-header h3 {
-          margin: 0;
-          font-size: 1.25rem;
-          color: #333;
-        }
-
-        .status-badge {
-          display: flex;
-          gap: 0.5rem;
-        }
-
-        .status-badge span {
-          padding: 0.25rem 0.75rem;
-          border-radius: 4px;
-          font-size: 0.875rem;
-          font-weight: 500;
-        }
-
-        .badge-playing {
-          background: #4caf50;
-          color: white;
-        }
-
-        .badge-error {
-          background: #f44336;
-          color: white;
-        }
-
-        .badge-idle {
-          background: #9e9e9e;
-          color: white;
-        }
-
-        .current-video-info {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-
-        .current-video-info p {
-          margin: 0;
-          color: #666;
-        }
-
-        .video-count {
-          font-weight: 500;
-          color: #333;
-        }
-
-        .video-filename {
-          font-size: 0.875rem;
-          color: #666;
-          word-break: break-all;
-        }
-
-        .video-timing {
-          font-family: monospace;
-          font-size: 1rem;
-          color: #333;
-        }
-
-        .error-message {
-          padding: 0.75rem;
-          background: #ffebee;
-          border-left: 4px solid #f44336;
-          border-radius: 4px;
-        }
-
-        .error-message p {
-          margin: 0;
-          color: #c62828;
-          font-size: 0.875rem;
-        }
-
-        .retry-info {
-          margin-top: 0.5rem !important;
-          font-size: 0.75rem !important;
-          color: #666 !important;
-        }
-
-        .progress-section {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-
-        .progress-item {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-
-        .progress-item label {
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #666;
-        }
-
-        .progress-bar {
+        .sequential-video-player-clean {
           width: 100%;
-          height: 8px;
-          background: #e0e0e0;
-          border-radius: 4px;
-          overflow: hidden;
-        }
-
-        .progress-fill {
           height: 100%;
-          background: #2196f3;
-          transition: width 0.3s ease;
-        }
-
-        .progress-fill.sequence {
-          background: #4caf50;
-        }
-
-        .progress-text {
-          font-size: 0.75rem;
-          color: #666;
-        }
-
-        .timing-info {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1rem;
-        }
-
-        .timing-item {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-
-        .timing-item label {
-          font-size: 0.75rem;
-          color: #666;
-        }
-
-        .timing-item span {
-          font-family: monospace;
-          font-size: 1rem;
-          color: #333;
-          font-weight: 500;
-        }
-
-        .completed-videos {
-          padding-top: 0.5rem;
-          border-top: 1px solid #e0e0e0;
-        }
-
-        .completed-videos p {
-          margin: 0;
-          font-size: 0.875rem;
-          color: #666;
-        }
-
-        .video-container {
-          width: 100%;
           background: black;
-          border-radius: 8px;
-          overflow: hidden;
-          flex: 1 1 auto;
-          min-height: 320px;
           display: flex;
           align-items: center;
           justify-content: center;
-          position: relative;
         }
-
-        .sequential-video-player[data-fullscreen="true"] .video-container {
-          height: 100%;
-          border-radius: 0;
-        }
-
-        .video-player {
+        .video-player-clean {
           width: 100%;
           height: 100%;
           object-fit: contain;
@@ -1459,6 +1296,15 @@ export const SequentialVideoPlayer: React.FC<SequentialVideoPlayerProps> = ({
       `}</style>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison function to prevent unnecessary re-renders
+  // Only re-render if these critical props change
+  // NOTE: fullScreenMode removed from comparison - parent container handles fullscreen CSS
+  return (
+    prevProps.sequenceId === nextProps.sequenceId &&
+    prevProps.videoPlaylist === nextProps.videoPlaylist &&
+    prevProps.maxLatencyMs === nextProps.maxLatencyMs
+  );
+});
 
 export default SequentialVideoPlayer;

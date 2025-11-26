@@ -209,11 +209,12 @@ class LabJackHardwareService:
         
         # Thread safety
         self.lock = threading.RLock()
-        
+
         # Health monitoring
         self.health_thread: Optional[threading.Thread] = None
         self.health_check_active = False
-        
+        self.should_be_connected = False  # Track if device is intentionally connected
+
         logger.info(f"🔧 LabJack Hardware Service initialized ({LJM_TYPE})")
     
     def _configure_default_channels(self):
@@ -355,7 +356,22 @@ class LabJackHardwareService:
                 
                 # Open device connection
                 self.handle = ljm.openS(device_type, connection_type, identifier)
-                
+
+                # Validate handle is actually valid
+                time.sleep(0.1)  # Brief pause for device initialization
+                try:
+                    ljm.getHandleInfo(self.handle)
+                    logger.info(f"✅ Connected to LabJack: {device_type} via {connection_type}, handle validated")
+                except Exception as validate_error:
+                    logger.error(f"❌ Handle validation failed: {validate_error}")
+                    try:
+                        ljm.close(self.handle)
+                    except Exception as close_error:
+                        logger.debug(f"Error closing invalid handle: {close_error}")
+                    self.handle = None
+                    self.connection_status = HardwareConnectionStatus.ERROR
+                    return False
+
                 # Get device information
                 device_info_tuple = ljm.getHandleInfo(self.handle)
                 device_type_num, connection_type_num, serial_number, ip_number, port, max_bytes_per_mb = device_info_tuple
@@ -373,7 +389,8 @@ class LabJackHardwareService:
                     hardware_version = ljm.eReadName(self.handle, "HARDWARE_VERSION")
                     try:
                         bootloader_version = ljm.eReadName(self.handle, "BOOTLOADER_VERSION")
-                    except:
+                    except Exception as boot_error:
+                        logger.debug(f"Could not read bootloader version: {boot_error}")
                         bootloader_version = "Unknown"
                 except Exception as version_error:
                     logger.warning(f"Could not read version info: {version_error}")
@@ -402,10 +419,11 @@ class LabJackHardwareService:
                 self.connection_status = HardwareConnectionStatus.CONNECTED
                 self.connected_at = datetime.now()
                 self.statistics["successful_connections"] += 1
-                
+                self.should_be_connected = True  # Mark as intentionally connected
+
                 # Start health monitoring
                 self._start_health_monitoring()
-                
+
                 logger.info(f"✅ Connected to {device_type_str} S/N:{serial_number} via {connection_type_str}")
                 if ip_str:
                     logger.info(f"📡 IP Address: {ip_str}:{port}")
@@ -419,8 +437,8 @@ class LabJackHardwareService:
                 if hasattr(e, 'errorCode') and hasattr(ljm, 'errorToString'):
                     try:
                         error_msg = f"LJM Error {e.errorCode}: {ljm.errorToString(e.errorCode)}"
-                    except:
-                        pass
+                    except Exception:
+                        pass  # Use original error message if string conversion fails
                 
                 logger.error(f"❌ {error_msg}")
                 self.connection_status = HardwareConnectionStatus.ERROR
@@ -431,8 +449,8 @@ class LabJackHardwareService:
                 if self.handle is not None:
                     try:
                         ljm.close(self.handle)
-                    except:
-                        pass
+                    except Exception as close_error:
+                        logger.debug(f"Error closing handle during cleanup: {close_error}")
                     self.handle = None
                 
                 return False
@@ -467,58 +485,44 @@ class LabJackHardwareService:
             raise
     
     def read_single_voltage(self, channel: str) -> float:
-        """
-        Read single voltage value from channel
-        
-        Args:
-            channel: Channel name (e.g., "AIN0", "AIN1")
-        
-        Returns:
-            Voltage reading in volts
-        """
-        if not self.is_connected():
-            raise RuntimeError("Device not connected")
-        
-        try:
-            voltage = ljm.eReadName(self.handle, channel)
-            logger.debug(f"📊 {channel}: {voltage:.6f}V")
-            return voltage
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to read {channel}: {e}")
-            raise
+        """Read voltage from a single analog input channel (thread-safe)"""
+        with self.lock:  # CRITICAL FIX: Add lock protection
+            if not self.is_connected():
+                raise RuntimeError("Device not connected")
+
+            try:
+                voltage = ljm.eReadName(self.handle, channel)
+                logger.debug(f"📊 {channel}: {voltage:.6f}V")
+                return voltage
+
+            except Exception as e:
+                logger.error(f"❌ Failed to read {channel}: {e}")
+                raise
     
     def read_multiple_channels(self, channels: List[str]) -> Dict[str, float]:
-        """
-        Read voltage from multiple channels simultaneously
-        
-        Args:
-            channels: List of channel names
-        
-        Returns:
-            Dictionary mapping channel names to voltage readings
-        """
-        if not self.is_connected():
-            raise RuntimeError("Device not connected")
-        
-        try:
-            readings = {}
-            
-            # Use batch read for better performance if available
-            if hasattr(ljm, 'eReadNames'):
-                values = ljm.eReadNames(self.handle, len(channels), channels)
-                readings = dict(zip(channels, values))
-            else:
-                # Fallback to individual reads
-                for channel in channels:
-                    readings[channel] = self.read_single_voltage(channel)
-            
-            logger.debug(f"📊 Multi-channel read: {readings}")
-            return readings
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to read multiple channels: {e}")
-            raise
+        """Read voltages from multiple analog input channels (thread-safe)"""
+        with self.lock:  # CRITICAL FIX: Add lock protection
+            if not self.is_connected():
+                raise RuntimeError("Device not connected")
+
+            try:
+                readings = {}
+
+                # Use batch read for better performance if available
+                if hasattr(ljm, 'eReadNames'):
+                    values = ljm.eReadNames(self.handle, len(channels), channels)
+                    readings = dict(zip(channels, values))
+                else:
+                    # Direct read without calling read_single_voltage to avoid double-lock
+                    for channel in channels:
+                        readings[channel] = ljm.eReadName(self.handle, channel)
+
+                logger.debug(f"📊 Multi-channel read: {readings}")
+                return readings
+
+            except Exception as e:
+                logger.error(f"❌ Failed to read multiple channels: {e}")
+                raise
     
     def start_precision_monitoring(self, session_id: str, channels: List[str], 
                                  threshold_voltage: float = 2.5, 
@@ -731,6 +735,9 @@ class LabJackHardwareService:
         """Start health monitoring thread"""
         if self.health_thread and self.health_thread.is_alive():
             return
+        if not self.is_connected():
+            logger.debug("Skipping health monitor start - hardware not connected")
+            return
         
         self.health_check_active = True
         self.health_thread = threading.Thread(
@@ -742,31 +749,50 @@ class LabJackHardwareService:
         logger.debug("🩺 Health monitoring started")
     
     def _health_monitoring_loop(self):
-        """Health monitoring loop to detect disconnections"""
+        """Health monitoring loop with proper thread safety"""
         consecutive_failures = 0
-        max_consecutive_failures = 3  # Allow 3 consecutive failures before marking as error
-        
-        while self.health_check_active and self.is_connected():
+        max_consecutive_failures = 10  # Increased tolerance
+
+        while self.health_check_active:
             try:
-                # Test connection by reading a register
+                # Validate handle is still open before attempting read (prevents Error 1224)
+                if self.handle is None or not self.is_connected():
+                    logger.debug("Health monitor exiting - device not connected")
+                    break
+
+                # read_single_voltage() now has internal lock protection
                 test_voltage = self.read_single_voltage("AIN0")
-                consecutive_failures = 0  # Reset on successful read
-                time.sleep(30)  # Check every 30 seconds
-                
+                consecutive_failures = 0
+                logger.debug(f"✅ Health check passed: AIN0={test_voltage:.3f}V")
+
+            except RuntimeError as e:
+                # Device not connected - expected during disconnection
+                if "not connected" in str(e).lower():
+                    logger.debug("Health monitor exiting - device disconnected")
+                    break
+                consecutive_failures += 1
+                logger.warning(f"⚠️ Health check failed (attempt {consecutive_failures}/{max_consecutive_failures}): {e}")
+
             except Exception as e:
                 consecutive_failures += 1
                 logger.warning(f"⚠️ Health check failed (attempt {consecutive_failures}/{max_consecutive_failures}): {e}")
-                
+
+                error_code = getattr(e, "errorCode", None)
+                if error_code == 1224:
+                    logger.warning("🔌 LabJack handle closed (LJME_DEVICE_NOT_OPEN); pausing health monitor until next connection")
+                    # Don't modify connection_status - let disconnect() handle it
+                    break
+
                 if consecutive_failures >= max_consecutive_failures:
-                    logger.error(f"❌ Health check failed {consecutive_failures} consecutive times, marking as error")
+                    logger.error(f"❌ Health check failed {consecutive_failures} consecutive times")
                     self.connection_status = HardwareConnectionStatus.ERROR
                     self.statistics["errors_count"] += 1
                     self.statistics["last_error"] = f"Health check failed {consecutive_failures} times: {e}"
                     break
-                else:
-                    # Brief pause before retry
-                    time.sleep(5)
-        
+
+            # Sleep outside any locks
+            time.sleep(5 if consecutive_failures > 0 else 30)
+
         self.health_check_active = False
         logger.debug("🩺 Health monitoring stopped")
     
@@ -845,20 +871,103 @@ class LabJackHardwareService:
         try:
             if self.is_connected():
                 self.disconnect()
-        except:
-            pass
+        except Exception:
+            pass  # Silently ignore cleanup errors during destruction
 
 
 # Global service instance for singleton pattern
 _hardware_service: Optional[LabJackHardwareService] = None
+_singleton_lock = threading.RLock()  # Use RLock for reentrant safety
+_initialized_config_hash: Optional[int] = None
 
 
-def get_labjack_hardware_service(config: Optional[LabJackConfig] = None) -> LabJackHardwareService:
-    """Get global LabJack hardware service instance"""
-    global _hardware_service
-    if _hardware_service is None:
-        _hardware_service = LabJackHardwareService(config)
-    return _hardware_service
+def _config_hash(config: Optional[LabJackConfig]) -> int:
+    """Generate hash of config for comparison"""
+    if config is None:
+        return hash(None)
+    return hash((
+        getattr(config, 'device_type', None),
+        getattr(config, 'connection_type', None),
+        getattr(config, 'identifier', None),
+    ))
+
+
+def get_labjack_hardware_service(
+    config: Optional[LabJackConfig] = None,
+    force_recreate: bool = False
+) -> LabJackHardwareService:
+    """
+    Get thread-safe singleton instance of LabJack hardware service.
+
+    Args:
+        config: Configuration for LabJack connection
+        force_recreate: Force recreation even if instance exists (for testing)
+
+    Returns:
+        LabJackHardwareService instance
+
+    Raises:
+        RuntimeError: If config changes between calls (unless force_recreate=True)
+        RuntimeError: If initialization fails
+    """
+    global _hardware_service, _initialized_config_hash
+
+    # Single lock acquisition for thread safety
+    with _singleton_lock:
+        current_config_hash = _config_hash(config)
+
+        # Check if we need to create new instance
+        if _hardware_service is None or force_recreate:
+            # Clean up existing instance if recreating
+            if _hardware_service is not None and force_recreate:
+                logger.info("Forcing recreation of hardware service")
+                try:
+                    _hardware_service.disconnect()
+                except Exception as e:
+                    logger.warning(f"Error disconnecting during forced recreation: {e}")
+                _hardware_service = None
+
+            # Create new instance with exception safety
+            try:
+                logger.info("Creating new LabJack hardware service instance")
+                _hardware_service = LabJackHardwareService(config)
+                _initialized_config_hash = current_config_hash
+                logger.info("LabJack hardware service instance created successfully")
+            except Exception as e:
+                # Ensure we don't leave partial state
+                _hardware_service = None
+                _initialized_config_hash = None
+                logger.error(f"Failed to create LabJack hardware service: {e}")
+                raise RuntimeError(f"Failed to initialize LabJack hardware service: {e}")
+
+        # Validate config hasn't changed
+        elif current_config_hash != _initialized_config_hash:
+            error_msg = (
+                "Configuration mismatch: Singleton already exists with different config. "
+                "Use force_recreate=True to replace existing instance or use reset_labjack_hardware_service()."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        return _hardware_service
+
+
+def reset_labjack_hardware_service() -> None:
+    """
+    Reset the singleton instance (for testing).
+    Thread-safe cleanup of existing instance.
+    """
+    global _hardware_service, _initialized_config_hash
+
+    with _singleton_lock:
+        if _hardware_service is not None:
+            logger.info("Resetting LabJack hardware service singleton")
+            try:
+                _hardware_service.disconnect()
+            except Exception as e:
+                logger.warning(f"Error during disconnect in reset: {e}")
+            _hardware_service = None
+            _initialized_config_hash = None
 
 
 def initialize_hardware_service(config: Optional[LabJackConfig] = None, force_wsl_connection: bool = False) -> bool:
@@ -901,10 +1010,11 @@ __all__ = [
     "LabJackHardwareService",
     "HardwareConnectionStatus",
     "DeviceType",
-    "ConnectionType", 
+    "ConnectionType",
     "HardwareEvent",
     "DeviceInfo",
     "ChannelConfiguration",
     "get_labjack_hardware_service",
+    "reset_labjack_hardware_service",
     "initialize_hardware_service"
 ]

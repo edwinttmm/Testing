@@ -1,0 +1,49 @@
+{
+  "report_id": "43af1a28-b5f2-4b45-88f9-588af2c2ffae",
+  "test_session_id": "d03fadb9-a6f7-47f1-a3f3-8ef3fafb72ec",
+  "generated_at": "2025-11-25T12:42:37.791138",
+  "test_session": {
+    "id": "d03fadb9-a6f7-47f1-a3f3-8ef3fafb72ec",
+    "name": "Video Sequence Test - 2025-11-25 12:42",
+    "project_name": "Test",
+    "started_at": "2025-11-25T12:42:29.599845",
+    "completed_at": "2025-11-25T12:42:36.524747",
+    "status": "completed",
+    "latency_threshold_ms": 100
+  },
+  "metrics": {
+    "total_events": 35,
+    "passed_events": 35,
+    "failed_events": 0,
+    "high_latency_failures": 0,
+    "missed_detections": 0,
+    "pass_rate_percent": 100.0,
+    "fail_rate_percent": 0.0,
+    "average_latency_ms": 10.192,
+    "min_latency_ms": 0.039,
+    "max_latency_ms": 33.182,
+    "latency_threshold_ms": 100,
+    "latency_distribution": {
+      "0-50ms": 35,
+      "51-100ms": 0,
+      "101-200ms": 0,
+      "201-500ms": 0,
+      "500ms+": 0
+    },
+    "test_outcome": "PASS"
+  },
+  "success_summary": {
+    "summary_text": "35/35 detections passed with average latency of 10.2ms. Successful detections: 35 Unknown.",
+    "passed_count": 35,
+    "total_count": 35,
+    "average_success_latency_ms": 10.19,
+    "vru_breakdown": {
+      "Unknown": 35
+    },
+    "success_rate_percent": 100.0
+  },
+  "failure_events": [],
+  "failure_snapshots": [],
+  "videos_tested": 1,
+  "total_events": 35
+}

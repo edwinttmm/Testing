@@ -1,0 +1,84 @@
+@startuml Data Flow Diagram
+!theme plain
+title System Data Flow
+skinparam backgroundColor #FEFEFE
+
+' External Entities
+actor "Test Engineer" as user
+entity "Camera/VRU System" as camera
+entity "LabJack DAQ" as labjack
+
+' Processes
+rectangle "Frontend Application" as frontend #E3F2FD
+rectangle "Backend API" as backend #E8F5E9
+rectangle "LabJack Monitor\n(Dedicated Process)" as ljmonitor #FCE4EC
+rectangle "Ground Truth\nMatching Engine" as gtengine #FFF3E0
+rectangle "Report Generator" as reportgen #F3E5F5
+
+' Data Stores
+database "PostgreSQL/SQLite" as db
+database "Redis Cache" as redis
+folder "File Storage" as files
+
+' Data Flows
+user --> frontend : Test Configuration
+frontend --> backend : REST API Requests\n(Sessions, Videos, Results)
+
+camera --> labjack : GPIO Signal\n(VRU Detection)
+labjack --> ljmonitor : Voltage Stream\n(200 Hz)
+ljmonitor --> db : Detection Events\n(timestamp, voltage)
+ljmonitor --> frontend : WebSocket Updates\n(Real-time)
+
+frontend --> backend : Video Upload
+backend --> files : Store Video Files
+backend --> db : Video Metadata
+
+frontend --> backend : Start Test Session
+backend --> ljmonitor : start_monitoring()
+backend --> frontend : Session Status
+
+frontend --> backend : Video Lifecycle Events\n(START, END)
+backend --> db : Lifecycle Timestamps
+
+backend --> gtengine : Detection Events +\nGround Truth Data
+gtengine --> gtengine : Correlation Algorithm\n(Hungarian/Many-to-One)
+gtengine --> db : Match Results\n(TP, FP, FN, Latency)
+
+backend --> reportgen : Session Results
+reportgen --> files : HTML/PDF Reports
+reportgen --> files : Failure Snapshots
+
+db --> backend : Query Results
+backend --> frontend : Results Data
+frontend --> user : Display Results\n& Visualizations
+
+redis --> backend : Cached Data
+backend --> redis : Cache Updates
+
+' Notes
+note right of ljmonitor
+    **Data Captured:**
+    - Hardware timestamp
+    - System timestamp
+    - Voltage value
+    - Channel ID
+end note
+
+note right of gtengine
+    **Output Data:**
+    - actual_latency_ms
+    - is_false_positive
+    - match_type (TP/FP/FN)
+    - correlation_status
+end note
+
+note bottom of db
+    **Key Tables:**
+    - test_sessions
+    - detection_events
+    - ground_truth_objects
+    - test_results
+    - detection_comparisons
+end note
+
+@enduml

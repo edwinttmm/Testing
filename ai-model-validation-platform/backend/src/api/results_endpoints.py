@@ -47,11 +47,12 @@ class EnhancedSessionResults(BaseModel):
     session_name: str
     project_name: Optional[str]
     status: str
-    started_at: Optional[str] 
+    started_at: Optional[str]
     completed_at: Optional[str]
     metrics: Dict[str, Any]
     detection_summary: Dict[str, Any]
     statistics: Dict[str, Any]
+    dual_evaluation: Optional[Dict[str, Any]] = None  # Added for frontend compatibility
 
 @router.get("/", response_model=List[BasicTestSession])
 async def get_test_results(
@@ -162,7 +163,15 @@ async def get_enhanced_results(
             for event in detection_events:
                 obj_type = getattr(event, 'class_label', 'Unknown')
                 detection_types[obj_type] = detection_types.get(obj_type, 0) + 1
-            
+
+            # Get dual evaluation metrics from session
+            f1_score = getattr(session, 'accuracy_f1_score', None) or 0.0
+            precision_val = getattr(session, 'accuracy_precision', None) or 0.0
+            recall_val = getattr(session, 'accuracy_recall', None) or 0.0
+            tp_count = getattr(session, 'tp_count', None) or 0
+            fp_count = getattr(session, 'fp_count', None) or 0
+            fn_count = getattr(session, 'fn_count', None) or 0
+
             enhanced_result = EnhancedSessionResults(
                 session_id=session.id,
                 session_name=session.name,
@@ -175,7 +184,14 @@ async def get_enhanced_results(
                     "precision": round(avg_precision * 100, 2) if avg_precision else None,
                     "recall": round(avg_recall * 100, 2) if avg_recall else None,
                     "f1_score": round(avg_f1 * 100, 2) if avg_f1 else None,
-                    "success_rate": round(success_rate, 2)
+                    "success_rate": round(success_rate, 2),
+                    # Add dual evaluation metrics from session
+                    "dual_f1_score": round(f1_score * 100, 2),
+                    "dual_precision": round(precision_val * 100, 2),
+                    "dual_recall": round(recall_val * 100, 2),
+                    "true_positives": tp_count,
+                    "false_positives": fp_count,
+                    "false_negatives": fn_count
                 },
                 detection_summary={
                     "total_detections": total_detections,
@@ -190,6 +206,19 @@ async def get_enhanced_results(
                         (session.completed_at - session.started_at).total_seconds()
                         if session.started_at and session.completed_at else None
                     )
+                },
+                # Add new dual_evaluation structure for frontend compatibility
+                dual_evaluation={
+                    "accuracy": {
+                        "f1Score": round(f1_score * 100, 2),
+                        "precision": round(precision_val * 100, 2),
+                        "recall": round(recall_val * 100, 2),
+                        "counts": {
+                            "truePositives": tp_count,
+                            "falsePositives": fp_count,
+                            "falseNegatives": fn_count
+                        }
+                    }
                 }
             )
             
@@ -250,6 +279,14 @@ async def get_session_result(
             obj_type = getattr(event, 'class_label', 'Unknown')
             detection_types[obj_type] = detection_types.get(obj_type, 0) + 1
         
+        # Get dual evaluation metrics from session
+        f1_score = getattr(session, 'accuracy_f1_score', None) or 0.0
+        precision = getattr(session, 'accuracy_precision', None) or 0.0
+        recall = getattr(session, 'accuracy_recall', None) or 0.0
+        tp_count = getattr(session, 'tp_count', None) or 0
+        fp_count = getattr(session, 'fp_count', None) or 0
+        fn_count = getattr(session, 'fn_count', None) or 0
+
         result = EnhancedSessionResults(
             session_id=session.id,
             session_name=session.name,
@@ -262,7 +299,14 @@ async def get_session_result(
                 "precision": round(avg_precision * 100, 2) if avg_precision else None,
                 "recall": round(avg_recall * 100, 2) if avg_recall else None,
                 "f1_score": round(avg_f1 * 100, 2) if avg_f1 else None,
-                "success_rate": round(success_rate, 2)
+                "success_rate": round(success_rate, 2),
+                # Add dual evaluation metrics from session
+                "dual_f1_score": round(f1_score * 100, 2),
+                "dual_precision": round(precision * 100, 2),
+                "dual_recall": round(recall * 100, 2),
+                "true_positives": tp_count,
+                "false_positives": fp_count,
+                "false_negatives": fn_count
             },
             detection_summary={
                 "total_detections": total_detections,
@@ -277,6 +321,19 @@ async def get_session_result(
                     (session.completed_at - session.started_at).total_seconds()
                     if session.started_at and session.completed_at else None
                 )
+            },
+            # Add new dual_evaluation structure for frontend compatibility
+            dual_evaluation={
+                "accuracy": {
+                    "f1Score": round(f1_score * 100, 2),
+                    "precision": round(precision * 100, 2),
+                    "recall": round(recall * 100, 2),
+                    "counts": {
+                        "truePositives": tp_count,
+                        "falsePositives": fp_count,
+                        "falseNegatives": fn_count
+                    }
+                }
             }
         )
         

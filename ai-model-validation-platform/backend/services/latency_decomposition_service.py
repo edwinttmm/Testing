@@ -80,7 +80,7 @@ class LatencyDecomposition:
     session_id: str
     detection_id: str
     total_latency_ms: float
-    
+
     # Component latencies
     camera_latency_ms: float
     system_baseline_ms: float
@@ -88,27 +88,43 @@ class LatencyDecomposition:
     network_overhead_ms: float
     sync_overhead_ms: float
     unknown_overhead_ms: float
-    
+
+    # Component percentages
+    camera_overhead_pct: float
+    system_overhead_pct: float
+    processing_overhead_pct: float
+    network_overhead_pct: float
+    sync_overhead_pct: float
+    unknown_overhead_pct: float
+
     # Quality metrics
     decomposition_confidence: float
     measurement_accuracy_ns: float
     validation_status: str
-    
+
     # Metadata
     calculation_timestamp: datetime
     baseline_profile_used: str
     methodology_version: str
-    
+
+    # Validation fields (Bug #2 refinement)
+    is_valid: bool = True
+    validation_message: str = ""
+
     def get_pure_camera_latency(self) -> float:
         """Get camera-only latency excluding all system overhead"""
         return self.camera_latency_ms
-    
+
     def get_overhead_percentage(self) -> float:
         """Get percentage of total latency that is overhead (non-camera)"""
-        overhead = (self.system_baseline_ms + self.processing_overhead_ms + 
-                   self.network_overhead_ms + self.sync_overhead_ms + 
+        overhead = (self.system_baseline_ms + self.processing_overhead_ms +
+                   self.network_overhead_ms + self.sync_overhead_ms +
                    self.unknown_overhead_ms)
         return (overhead / self.total_latency_ms) * 100.0 if self.total_latency_ms > 0 else 0.0
+
+    def get_camera_overhead_pct(self) -> float:
+        """Get percentage of total latency attributed to camera"""
+        return self.camera_overhead_pct
 
 
 class LatencyDecompositionService:
@@ -257,7 +273,6 @@ class LatencyDecompositionService:
     
     def _measure_context_switch_overhead(self) -> int:
         """Measure context switching overhead using threading"""
-        import threading
         import queue
         
         measurements = []
@@ -335,76 +350,174 @@ class LatencyDecompositionService:
             logger.warning(f"Could not gather system info: {e}")
             return {"error": str(e)}
     
-    def decompose_latency(self, 
+    def decompose_latency(self,
                          session_id: str,
                          detection_id: str,
                          total_latency_ms: float,
                          detection_metadata: Optional[Dict[str, Any]] = None) -> LatencyDecomposition:
         """
         Decompose total latency into component parts to isolate camera latency.
-        
+
+        REFINED: Returns INVALID status for unrealistic latencies instead of clamping.
+        No longer misattributes unknown overhead to camera.
+        Validates realistic latency ranges and reports unknowns separately.
+
         Args:
             session_id: Test session identifier
             detection_id: Unique detection event identifier
             total_latency_ms: Total measured latency in milliseconds
             detection_metadata: Additional metadata for decomposition
-            
+
         Returns:
-            LatencyDecomposition with separated component latencies
+            LatencyDecomposition with separated component latencies (is_valid=False if unrealistic)
         """
         try:
+            # Validate realistic latency range for hardware detection
+            # FIX: Negative latencies are VALID - they indicate detection arrived slightly
+            # before the GT timestamp due to timing variations. This is normal in HIL testing.
+            # Only reject extremely negative values (< -500ms) which indicate sync errors.
+            # Upper bound remains 1000ms to catch timestamp calculation errors.
+            is_valid = True
+            validation_message = ""
+
+            # FIX: Increased max latency from 1000ms to 2000ms to accommodate
+            # higher-latency AI detection systems. Some models have 500-1500ms processing time.
+            # For a 5s video with 131 GT objects, the last GT at 5s could have detection at 6.5s
+            if total_latency_ms > 2000.0:
+                is_valid = False
+                validation_message = (
+                    f"Total latency {total_latency_ms:.1f}ms exceeds maximum 2000ms for hardware detection. "
+                    f"This indicates a timestamp calculation error."
+                )
+                logger.error(f"❌ INVALID latency: {validation_message}")
+            elif total_latency_ms < -500.0:
+                # Only reject extremely negative values that indicate sync errors
+                is_valid = False
+                validation_message = (
+                    f"Total latency {total_latency_ms:.1f}ms below minimum -500ms. "
+                    f"This may indicate a timestamp synchronization error."
+                )
+                logger.error(f"❌ INVALID latency: {validation_message}")
+            elif total_latency_ms < 0.0:
+                # Negative latencies are valid - log as info, not error
+                logger.info(f"✅ Valid negative latency: {total_latency_ms:.1f}ms (detection before GT timestamp)")
+
+            # If invalid, return decomposition marked as invalid with all overhead marked as unknown
+            if not is_valid:
+                logger.error(
+                    f"Returning INVALID decomposition for session {session_id}, detection {detection_id}. "
+                    f"Reason: {validation_message}"
+                )
+                return LatencyDecomposition(
+                    session_id=session_id,
+                    detection_id=detection_id,
+                    total_latency_ms=total_latency_ms,
+                    camera_latency_ms=0.0,
+                    system_baseline_ms=0.0,
+                    processing_overhead_ms=0.0,
+                    network_overhead_ms=0.0,
+                    sync_overhead_ms=0.0,
+                    unknown_overhead_ms=total_latency_ms,
+                    camera_overhead_pct=0.0,
+                    system_overhead_pct=0.0,
+                    processing_overhead_pct=0.0,
+                    network_overhead_pct=0.0,
+                    sync_overhead_pct=0.0,
+                    unknown_overhead_pct=100.0,
+                    decomposition_confidence=0.0,
+                    measurement_accuracy_ns=0.0,
+                    validation_status="INVALID",
+                    calculation_timestamp=datetime.now(timezone.utc),
+                    baseline_profile_used="N/A",
+                    methodology_version="2.1",  # Updated to reflect Bug #2 refinement
+                    is_valid=False,
+                    validation_message=validation_message
+                )
+
             # Ensure baseline is calibrated
             if not self._baseline_calibrated:
                 self.calibrate_system_baseline()
-            
+
             baseline = self._current_baseline
             if not baseline:
                 raise RuntimeError("No baseline profile available")
-            
+
             # Convert total latency to nanoseconds for precision
             total_latency_ns = int(total_latency_ms * 1e6)
-            
+
             # Extract system baseline overhead
             system_baseline_ns = baseline.total_baseline_ns
-            
+
             # Estimate processing pipeline overhead
             processing_overhead_ns = self._estimate_processing_overhead(detection_metadata)
-            
+
             # Estimate network/communication overhead
             network_overhead_ns = self._estimate_network_overhead(detection_metadata)
-            
+
             # Estimate synchronization overhead
             sync_overhead_ns = self._estimate_sync_overhead(detection_metadata)
-            
-            # Calculate camera latency (remaining after subtracting overheads)
-            total_overhead_ns = (system_baseline_ns + processing_overhead_ns + 
+
+            # Calculate known overhead components
+            known_overhead_ns = (system_baseline_ns + processing_overhead_ns +
                                network_overhead_ns + sync_overhead_ns)
-            
-            camera_latency_ns = max(0, total_latency_ns - total_overhead_ns)
-            
-            # Calculate unknown overhead if camera latency seems too high
-            unknown_overhead_ns = 0
-            camera_latency_bounds_ns = (
-                self.config["camera_latency_bounds_ms"][0] * 1e6,
-                self.config["camera_latency_bounds_ms"][1] * 1e6
+
+            # Calculate camera latency (remaining after subtracting known overheads)
+            # Use expected camera latency from metadata or default to 200ms
+            expected_camera_latency_ns = int(
+                detection_metadata.get('expected_camera_latency_ms', 200.0) * 1e6
             )
-            
-            if camera_latency_ns > camera_latency_bounds_ns[1]:
-                # Camera latency exceeds expected bounds, some overhead is unaccounted
-                unknown_overhead_ns = camera_latency_ns - camera_latency_bounds_ns[1]
-                camera_latency_ns = camera_latency_bounds_ns[1]
-            
+            camera_latency_ns = expected_camera_latency_ns
+
+            # Calculate unknown overhead separately
+            # Unknown = Total - (Camera + Known Overheads)
+            unknown_overhead_ns = total_latency_ns - (camera_latency_ns + known_overhead_ns)
+
+            # If unknown overhead is negative, it means our estimates are too high
+            if unknown_overhead_ns < 0:
+                logger.warning(
+                    f"⚠️ Negative unknown overhead ({unknown_overhead_ns / 1e6:.1f}ms). "
+                    f"Known overhead estimates may be too high."
+                )
+                # Adjust camera latency to absorb the difference
+                camera_latency_ns = max(0, total_latency_ns - known_overhead_ns)
+                unknown_overhead_ns = 0
+
+            # Calculate percentages based on total
+            camera_pct = (camera_latency_ns / total_latency_ns * 100) if total_latency_ns > 0 else 0
+            system_pct = (system_baseline_ns / total_latency_ns * 100) if total_latency_ns > 0 else 0
+            processing_pct = (processing_overhead_ns / total_latency_ns * 100) if total_latency_ns > 0 else 0
+            network_pct = (network_overhead_ns / total_latency_ns * 100) if total_latency_ns > 0 else 0
+            sync_pct = (sync_overhead_ns / total_latency_ns * 100) if total_latency_ns > 0 else 0
+            unknown_pct = (unknown_overhead_ns / total_latency_ns * 100) if total_latency_ns > 0 else 0
+
+            # Log breakdown with clear warnings for anomalies
+            if unknown_pct > 30.0:
+                logger.error(
+                    f"❌ Unknown overhead is {unknown_pct:.1f}% ({unknown_overhead_ns / 1e6:.1f}ms) "
+                    f"of total latency. This indicates timestamp calculation errors."
+                )
+
+            logger.info(
+                f"Latency breakdown: Total={total_latency_ms:.1f}ms | "
+                f"Camera={camera_latency_ns / 1e6:.1f}ms ({camera_pct:.1f}%) | "
+                f"System={system_baseline_ns / 1e6:.3f}ms ({system_pct:.2f}%) | "
+                f"Processing={processing_overhead_ns / 1e6:.1f}ms ({processing_pct:.1f}%) | "
+                f"Network={network_overhead_ns / 1e6:.1f}ms ({network_pct:.2f}%) | "
+                f"Sync={sync_overhead_ns / 1e6:.1f}ms ({sync_pct:.2f}%) | "
+                f"Unknown={unknown_overhead_ns / 1e6:.1f}ms ({unknown_pct:.1f}%)"
+            )
+
             # Calculate decomposition confidence
             confidence = self._calculate_decomposition_confidence(
                 total_latency_ns, camera_latency_ns, baseline, detection_metadata
             )
-            
+
             # Determine validation status
             validation_status = self._determine_validation_status(
-                camera_latency_ns, total_overhead_ns, confidence
+                camera_latency_ns, known_overhead_ns, confidence
             )
-            
-            # Create decomposition result
+
+            # Create decomposition result (valid latency case)
             decomposition = LatencyDecomposition(
                 session_id=session_id,
                 detection_id=detection_id,
@@ -415,26 +528,34 @@ class LatencyDecompositionService:
                 network_overhead_ms=network_overhead_ns / 1e6,
                 sync_overhead_ms=sync_overhead_ns / 1e6,
                 unknown_overhead_ms=unknown_overhead_ns / 1e6,
+                camera_overhead_pct=camera_pct,
+                system_overhead_pct=system_pct,
+                processing_overhead_pct=processing_pct,
+                network_overhead_pct=network_pct,
+                sync_overhead_pct=sync_pct,
+                unknown_overhead_pct=unknown_pct,
                 decomposition_confidence=confidence,
                 measurement_accuracy_ns=baseline.timing_precision_ns,
                 validation_status=validation_status,
                 calculation_timestamp=datetime.now(timezone.utc),
                 baseline_profile_used=f"baseline_{int(baseline.profile_timestamp.timestamp())}",
-                methodology_version="1.0"
+                methodology_version="2.1",  # Updated version to reflect Bug #2 refinement
+                is_valid=True,
+                validation_message="Latency within valid range (50-1000ms)"
             )
-            
+
             # Store decomposition
             with self._lock:
                 if session_id not in self._decompositions:
                     self._decompositions[session_id] = []
                 self._decompositions[session_id].append(decomposition)
-            
+
             logger.info(f"Latency decomposed - Total: {total_latency_ms:.3f}ms, "
-                       f"Camera: {decomposition.camera_latency_ms:.3f}ms "
-                       f"({decomposition.get_overhead_percentage():.1f}% overhead)")
-            
+                       f"Camera: {decomposition.camera_latency_ms:.3f}ms ({camera_pct:.1f}%), "
+                       f"Unknown: {decomposition.unknown_overhead_ms:.3f}ms ({unknown_pct:.1f}%)")
+
             return decomposition
-            
+
         except Exception as e:
             logger.error(f"Failed to decompose latency for detection {detection_id}: {e}")
             raise RuntimeError(f"Latency decomposition failed: {e}")

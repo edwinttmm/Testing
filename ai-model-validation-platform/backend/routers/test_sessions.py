@@ -16,6 +16,8 @@ import logging
 import time
 import uuid
 import json
+import asyncio
+import os
 
 from database import SessionLocal
 from models import TestSession, Project, Video, DetectionEvent, TestResult, GroundTruthObject
@@ -30,6 +32,7 @@ from services.session_management_service import session_manager
 from services.labjack_monitoring_service import labjack_monitoring_service
 from services.monitoring_service_client import monitoring_service_manager
 from crud import create_test_session, get_test_sessions
+from services.test_results_processor import get_test_results_processor
 
 logger = logging.getLogger(__name__)
 
@@ -227,13 +230,50 @@ async def create_new_test_session(
                 f"FORCED START: Test session created without ground truth validation for video {session.video_id}"
             )
 
-        # Create test session
+        # FIX: Use pre-generated session_id if provided (enables proactive WebSocket room join)
+        # This eliminates the 100-200ms race condition that causes zero detections
+        if hasattr(session, 'session_id') and session.session_id:
+            # Validate session_id format
+            if not session.session_id.startswith('session_'):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid session_id format. Must start with 'session_'"
+                )
+
+            # Check for collision (should be extremely rare with timestamp + random)
+            existing = db.query(TestSession).filter(TestSession.id == session.session_id).first()
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Session ID {session.session_id} already exists"
+                )
+
+            # Use provided session_id
+            session_id = session.session_id
+            logger.info(f"✅ Using pre-generated session ID: {session_id} (proactive room join)")
+        else:
+            # Generate new session_id (legacy behavior)
+            session_id = None
+            logger.info(f"📝 Generating new session ID (legacy flow)")
+
+        # CRITICAL FIX: Log when creating sessions to help debug duplicate session issues
+        logger.info(
+            f"🔵 /api/test-sessions POST: Creating session for project {session.project_id} "
+            f"(pre_gen_id={session_id}, forced={force_start})"
+        )
+
+        # Create test session (pass session_id if provided)
         # Persist new session (ignore client-side config field; CRUD filters it safely)
-        db_session = create_test_session(db=db, test_session=session, user_id="anonymous")
+        db_session = create_test_session(
+            db=db,
+            test_session=session,
+            user_id="anonymous",
+            session_id=session_id  # Pass pre-generated ID if available
+        )
 
         logger.info(
-            f"Test session created: {db_session.id} for project {session.project_id} "
-            f"(forced={force_start})"
+            f"🔵 /api/test-sessions POST: Session CREATED: {db_session.id} for project {session.project_id} "
+            f"(forced={force_start}, pre_generated={bool(session_id)})"
         )
 
         # AGENT #40 FIX: Create WebSocket room immediately at session init
@@ -530,6 +570,70 @@ async def get_test_session_details(session_id: str, db: Session = Depends(get_db
         logger.error(f"Error retrieving test session: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve test session: {str(e)}")
 
+
+@router.post("/{session_id}/process-results")
+async def process_test_results(
+    session_id: str,
+    force: bool = Query(False, description="Force reprocessing even if status is completed"),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger the post-test processing pipeline for a session.
+
+    This endpoint is primarily used for debugging or to re-run processing after
+    adjusting timing metadata.
+    """
+    try:
+        session = db.query(TestSession).filter(TestSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Test session not found")
+
+        sequence_metadata = session.sequence_metadata or {}
+        if isinstance(sequence_metadata, str):
+            try:
+                sequence_metadata = json.loads(sequence_metadata)
+            except json.JSONDecodeError:
+                sequence_metadata = {}
+
+        post_processing_meta = (
+            sequence_metadata.get("post_processing")
+            if isinstance(sequence_metadata.get("post_processing"), dict)
+            else {}
+        )
+
+        current_status = post_processing_meta.get("status")
+        if current_status == "completed" and not force:
+            return {
+                "status": current_status,
+                "post_processing": post_processing_meta,
+                "message": "Results already processed (use force=true to re-run)."
+            }
+
+        processor = get_test_results_processor()
+        queued_meta = processor.mark_queued(
+            session_id,
+            note="Manual trigger via /process-results",
+        )
+
+        try:
+            asyncio.create_task(processor.process_test_completion(session_id))
+        except Exception as scheduling_error:  # pragma: no cover - defensive
+            processor.mark_failed(session_id, str(scheduling_error))
+            logger.error("Failed to schedule post-test processing for %s: %s", session_id, scheduling_error)
+            raise HTTPException(status_code=500, detail="Unable to schedule post-test processing") from scheduling_error
+
+        return {
+            "status": (queued_meta or {}).get("status", "queued"),
+            "post_processing": queued_meta,
+            "message": "Post-test processing queued"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error triggering post-test processing for %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 @router.get("/{session_id}/events")
 async def get_session_detection_events(
     session_id: str,
@@ -815,6 +919,17 @@ async def get_session_detection_events(
         # CRITICAL FIX: Use ORM with eager loading to prevent N+1 queries
         from sqlalchemy.orm import selectinload
 
+        # CRITICAL FIX: Flush any pending batch commits before querying database
+        # Without this, API returns 0 detections even though events were captured
+        try:
+            from services.labjack_detection_service import get_detection_monitor
+            monitor = get_detection_monitor()
+            if monitor and hasattr(monitor, '_flush_batch_commits'):
+                monitor._flush_batch_commits()
+                logger.info(f"✅ Flushed pending detection batch commits for session {session_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to flush batch commits: {e}")
+
         # Prioritize LabJack voltage detection events for HIL validation
         labjack_query = db.query(DetectionEvent).options(
             selectinload(DetectionEvent.video),
@@ -1012,21 +1127,28 @@ async def start_test_session(
                 
                 # Configure HIL monitoring with video timing
                 video_timing_config = {
+                    "test_session_id": session_id,
                     "video_id": session.video_id,
-                    "fps": getattr(video, 'fps', 30.0) if video else 30.0,  # Default to 30 FPS
-                    "duration": getattr(video, 'duration', None) if video else None,
+                    "fps": getattr(video, 'fps', 30.0) if video else 30.0,
+                    "duration": float(video.duration) if video and video.duration is not None else None,
                     "channels": ["AIN0"],
-                    "voltage_threshold": 2.5,  # Lowered from 3.0V for broader hardware compatibility
-                    "voltage_range": 10.0,     # ±10V input range  
-                    "debug_voltage": True,     # Enable voltage debugging
-                    "debounce_ms": 50,  # 50ms debounce for precise timing
-                    "sample_rate": 100,  # 100Hz for high precision HIL
+                    "voltage_threshold": float(os.getenv("LABJACK_DEFAULT_THRESHOLD", "0.5")),
+                    "voltage_range": 10.0,
+                    "debug_voltage": True,
+                    "debounce_ms": 0,
+                    "sample_rate": 200,
                     "enable_websocket": True,
-                    "enable_frame_sync": True
+                    "enable_frame_sync": True,
+                    "use_stream_mode": True,  # Re-enabled after Phase 2 fixes - high-performance stream mode
+                    "continuous_mode": False,  # Enable edge detection callbacks for DetectionEvent creation
+                    "continuous_lower_bound": float(os.getenv("LABJACK_DEFAULT_THRESHOLD", "0.5")),
+                    "continuous_interval_ms": 5,
+                    "steady_high_logging": True,
+                    "steady_high_interval_ms": 5
                 }
                 
                 # Start HIL monitoring with video synchronization
-                success = start_hil_monitoring(session_id, video_timing_config)
+                success = await start_hil_monitoring(video_timing_config)
                 
                 if success:
                     monitoring_started = True
@@ -1110,10 +1232,10 @@ async def complete_test_session(
         try:
             if HIL_MONITORING_AVAILABLE:
                 logger.info(f"⏹️ Stopping HIL monitoring (preserving connection) for session: {session_id}")
-                
+
                 # Stop HIL monitoring with connection preservation
                 monitoring_statistics = stop_hil_monitoring(session_id)
-                
+
                 if monitoring_statistics.get("success"):
                     monitoring_stopped = True
                     detection_count = monitoring_statistics.get("detection_count", 0)
@@ -1121,28 +1243,41 @@ async def complete_test_session(
                     avg_latency = monitoring_statistics.get("average_latency_ms", 0)
                     high_quality_count = monitoring_statistics.get("high_quality_detections", 0)
                     connection_preserved = monitoring_statistics.get("connection_preserved", False)
-                    
+
                     logger.info(f"✅ HIL monitoring stopped: {detection_count} detections in {duration:.1f}s")
                     logger.info(f"📊 HIL Statistics: {avg_latency:.1f}ms avg latency, {high_quality_count} high-quality detections")
-                    
+
                     if connection_preserved:
                         logger.info(f"🔗 LabJack hardware connection preserved for future sessions")
-                    
+
                     # Update session with final timing sync status
                     if hasattr(session, 'video_timing_sync_status'):
                         session.video_timing_sync_status = "completed"
                         db.commit()
                 else:
                     logger.error(f"❌ Failed to stop HIL monitoring: {monitoring_statistics.get('error', 'Unknown error')}")
-            
+
+            # CRITICAL FIX: Stop monitoring service polling thread
+            # This prevents runaway polling after session ends
+            logger.info(f"🔄 Stopping monitoring service polling thread for session: {session_id}")
+            labjack_monitoring_service.stop_monitoring()
+            logger.info(f"✅ Monitoring service cleanup completed")
+
             # CRITICAL FIX: NO fallback monitoring stops - let services manage lifecycle
             # The old approach caused connection drops by forcing hardware disconnection
             if not monitoring_stopped:
                 logger.info(f"⚠️ HIL monitoring not available, session marked complete without hardware cleanup")
                 monitoring_stopped = True  # Consider it "stopped" since there was nothing to stop
-                
+
         except Exception as e:
             logger.warning(f"Error stopping HIL monitoring: {e}")
+            # CRITICAL: Still try to stop monitoring service even if HIL monitoring fails
+            try:
+                logger.info(f"🔄 Attempting monitoring service cleanup despite error...")
+                labjack_monitoring_service.stop_monitoring()
+                logger.info(f"✅ Monitoring service cleanup completed (fallback)")
+            except Exception as cleanup_error:
+                logger.error(f"❌ Monitoring service cleanup failed: {cleanup_error}")
             # Don't attempt fallback stops - they cause connection drops
             logger.info(f"⚠️ Continuing with session completion despite monitoring error")
         
@@ -1176,19 +1311,28 @@ async def complete_test_session(
             )
 
             # Get detection events for timing calculation
+            # QUALITY FILTER: Only use validated detections
             detection_events = []
-            for event in db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session_id).all():
+            for event in db.query(DetectionEvent).filter(
+                DetectionEvent.test_session_id == session_id,
+                DetectionEvent.usable_for_validation == True
+            ).all():
                 detection_events.append({
                     'id': event.id,
                     'timestamp': float(event.timestamp) if event.timestamp else None,
                     'frame_number': event.frame_number,
-                    'video_id': event.video_id
+                    'video_id': event.video_id,
+                    'video_start_time': float(event.video_start_time) if event.video_start_time else None,  # FIX: Include video_start_time for latency calculation
+                    'video_relative_timestamp': float(event.video_relative_timestamp) if event.video_relative_timestamp else None
                 })
 
-            # Get ground truth events
+            # Get ground truth events (only active records, exclude soft-deleted)
             gt_events = []
             if session.video_id:
-                for gt in db.query(GroundTruthObject).filter(GroundTruthObject.video_id == session.video_id).all():
+                for gt in db.query(GroundTruthObject).filter(
+                    GroundTruthObject.video_id == session.video_id,
+                    GroundTruthObject.deleted_at.is_(None)  # Only include active records
+                ).all():
                     gt_events.append({
                         'frame_number': gt.frame_number or 0,
                         'video_timestamp': float(gt.timestamp) if gt.timestamp else 0.0,
@@ -1763,9 +1907,14 @@ async def generate_session_results(session_id: str, payload: Optional[Dict[str, 
             logger.warning(f"Ground truth matching failed in results generation, using fallback: {e}")
             
             # Fallback to simple counting
-            total = db.query(func.count(DetectionEvent.id)).filter(DetectionEvent.test_session_id == session_id).scalar() or 0
+            # QUALITY FILTER: Only count validated detections
+            total = db.query(func.count(DetectionEvent.id)).filter(
+                DetectionEvent.test_session_id == session_id,
+                DetectionEvent.usable_for_validation == True
+            ).scalar() or 0
             passed = db.query(func.count(DetectionEvent.id)).filter(
                 DetectionEvent.test_session_id == session_id,
+                DetectionEvent.usable_for_validation == True,
                 DetectionEvent.validation_result.in_(["PASS", "TP", "validated", "Valid", "valid"])  # tolerant
             ).scalar() or 0
             failed = max(0, total - passed)
@@ -1837,6 +1986,7 @@ async def generate_session_results(session_id: str, payload: Optional[Dict[str, 
 @router.get("/{session_id}/results")
 async def get_test_session_results(
     session_id: str,
+    force_rematch: bool = Query(False, description="Force ground truth matching to be re-run, ignoring cached results"),
     limit: Optional[int] = Query(100, ge=1, le=1000, description="Max items per page (default 100, max 1000)"),
     cursor: Optional[str] = Query(None, description="Cursor for pagination (sequence_order value)"),
     db: Session = Depends(get_db)
@@ -1930,6 +2080,48 @@ async def get_test_session_results(
             .all()
         )
         
+        # CRITICAL FIX: Include ground truth comparison metrics from matching service
+        # Frontend expects these metrics at the top level for display
+        ground_truth_metrics = None
+        try:
+            from services.ground_truth_matching_service import get_ground_truth_matching_service
+
+            matching_service = get_ground_truth_matching_service()
+
+            # Get session metrics with TP/FP/FN and precision/recall/F1
+            session_metrics = matching_service.match_detections_to_ground_truth(
+                session_id,
+                force_rematch=force_rematch
+            )
+
+            if session_metrics:
+                # CRITICAL: Session-wide metrics - calculated across ALL videos/detections
+                # For multi-video sessions, this is the authoritative recall value
+                # Per-video metrics in perVideoResults may differ
+                ground_truth_metrics = {
+                    "precision": round(session_metrics.precision * 100, 1),  # Convert to percentage
+                    "recall": round(session_metrics.recall * 100, 1),  # Session-wide: TP / Total GT across all videos
+                    "f1_score": round(session_metrics.f1_score * 100, 1),
+                    "accuracy": round(session_metrics.accuracy * 100, 1),
+                    "true_positives": session_metrics.true_positives,
+                    "false_positives": session_metrics.false_positives,
+                    "false_negatives": session_metrics.false_negatives,
+                    "total_ground_truth": session_metrics.total_ground_truth,
+                    "total_detections": session_metrics.total_detections,
+                    "matched_detections": session_metrics.matched_detections,
+                    "mean_latency_ms": round(session_metrics.mean_latency_ms, 1),
+                    "within_tolerance_percentage": round(session_metrics.within_tolerance_percentage, 1),
+                    "metric_scope": "session_wide"  # CRITICAL: Indicates aggregation across entire session
+                }
+                logger.info(
+                    f"Ground truth metrics for session {session_id}: "
+                    f"P={ground_truth_metrics['precision']}%, R={ground_truth_metrics['recall']}%, "
+                    f"F1={ground_truth_metrics['f1_score']}%"
+                )
+        except Exception as e:
+            logger.warning(f"Could not retrieve ground truth metrics for session {session_id}: {e}")
+            ground_truth_metrics = None
+
         # CRITICAL FIX: Use Pydantic response_model with camelCase aliases for frontend
         from schemas import CamelCaseModel
 
@@ -1937,6 +2129,8 @@ async def get_test_session_results(
             "sessionId": session_id,
             "sessionStatus": session.status,
             "perVideoResults": per_video_results,  # Multi-video sequence results
+            # CRITICAL FIX: Include ground truth metrics at top level for frontend
+            "metrics": ground_truth_metrics,  # F1, precision, recall, etc.
             "results": [
                 {
                     "id": result.id,

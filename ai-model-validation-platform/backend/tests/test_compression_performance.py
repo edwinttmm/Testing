@@ -31,7 +31,7 @@ import os
 
 # Database imports
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, select, delete, update, func
 
 # Local imports
 from database import get_db, engine
@@ -209,9 +209,9 @@ class TestCompressionPerformance:
         compression_result = await self.compression_engine.compress_batch(batch, self.db)
         
         # Get actual storage size from database
-        raw_session = self.db.query(LabJackRawSession).filter(
+        raw_session = self.db.execute(select(LabJackRawSession).where(
             LabJackRawSession.session_id == batch.session_id
-        ).first()
+        )).scalar_one_or_none()
         
         if raw_session:
             # Calculate storage multiplier

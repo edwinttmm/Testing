@@ -9,6 +9,9 @@ from typing import Dict, Optional, Any
 from fastapi import WebSocket, WebSocketDisconnect
 from dataclasses import dataclass, field
 
+# Import retry logic for transient failure handling
+from src.config.retry_config import websocket_retry
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -91,8 +94,9 @@ class WebSocketConnectionManager:
             logger.error(f"Failed to register WebSocket connection {connection_id}: {e}")
             raise
     
+    @websocket_retry
     async def send_connection_established(self, connection_id: str):
-        """Send connection establishment confirmation to client"""
+        """Send connection establishment confirmation to client (with automatic retry)"""
         connection = await self.get_connection(connection_id)
         if connection and connection.websocket:
             try:
@@ -105,8 +109,14 @@ class WebSocketConnectionManager:
                 }
                 await connection.websocket.send_text(json.dumps(message))
                 logger.info(f"Connection establishment confirmed for {connection_id}")
+            except (ConnectionError, OSError) as e:
+                # Re-raise to trigger retry
+                logger.warning(f"WebSocket send failed, will retry: {e}")
+                raise
             except Exception as e:
+                # Convert other exceptions to ConnectionError for retry
                 logger.error(f"Failed to send connection established message: {e}")
+                raise ConnectionError(f"WebSocket send failed: {e}")
     
     async def get_connection(self, connection_id: str) -> Optional[WebSocketConnection]:
         """Get connection by ID"""
@@ -145,27 +155,34 @@ class WebSocketConnectionManager:
             logger.error(f"Failed to ping connection {connection_id}: {e}")
             return False
     
+    @websocket_retry
     async def send_message(self, connection_id: str, message: Dict[str, Any]) -> bool:
-        """Send message to specific connection"""
+        """Send message to specific connection (with automatic retry on transient failures)"""
         connection = await self.get_connection(connection_id)
         if not connection:
             logger.warning(f"Connection not found: {connection_id}")
             return False
-        
+
         try:
             # Add timestamp to all messages
             message["timestamp"] = datetime.now(timezone.utc).isoformat()
             message["server_time_ms"] = int(datetime.now(timezone.utc).timestamp() * 1000)
-            
+
             await connection.websocket.send_text(json.dumps(message))
             return True
         except WebSocketDisconnect:
             logger.info(f"Connection {connection_id} disconnected during send")
             await self.unregister_connection(connection_id)
-            return False
+            # Raise to trigger retry
+            raise ConnectionError(f"WebSocket disconnected for {connection_id}")
+        except (ConnectionError, OSError) as e:
+            # Re-raise to trigger retry
+            logger.warning(f"WebSocket send failed, will retry: {e}")
+            raise
         except Exception as e:
             logger.error(f"Failed to send message to {connection_id}: {e}")
-            return False
+            # Convert to ConnectionError for retry
+            raise ConnectionError(f"WebSocket send failed: {e}")
     
     async def broadcast_message(self, message: Dict[str, Any], exclude: Optional[list] = None):
         """Broadcast message to all connections"""

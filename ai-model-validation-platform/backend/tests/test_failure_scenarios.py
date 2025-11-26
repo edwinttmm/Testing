@@ -12,6 +12,8 @@ This test suite validates system behavior under extreme conditions:
 All tests use mocks to avoid real hardware dependencies.
 """
 
+import sys
+import os
 import pytest
 import time
 from unittest.mock import Mock, MagicMock, patch, AsyncMock
@@ -78,7 +80,7 @@ class TestNetworkFailures:
         EXPECTED: Session remains valid, reconnection recovers state
         """
         # Setup: Create orchestrator with WebSocket
-        from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+        from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
 
         orchestrator = VideoSequenceOrchestrator()
         sequence_id = "seq_123"
@@ -102,7 +104,7 @@ class TestNetworkFailures:
         SCENARIO: video-started arrives 5 seconds after actual start
         EXPECTED: Detection window adjusted, no false negatives
         """
-        from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+        from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
 
         orchestrator = VideoSequenceOrchestrator()
 
@@ -124,7 +126,7 @@ class TestNetworkFailures:
         SCENARIO: Database connection drops during CAS commit
         EXPECTED: Transaction rolled back, retry mechanism engaged
         """
-        from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+        from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
         from sqlalchemy.exc import OperationalError
 
         orchestrator = VideoSequenceOrchestrator()
@@ -144,7 +146,7 @@ class TestNetworkFailures:
         SCENARIO: Frontend loses connection mid-sequence
         EXPECTED: Backend continues processing, state recoverable on reconnect
         """
-        from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+        from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
 
         orchestrator = VideoSequenceOrchestrator()
 
@@ -173,7 +175,7 @@ class TestHardwareEdgeCases:
         SCENARIO: LabJack sends 100 pulses before first video starts
         EXPECTED: Detections buffered or discarded, no crash
         """
-        from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+        from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
 
         orchestrator = VideoSequenceOrchestrator()
 
@@ -264,7 +266,7 @@ class TestMultiVideoCornerCases:
         SCENARIO: All 10 videos start within 100ms (extreme race condition)
         EXPECTED: Atomic CAS prevents duplicate sequence_start_time
         """
-        from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+        from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
 
         orchestrator = VideoSequenceOrchestrator()
 

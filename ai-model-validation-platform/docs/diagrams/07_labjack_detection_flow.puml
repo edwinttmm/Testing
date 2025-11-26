@@ -1,0 +1,128 @@
+@startuml LabJack Detection Flow
+!theme plain
+title LabJack Detection Pipeline - Detailed Logic
+skinparam backgroundColor #FEFEFE
+
+skinparam activity {
+    BackgroundColor #E8F5E9
+    BorderColor #4CAF50
+}
+
+start
+
+partition "Initialization" {
+    :LabJack Service Manager\nStarts Dedicated Monitor;
+    :Open Device Handle (USB/Bridge);
+    :Configure Analog Input Channel;
+    :Set Stream Mode (200 Hz);
+    note right
+        eStreamStart parameters:
+        - scan_rate: 200 Hz
+        - num_channels: 1 (AIN0)
+        - scans_per_read: 50
+    end note
+}
+
+partition "Session Start" {
+    :Receive start_monitoring(session_id);
+    :Record monitoring_start_time;
+    :Initialize detection buffer;
+    :Set last_detection_time = 0;
+}
+
+partition "Streaming Loop" #LightBlue {
+    repeat
+        :Read Stream Buffer;
+        :Get batch of voltage samples;
+
+        :foreach sample in buffer;
+
+        partition "Threshold Check" {
+            if (voltage > 2.5V?) then (yes)
+                :Signal HIGH detected;
+            else (no)
+                :Continue to next sample;
+                -[hidden]->
+            endif
+        }
+
+        partition "Debounce Filter" {
+            :current_time = sample_timestamp;
+            :time_since_last = current_time - last_detection_time;
+
+            if (time_since_last > 10ms?) then (yes)
+                :Valid detection\n(not a bounce);
+            else (no)
+                :Skip (debounce);
+                -[hidden]->
+            endif
+        }
+
+        partition "Video Window Validation" {
+            if (within video time window?) then (yes)
+                note right
+                    Grace period: ±2 seconds
+                    Allows pre-trigger and
+                    post-video detections
+                end note
+                :Within valid window;
+            else (no)
+                :Outside video bounds;
+                :Log but don't record;
+                -[hidden]->
+            endif
+        }
+
+        partition "Create Detection Event" {
+            :Generate UUID;
+            :Capture timestamps;
+            note right
+                - labjack_timestamp (hardware)
+                - system_timestamp (Python)
+                - monotonic_time (for ordering)
+            end note
+            :Record voltage value;
+            :Add to event buffer;
+            :Update last_detection_time;
+        }
+
+        partition "Batch Commit" {
+            if (buffer >= 100 events OR 1 second elapsed?) then (yes)
+                :Commit batch to database;
+                :Clear buffer;
+                :Emit WebSocket event;
+            endif
+        }
+
+    repeat while (session active?)
+}
+
+partition "Session End" {
+    :Receive stop_monitoring();
+    :Flush remaining buffer;
+    :Final database commit;
+    :Record monitoring_end_time;
+    :Calculate session metrics;
+    note right
+        Metrics:
+        - Total samples processed
+        - Detection count
+        - Effective sample rate
+        - Signal quality score
+    end note
+    :Return session summary;
+}
+
+stop
+
+legend right
+    |= Parameter |= Value |= Purpose |
+    | Sample Rate | 200 Hz | Hardware acquisition |
+    | Voltage Threshold | 2.5V | HIGH/LOW boundary |
+    | Debounce | 10ms | Filter signal noise |
+    | Grace Period | ±2s | Video timing tolerance |
+    | Batch Size | 100 | Database efficiency |
+    | Batch Timeout | 1s | Real-time updates |
+endlegend
+
+@enduml

@@ -68,9 +68,26 @@ class ReportGenerationService:
             raise ValueError(f"Test session {test_session_id} not found")
         
         # Get all detection events for this session
+        # QUALITY FILTER: Only include validated detections in reports
         detection_events = self.db.query(DetectionEvent).filter(
-            DetectionEvent.test_session_id == test_session_id
+            DetectionEvent.test_session_id == test_session_id,
+            DetectionEvent.usable_for_validation == True
         ).all()
+
+        # Get quality statistics for the report
+        total_detections = self.db.query(DetectionEvent).filter(
+            DetectionEvent.test_session_id == test_session_id
+        ).count()
+
+        validated_count = len(detection_events)
+        degraded_count = total_detections - validated_count
+
+        quality_info = {
+            'total_detections': total_detections,
+            'validated_detections': validated_count,
+            'degraded_detections': degraded_count,
+            'validation_rate': (validated_count / total_detections * 100) if total_detections > 0 else 0
+        }
         
         # Get project and video information
         project = self.db.query(Project).filter(
@@ -158,10 +175,10 @@ class ReportGenerationService:
         
         for event in detection_events:
             # Determine event outcome based on PRD Module 4.1 criteria
-            if event.latency_ms is not None:
-                latencies.append(event.latency_ms)
-                
-                if event.latency_ms <= threshold_ms:
+            if event.actual_latency_ms is not None:
+                latencies.append(event.actual_latency_ms)
+
+                if event.actual_latency_ms <= threshold_ms:
                     passed_events.append(event)
                 else:
                     high_latency_events.append(event)
@@ -252,20 +269,20 @@ class ReportGenerationService:
         
         for event in detection_events:
             failure_type = None
-            
+
             # Determine failure type based on PRD Module 4.1
-            if event.latency_ms is None:
+            if event.actual_latency_ms is None:
                 failure_type = "MISSED_DETECTION"
-            elif event.latency_ms > (event.latency_threshold_ms or 100):
+            elif event.actual_latency_ms > (event.latency_threshold_ms or 100):
                 failure_type = "HIGH_LATENCY"
-            
+
             if failure_type:
                 failure_events.append({
                     "event_id": event.id,
                     "video_id": event.video_id,
                     "timestamp": event.timestamp,
                     "failure_type": failure_type,
-                    "latency_ms": event.latency_ms,
+                    "latency_ms": event.actual_latency_ms,
                     "threshold_ms": event.latency_threshold_ms or 100,
                     "labjack_timestamp": event.labjack_timestamp,
                     "frame_number": event.frame_number,
@@ -337,19 +354,19 @@ class ReportGenerationService:
         
         PRD Requirement: Summarize successful passes in text format (no visual review needed)
         """
-        passed_events = [event for event in detection_events 
-                        if event.latency_ms is not None and 
-                        event.latency_ms <= (event.latency_threshold_ms or 100)]
-        
+        passed_events = [event for event in detection_events
+                        if event.actual_latency_ms is not None and
+                        event.actual_latency_ms <= (event.latency_threshold_ms or 100)]
+
         if not passed_events:
             return {
                 "summary_text": "No successful detections recorded.",
                 "passed_count": 0,
                 "total_count": len(detection_events)
             }
-        
+
         # Analyze successful detections
-        latencies = [event.latency_ms for event in passed_events if event.latency_ms is not None]
+        latencies = [event.actual_latency_ms for event in passed_events if event.actual_latency_ms is not None]
         avg_success_latency = sum(latencies) / len(latencies) if latencies else 0
         
         # Group by VRU type

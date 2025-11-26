@@ -2032,6 +2032,25 @@ class ApiService {
     return this.cachedRequest<{status: string, message: string}>('POST', '/api/signal-validation/monitoring/stop', {});
   }
 
+  async startLabjackMonitorSession(sessionId: string, sampleRate: number = 240): Promise<{success: boolean; message: string; data?: Record<string, unknown>}> {
+    return this.cachedRequest<{success: boolean; message: string; data?: Record<string, unknown>}>(
+      'POST',
+      '/api/v1/labjack-monitor/session/start',
+      {
+        session_id: sessionId,
+        sample_rate: sampleRate
+      }
+    );
+  }
+
+  async stopLabjackMonitorSession(): Promise<{success: boolean; message: string; data?: Record<string, unknown>}> {
+    return this.cachedRequest<{success: boolean; message: string; data?: Record<string, unknown>}>(
+      'POST',
+      '/api/v1/labjack-monitor/session/stop',
+      {}
+    );
+  }
+
   async getSignalStatistics(testSessionId: string): Promise<{total_signals: number, valid_signals: number, invalid_signals: number, average_delay: number, statistics: Record<string, unknown>}> {
     return this.cachedRequest<{total_signals: number, valid_signals: number, invalid_signals: number, average_delay: number, statistics: Record<string, unknown>}>('GET', `/api/signal-validation/statistics/${testSessionId}`);
   }
@@ -2517,6 +2536,8 @@ export const initializeLabJack = apiServiceInstance.initializeLabJack.bind(apiSe
 export const configureLabJack = apiServiceInstance.configureLabJack.bind(apiServiceInstance);
 export const startSignalMonitoring = apiServiceInstance.startSignalMonitoring.bind(apiServiceInstance);
 export const stopSignalMonitoring = apiServiceInstance.stopSignalMonitoring.bind(apiServiceInstance);
+export const startLabjackMonitorSession = apiServiceInstance.startLabjackMonitorSession.bind(apiServiceInstance);
+export const stopLabjackMonitorSession = apiServiceInstance.stopLabjackMonitorSession.bind(apiServiceInstance);
 export const getSignalStatistics = apiServiceInstance.getSignalStatistics.bind(apiServiceInstance);
 export const testSignalValidationConnection = apiServiceInstance.testSignalValidationConnection.bind(apiServiceInstance);
 export const startEnhancedTestWorkflow = apiServiceInstance.startEnhancedTestWorkflow.bind(apiServiceInstance);

@@ -18,8 +18,7 @@ from models import (
     Video,
     DetectionEvent,
     GroundTruthObject,
-    Project,
-    EvaluationResult
+    Project
 )
 
 
@@ -373,7 +372,7 @@ class TestDualEvaluationArchitecture:
         test_db.commit()
 
         # Verify stored data
-        stored_eval = test_db.query(EvaluationResult).filter_by(session_id=session.id).first()
+        stored_eval = test_db.execute(select(EvaluationResult).filter_by(session_id=session.id)).scalar_one_or_none()
         assert stored_eval is not None
         assert stored_eval.accuracy_result == "PASS"
         assert stored_eval.latency_result == "PASS"

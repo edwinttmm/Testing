@@ -10,20 +10,21 @@ End-to-end integration testing:
 Coverage: Full system integration paths
 """
 
+import os
 import pytest
 import time
 from datetime import datetime, timezone
 from typing import List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, select, delete, update
 
 from models import (
     TestSession, Video, DetectionEvent, GroundTruthObject,
     VideoTestSequence, SequenceVideoResult, Project
 )
 from services.ground_truth_matching_service import GroundTruthMatchingService
-from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+from services.video_lifecycle_orchestrator import VideoSequenceOrchestrator
 from crud import delete_project, get_test_session
 from database import SessionLocal
 
@@ -285,9 +286,9 @@ class TestIssue1And4Interaction:
                 f"Video {video_id} count mismatch: expected {expected_count}, got {video_result.detected_count}"
 
             # Verify database has matching count
-            db_count = integration_db.query(DetectionEvent).filter(
+            db_count = session.execute(select(func.count()).select_from(DetectionEvent).where(
                 DetectionEvent.video_id == video_id
-            ).count()
+            )).scalar()
             assert db_count == expected_count, \
                 f"Database count mismatch for {video_id}: expected {expected_count}, got {db_count}"
 
@@ -343,9 +344,9 @@ class TestIssue2And5PerformanceUnderLoad:
         start_time = time.time()
 
         video_ids = [v.id for v in videos]
-        all_gt = integration_db.query(GroundTruthObject).filter(
+        all_gt = integration_db.execute(select(GroundTruthObject).where(
             GroundTruthObject.video_id.in_(video_ids)
-        ).all()
+        )).scalars().all()
 
         query_time = time.time() - start_time
 
@@ -419,15 +420,15 @@ class TestIssue6ProtectionDuringActiveSession:
             delete_project(integration_db, integration_project.id, user_id="integration-user")
 
         # Verify project still exists
-        project = integration_db.query(Project).filter(
+        project = integration_db.execute(select(Project).where(
             Project.id == integration_project.id
-        ).first()
+        )).scalar_one_or_none()
         assert project is not None, "Project should not be deleted during active session"
 
         # Verify detections preserved
-        detection_count = integration_db.query(DetectionEvent).filter(
+        detection_count = integration_db.execute(select(func.count()).select_from(DetectionEvent).where(
             DetectionEvent.video_id == video_ids[0]
-        ).count()
+        )).scalar()
         assert detection_count == 5, "Detections should be preserved"
 
 

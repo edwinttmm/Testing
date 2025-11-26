@@ -11,12 +11,13 @@ This test suite verifies that all timing-related fixes work together correctly:
 Test Coverage Target: >80% of timing-related code paths
 """
 
+import sys
 import pytest
 import time
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, delete, update
 from sqlalchemy.orm import Session
 
 # Import models and services
@@ -33,7 +34,7 @@ from services.timing_synchronization_calculator import (
     VideoTimingMetadata,
     get_timing_synchronization_calculator
 )
-from services.labjack_detection_service import (
+from services.simple_labjack_detection import (
     LabJackDetectionMonitor,
     DetectionConfig,
     get_detection_monitor
@@ -111,9 +112,9 @@ def test_session(db: Session):
     yield session
 
     # Cleanup
-    db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session.id).delete()
-    db.query(TestSession).filter(TestSession.id == session.id).delete()
-    db.query(Video).filter(Video.id == video.id).delete()
+    db.execute(delete(DetectionEvent).where(DetectionEvent.test_session_id == session.id))
+    db.execute(delete(TestSession).where(TestSession.id == session.id))
+    db.execute(delete(Video).where(Video.id == video.id))
     db.commit()
 
 
@@ -306,9 +307,9 @@ class TestPagination:
 
         # Query all detections (no limit)
         start_time = time.time()
-        result = db.query(DetectionEvent).filter(
+        result = db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == test_session.id
-        ).all()
+        )).scalars().all()
         query_time = (time.time() - start_time) * 1000  # Convert to ms
 
         # Verify all detections returned
@@ -344,10 +345,10 @@ class TestPagination:
         db.commit()
 
         # Query detections for specific video
-        result = db.query(DetectionEvent).filter(
+        result = db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == test_session.id,
             DetectionEvent.video_id == test_session.video_id
-        ).all()
+        )).scalars().all()
 
         # Verify correct count
         assert len(result) == detections_per_video
@@ -533,17 +534,17 @@ class TestVideoIDAssignment:
         assert result["reassigned_count"] == 2
 
         # Verify correct video assignments
-        det_v1 = db.query(DetectionEvent).filter(DetectionEvent.id == "det-v1-1").first()
-        det_v2 = db.query(DetectionEvent).filter(DetectionEvent.id == "det-v2-1").first()
+        det_v1 = db.execute(select(DetectionEvent).where(DetectionEvent.id == "det-v1-1")).scalar_one_or_none()
+        det_v2 = db.execute(select(DetectionEvent).where(DetectionEvent.id == "det-v2-1")).scalar_one_or_none()
 
         assert det_v1.video_id == "video-001"
         assert det_v2.video_id == "video-002"
 
         # Cleanup
-        db.query(DetectionEvent).filter(DetectionEvent.test_session_id == session.id).delete()
-        db.query(SequenceVideoResult).filter(SequenceVideoResult.video_sequence_id == sequence.id).delete()
-        db.query(VideoTestSequence).filter(VideoTestSequence.id == sequence.id).delete()
-        db.query(TestSession).filter(TestSession.id == session.id).delete()
+        db.execute(delete(DetectionEvent).where(DetectionEvent.test_session_id == session.id))
+        db.execute(delete(SequenceVideoResult).where(SequenceVideoResult.video_sequence_id == sequence.id))
+        db.execute(delete(VideoTestSequence).where(VideoTestSequence.id == sequence.id))
+        db.execute(delete(TestSession).where(TestSession.id == session.id))
         db.commit()
 
 
@@ -561,9 +562,9 @@ class TestSessionValidation:
     ):
         """Test detection reassignment for session 0846e476"""
         # Check if session exists
-        session = db.query(TestSession).filter(
+        session = db.execute(select(TestSession).where(
             TestSession.id == "0846e476"
-        ).first()
+        )).scalar_one_or_none()
 
         if not session:
             pytest.skip("Session 0846e476 not found in database")
@@ -603,9 +604,9 @@ class TestSessionValidation:
     ):
         """Verify all detection timestamps are in 2025, not 1762"""
         # Check all detection timestamps
-        detections = db.query(DetectionEvent).filter(
+        detections = db.execute(select(DetectionEvent).where(
             DetectionEvent.timestamp.isnot(None)
-        ).limit(100).all()
+        )).scalars().limit(100).all()
 
         current_year = datetime.now().year
         epoch_bugs = 0

@@ -155,32 +155,46 @@ class HILVideoFrameMonitor:
             logger.error(f"HIL Video Frame Monitor initialization failed: {e}")
             return False
     
-    async def start_hil_monitoring(self, session_id: str, video_path: str, 
+    async def start_hil_monitoring(self, session_id: str, video_path: str,
                                    video_id: str = None, start_frame: int = 0) -> bool:
         """Start HIL video monitoring with T3 detection"""
         try:
             logger.info(f"Starting HIL video monitoring for session {session_id}")
-            
+
+            # RACE CONDITION FIX: ENSURE ML MODEL IS READY BEFORE STARTING MONITORING
+            # This prevents LabJack detections from being captured before ML inference is available
+            if self.t3_pipeline and self.t3_pipeline.ml_engine:
+                if hasattr(self.t3_pipeline.ml_engine, 'yolo_engine'):
+                    engine = self.t3_pipeline.ml_engine.yolo_engine
+                    if not engine.is_initialized:
+                        logger.info("⏳ Waiting for YOLO model warmup before starting HIL monitoring...")
+                        warmup_start = time.time()
+                        await engine.initialize()
+                        warmup_duration = time.time() - warmup_start
+                        logger.info(f"✅ YOLO model ready in {warmup_duration:.3f}s - proceeding with monitoring")
+                    else:
+                        logger.info("✅ YOLO model already initialized - proceeding with monitoring")
+
             with self.monitoring_lock:
                 if self.is_monitoring:
                     logger.warning("HIL monitoring already in progress")
                     return False
-                
+
                 # Initialize video capture
                 if not await self._initialize_video_capture(video_path, start_frame):
                     return False
-                
+
                 # Set HIL session state
                 self.current_session_id = session_id
                 self.current_video_id = video_id or str(uuid.uuid4())
                 self.hil_start_time = time.time()
                 self.video_start_time = time.time()
-                
+
                 # Start T3 pipeline for this HIL session
                 await self.t3_pipeline.start_hil_session(
                     session_id, self.current_video_id, self.video_start_time
                 )
-                
+
                 # Reset statistics
                 self.stats = {
                     'total_frames_processed': 0,
@@ -191,12 +205,12 @@ class HILVideoFrameMonitor:
                     'last_frame_time': None,
                     'errors': []
                 }
-                
+
                 self.is_monitoring = True
-            
+
             logger.info(f"HIL monitoring started - Video: {Path(video_path).name}, FPS: {self.video_fps}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to start HIL monitoring: {e}")
             return False

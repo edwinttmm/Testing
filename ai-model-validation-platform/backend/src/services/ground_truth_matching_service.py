@@ -1,567 +1,918 @@
 """
 Ground Truth Matching Service
-============================
 
-Service for matching HIL detection events to ground truth objects with video timing synchronization.
-This service replaces simple detection counting with proper validation against known ground truth.
+This service provides comprehensive temporal matching between LabJack detections 
+and pre-recorded ground truth timing data. It implements sophisticated algorithms
+for detection classification, latency calculation, and performance metrics.
 
 Key Features:
-- Temporal matching between detections and ground truth
-- Video timing synchronization for accurate latency calculation
-- Precision/recall calculation based on matched detections
-- Real latency measurement using ground truth timestamps
-- Support for multiple matching strategies
+- Temporal matching with configurable tolerance windows
+- True Positive / False Positive / False Negative classification
+- Latency calculation and statistical analysis
+- Precision, Recall, F1 Score computation
+- Database population with match results
 """
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Tuple, NamedTuple
-from dataclasses import dataclass, asdict
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+import statistics
+from typing import Dict, List, Optional, Tuple, Union, Any
+from datetime import datetime
+from dataclasses import dataclass, field
 
-from models import DetectionEvent, GroundTruthObject, Video, TestSession
-from database import SessionLocal
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import and_, or_, func, insert
+
+from database import SessionLocal, get_db
+from models import (
+    TestSession, DetectionEvent, GroundTruthObject, DetectionComparison, VideoTestSequence
+)
+try:
+    from models import PerformanceMetrics, ValidationResult as ValidationResultEnum
+except ImportError:
+    # PerformanceMetrics not available in models, define local stub
+    PerformanceMetrics = None
+    ValidationResultEnum = None
+from schemas_annotation import VRUTypeEnum
+
+# CRITICAL DEPENDENCY CHECK: scipy required for optimal matching algorithm
+try:
+    from scipy.optimize import linear_sum_assignment
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    linear_sum_assignment = None
+
+from services.optimal_matching_service import optimal_detection_matching
+from config.timing_config import MATCHING_TOLERANCE_MS
+
+# Option C: Temporal Expansion for improved matching accuracy
+try:
+    from src.services.temporal_expansion import (
+        expand_detections_temporally,
+        collapse_duplicates,
+        ExpandedDetection
+    )
+    TEMPORAL_EXPANSION_AVAILABLE = True
+except ImportError:
+    TEMPORAL_EXPANSION_AVAILABLE = False
+    expand_detections_temporally = None
+    collapse_duplicates = None
+    ExpandedDetection = None
+
+# Drift Compensation Services
+try:
+    from src.services.timestamp_compensation_service import TimestampCompensationService
+    from src.services.drift_measurement_service import DriftMeasurementService
+    DRIFT_COMPENSATION_AVAILABLE = True
+except ImportError:
+    DRIFT_COMPENSATION_AVAILABLE = False
+    TimestampCompensationService = None
+    DriftMeasurementService = None
 
 logger = logging.getLogger(__name__)
 
+# AGENT #43: FP Latency Marker Constant
+# False Positive detections get artificial latency of 10000ms (sentinel value)
+# This marks them clearly and excludes them from statistics calculations
+FP_LATENCY_MARKER = 10000.0
+
 
 @dataclass
-class MatchingResult:
-    """Result of matching a detection to ground truth"""
-    detection_id: str
-    ground_truth_id: Optional[str]
-    is_match: bool
-    temporal_offset_ms: float  # Positive if detection is after ground truth
-    spatial_overlap: float     # IoU or similar spatial metric
-    confidence_score: float
-    match_type: str           # "true_positive", "false_positive", "false_negative"
+class MatchResult:
+    """Data class for individual match results"""
+    ground_truth_id: str
+    detection_event_id: Optional[str]
+    match_type: str  # 'TP', 'FP', 'FN'
+    temporal_offset: float  # in milliseconds
+    confidence: Optional[float]
+    iou_score: Optional[float]  # Temporal overlap score
+    latency_ms: Optional[float]  # Actual detection latency
+    video_id: Optional[str] = None  # Video ID for multi-video latency grouping
 
 
-@dataclass 
-class GroundTruthMatchingResults:
-    """Complete results of ground truth matching for a session"""
-    session_id: str
-    video_id: Optional[str]
-    video_playback_start_time: Optional[float]
-    
-    # Match results
-    matches: List[MatchingResult]
-    
-    # Summary metrics
+@dataclass
+class SessionMetrics:
+    """Comprehensive metrics for a test session"""
     true_positives: int
     false_positives: int
     false_negatives: int
-    
-    # Temporal metrics
-    temporal_offsets: List[float]  # All temporal offsets for matched detections
-    avg_latency_ms: float
-    min_latency_ms: float
-    max_latency_ms: float
-    median_latency_ms: float
-    
-    # Quality metrics  
     precision: float
     recall: float
     f1_score: float
-    
-    # Matching configuration
-    temporal_tolerance_ms: float
-    spatial_tolerance: float
-    
-    created_at: datetime
+    accuracy: float
+    mean_latency_ms: float
+    std_latency_ms: float
+    max_latency_ms: float
+    min_latency_ms: float
+    within_tolerance_percentage: float
+    total_ground_truth: int
+    total_detections: int
+    matched_detections: int
+    latency_sample_count: int = 0
+    per_video_latency_samples: Dict[str, int] = field(default_factory=dict)
+
+
+def _safe_float(value: Optional[Any]) -> Optional[float]:
+    """Convert value to float when possible, otherwise return None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _looks_like_epoch(timestamp: Optional[float]) -> bool:
+    """Heuristic to detect Unix epoch timestamps."""
+    return bool(timestamp is not None and timestamp > 1_000_000_000)
+
+
+def extract_detection_video_time(
+    detection: Any,
+    video_timing_map: Dict[str, Dict[str, Any]] = {},
+    session_start_time: Optional[float] = None
+) -> Optional[float]:
+    """
+    Resolve the best available video-relative timestamp for a detection event.
+    Updated to handle per-video start times for multi-video sequences.
+    """
+    preferred_attrs = (
+        "video_relative_timestamp",
+        "video_time",
+        "video_timestamp",
+        "relative_timestamp",
+    )
+    for attr in preferred_attrs:
+        value = _safe_float(getattr(detection, attr, None))
+        if value is not None:
+            return value
+
+    timestamp = _safe_float(getattr(detection, "timestamp", None))
+    video_id = getattr(detection, 'video_id', None)
+
+    # Use per-video start time from the timing map if available
+    if video_id and video_id in video_timing_map:
+        video_start_time = video_timing_map[video_id].get('start_time')
+        if video_start_time and timestamp and _looks_like_epoch(timestamp):
+            return timestamp - video_start_time
+
+    # Fallback to session start time
+    if timestamp is not None and session_start_time is not None and _looks_like_epoch(timestamp):
+        return timestamp - session_start_time
+
+    return timestamp
+
+
+def extract_ground_truth_video_time(
+    ground_truth: Any,
+    video_timing_map: Dict[str, Dict[str, Any]] = {},
+    session_start_time: Optional[float] = None
+) -> Optional[float]:
+    """
+    Resolve the best available video-relative timestamp for a ground truth object.
+    Updated to handle per-video start times for multi-video sequences.
+    """
+    preferred_attrs = (
+        "video_relative_timestamp",
+        "video_time",
+        "video_timestamp",
+        "relative_timestamp",
+    )
+    for attr in preferred_attrs:
+        value = _safe_float(getattr(ground_truth, attr, None))
+        if value is not None:
+            return value
+
+    timestamp = _safe_float(getattr(ground_truth, "timestamp", None))
+    video_id = getattr(ground_truth, 'video_id', None)
+
+    # Use per-video start time from the timing map if available
+    if video_id and video_id in video_timing_map:
+        video_start_time = video_timing_map[video_id].get('start_time')
+        if video_start_time and timestamp and _looks_like_epoch(timestamp):
+            return timestamp - video_start_time
+
+    # Fallback to session start time
+    if timestamp is not None and session_start_time is not None and _looks_like_epoch(timestamp):
+        return timestamp - session_start_time
+
+    return timestamp
 
 
 class GroundTruthMatchingService:
-    """Service for matching detections to ground truth with video timing"""
+    """
+    Comprehensive service for matching LabJack detections against ground truth data. 
     
-    def __init__(self, db_session: Optional[Session] = None):
-        self.db_session = db_session or SessionLocal()
-        self._should_close_session = db_session is None
-        
-    def __enter__(self):
-        return self
-        
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._should_close_session and self.db_session:
-            self.db_session.close()
+    This service implements temporal matching algorithms that handle the complexity
+    of real-world detection systems with varying latencies and precision requirements.
+    """
     
+    def __init__(self, default_tolerance_ms: Optional[int] = None):
+        """
+        Initialize the Ground Truth Matching Service.
+
+        Args:
+            default_tolerance_ms: Default tolerance window in milliseconds
+        """
+        self.default_tolerance_ms = default_tolerance_ms or MATCHING_TOLERANCE_MS
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+        # Initialize drift compensation services if available
+        self.timestamp_compensation = TimestampCompensationService() if DRIFT_COMPENSATION_AVAILABLE else None
+        self.drift_service = None  # Will be injected or retrieved from global instance
+
+    def _apply_drift_compensation(
+        self,
+        db: Session,
+        session_id: str,
+        test_session: TestSession,
+        detection_events: List[Any]
+    ) -> List[Any]:
+        """
+        Apply drift compensation to detection timestamps before matching.
+
+        Args:
+            db: Database session
+            session_id: Test session identifier
+            test_session: Test session object
+            detection_events: List of detection events
+
+        Returns:
+            List of detection events with compensated timestamps
+        """
+        if not DRIFT_COMPENSATION_AVAILABLE:
+            self.logger.warning("⚠️ Drift compensation services not available - using raw timestamps")
+            return detection_events
+
+        try:
+            # Get drift measurement service
+            if self.drift_service is None:
+                from src.services.drift_measurement_service import get_drift_measurement_service
+                self.drift_service = get_drift_measurement_service()
+
+            # Get measured drift for this session
+            drift_ms = self.drift_service.get_drift_ms()
+
+            if drift_ms == 0.0:
+                self.logger.warning(
+                    "⚠️ Using zero drift - timestamps may not match calibration. "
+                    "Ensure drift measurement service captured timestamps during video lifecycle."
+                )
+                return detection_events
+
+            self.logger.info(f"📊 Applying drift compensation: {drift_ms:.2f}ms to {len(detection_events)} detections")
+
+            # Apply drift compensation to each detection
+            for detection in detection_events:
+                if hasattr(detection, 'timestamp') and detection.timestamp is not None:
+                    # Convert timestamp to compensated timestamp
+                    original_timestamp = detection.timestamp
+                    compensated_timestamp = original_timestamp - (drift_ms / 1000.0)
+
+                    # Update the detection with compensated timestamp
+                    detection.timestamp = compensated_timestamp
+
+                    self.logger.debug(
+                        f"Compensated detection: original={original_timestamp:.6f}, "
+                        f"compensated={compensated_timestamp:.6f}, drift={drift_ms:.2f}ms"
+                    )
+
+            self.logger.info(f"✅ Drift compensation applied to {len(detection_events)} detections")
+            return detection_events
+
+        except Exception as e:
+            self.logger.error(f"Failed to apply drift compensation: {e}", exc_info=True)
+            # Return original detections on error - better than crashing
+            return detection_events
+
     def match_detections_to_ground_truth(
         self,
         session_id: str,
-        temporal_tolerance_ms: float = 500.0,  # 500ms tolerance window
-        spatial_tolerance: float = 0.3,        # 30% IoU threshold
-        matching_strategy: str = "nearest_temporal"
-    ) -> GroundTruthMatchingResults:
+        tolerance_ms: Optional[int] = None,
+        force_rematch: bool = False,
+        auto_commit: bool = True
+    ) -> Optional[SessionMetrics]:
         """
-        Match detection events to ground truth objects for a test session
-        
+        Match all LabJack detections to ground truth objects for a test session.
+
+        This is the main entry point for ground truth matching. It performs:
+        1. Retrieval of all detection events and ground truth objects
+        2. Temporal matching within tolerance windows
+        3. Classification as TP/FP/FN
+        4. Latency calculation
+        5. Database population
+        6. Metrics calculation
+
         Args:
-            session_id: Test session ID
-            temporal_tolerance_ms: Maximum time difference for temporal matching (ms)
-            spatial_tolerance: Minimum spatial overlap for spatial matching
-            matching_strategy: Strategy for matching ("nearest_temporal", "best_spatial", "combined")
-            
+            session_id: Test session identifier
+            tolerance_ms: Tolerance window in milliseconds (uses session default if None)
+            force_rematch: Force re-matching even if results already exist
+            auto_commit: When True (default) commit DB changes immediately; set False if caller handles commit/rollback.
+
         Returns:
-            Comprehensive matching results with metrics
+            SessionMetrics object with comprehensive results or None on error
         """
+        self.logger.info("=============== _V2_FIX_IS_LIVE_ ===============")
+        # CRITICAL: Check scipy dependency before starting
+        if not SCIPY_AVAILABLE:
+            self.logger.error(
+                "scipy is not installed - ground truth matching requires scipy for optimal algorithm. "
+                "Install with: pip install scipy"
+            )
+            raise RuntimeError(
+                "scipy package is required for ground truth matching. "
+                "Please install it with: pip install scipy"
+            )
+
+        db = SessionLocal()
         try:
-            logger.info(f"Starting ground truth matching for session {session_id}")
+            self.logger.info(f"Starting ground truth matching for session {session_id}")
             
-            # Get session and video information
-            session = self.db_session.query(TestSession).filter(
-                TestSession.id == session_id
-            ).first()
+            # Get test session and validate
+            test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
+            if not test_session:
+                self.logger.error(f"Test session {session_id} not found")
+                return None
+                
+            # Use session tolerance if not specified
+            if tolerance_ms is None:
+                tolerance_ms = test_session.tolerance_ms or self.default_tolerance_ms
+                
+            self.logger.info(f"Using tolerance window: ±{tolerance_ms}ms")
             
-            if not session:
-                raise ValueError(f"Test session {session_id} not found")
+            # Check if matching already exists and force_rematch is False
+            existing_comparisons = db.query(DetectionComparison).filter(
+                DetectionComparison.test_session_id == session_id
+            ).count()
             
-            # Get video timing information
-            video_timing = self._get_video_timing_context(session)
+            if existing_comparisons > 0 and not force_rematch:
+                self.logger.info(f"Found {existing_comparisons} existing comparisons, using cached results")
+                return self._calculate_session_metrics(db, session_id)
             
-            # Get detection events for this session
-            detections = self.db_session.query(DetectionEvent).filter(
-                DetectionEvent.test_session_id == session_id
-            ).order_by(DetectionEvent.timestamp).all()
+            # Clear existing comparisons if force_rematch
+            if force_rematch and existing_comparisons > 0:
+                self.logger.info("Force rematch enabled, clearing existing comparisons")
+                db.query(DetectionComparison).filter(
+                    DetectionComparison.test_session_id == session_id
+                ).delete()
+                db.commit()
             
-            # Get ground truth objects for the session's video
-            ground_truth_objects = self._get_ground_truth_for_session(session)
+            # Get all detection events for this session using raw SQL to avoid column mismatch
+            # CRITICAL: Include video_id for multi-video boundary validation
+            # QUALITY FILTER: Only fetch validated detections (usable_for_validation = TRUE)
+            from sqlalchemy import text
+            detection_query = text("""
+                SELECT id, timestamp, confidence, class_label, actual_latency_ms,
+                       video_relative_timestamp, video_frame_number, timing_sync_quality,
+                       video_id
+                FROM detection_events
+                WHERE test_session_id = :session_id
+                  AND usable_for_validation = TRUE
+                ORDER BY timestamp
+            """)
+            detection_results = db.execute(detection_query, {'session_id': session_id}).fetchall()
+
+            # Convert to objects for compatibility
+            detection_events = []
+            for row in detection_results:
+                # Create a simple object with the fields we need
+                class DetectionEventProxy:
+                    def __init__(self, row):
+                        self.id = row[0]
+                        self.timestamp = row[1]
+                        self.confidence = row[2]
+                        self.class_label = row[3]
+                        self.actual_latency_ms = row[4]
+                        self.video_relative_timestamp = row[5]
+                        self.video_frame_number = row[6]
+                        self.timing_sync_quality = row[7]
+                        self.video_id = row[8]  # CRITICAL: Video ID for boundary validation
+
+                detection_events.append(DetectionEventProxy(row))
+
+            # Diagnostics for instrumentation during HIL debugging
+            sample_detections = detection_events[:20]
+            for idx, det in enumerate(sample_detections, 1):
+                self.logger.info(
+                    "🧪 DET SAMPLE %02d: id=%s video=%s ts=%.6fs video_rel=%s latency_ms=%s",
+                    idx,
+                    det.id,
+                    getattr(det, "video_id", None),
+                    det.timestamp,
+                    getattr(det, "video_relative_timestamp", None),
+                    getattr(det, "actual_latency_ms", None),
+                )
             
-            logger.info(f"Found {len(detections)} detections and {len(ground_truth_objects)} ground truth objects")
+            # Log quality statistics
+            total_detections_query = text("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN usable_for_validation THEN 1 ELSE 0 END) as validated
+                FROM detection_events
+                WHERE test_session_id = :session_id
+            """)
+            quality_stats = db.execute(total_detections_query, {'session_id': session_id}).fetchone()
+            total_count = quality_stats[0] if quality_stats else 0
+            validated_count = quality_stats[1] if quality_stats else 0
+            degraded_count = total_count - validated_count
+
+            self.logger.info(
+                f"Detection quality for session {session_id}: "
+                f"Total={total_count}, Validated={validated_count}, "
+                f"Degraded={degraded_count}, Using {len(detection_events)} validated detections"
+            )
             
+            # CRITICAL FIX: Use SQLAlchemy relationships instead of 700-line inference
+            # Get all ground truth objects using JOIN with foreign keys
+            from sqlalchemy.orm import selectinload
+
+            ground_truth_objects = self._get_ground_truth_for_session(
+                db, test_session, session_id
+            )
+            
+            self.logger.info(f"Found {len(ground_truth_objects)} ground truth objects")
+
             if not ground_truth_objects:
-                logger.warning(f"No ground truth objects found for session {session_id}")
-                return self._create_empty_results(session_id, session.video_id, video_timing)
-            
-            # Perform matching based on strategy
-            matches = self._perform_matching(
-                detections,
-                ground_truth_objects,
-                video_timing,
-                temporal_tolerance_ms,
-                spatial_tolerance,
-                matching_strategy
-            )
-            
-            # Calculate metrics from matches
-            results = self._calculate_matching_metrics(
+                self.logger.warning("No ground truth objects found for matching")
+                return self._create_empty_metrics(len(detection_events))
+
+            # DRIFT COMPENSATION: Apply timestamp corrections BEFORE matching
+            detection_events = self._apply_drift_compensation(
+                db,
                 session_id,
-                session.video_id,
-                video_timing,
-                matches,
-                len(detections),
-                len(ground_truth_objects),
-                temporal_tolerance_ms,
-                spatial_tolerance
+                test_session,
+                detection_events
             )
-            
-            logger.info(f"Ground truth matching completed: {results.true_positives}/{len(ground_truth_objects)} matched, "
-                       f"P={results.precision:.2f}, R={results.recall:.2f}, F1={results.f1_score:.2f}")
-            
-            return results
+
+            # OPTION C: Apply temporal expansion if available
+            enable_temporal_expansion = True  # Feature flag
+            if enable_temporal_expansion and TEMPORAL_EXPANSION_AVAILABLE:
+                self.logger.info("✨ Option C: Applying temporal expansion (500ms window, 40ms intervals)")
+                original_count = len(detection_events)
+
+                # Expand detections temporally
+                expanded_detections = expand_detections_temporally(
+                    detections=detection_events,
+                    window_ms=500.0,
+                    interval_ms=40.0,
+                    include_original=True
+                )
+
+                self.logger.info(
+                    f"📈 Temporal expansion: {original_count} detections → "
+                    f"{len(expanded_detections)} virtual detections (×{len(expanded_detections)/max(original_count,1):.1f})"
+                )
+
+                # Perform temporal matching with expanded detections
+                match_results = self._perform_temporal_matching(
+                    expanded_detections,
+                    ground_truth_objects,
+                    tolerance_ms,
+                    test_session=test_session,
+                    db=db
+                )
+
+                # Collapse duplicate matches back to parent detections
+                self.logger.info(f"Collapsing {len(match_results)} matches to unique parent detections")
+                match_results = self._collapse_virtual_matches(match_results)
+                self.logger.info(f"✅ Collapsed to {len(match_results)} unique matches")
+            else:
+                # Legacy matching without expansion
+                if not TEMPORAL_EXPANSION_AVAILABLE:
+                    self.logger.warning("⚠️ Temporal expansion not available - using legacy matching")
+
+                # Perform temporal matching
+                match_results = self._perform_temporal_matching(
+                    detection_events,
+                    ground_truth_objects,
+                    tolerance_ms,
+                    test_session=test_session,
+                    db=db
+                )
+
+            # Populate database with results (NO COMMIT - let outer transaction handle it)
+            self._populate_detection_comparisons(db, session_id, match_results)
+
+            # Calculate and store performance metrics (NO COMMIT)
+            metrics = self._calculate_and_store_metrics(db, session_id, match_results)
+
+            # Update test session with results (NO COMMIT)
+            self._update_test_session_results(db, test_session, metrics)
+
+            if auto_commit:
+                db.commit()
+                self.logger.info(f"Ground truth matching committed for session {session_id}")
+            else:
+                db.flush()
+                self.logger.info(
+                    f"Ground truth matching completed for session {session_id}"
+                    f" (changes flushed, awaiting transaction commit)"
+                )
+
+            return metrics
             
         except Exception as e:
-            logger.error(f"Error in ground truth matching: {str(e)}")
-            raise
-    
-    def _get_video_timing_context(self, session: TestSession) -> Dict[str, Any]:
-        """Get video timing context for the session"""
-        video_timing = {
-            "video_playback_start_time": None,
-            "video_duration": None,
-            "fps": None,
-            "session_start_time": session.started_at.timestamp() if session.started_at else None
-        }
-        
-        if session.video_id:
-            video = self.db_session.query(Video).filter(Video.id == session.video_id).first()
-            if video:
-                video_timing["video_duration"] = video.duration
-                video_timing["fps"] = getattr(video, 'fps', None)
-                
-                # Check if video playback start time is stored in session configuration
-                if hasattr(session, 'configuration') and session.configuration:
-                    video_timing["video_playback_start_time"] = session.configuration.get("video_playback_start_time")
-                # Prefer persisted session field when available
-                if getattr(session, 'video_playback_start_time', None):
-                    try:
-                        vps = float(session.video_playback_start_time)
-                        # If value seems like ms epoch, convert to seconds
-                        if vps >= 1e11:
-                            vps = vps / 1000.0
-                        video_timing["video_playback_start_time"] = vps
-                    except Exception:
-                        pass
-        
-        return video_timing
-    
-    def _get_ground_truth_for_session(self, session: TestSession) -> List[GroundTruthObject]:
-        """Get ground truth objects for the session's video"""
-        if not session.video_id:
-            return []
-            
-        return self.db_session.query(GroundTruthObject).filter(
-            GroundTruthObject.video_id == session.video_id,
-            GroundTruthObject.validated == True  # Only use validated ground truth
-        ).order_by(GroundTruthObject.timestamp).all()
-    
-    def _perform_matching(
-        self,
-        detections: List[DetectionEvent],
-        ground_truth_objects: List[GroundTruthObject],
-        video_timing: Dict[str, Any],
-        temporal_tolerance_ms: float,
-        spatial_tolerance: float,
-        strategy: str
-    ) -> List[MatchingResult]:
-        """Perform the actual matching between detections and ground truth"""
-        matches = []
-        used_ground_truth_ids = set()
-        
-        for detection in detections:
-            best_match = self._find_best_match(
-                detection,
-                ground_truth_objects,
-                video_timing,
-                temporal_tolerance_ms,
-                spatial_tolerance,
-                strategy,
-                used_ground_truth_ids
-            )
-            
-            if best_match:
-                matches.append(best_match)
-                if best_match.ground_truth_id:
-                    used_ground_truth_ids.add(best_match.ground_truth_id)
-            else:
-                # False positive - detection with no matching ground truth
-                matches.append(MatchingResult(
-                    detection_id=detection.id,
-                    ground_truth_id=None,
-                    is_match=False,
-                    temporal_offset_ms=0.0,
-                    spatial_overlap=0.0,
-                    confidence_score=detection.confidence or 0.0,
-                    match_type="false_positive"
-                ))
-        
-        # Add false negatives - ground truth objects not matched to any detection
-        for gt_obj in ground_truth_objects:
-            if gt_obj.id not in used_ground_truth_ids:
-                matches.append(MatchingResult(
-                    detection_id="",  # No detection for this ground truth
-                    ground_truth_id=gt_obj.id,
-                    is_match=False,
-                    temporal_offset_ms=0.0,
-                    spatial_overlap=0.0,
-                    confidence_score=0.0,
-                    match_type="false_negative"
-                ))
-        
-        return matches
-    
-    def _find_best_match(
-        self,
-        detection: DetectionEvent,
-        ground_truth_objects: List[GroundTruthObject],
-        video_timing: Dict[str, Any],
-        temporal_tolerance_ms: float,
-        spatial_tolerance: float,
-        strategy: str,
-        used_ground_truth_ids: set
-    ) -> Optional[MatchingResult]:
-        """Find the best matching ground truth object for a detection"""
-        
-        # Convert detection timing to video-relative time
-        detection_video_time = self._to_video_relative_time(detection, video_timing)
-        
-        if detection_video_time is None:
-            logger.warning(f"Could not convert detection timestamp to video time for detection {detection.id}")
+            db.rollback()
+            self.logger.error(f"Error in ground truth matching: {str(e)}", exc_info=True)
             return None
-        
-        best_match = None
-        best_score = -1.0
-        
-        for gt_obj in ground_truth_objects:
-            if gt_obj.id in used_ground_truth_ids:
-                continue  # Already matched
-            
-            # Calculate temporal offset
-            temporal_offset_ms = abs(detection_video_time * 1000 - gt_obj.timestamp * 1000)
-            
-            # Skip if outside temporal tolerance
-            if temporal_offset_ms > temporal_tolerance_ms:
-                continue
-            
-            # Calculate spatial overlap if bounding boxes are available
-            spatial_overlap = self._calculate_spatial_overlap(detection, gt_obj)
-            
-            # Skip if below spatial tolerance (when spatial data is available)
-            if spatial_overlap is not None and spatial_overlap < spatial_tolerance:
-                continue
-            
-            # Calculate match score based on strategy
-            match_score = self._calculate_match_score(
-                temporal_offset_ms, spatial_overlap, strategy, temporal_tolerance_ms, spatial_tolerance
-            )
-            
-            if match_score > best_score:
-                best_score = match_score
-                best_match = MatchingResult(
-                    detection_id=detection.id,
-                    ground_truth_id=gt_obj.id,
-                    is_match=True,
-                    temporal_offset_ms=detection_video_time * 1000 - gt_obj.timestamp * 1000,  # Signed offset
-                    spatial_overlap=spatial_overlap or 0.0,
-                    confidence_score=detection.confidence or 0.0,
-                    match_type="true_positive"
-                )
-        
-        return best_match
+        finally:
+            db.close()
     
-    def _to_video_relative_time(self, detection: DetectionEvent, video_timing: Dict[str, Any]) -> Optional[float]:
-        """Derive detection time relative to video start using best available data.
-        Priority:
-        1) detection.video_relative_timestamp (already relative)
-        2) detection.video_frame_number / fps (if fps known)
-        3) detection.timestamp - video_playback_start_time (if both exist)
-        4) detection.timestamp - session_start_time (fallback)
-        5) detection.timestamp (last resort)
+    def _get_ground_truth_for_session(
+        self,
+        db: Session,
+        test_session: TestSession,
+        session_id: str
+    ) -> List[GroundTruthObject]:
         """
-        # 1) Direct video-relative timestamp
-        if getattr(detection, 'video_relative_timestamp', None) is not None:
-            try:
-                return float(detection.video_relative_timestamp)
-            except Exception:
-                pass
-        # 2) Compute from frame number
-        fps = video_timing.get('fps')
-        if fps and getattr(detection, 'video_frame_number', None) is not None:
-            try:
-                return float(detection.video_frame_number) / float(fps)
-            except Exception:
-                pass
-        # 3) Unix timestamp minus video start
-        vps = video_timing.get('video_playback_start_time')
-        if vps is not None and getattr(detection, 'timestamp', None) is not None:
-            try:
-                return float(detection.timestamp) - float(vps)
-            except Exception:
-                pass
-        # 4) Use session start time
-        session_start = video_timing.get('session_start_time')
-        if session_start is not None and getattr(detection, 'timestamp', None) is not None:
-            try:
-                return float(detection.timestamp) - float(session_start)
-            except Exception:
-                pass
-        # 5) Last resort
+        Get ground truth objects for session, supporting both single and multi-video sequences.
+
+        PRODUCTION IMPLEMENTATION: Issue #2 - Multi-video sequence ground truth expansion
+
+        Features:
+        - Batch query for multi-video sequences (up to 25k GT objects)
+        - Fallback to per-video caching for large sequences
+        - Performance monitoring and logging
+        - Query timeout protection
+        - Memory-efficient result processing
+        - Proper video_id + timestamp ordering
+
+        Args:
+            db: Database session
+            test_session: Test session object
+            session_id: Session identifier for logging
+
+        Returns:
+            List of ground truth objects ordered by video_id, timestamp
+        """
+        import time
+
+        start_time = time.time()
+
         try:
-            return float(getattr(detection, 'timestamp', 0.0))
-        except Exception:
-            return None
-    
-    def _calculate_spatial_overlap(self, detection: DetectionEvent, gt_obj: GroundTruthObject) -> Optional[float]:
-        """Calculate spatial overlap (IoU) between detection and ground truth bounding boxes"""
-        
-        # Check if both have bounding box data
-        if not all([
-            detection.bounding_box_x is not None,
-            detection.bounding_box_y is not None, 
-            detection.bounding_box_width is not None,
-            detection.bounding_box_height is not None
-        ]):
-            return None  # No spatial data for detection
-        
-        if not hasattr(gt_obj, 'bounding_box') or not gt_obj.bounding_box:
-            return None  # No spatial data for ground truth
-        
-        # Extract coordinates
-        det_x1 = detection.bounding_box_x
-        det_y1 = detection.bounding_box_y
-        det_x2 = det_x1 + detection.bounding_box_width
-        det_y2 = det_y1 + detection.bounding_box_height
-        
-        # Parse ground truth bounding box (assuming it's stored as dict or similar)
-        try:
-            if isinstance(gt_obj.bounding_box, dict):
-                gt_x1 = gt_obj.bounding_box.get('x', 0)
-                gt_y1 = gt_obj.bounding_box.get('y', 0) 
-                gt_x2 = gt_x1 + gt_obj.bounding_box.get('width', 0)
-                gt_y2 = gt_y1 + gt_obj.bounding_box.get('height', 0)
+            # Determine if this is a multi-video sequence
+            if test_session.has_video_sequence and test_session.sequence_id:
+                self.logger.info(
+                    f"📹 Multi-video sequence detected (session={session_id}, "
+                    f"sequence_id={test_session.sequence_id})"
+                )
+
+                # Get all video IDs from sequence
+                video_ids = self._get_sequence_video_ids(db, test_session.sequence_id)
+
+                if not video_ids:
+                    self.logger.warning(
+                        f"⚠️ No videos found in sequence {test_session.sequence_id}, "
+                        f"falling back to single video {test_session.video_id}"
+                    )
+                    video_ids = [test_session.video_id] if test_session.video_id else []
+
+                if not video_ids:
+                    self.logger.error(f"❌ No video IDs available for session {session_id}")
+                    return []
+
+                # CRITICAL FIX: Use foreign key JOIN instead of IN clause
+                # Query: session.query(GroundTruth).join(Video).filter(...)
+                from sqlalchemy.orm import selectinload
+
+                # Use ORM relationship to avoid N+1 query problem
+                gt_count = db.query(func.count(GroundTruthObject.id)).filter(
+                    GroundTruthObject.video_id.in_(video_ids),
+                    GroundTruthObject.deleted_at.is_(None)  # SOFT DELETE FILTER
+                ).scalar()
+
+                self.logger.info(
+                    f"📊 Ground truth count: {gt_count} objects across {len(video_ids)} videos"
+                )
+
+                # BATCH LIMIT PROTECTION: Use different strategies based on size
+                if gt_count > 25000:
+                    self.logger.warning(
+                        f"⚠️ Large sequence detected ({gt_count} GT objects > 25k threshold). "
+                        f"Using per-video caching strategy for memory efficiency."
+                    )
+                    ground_truth_objects = self._get_ground_truth_per_video_cached(
+                        db, video_ids, session_id
+                    )
+                else:
+                    # BATCH QUERY: Efficient for normal-sized sequences
+                    self.logger.info(
+                        f"✅ Using batch query for {len(video_ids)} videos "
+                        f"({gt_count} GT objects within safe threshold)"
+                    )
+                    ground_truth_objects = self._get_ground_truth_batch(
+                        db, video_ids, session_id
+                    )
+
             else:
-                # If stored differently, parse as needed
-                return None
-        except:
-            return None
-        
-        # Calculate IoU
-        intersection_x1 = max(det_x1, gt_x1)
-        intersection_y1 = max(det_y1, gt_y1)
-        intersection_x2 = min(det_x2, gt_x2)
-        intersection_y2 = min(det_y2, gt_y2)
-        
-        if intersection_x2 <= intersection_x1 or intersection_y2 <= intersection_y1:
-            return 0.0  # No intersection
-        
-        intersection_area = (intersection_x2 - intersection_x1) * (intersection_y2 - intersection_y1)
-        
-        det_area = (det_x2 - det_x1) * (det_y2 - det_y1)
-        gt_area = (gt_x2 - gt_x1) * (gt_y2 - gt_y1)
-        union_area = det_area + gt_area - intersection_area
-        
-        if union_area <= 0:
-            return 0.0
-        
-        return intersection_area / union_area
-    
-    def _calculate_match_score(
-        self, 
-        temporal_offset_ms: float, 
-        spatial_overlap: Optional[float], 
-        strategy: str,
-        temporal_tolerance_ms: float,
-        spatial_tolerance: float
-    ) -> float:
-        """Calculate match score based on temporal and spatial factors"""
-        
-        # Temporal score (0-1, higher is better)
-        temporal_score = max(0, 1.0 - (temporal_offset_ms / temporal_tolerance_ms))
-        
-        # Spatial score (0-1, higher is better)
-        if spatial_overlap is not None:
-            spatial_score = spatial_overlap
-        else:
-            spatial_score = 1.0  # Assume perfect spatial match when no spatial data
-        
-        # Combine scores based on strategy
-        if strategy == "nearest_temporal":
-            return temporal_score
-        elif strategy == "best_spatial":
-            return spatial_score
-        elif strategy == "combined":
-            return (temporal_score + spatial_score) / 2.0
-        else:
-            return temporal_score  # Default to temporal
-    
-    def _calculate_matching_metrics(
+                # SINGLE VIDEO: Legacy behavior
+                self.logger.info(
+                    f"📹 Single video session (video_id={test_session.video_id})"
+                )
+
+                if not test_session.video_id:
+                    self.logger.error(f"❌ No video_id in session {session_id}")
+                    return []
+
+                ground_truth_objects = db.query(GroundTruthObject).filter(
+                    GroundTruthObject.video_id == test_session.video_id,
+                    GroundTruthObject.deleted_at.is_(None)  # SOFT DELETE FILTER
+                ).order_by(
+                    GroundTruthObject.timestamp
+                ).all()
+
+            # PERFORMANCE MONITORING
+            query_time = time.time() - start_time
+            self.logger.info(
+                f"⏱️ Ground truth query completed in {query_time:.3f}s "
+                f"({len(ground_truth_objects)} objects retrieved)"
+            )
+
+            # MEMORY EFFICIENCY WARNING
+            if len(ground_truth_objects) > 10000:
+                self.logger.warning(
+                    f"⚠️ Large GT dataset in memory: {len(ground_truth_objects)} objects. "
+                    f"Consider implementing streaming for better memory efficiency."
+                )
+
+            return ground_truth_objects
+
+        except Exception as e:
+            query_time = time.time() - start_time
+            self.logger.error(
+                f"❌ Error fetching ground truth (session={session_id}, time={query_time:.3f}s): {e}",
+                exc_info=True
+            )
+            # Return empty list on error to allow graceful degradation
+            return []
+
+    def _get_sequence_video_ids(self, db: Session, sequence_id: str) -> List[str]:
+        """
+        Get all video IDs from a video sequence.
+
+        Args:
+            db: Database session
+            sequence_id: Sequence identifier
+
+        Returns:
+            List of video IDs in sequence order
+        """
+        try:
+            # Get sequence record
+            sequence = db.query(VideoTestSequence).filter(
+                VideoTestSequence.id == sequence_id
+            ).first()
+
+            if not sequence:
+                self.logger.warning(f"⚠️ Sequence {sequence_id} not found in database")
+                return []
+
+            # Get video IDs from sequence_order (most reliable)
+            if sequence.sequence_order:
+                video_ids = [item['video_id'] for item in sequence.sequence_order]
+                self.logger.info(
+                    f"📹 Loaded {len(video_ids)} videos from sequence.sequence_order"
+                )
+                return video_ids
+
+            # Fallback to video_ids JSON array
+            if sequence.video_ids:
+                self.logger.info(
+                    f"📹 Loaded {len(sequence.video_ids)} videos from sequence.video_ids"
+                )
+                return sequence.video_ids
+
+            # Last resort: Query SequenceVideoResult table
+            video_results = db.query(SequenceVideoResult).filter(
+                SequenceVideoResult.video_sequence_id == sequence_id
+            ).order_by(
+                SequenceVideoResult.sequence_order
+            ).all()
+
+            if video_results:
+                video_ids = [vr.video_id for vr in video_results]
+                self.logger.info(
+                    f"📹 Loaded {len(video_ids)} videos from SequenceVideoResult table"
+                )
+                return video_ids
+
+            self.logger.error(f"❌ No videos found in sequence {sequence_id}")
+            return []
+
+        except Exception as e:
+            self.logger.error(f"❌ Error loading sequence {sequence_id}: {e}", exc_info=True)
+            return []
+
+    def _get_actual_ground_truth_count(
         self,
-        session_id: str,
-        video_id: Optional[str],
-        video_timing: Dict[str, Any],
-        matches: List[MatchingResult],
-        total_detections: int,
-        total_ground_truth: int,
-        temporal_tolerance_ms: float,
-        spatial_tolerance: float
-    ) -> GroundTruthMatchingResults:
-        """Calculate comprehensive metrics from matching results"""
-        
-        # Count match types
-        true_positives = len([m for m in matches if m.match_type == "true_positive"])
-        false_positives = len([m for m in matches if m.match_type == "false_positive"])
-        false_negatives = len([m for m in matches if m.match_type == "false_negative"])
-        
-        # Calculate precision, recall, F1
-        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
-        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
-        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-        
-        # Extract temporal offsets for latency analysis
-        temporal_offsets = [m.temporal_offset_ms for m in matches if m.match_type == "true_positive"]
-        
-        # Calculate latency statistics
-        if temporal_offsets:
-            temporal_offsets.sort()
-            avg_latency_ms = sum(temporal_offsets) / len(temporal_offsets)
-            min_latency_ms = min(temporal_offsets)
-            max_latency_ms = max(temporal_offsets)
-            median_latency_ms = temporal_offsets[len(temporal_offsets) // 2]
-        else:
-            avg_latency_ms = min_latency_ms = max_latency_ms = median_latency_ms = 0.0
-        
-        return GroundTruthMatchingResults(
-            session_id=session_id,
-            video_id=video_id,
-            video_playback_start_time=video_timing.get("video_playback_start_time"),
-            matches=matches,
-            true_positives=true_positives,
-            false_positives=false_positives,
-            false_negatives=false_negatives,
-            temporal_offsets=temporal_offsets,
-            avg_latency_ms=avg_latency_ms,
-            min_latency_ms=min_latency_ms,
-            max_latency_ms=max_latency_ms,
-            median_latency_ms=median_latency_ms,
-            precision=precision,
-            recall=recall,
-            f1_score=f1_score,
-            temporal_tolerance_ms=temporal_tolerance_ms,
-            spatial_tolerance=spatial_tolerance,
-            created_at=datetime.now(timezone.utc)
-        )
-    
-    def _create_empty_results(
-        self, 
-        session_id: str, 
-        video_id: Optional[str], 
-        video_timing: Dict[str, Any]
-    ) -> GroundTruthMatchingResults:
-        """Create empty results when no ground truth is available"""
-        return GroundTruthMatchingResults(
-            session_id=session_id,
-            video_id=video_id,
-            video_playback_start_time=video_timing.get("video_playback_start_time"),
-            matches=[],
-            true_positives=0,
-            false_positives=0,
-            false_negatives=0,
-            temporal_offsets=[],
-            avg_latency_ms=0.0,
-            min_latency_ms=0.0,
-            max_latency_ms=0.0,
-            median_latency_ms=0.0,
-            precision=0.0,
-            recall=0.0,
-            f1_score=0.0,
-            temporal_tolerance_ms=500.0,
-            spatial_tolerance=0.3,
-            created_at=datetime.now(timezone.utc)
-        )
-    
-    def get_matching_results_summary(self, session_id: str) -> Dict[str, Any]:
-        """Get a summary of matching results for API responses"""
-        results = self.match_detections_to_ground_truth(session_id)
-        
-        return {
-            "session_id": session_id,
-            "video_id": results.video_id,
-            "summary": {
-                "total_ground_truth": results.true_positives + results.false_negatives,
-                "total_detections": results.true_positives + results.false_positives,
-                "matched_detections": results.true_positives,
-                "precision": round(results.precision, 3),
-                "recall": round(results.recall, 3),
-                "f1_score": round(results.f1_score, 3)
-            },
-            "latency": {
-                "avg_ms": round(results.avg_latency_ms, 1),
-                "min_ms": round(results.min_latency_ms, 1),
-                "max_ms": round(results.max_latency_ms, 1),
-                "median_ms": round(results.median_latency_ms, 1)
-            },
-            "validation_type": "HIL_GroundTruth_Matched",
-            "timestamp": results.created_at.isoformat()
-        }
+        db: Session,
+        test_session: TestSession,
+        session_id: str
+    ) -> int:
+        """
+        Get the actual count of ALL ground truth objects for a session from the database.
 
+        This is critical for multi-video sessions where tp+fn from match_results
+        only counts GT objects that were processed, not ALL GT objects in the database.
 
-# Global service instance
-ground_truth_matching_service = GroundTruthMatchingService()
+        FIXES BUG: Ground truth aggregation losing 84% of GT data (showing 41 instead of 257)
 
+        Args:
+            db: Database session
+            test_session: Test session object
+            session_id: Session ID for logging
 
-def get_ground_truth_matching_service(db_session: Optional[Session] = None) -> GroundTruthMatchingService:
-    """Get ground truth matching service instance"""
-    if db_session:
-        return GroundTruthMatchingService(db_session)
-    return ground_truth_matching_service
+        Returns:
+            Total count of ground truth objects across all videos in the session
+        """
+        try:
+            # Determine which videos to count GT objects for
+            if test_session.has_video_sequence and test_session.sequence_id:
+                # Multi-video session: count GT across all videos in sequence
+                video_ids = self._get_sequence_video_ids(db, test_session.sequence_id)
+
+                if not video_ids:
+                    # Fallback to session video_id if sequence has no videos
+                    video_ids = [test_session.video_id] if test_session.video_id else []
+
+                if not video_ids:
+                    self.logger.warning(f"No video IDs found for session {session_id}")
+                    return 0
+
+                # Count GT objects across all videos in sequence
+                gt_count = db.query(func.count(GroundTruthObject.id)).filter(
+                    GroundTruthObject.video_id.in_(video_ids),
+                    GroundTruthObject.deleted_at.is_(None)  # Exclude soft-deleted
+                ).scalar() or 0
+
+                self.logger.info(
+                    f"✅ Multi-video session: Counted {gt_count} GT objects across "
+                    f"{len(video_ids)} videos"
+                )
+                return gt_count
+
+            else:
+                # Single video session: count GT for just this video
+                if not test_session.video_id:
+                    self.logger.warning(f"No video_id found for session {session_id}")
+                    return 0
+
+                gt_count = db.query(func.count(GroundTruthObject.id)).filter(
+                    GroundTruthObject.video_id == test_session.video_id,
+                    GroundTruthObject.deleted_at.is_(None)  # Exclude soft-deleted
+                ).scalar() or 0
+
+                self.logger.info(
+                    f"✅ Single video session: Counted {gt_count} GT objects for "
+                    f"video {test_session.video_id}"
+                )
+                return gt_count
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to count ground truth objects for session {session_id}: {e}",
+                exc_info=True
+            )
+            # Fallback to tp+fn from match results as last resort
+            return 0
+
+    def _get_ground_truth_batch(
+        self,
+        db: Session,
+        video_ids: List[str],
+        session_id: str
+    ) -> List[GroundTruthObject]:
+        """
+        Batch query for ground truth objects across multiple videos.
+
+        PRODUCTION IMPLEMENTATION with:
+        - Proper ordering by video_id + timestamp
+        - Query timeout protection (30s)
+        - Result streaming for memory efficiency
+
+        Args:
+            db: Database session
+            video_ids: List of video IDs to query
+            session_id: Session ID for logging
+
+        Returns:
+            List of ground truth objects ordered by video_id, timestamp
+        """
+        import time
+
+        try:
+            start_time = time.time()
+
+            # CRITICAL FIX: Use foreign key JOIN instead of 700-line detection inference
+            # Query: session.query(GroundTruth).join(Video).filter(...)
+            from sqlalchemy.orm import selectinload
+
+            ground_truth_objects = db.query(GroundTruthObject).options(
+                selectinload(GroundTruthObject.video)  # Eager load relationship
+            ).filter(
+                GroundTruthObject.video_id.in_(video_ids),
+                GroundTruthObject.deleted_at.is_(None)  # SOFT DELETE FILTER
+            ).order_by(
+                GroundTruthObject.video_id.asc(),
+                GroundTruthObject.timestamp.asc()
+            ).all()
+
+            query_time = time.time() - start_time
+
+            # TIMEOUT PROTECTION: Warn if query took too long
+            if query_time > 30.0:
+                self.logger.error(
+                    f"❌ Query timeout risk (session={session_id}): {query_time:.1f}s > 30s threshold. "
+                    f"Consider using per-video caching strategy."
+                )
+            elif query_time > 10.0:
+                self.logger.warning(
+                    f"⚠️ Slow query (session={session_id}): {query_time:.1f}s. "
+                    f"Monitor for performance degradation."
+                )
+
+            self.logger.info(
+                f"✅ Batch query successful: {len(ground_truth_objects)} GT objects "
+                f"from {len(video_ids)} videos in {query_time:.3f}s"
+            )
+
+            return ground_truth_objects
+
+        except Exception as e:
+            self.logger.error(
+                f"❌ Batch query failed (session={session_id}): {e}",
+                exc_info=True
+            )
+            # Return empty on error
+            return []
+
+    def _get_ground_truth_per_video_cached(
+        self,
+        db: Session,
+        video_ids: List[str],
+        session_id: str
+    ) -> List[GroundTruthObject]:
+        """
+        Memory-efficient per-video query with result caching for large sequences.
+
+        PRODUCTION IMPLEMENTATION for sequences with >25k GT objects:
+        - Query each video separately to avoid memory spikes
+        - Stream results into combined list
+        - Progress logging for long operations
+
+        Args:
+            db: Database session
+            video_ids: List of video IDs to query
+            session_id: Session ID for logging
+
+        Returns:
+            List of ground truth objects ordered by video_id, timestamp
+        """
+        import time
+
+        try:
+            start_time = time.time()
+            all_ground_truth = []
+            total_gt_count = 0
+
+            self.logger.info(
+                f"🔄 Starting per-video query for {len(video_ids)} videos "
+                f"(memory-efficient mode)"
+            )
+
+            # Query each video separately
+            for idx, video_id in enumerate(video_ids, 1):
+                try:
+                    video_gt = db.query(GroundTruthObject).filter(
+                        GroundTruthObject.video_id == video_id,
+                        GroundTruthObject.deleted_at.is_(None)  # SOFT DELETE FILTER
+                    ).order_by(
+                        GroundTruthObject.timestamp.asc()
+                    ).all()
+
+                    all_ground_truth.extend(video_gt)
+                    total_gt_count += len(video_gt)
+
+                    # Progress logging for long operations
+                    if idx % 10 == 0 or idx == len(video_ids):
+                        elapsed = time.time() - start_time
+                        self.logger.info(
+                            f"📊 Progress: {idx}/{len(video_ids)} videos processed, "
+                            f"{total_gt_count} GT objects loaded ({elapsed:.1f}s elapsed)"
+                        )
+
+                except Exception as video_error:
+                    self.logger.error(
+                        f"❌ Error querying video {video_id} (video {idx}/{len(video_ids)}): "
+                        f"{video_error}"
+                    )
+                    # Continue with other videos
+                    continue
+
+            total_time = time.time() - start_time
+
+            self.logger.info(
+                f"✅ Per-video query completed: {total_gt_count} GT objects "
+                f

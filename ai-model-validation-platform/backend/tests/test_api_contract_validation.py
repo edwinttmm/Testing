@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 from typing import Dict, Any, List
 
 from main import app
-from services.labjack_service import ConnectionMode, ConnectionStatus
+from services.labjack_service_manager import ConnectionMode, ConnectionStatus
 
 
 class APIContractValidator:

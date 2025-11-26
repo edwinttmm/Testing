@@ -47,10 +47,60 @@ labjack_service = LabJackService()
 timing_calculator = get_timing_synchronization_calculator()
 
 
+def _get_single_authoritative_latency(detection_event, corrected_result) -> Optional[float]:
+    """
+    Return ONE authoritative latency value per detection.
+
+    Eliminates duplicate latency entries by selecting the most accurate value
+    with the following priority:
+
+    1. Timing calculator result (most accurate - from corrected_result.detection_latency_ms)
+    2. Stored latency if valid (< 10000ms, indicating real measurement)
+    3. Calculated from timestamps if available
+    4. None (don't use placeholder values like 10000ms)
+
+    Args:
+        detection_event: DetectionEvent database object
+        corrected_result: CorrectedResult from timing synchronization calculator
+
+    Returns:
+        Single float latency value in milliseconds, or None
+    """
+    def to_float(value):
+        """Safe float conversion"""
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    # Priority 1: Use timing calculator result (most accurate)
+    if corrected_result and hasattr(corrected_result, 'detection_latency_ms'):
+        latency = to_float(getattr(corrected_result, 'detection_latency_ms', None))
+        if latency is not None:
+            return latency
+
+    # Priority 2: Use stored latency (if not FP marker)
+    if hasattr(detection_event, 'actual_latency_ms'):
+        latency = to_float(getattr(detection_event, 'actual_latency_ms', None))
+        if latency is not None and latency < 10000:  # 10000ms is FP marker
+            return latency
+
+    # Priority 3: Calculate from timestamps if available
+    if (hasattr(detection_event, 'video_relative_timestamp') and
+        hasattr(detection_event, 'matched_gt_time')):
+        det_time = to_float(getattr(detection_event, 'video_relative_timestamp', None))
+        gt_time = to_float(getattr(detection_event, 'matched_gt_time', None))
+        if det_time is not None and gt_time is not None:
+            return abs(det_time - gt_time) * 1000.0
+
+    # Priority 4: Return None (don't use placeholder values)
+    return None
+
+
 def _calculate_frame_timing_variance_ms(detection_event, ground_truth_events, video_fps, corrected_result=None):
     """
     Calculate actual frame timing variance - how well detection aligns with frame boundaries.
-    
+
     This measures |detection_time - expected_frame_time| rather than timing synchronization correction.
     """
     def to_float(value):
@@ -145,7 +195,8 @@ def _calculate_enhanced_confidence_score(corrected_result) -> float:
         processing_match_bonus = 0.1 if getattr(corrected_result, 'matches_processing_time', False) else 0.0
         
         # Factor in real latency reasonableness (50-350ms is good range)
-        real_latency = to_float(getattr(corrected_result, 'real_latency_ms', None)) or 0
+        # BUG #3 refactor: Field renamed from real_latency_ms to detection_latency_ms
+        real_latency = to_float(getattr(corrected_result, 'detection_latency_ms', None)) or 0
         latency_bonus = 0.1 if 50 <= real_latency <= 350 else 0.0
         
         # Weighted combination: 40% base, 30% decomposition, 30% other factors
@@ -271,7 +322,7 @@ async def get_corrected_hil_results(
         detection_events_query = db.query(DetectionEvent).options(
             selectinload(DetectionEvent.video),
             selectinload(DetectionEvent.ground_truth_match),
-            joinedload(DetectionEvent.test_session)
+            selectinload(DetectionEvent.test_session)
         ).filter(DetectionEvent.test_session_id == session_id)
 
         # Add video_id filter if provided (for multi-video sequences)
@@ -311,18 +362,16 @@ async def get_corrected_hil_results(
                 missing_video_ids
             )
         
-        # Calculate video startup delay from timing data - REQUIRE REAL MEASUREMENTS
-        if not session_result.video_playback_start_time or not session_result.started_at:
-            logger.error(f"Missing required timing data for session {session_id}")
-            return {
-                "error": "Missing timing synchronization data",
-                "message": "Cannot calculate corrected latencies without accurate video timing measurements",
-                "required_fields": ["video_playback_start_time", "started_at"],
-                "session_data": {
-                    "video_playback_start_time": session_result.video_playback_start_time,
-                    "started_at": session_result.started_at
-                }
-            }
+        # Calculate video startup delay from timing data - FALLBACK TO RAW DATA IF MISSING
+        timing_data_available = bool(session_result.video_playback_start_time and session_result.started_at)
+
+        if not timing_data_available:
+            logger.warning(
+                f"Missing timing synchronization data for session {session_id}. "
+                f"video_playback_start_time={session_result.video_playback_start_time}, "
+                f"started_at={session_result.started_at}. "
+                f"Returning raw detection data without corrected latencies."
+            )
         
         # Helper converters for robust typing
         def to_datetime(val):
@@ -399,86 +448,79 @@ async def get_corrected_hil_results(
 
         started_dt = to_datetime(getattr(session_result, 'started_at', None))
         vps = to_float(getattr(session_result, 'video_playback_start_time', None))
+
+        # FIX: Don't return error - just mark timing as unavailable and use raw detection data
         if not started_dt or vps is None:
-            logger.error(f"Missing required timing data for session {session_id} (started_at or video_playback_start_time)")
-            return {
-                "error": "Missing timing synchronization data",
-                "message": "Cannot calculate corrected latencies without accurate video timing measurements",
-                "required_fields": ["video_playback_start_time", "started_at"],
-                "session_data": {
-                    "video_playback_start_time": getattr(session_result, 'video_playback_start_time', None),
-                    "started_at": getattr(session_result, 'started_at', None)
-                }
-            }
+            logger.warning(f"Timing synchronization data unavailable for session {session_id} (started_at={started_dt}, video_playback_start_time={vps}). Using raw detection data.")
+            timing_data_available = False
+            video_startup_delay_ms = 0.0  # No correction applied
+            started_timestamp = None
+            vps_seconds = None
+        else:
+            started_timestamp = started_dt.timestamp()
+            vps_seconds = vps
 
         # MULTI-VIDEO SEQUENCE SUPPORT: Load per-video timing if video_id provided
         from models import SequenceVideoResult
 
-        # Enhanced video timing calculation with per-video support
-        started_timestamp = started_dt.timestamp()
-        vps_seconds = vps
-
         # Initialize sequence_video_result to None (may be populated if video_id provided)
         sequence_video_result = None
 
-        # Load per-video timing if video_id parameter provided
-        if video_id:
-            sequence_video_result = db.query(SequenceVideoResult).filter(
-                SequenceVideoResult.video_id == video_id
-            ).first()
+        # Only process timing calculations if timing data is available
+        if timing_data_available and started_timestamp is not None and vps_seconds is not None:
+            # Load per-video timing if video_id parameter provided
+            if video_id:
+                sequence_video_result = db.query(SequenceVideoResult).filter(
+                    SequenceVideoResult.video_id == video_id
+                ).first()
 
-            if sequence_video_result and sequence_video_result.video_start_time:
-                # Use video-specific timing from SequenceVideoResult
-                video_startup_delay_ms = sequence_video_result.video_play_offset_ms or 0.0
-                vps_seconds = sequence_video_result.video_start_time
+                if sequence_video_result and sequence_video_result.video_start_time:
+                    # Use video-specific timing from SequenceVideoResult
+                    video_startup_delay_ms = sequence_video_result.video_play_offset_ms or 0.0
+                    vps_seconds = sequence_video_result.video_start_time
 
-                logger.info(f"Using per-video timing for video {video_id}: "
-                           f"video_play_offset_ms={video_startup_delay_ms:.1f}ms, "
-                           f"video_start_time={vps_seconds}")
-            else:
-                logger.warning(f"No SequenceVideoResult found for video {video_id}, using session-level timing")
+                    logger.info(f"Using per-video timing for video {video_id}: "
+                               f"video_play_offset_ms={video_startup_delay_ms:.1f}ms, "
+                               f"video_start_time={vps_seconds}")
+                else:
+                    logger.warning(f"No SequenceVideoResult found for video {video_id}, using session-level timing")
 
-        # Convert milliseconds to seconds if needed
-        if vps_seconds and vps_seconds >= 1e11:  # likely ms epoch
-            vps_seconds = vps_seconds / 1000.0
-            logger.info(f"Converted video_playback_start_time from milliseconds: {vps} -> {vps_seconds}")
+            # Convert milliseconds to seconds if needed
+            if vps_seconds and vps_seconds >= 1e11:  # likely ms epoch
+                vps_seconds = vps_seconds / 1000.0
+                logger.info(f"Converted video_playback_start_time from milliseconds: {vps} -> {vps_seconds}")
 
-        # Compute raw delta and validate (only if not using per-video timing)
-        if not (video_id and sequence_video_result):
-            raw_delta = (vps_seconds - started_timestamp) if (vps_seconds is not None) else None
-            if raw_delta is None:
-                logger.error(f"Missing video_playback_start_time for session {session_id}")
-                return {
-                    "error": "Missing timing synchronization data",
-                    "message": "video_playback_start_time is required",
-                    "required_fields": ["video_playback_start_time", "started_at"],
-                    "session_data": {
-                        "video_playback_start_time": getattr(session_result, 'video_playback_start_time', None),
-                        "started_at": getattr(session_result, 'started_at', None)
-                    }
-                }
+            # Compute raw delta and validate (only if not using per-video timing)
+            if not (video_id and sequence_video_result):
+                raw_delta = (vps_seconds - started_timestamp) if (vps_seconds is not None and started_timestamp is not None) else None
+                if raw_delta is None:
+                    logger.warning(f"Could not calculate timing delta for session {session_id}, using raw detection data")
+                    video_startup_delay_ms = 0.0
+                else:
+                    # Enhanced delta validation and correction
+                    abs_delta = abs(raw_delta)
 
-            # Enhanced delta validation and correction
-            abs_delta = abs(raw_delta)
+                    # Check for common timezone offsets
+                    if abs(raw_delta - 3600.0) < 120.0:  # ~1 hour offset
+                        logger.warning(f"Correcting 1h timezone offset for session {session_id} (delta={raw_delta:.2f}s)")
+                        vps_seconds = vps_seconds - 3600.0
+                        raw_delta = vps_seconds - started_timestamp
+                    elif abs(raw_delta + 3600.0) < 120.0:  # ~-1 hour offset
+                        logger.warning(f"Correcting -1h timezone offset for session {session_id} (delta={raw_delta:.2f}s)")
+                        vps_seconds = vps_seconds + 3600.0
+                        raw_delta = vps_seconds - started_timestamp
 
-            # Check for common timezone offsets
-            if abs(raw_delta - 3600.0) < 120.0:  # ~1 hour offset
-                logger.warning(f"Correcting 1h timezone offset for session {session_id} (delta={raw_delta:.2f}s)")
-                vps_seconds = vps_seconds - 3600.0
-                raw_delta = vps_seconds - started_timestamp
-            elif abs(raw_delta + 3600.0) < 120.0:  # ~-1 hour offset
-                logger.warning(f"Correcting -1h timezone offset for session {session_id} (delta={raw_delta:.2f}s)")
-                vps_seconds = vps_seconds + 3600.0
-                raw_delta = vps_seconds - started_timestamp
-
-            # If delta is still unreasonable (> 10 minutes for a short video), use fallback
-            if abs(raw_delta) > 600.0:  # > 10 minutes
-                logger.error(f"Unreasonable timing delta: {raw_delta:.2f}s for session {session_id}")
-                logger.warning(f"Using fallback startup delay estimate")
-                # Use a reasonable default based on typical video startup times (1-5 seconds)
-                video_startup_delay_ms = 2000.0  # 2 second default
-            else:
-                video_startup_delay_ms = raw_delta * 1000.0
+                    # If delta is still unreasonable (> 10 minutes for a short video), use fallback
+                    if abs(raw_delta) > 600.0:  # > 10 minutes
+                        logger.error(f"Unreasonable timing delta: {raw_delta:.2f}s for session {session_id}")
+                        logger.warning(f"Using fallback startup delay estimate")
+                        # Use a reasonable default based on typical video startup times (1-5 seconds)
+                        video_startup_delay_ms = 2000.0  # 2 second default
+                    else:
+                        video_startup_delay_ms = raw_delta * 1000.0
+        else:
+            # No timing data available - use raw detection timestamps
+            video_startup_delay_ms = 0.0
 
         logger.info(f"Calculated video startup delay: {video_startup_delay_ms:.1f}ms for session {session_id}")
         
@@ -512,7 +554,16 @@ async def get_corrected_hil_results(
                 logger.warning(f"🔍 DEBUG: First event video_relative_timestamp = {video_relative_timestamp}, video_frame_number = {video_frame_number}")
                 logger.warning(f"🔍 DEBUG: hasattr video_relative_timestamp = {hasattr(event, 'video_relative_timestamp')}")
                 logger.warning(f"🔍 DEBUG: hasattr video_frame_number = {hasattr(event, 'video_frame_number')}")
+                logger.warning(f"🔍 DEBUG: First event video_start_time = {getattr(event, 'video_start_time', 'NOT_FOUND')}")
             
+            # FIX: Calculate video_start_time if not stored in database
+            # video_start_time = detection_timestamp - video_relative_timestamp
+            stored_video_start_time = getattr(event, 'video_start_time', None)
+            if stored_video_start_time is None and timestamp is not None and video_relative_timestamp is not None:
+                # Calculate from existing data: video_start = trigger_time - video_relative_time
+                stored_video_start_time = timestamp - video_relative_timestamp
+                logger.debug(f"🔧 Derived video_start_time for {event.id}: {stored_video_start_time:.6f}")
+
             detection_events.append({
                 'id': event.id,
                 'timestamp': timestamp,
@@ -525,7 +576,12 @@ async def get_corrected_hil_results(
                 'processing_time_ms': event.processing_time_ms,
                 'voltage_level': event.voltage_level or event.labjack_voltage,
                 # BUG FIX: Add video_id so frontend can display video name instead of "Unknown"
-                'video_id': getattr(event, 'video_id', None)
+                'video_id': getattr(event, 'video_id', None),
+                'usable_for_validation': getattr(event, 'usable_for_validation', True),
+                'timing_degraded': getattr(event, 'timing_degraded', False),
+                'timing_sync_quality': getattr(event, 'timing_sync_quality', None),
+                # FIX: Include video_start_time for timing calculator latency calculation
+                'video_start_time': float(stored_video_start_time) if stored_video_start_time is not None else None
             })
 
         # BUG #8 FIX: Load REAL ground truth events for ALL videos in multi-video sequence
@@ -790,8 +846,9 @@ async def get_corrected_hil_results(
                         db_event.video_frame_number = corrected_result.video_frame_number
 
                     # Also update actual_latency_ms with corrected value
-                    if hasattr(corrected_result, 'real_latency_ms'):
-                        db_event.actual_latency_ms = corrected_result.real_latency_ms
+                    # BUG #3 refactor: Field renamed from real_latency_ms to detection_latency_ms
+                    if hasattr(corrected_result, 'detection_latency_ms'):
+                        db_event.actual_latency_ms = corrected_result.detection_latency_ms
 
             # Commit all updates in batch
             db.commit()
@@ -804,14 +861,24 @@ async def get_corrected_hil_results(
 
         # Build enhanced detection event results
         enhanced_detection_events = []
-        
+        # FIX #6: Track processed event IDs to prevent duplicates from multiple GT matches
+        processed_event_ids = set()
+
         # Handle case where we have detection events but no corrected results (no ground truth matches)
         if len(corrected_results) == 0 and len(detection_events_result) > 0:
             logger.warning(f"No corrected results available for session {session_id} - using fallback timing data")
             # Create fallback results for each detection event using the timing data we have
             for i, original_event in enumerate(detection_events_result):
+                # FIX #6: Skip if we've already processed this event_id
+                if original_event.id in processed_event_ids:
+                    logger.debug(f"Skipping duplicate event_id {original_event.id} in fallback path")
+                    continue
+                processed_event_ids.add(original_event.id)
                 
                 # Use the processing time and timestamp data we have, even without ground truth correlation
+                # Get single authoritative latency
+                single_latency_ms = _get_single_authoritative_latency(original_event, None)
+
                 enhanced_detection_events.append({
                     "event_id": original_event.id,
                     "video_id": str(original_event.video_id) if original_event.video_id else None,
@@ -834,17 +901,10 @@ async def get_corrected_hil_results(
                             else str(original_event.labjack_timestamp)
                         )
                     ),
-                    
-                    # Use raw measured data as both original and corrected (best we can do without ground truth)
-                    "original_latency": {
-                        "apparent_latency_ms": round(to_float(getattr(original_event, 'actual_latency_ms', 0)) or 0, 3),
-                        "description": "Raw detection latency (no ground truth available for correction)"
-                    },
-                    
-                    "corrected_latency": {
-                        "real_latency_ms": round(to_float(getattr(original_event, 'actual_latency_ms', 0)) or 0, 3),
-                        "description": "Same as apparent latency (no ground truth available for timing correction)"
-                    },
+
+                    # SINGLE LATENCY VALUE - no duplicates
+                    "latency_ms": round(single_latency_ms, 3) if single_latency_ms is not None else None,
+                    "latency_source": "raw_measurement_no_ground_truth",
                     
                     # MEASURED COMPONENTS - Use what we actually have
                     "measured_breakdown": {
@@ -875,23 +935,54 @@ async def get_corrected_hil_results(
                     },
                     
                     # Hardware data
+                    "usable_for_validation": bool(getattr(original_event, 'usable_for_validation', True)),
+                    "timing_degraded": bool(getattr(original_event, 'timing_degraded', False)),
+                    "timing_quality": getattr(original_event, 'timing_sync_quality', None),
                     "voltage_level": original_event.voltage_level or original_event.labjack_voltage or 0.0,
                     "channel": original_event.detection_channel or "AIN0",
                     "validation_result": original_event.validation_result,
                     
-                    # Pass/fail determination (use raw latency)
-                    # Fix: Ensure 0.0ms latency (perfect alignment) is treated as PASS
-                    "result": "pass" if (to_float(getattr(original_event, 'actual_latency_ms', 0)) <= (session_result.tolerance_ms or 100)) else "fail",
+                    # Pass/fail determination using single latency value
+                    # FIX #3: Treat 0ms/None as "no_match" (missing GT), not instant detection
+                    "result": (
+                        "pass" if (single_latency_ms is not None and single_latency_ms > 0 and single_latency_ms <= (session_result.tolerance_ms or 100))
+                        else "no_match" if (single_latency_ms is None or single_latency_ms == 0)
+                        else "fail"
+                    ),
                     "threshold_ms": session_result.tolerance_ms or 100,
+                    "match_type": getattr(original_event, 'match_type', 'unknown'),
                     "session_id": original_event.test_session_id
                 })
         else:
             # Normal case: we have corrected results
-            for i, (original_event, corrected_result) in enumerate(zip(detection_events_result, corrected_results)):
-                # Skip if corrected_result is None or has None real_latency_ms
-                if corrected_result is None or not hasattr(corrected_result, 'real_latency_ms'):
-                    logger.warning(f"Skipping detection event {i} - missing corrected result")
+            # FIX #7: Use ID-based dictionary lookup instead of position-based zip()
+            # This prevents mismatched pairing when corrected_results order differs from detection_events
+            corrected_results_by_detection_id = {}
+            for cr in corrected_results:
+                detection_id = getattr(cr, 'detection_id', None) or getattr(cr, 'detection_event_id', None)
+                if detection_id:
+                    corrected_results_by_detection_id[detection_id] = cr
+
+            logger.debug(f"Built corrected results map with {len(corrected_results_by_detection_id)} entries for {len(detection_events_result)} events")
+
+            for i, original_event in enumerate(detection_events_result):
+                # Lookup corrected result by ID, not position
+                corrected_result = corrected_results_by_detection_id.get(original_event.id)
+                # FIX #6: Skip if we've already processed this event_id
+                if original_event.id in processed_event_ids:
+                    logger.debug(f"Skipping duplicate event_id {original_event.id} in normal path")
                     continue
+                processed_event_ids.add(original_event.id)
+
+                # Skip if corrected_result is None or missing detection_latency_ms
+                # NOTE: Field was renamed from real_latency_ms to detection_latency_ms in BUG #3 refactor
+                if corrected_result is None or not hasattr(corrected_result, 'detection_latency_ms'):
+                    logger.warning(f"Skipping detection event {i} - missing corrected result (no detection_latency_ms)")
+                    continue
+
+                # Get SINGLE authoritative latency value (eliminates duplicates)
+                single_latency_ms = _get_single_authoritative_latency(original_event, corrected_result)
+
                 enhanced_detection_events.append({
                 "event_id": original_event.id,
                 "video_id": str(original_event.video_id) if original_event.video_id else None,
@@ -915,17 +1006,9 @@ async def get_corrected_hil_results(
                     )
                 ),
 
-                # Original latency data (robust to None)
-                "original_latency": {
-                    "apparent_latency_ms": round(to_float(getattr(corrected_result, 'apparent_latency_ms', 0)) or 0, 3),
-                    "description": "Original calculation (includes video startup delay)"
-                },
-
-                # Corrected latency data (robust to None)
-                "corrected_latency": {
-                    "real_latency_ms": round(to_float(getattr(corrected_result, 'real_latency_ms', 0)) or 0, 3),
-                    "description": "Corrected calculation (accounts for video startup delay)"
-                },
+                # SINGLE LATENCY VALUE - eliminates duplicate rows in UI
+                "latency_ms": round(single_latency_ms, 3) if single_latency_ms is not None else None,
+                "latency_source": "timing_calculator_corrected",
                 
                 # ENHANCED LATENCY BREAKDOWN - Using Timing Synchronization Calculator decomposition
                 "measured_breakdown": {
@@ -947,7 +1030,8 @@ async def get_corrected_hil_results(
                     # CALCULATED: Camera-only processing latency (isolated from system overhead)
                     "camera_processing_ms": round(to_float(getattr(corrected_result, 'camera_only_latency_ms', None)) or (
                         # Fallback calculation: Real latency minus system overhead
-                        (to_float(getattr(corrected_result, 'real_latency_ms', None)) or 0) - 
+                        # BUG #3 refactor: Field renamed from real_latency_ms to detection_latency_ms
+                        (to_float(getattr(corrected_result, 'detection_latency_ms', None)) or 0) - 
                         (to_float(getattr(corrected_result, 'system_overhead_ms', None)) or 50) - 
                         (to_float(getattr(corrected_result, 'processing_overhead_ms', None)) or 0)
                     ), 1),
@@ -968,8 +1052,6 @@ async def get_corrected_hil_results(
                 
                 # Timing synchronization data (robust) - Enhanced with improved confidence calculation
                 "timing_synchronization": {
-                    "real_latency_ms": round(to_float(getattr(corrected_result, 'real_latency_ms', 0)) or 0, 3),
-                    "apparent_latency_ms": round(to_float(getattr(corrected_result, 'apparent_latency_ms', 0)) or 0, 3),
                     "latency_correction_ms": round(to_float(getattr(corrected_result, 'latency_correction_ms', 0)) or 0, 3),
                     "video_startup_delay_ms": round(to_float(getattr(corrected_result, 'video_startup_delay_ms', 0)) or 0, 3),
                     "timing_quality": getattr(corrected_result, 'timing_quality', 'unknown'),
@@ -978,28 +1060,46 @@ async def get_corrected_hil_results(
                     "system_overhead_ms": round(to_float(getattr(corrected_result, 'system_overhead_ms', 0)) or 0, 3),
                     "processing_overhead_ms": round(to_float(getattr(corrected_result, 'processing_overhead_ms', 0)) or 0, 3),
                     "matches_processing_time": bool(getattr(corrected_result, 'matches_processing_time', False)),
-                    "measurement_source": "timestamp_corrected_calculation"
+                    "measurement_source": "timestamp_corrected_calculation",
+                    "ground_truth_available": len(ground_truth_events) > 0
                 },
-                
+
                 # Hardware data
+                "usable_for_validation": bool(getattr(original_event, 'usable_for_validation', True)),
+                "timing_degraded": bool(getattr(original_event, 'timing_degraded', False)),
+                "timing_quality": getattr(original_event, 'timing_sync_quality', None),
                 "voltage_level": original_event.voltage_level or original_event.labjack_voltage or 0.0,
                 "channel": original_event.detection_channel or "AIN0",
                 "validation_result": original_event.validation_result,
-                
-                # Pass/fail determination (use corrected latency)
-                # Fix: Use to_float() to safely convert None to 0.0, ensuring aligned detections (0.0ms) pass
-                # Bug was: checking "is not None" first, which could fail for edge cases
-                "result": "pass" if (to_float(getattr(corrected_result, 'real_latency_ms', 0)) <= (session_result.tolerance_ms or 100)) else "fail",
+
+                # Pass/fail determination using SINGLE latency value
+                # FIX #3: Treat 0ms/None as "no_match" (missing GT), not instant detection
+                "result": (
+                    "pass" if (single_latency_ms is not None and single_latency_ms > 0 and single_latency_ms <= (session_result.tolerance_ms or 100))
+                    else "no_match" if (single_latency_ms is None or single_latency_ms == 0)
+                    else "fail"
+                ),
                 "threshold_ms": session_result.tolerance_ms or 100,
-                "session_id": original_event.test_session_id,
-                
-                # Ground truth timing synchronization data
-                "timing_synchronization": {
-                    "timing_quality": getattr(corrected_result, 'timing_quality', 'unknown'),
-                    "confidence_score": getattr(corrected_result, 'confidence_score', 0.0),
-                    "ground_truth_available": len(ground_truth_events) > 0
-                }
+                "match_type": getattr(original_event, 'match_type', 'unknown'),
+                "session_id": original_event.test_session_id
             })
+
+        # DEDUPLICATION FIX: Remove duplicate entries, preferring non-zero latency
+        seen_event_ids = {}
+        for event in enhanced_detection_events:
+            event_id = event.get('event_id')
+            if event_id is None:
+                continue
+            if event_id not in seen_event_ids:
+                seen_event_ids[event_id] = event
+            else:
+                # Prefer entry with valid non-zero latency
+                existing_latency = seen_event_ids[event_id].get('latency_ms')
+                new_latency = event.get('latency_ms')
+                if new_latency and new_latency > 0 and (not existing_latency or existing_latency == 0):
+                    seen_event_ids[event_id] = event
+        enhanced_detection_events = list(seen_event_ids.values())
+        logger.info(f"Deduplication: {len(enhanced_detection_events)} unique detection events")
 
         # 🔥 CRITICAL FIX: Filter out detections that occurred AFTER the last ground truth event
         # These are post-video detections from continued LabJack monitoring that inflate average latency
@@ -1021,7 +1121,8 @@ async def get_corrected_hil_results(
         
         # Determine overall pass rate based on corrected latencies
         # Fix: Use to_float() to ensure 0.0ms latency counts as pass
-        corrected_pass_count = sum(1 for r in corrected_results if to_float(getattr(r, 'real_latency_ms', 0)) <= (session_result.tolerance_ms or 100))
+        # BUG #3 refactor: Field renamed from real_latency_ms to detection_latency_ms
+        corrected_pass_count = sum(1 for r in corrected_results if to_float(getattr(r, 'detection_latency_ms', 0)) <= (session_result.tolerance_ms or 100))
         corrected_pass_rate = (corrected_pass_count / len(corrected_results)) * 100.0 if corrected_results else 0.0
         
         # Get hardware status
@@ -1218,10 +1319,23 @@ async def get_corrected_hil_results(
                         DetectionEvent.video_id == vr.video_id
                     ).all()
 
-                    # Calculate TP, FP, FN for this video
-                    video_true_positives = sum(1 for d in video_detections if d.ground_truth_match_id is not None)
-                    video_false_positives = sum(1 for d in video_detections if d.ground_truth_match_id is None)
-                    video_false_negatives = total_ground_truth - video_true_positives
+                    # FIXED: Use DetectionComparison table for accurate TP/FP/FN counts
+                    # This reflects the ground truth matching with post-video exclusions
+                    # and within-tolerance FP->TP conversions
+                    from models import DetectionComparison
+                    video_comparisons = db.query(DetectionComparison).filter(
+                        DetectionComparison.test_session_id == session_id
+                    ).join(
+                        DetectionEvent,
+                        DetectionComparison.detection_event_id == DetectionEvent.id
+                    ).filter(
+                        DetectionEvent.video_id == vr.video_id
+                    ).all()
+
+                    # Count from DetectionComparison table
+                    video_true_positives = sum(1 for c in video_comparisons if c.match_type == 'TP')
+                    video_false_positives = sum(1 for c in video_comparisons if c.match_type == 'FP')
+                    video_false_negatives = sum(1 for c in video_comparisons if c.match_type == 'FN')
 
                     # Calculate precision, recall, F1 for this video
                     video_precision = video_true_positives / (video_true_positives + video_false_positives) if (video_true_positives + video_false_positives) > 0 else 0.0

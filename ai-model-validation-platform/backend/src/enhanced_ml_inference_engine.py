@@ -183,15 +183,16 @@ class EnhancedVRUDetection:
 
 class EnhancedYOLOEngine:
     """Production-ready YOLO inference engine with advanced capabilities"""
-    
-    def __init__(self, model_path: Optional[str] = None, device: str = 'auto', 
+
+    def __init__(self, model_path: Optional[str] = None, device: str = 'auto',
                  batch_size: int = 1, enable_tracking: bool = False):
         self.device = self._get_optimal_device(device)
-        self.model = None
+        self._model = None
         self.model_path = model_path or self._get_default_model_path()
         self.batch_size = batch_size
         self.enable_tracking = enable_tracking
-        self.is_initialized = False
+        self._is_initialized = False
+        self._warmup_complete = False
         self.inference_stats = {
             'total_inferences': 0,
             'total_detections': 0,
@@ -199,6 +200,21 @@ class EnhancedYOLOEngine:
             'model_type': None
         }
         self._stats_lock = Lock()
+
+    @property
+    def model(self):
+        """Get the YOLO model instance"""
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        """Set the YOLO model instance"""
+        self._model = value
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if YOLO model is fully initialized and ready for inference"""
+        return self._is_initialized and self._warmup_complete and self._model is not None
         
     def _get_optimal_device(self, device: str) -> str:
         """Determine optimal device with fallback chain"""
@@ -247,43 +263,46 @@ class EnhancedYOLOEngine:
         """Initialize YOLO model with error handling and performance optimization"""
         if self.is_initialized:
             return True
-            
+
         try:
             if not TORCH_AVAILABLE:
                 logger.warning("PyTorch not available - using mock inference")
-                self.model = None
+                self._model = None
                 self.inference_method = 'mock'
-                self.is_initialized = True
+                self._is_initialized = True
+                self._warmup_complete = True
                 return True
-            
+
             # Load YOLO model
             logger.info(f"Loading YOLO model: {self.model_path} on {self.device}")
-            self.model = YOLO(self.model_path)
-            
+            self._model = YOLO(self.model_path)
+
             # Optimize model
-            if hasattr(self.model.model, 'to'):
-                self.model.model.to(self.device)
-            
-            # Warm-up inference
+            if hasattr(self._model.model, 'to'):
+                self._model.model.to(self.device)
+
+            self._is_initialized = True
+
+            # Warm-up inference - CRITICAL for race condition fix
             dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
             await self._warmup_model(dummy_frame)
-            
+
             self.inference_method = 'ultralytics'
-            self.is_initialized = True
-            
+
             # Update stats
             self.inference_stats['model_type'] = self.model_path
             logger.info(f"YOLO model initialized successfully on {self.device}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize YOLO model: {e}")
             logger.error(traceback.format_exc())
-            
+
             # Fallback to mock
-            self.model = None
+            self._model = None
             self.inference_method = 'mock'
-            self.is_initialized = True
+            self._is_initialized = True
+            self._warmup_complete = True
             return False
     
     async def _warmup_model(self, dummy_frame: np.ndarray) -> None:
@@ -291,12 +310,34 @@ class EnhancedYOLOEngine:
         try:
             logger.info("Warming up YOLO model...")
             start_time = time.time()
-            results = self.model(dummy_frame, verbose=False)
+            results = self._model(dummy_frame, verbose=False)
             warmup_time = time.time() - start_time
+            self._warmup_complete = True
             logger.info(f"Model warmup completed in {warmup_time:.3f}s")
         except Exception as e:
             logger.warning(f"Model warmup failed: {e}")
-    
+            self._warmup_complete = True  # Mark as complete even on failure to prevent blocking
+
+    async def ensure_ready(self, timeout: float = 30.0) -> bool:
+        """
+        Block until model is ready or timeout
+
+        Args:
+            timeout: Maximum time to wait for initialization in seconds
+
+        Returns:
+            True if model is ready, False if timeout occurred
+
+        Raises:
+            TimeoutError: If model initialization exceeds timeout
+        """
+        start = time.time()
+        while not self.is_initialized:
+            if time.time() - start > timeout:
+                raise TimeoutError(f"ML model initialization timeout after {timeout}s")
+            await asyncio.sleep(0.1)
+        return True
+
     async def detect_vrus_batch(self, frames: List[np.ndarray], 
                                frame_numbers: List[int],
                                timestamps: List[float]) -> List[List[EnhancedVRUDetection]]:
@@ -313,7 +354,7 @@ class EnhancedYOLOEngine:
             if self.inference_method == 'ultralytics' and len(frames) > 1:
                 # True batch processing
                 start_time = time.time()
-                results = self.model(frames, verbose=False)
+                results = self._model(frames, verbose=False)
                 inference_time = time.time() - start_time
                 
                 for i, result in enumerate(results):
@@ -361,9 +402,9 @@ class EnhancedYOLOEngine:
         
         try:
             start_time = time.time()
-            
+
             if self.inference_method == 'ultralytics':
-                results = self.model(frame, verbose=False)
+                results = self._model(frame, verbose=False)
                 detections = []
                 
                 for result in results:

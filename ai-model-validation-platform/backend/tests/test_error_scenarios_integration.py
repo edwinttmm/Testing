@@ -5,6 +5,7 @@ Tests that verify the system handles various database error scenarios gracefully
 in an integrated environment.
 """
 
+import os
 import pytest
 import asyncio
 from unittest.mock import Mock, patch, MagicMock, AsyncMock

@@ -108,8 +108,90 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
   const reconnectTimeoutRef = useRef<TimerHandle | null>(null);
   const fallbackIntervalRef = useRef<TimerHandle | null>(null);
 
+  // Health check to verify WebSocket server readiness
+  const checkWebSocketReady = useCallback(async (): Promise<boolean> => {
+    try {
+      // Extract base URL from WebSocket URL
+      const baseUrl = url.replace(/^wss?:\/\//, 'http://').split('/ws/')[0];
+      const healthUrl = `${baseUrl}/api/ws/health`;
+
+      console.log('🏥 Checking WebSocket health:', healthUrl);
+      const response = await fetch(healthUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        console.warn('⚠️ Health check returned non-OK status:', response.status);
+        return false;
+      }
+
+      const data = await response.json();
+      const isReady = data.websocket_available === true;
+      console.log(isReady ? '✅ WebSocket server ready' : '⏳ WebSocket server not ready');
+      return isReady;
+    } catch (error) {
+      console.error('❌ WebSocket health check failed:', error);
+      return false;
+    }
+  }, [url]);
+
+  // Connect to WebSocket with retry logic and exponential backoff
+  const connectWithRetry = useCallback(async (maxAttempts = 3): Promise<WebSocket | null> => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`🔌 WebSocket connection attempt ${attempt}/${maxAttempts}`);
+
+      // Check if server is ready before attempting connection
+      const isReady = await checkWebSocketReady();
+      if (!isReady && attempt < maxAttempts) {
+        const delay = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => safeSetTimeout(resolve, delay));
+        continue;
+      }
+
+      try {
+        // Attempt WebSocket connection
+        console.log(`🔌 Attempting to connect to: ${url}`);
+        const ws = new WebSocket(url);
+
+        return await new Promise<WebSocket>((resolve, reject) => {
+          const timeout = safeSetTimeout(() => {
+            console.error('❌ Connection timeout after 5000ms');
+            reject(new Error('Connection timeout'));
+          }, 5000);
+
+          ws.onopen = () => {
+            safeClearTimeout(timeout);
+            console.log(`✅ WebSocket connected on attempt ${attempt}`);
+            resolve(ws);
+          };
+
+          ws.onerror = (error) => {
+            safeClearTimeout(timeout);
+            console.error(`❌ Connection error on attempt ${attempt}:`, error);
+            reject(error);
+          };
+        });
+      } catch (error) {
+        console.error(`❌ Connection attempt ${attempt} failed:`, error);
+        if (attempt === maxAttempts) {
+          console.error('❌ All WebSocket connection attempts failed');
+          return null;
+        }
+
+        // Exponential backoff for next attempt
+        const delay = 1000 * Math.pow(2, attempt - 1);
+        console.log(`⏳ Waiting ${delay}ms before next attempt...`);
+        await new Promise(resolve => safeSetTimeout(resolve, delay));
+      }
+    }
+
+    return null;
+  }, [url, checkWebSocketReady]);
+
   // Connect to WebSocket
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!enabled) {
       console.log('ℹ️ Detection WebSocket disabled via options');
       return;
@@ -120,17 +202,22 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
       return;
     }
 
-    if (websocketRef.current?.readyState === WebSocket.CONNECTING || 
+    if (websocketRef.current?.readyState === WebSocket.CONNECTING ||
         websocketRef.current?.readyState === WebSocket.OPEN) {
       console.log('ℹ️ Detection WebSocket already connected or connecting');
       return;
     }
 
-    console.log('🔌 Connecting to detection WebSocket:', url);
+    console.log('🔌 Initiating detection WebSocket connection:', url);
     setConnectionState(prev => ({ ...prev, status: 'connecting' }));
 
     try {
-      const ws = new WebSocket(url);
+      const ws = await connectWithRetry(3);
+
+      if (!ws) {
+        throw new Error('Failed to establish WebSocket connection after retries');
+      }
+
       websocketRef.current = ws;
 
       ws.onopen = () => {
@@ -166,23 +253,36 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
         websocketRef.current = null;
         onDisconnect?.();
 
-        // Auto-reconnect if enabled and within attempt limits
+        // Auto-reconnect with retry logic if enabled and within attempt limits
         if (autoReconnect) {
           setConnectionState(prev => {
             if (prev.reconnectAttempts < maxReconnectAttempts) {
               const delay = reconnectDelay * Math.pow(1.5, prev.reconnectAttempts);
-              
-              console.log(`🔄 Reconnecting in ${delay}ms (attempt ${prev.reconnectAttempts + 1}/${maxReconnectAttempts})`);
-              
-              reconnectTimeoutRef.current = safeSetTimeout(() => {
-                connect();
+
+              console.log(`🔄 WebSocket disconnected, attempting reconnect in ${delay}ms (attempt ${prev.reconnectAttempts + 1}/${maxReconnectAttempts})`);
+
+              reconnectTimeoutRef.current = safeSetTimeout(async () => {
+                console.log('🔄 Initiating reconnection with retry logic...');
+                await connect();
               }, delay);
-              
+
               return {
                 ...prev,
                 status: 'reconnecting' as const,
                 reconnectAttempts: prev.reconnectAttempts + 1
               };
+            } else {
+              console.warn('⚠️ Maximum reconnection attempts reached');
+              // Start fallback polling after all reconnection attempts exhausted
+              if (fallbackPollingInterval > 0) {
+                console.log('🔄 Starting fallback HTTP polling after reconnection failure');
+                setConnectionState(prev => ({ ...prev, fallbackActive: true }));
+                onFallback?.('WebSocket reconnection failed, using HTTP polling');
+
+                fallbackIntervalRef.current = safeSetInterval(() => {
+                  console.log('📡 HTTP polling fallback active');
+                }, fallbackPollingInterval);
+              }
             }
             return prev;
           });
@@ -191,7 +291,7 @@ export const useDetectionWebSocket = (options: UseDetectionWebSocketOptions = {}
           console.log('🔄 Starting fallback HTTP polling');
           setConnectionState(prev => ({ ...prev, fallbackActive: true }));
           onFallback?.('WebSocket connection failed, using HTTP polling');
-          
+
           fallbackIntervalRef.current = safeSetInterval(() => {
             // Trigger polling-based detection updates
             console.log('📡 HTTP polling fallback active');

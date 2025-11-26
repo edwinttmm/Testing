@@ -49,8 +49,7 @@ describe('SequentialVideoPlayer - Critical Bug Fixes', () => {
     onSequenceComplete: jest.fn(),
     onError: jest.fn(),
     onVideoStarted: jest.fn(),
-    onVideoEnded: jest.fn(),
-    fullScreenMode: false
+    onVideoEnded: jest.fn()
   };
 
   beforeEach(() => {

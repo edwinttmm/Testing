@@ -1,0 +1,90 @@
+================================================================================
+PER-VIDEO DETECTION BREAKDOWN ANALYSIS
+================================================================================
+
+Session: fa204ef2-9d8b-4480-9692-86e338c1218a
+
+SESSION OVERVIEW:
+- Status: completed
+- Expected Detections (GT): None
+- Actual Detections: 96
+- True Positives: 87
+- False Positives: 9
+- False Negatives: 170
+- Overall Detection Rate: 0.0%
+- Pass/Fail: FAIL
+- F1 Score: 0.493
+- Precision: 0.906
+- Recall: 0.339
+
+================================================================================
+
+Found 1 video(s) in session
+
+================================================================================
+VIDEO 1:
+================================================================================
+- Video Filename: child_test_video_20251031_144012.mp4
+- Video Path: /home/rigade/Testing/ai-model-validation-platform/backend/uploads/child_test_video_20251031_144012.mp4
+- Video ID: 10c2b16c-86fa-4140-b1cf-c0ea42f82ca5
+
+METRICS:
+- Total GT Events: 131
+- Detections Captured (TP): 36
+- Detection Rate: 27.5%
+- False Negatives: 95
+
+FRAME ANALYSIS:
+- Frame Range: 1 - 121
+- Frames with GT Events: 121
+- Frames with Detections: 0
+- Missed Frames: 121
+
+MISSED FRAMES:
+- First 10: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+- Last 10: [112, 113, 114, 115, 116, 117, 118, 119, 120, 121]
+
+MISSING FRAME PATTERN:
+- Systematic skip pattern: every 1 frames; Clustered missing frames: 1 groups;   - Frames 1 to 121 (121 consecutive)
+
+SAMPLE GT EVENTS (first 10):
+  1. Frame 1: pedestrian - ✗ MISSED
+  2. Frame 2: pedestrian - ✗ MISSED
+  3. Frame 3: pedestrian - ✗ MISSED
+  4. Frame 4: pedestrian - ✗ MISSED
+  5. Frame 5: pedestrian - ✗ MISSED
+  6. Frame 6: pedestrian - ✗ MISSED
+  7. Frame 7: pedestrian - ✓ MATCHED
+  8. Frame 8: pedestrian - ✗ MISSED
+  9. Frame 9: pedestrian - ✗ MISSED
+  10. Frame 10: pedestrian - ✓ MATCHED
+  ... and 121 more GT events
+
+
+================================================================================
+FRAME-BY-FRAME ANALYSIS:
+================================================================================
+
+Video 1:
+Frame coverage: 0/121 frames with detections
+First 15 frames:
+  Frame    1: ✗ MISSED
+  Frame    2: ✗ MISSED
+  Frame    3: ✗ MISSED
+  Frame    4: ✗ MISSED
+  Frame    5: ✗ MISSED
+  Frame    6: ✗ MISSED
+  Frame    7: ✗ MISSED
+  Frame    8: ✗ MISSED
+  Frame    9: ✗ MISSED
+  Frame   10: ✗ MISSED
+  Frame   11: ✗ MISSED
+  Frame   12: ✗ MISSED
+  Frame   13: ✗ MISSED
+  Frame   14: ✗ MISSED
+  Frame   15: ✗ MISSED
+  ... (106 more frames)
+
+================================================================================
+ANALYSIS COMPLETE
+================================================================================

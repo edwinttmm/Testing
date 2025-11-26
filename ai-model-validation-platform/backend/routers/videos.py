@@ -64,10 +64,10 @@ async def _process_ground_truth_with_error_handling(video_id: str, video_file_pa
     """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    
+    from sqlalchemy.engine import URL
+
     # Create new database session for background task
     try:
-        from sqlalchemy.engine import URL
         if isinstance(db_url, URL):
             url_str = db_url.render_as_string(hide_password=False)
         else:
@@ -338,7 +338,8 @@ async def list_videos(
                 "uploaded_at": video.created_at.isoformat() if video.created_at else None,
                 "annotation_count": annotation_count,
                 "has_ground_truth": db.query(GroundTruthObject).filter(
-                    GroundTruthObject.video_id == video.id
+                    GroundTruthObject.video_id == video.id,
+                    GroundTruthObject.deleted_at.is_(None)  # Only check active records
                 ).first() is not None,
                 "status": getattr(video, 'validation_status', 'uploaded'),
                 "processing_status": getattr(video, 'processing_status', 'pending')
@@ -372,9 +373,10 @@ async def get_video_details(video_id: str, db: Session = Depends(get_db)):
             Annotation.video_id == video_id
         ).scalar() or 0
         
-        # Check for ground truth objects
+        # Check for ground truth objects (only active records, exclude soft-deleted)
         has_ground_truth = db.query(GroundTruthObject).filter(
-            GroundTruthObject.video_id == video_id
+            GroundTruthObject.video_id == video_id,
+            GroundTruthObject.deleted_at.is_(None)  # Only check active records
         ).first() is not None
         
         return {
@@ -549,9 +551,10 @@ async def get_video_ground_truth(video_id: str, db: Session = Depends(get_db)):
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         
-        # Get ground truth objects
+        # Get ground truth objects (only active records, exclude soft-deleted)
         ground_truth_objects = db.query(GroundTruthObject).filter(
-            GroundTruthObject.video_id == video_id
+            GroundTruthObject.video_id == video_id,
+            GroundTruthObject.deleted_at.is_(None)  # Only include active records
         ).all()
         
         # If none yet, return an empty, non-error response with current processing status
@@ -736,8 +739,11 @@ async def validate_annotation(
         # Find the annotation
         annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
         if not annotation:
-            # Try to find it in GroundTruthObject table as fallback
-            ground_truth = db.query(GroundTruthObject).filter(GroundTruthObject.id == annotation_id).first()
+            # Try to find it in GroundTruthObject table as fallback (only active records)
+            ground_truth = db.query(GroundTruthObject).filter(
+                GroundTruthObject.id == annotation_id,
+                GroundTruthObject.deleted_at.is_(None)  # Only check active records
+            ).first()
             if not ground_truth:
                 raise HTTPException(status_code=404, detail="Annotation not found")
             

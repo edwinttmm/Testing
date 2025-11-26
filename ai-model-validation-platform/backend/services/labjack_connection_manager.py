@@ -49,6 +49,37 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# CRITICAL FIX: Module-level stream state tracking to prevent error 2605
+# ============================================================================
+# When hardware streaming is active, polling reads will fail with error 2605
+# (DEVICE_BUSY). This flag prevents concurrent access during streaming.
+_STREAM_ACTIVE = False
+
+
+def set_stream_active(active: bool):
+    """Set the global stream active state.
+
+    MUST be called by labjack_service when starting/stopping stream mode
+    to prevent error 2605 from concurrent polling reads.
+
+    Args:
+        active: True when stream starts, False when stream stops
+    """
+    global _STREAM_ACTIVE
+    _STREAM_ACTIVE = active
+    logger.debug(f"Stream state changed: active={active}")
+
+
+def is_stream_active() -> bool:
+    """Check if hardware streaming is currently active.
+
+    Returns:
+        True if stream mode is active
+    """
+    return _STREAM_ACTIVE
+
+
 class ConnectionState(Enum):
     """Connection states for the LabJack device"""
     DISCONNECTED = "disconnected"
@@ -219,8 +250,8 @@ class LabJackConnectionManager:
                 if hasattr(e, 'errorCode') and hasattr(ljm, 'errorToString'):
                     try:
                         error_msg = f"LJM Error {e.errorCode}: {ljm.errorToString(e.errorCode)}"
-                    except:
-                        pass
+                    except Exception:
+                        pass  # Use original error message if string conversion fails
                 
                 logger.error(f"❌ {error_msg}")
                 self._connection_state = ConnectionState.ERROR
@@ -231,8 +262,8 @@ class LabJackConnectionManager:
                 if self._handle is not None:
                     try:
                         ljm.close(self._handle)
-                    except:
-                        pass
+                    except Exception as close_error:
+                        logger.debug(f"Error closing failed handle: {close_error}")
                     self._handle = None
                 
                 return False
@@ -280,24 +311,32 @@ class LabJackConnectionManager:
     def read_voltage(self, channel: str) -> Optional[float]:
         """
         Thread-safe voltage reading
-        
+
+        CRITICAL FIX: Skips read when stream is active to prevent error 2605
+        (DEVICE_BUSY). Hardware cannot handle polling reads during streaming.
+
         Args:
             channel: Analog input channel (e.g., "AIN0", "AIN1")
-        
+
         Returns:
-            Voltage value or None if read failed
+            Voltage value or None if read failed/skipped
         """
+        # CRITICAL: Skip read if stream is active to prevent error 2605
+        if is_stream_active():
+            logger.debug(f"Skipping {channel} read - stream active (prevents error 2605)")
+            return None
+
         with self._connection_lock:
             if not self.is_connected():
                 logger.warning(f"Cannot read {channel}: device not connected")
                 return None
-            
+
             try:
                 voltage = ljm.eReadName(self._handle, channel)
                 self._stats["total_operations"] += 1
                 self._stats["last_operation_time"] = datetime.now()
                 return voltage
-                
+
             except Exception as e:
                 logger.error(f"❌ Failed to read voltage from {channel}: {e}")
                 # Check if this is a connection error
@@ -445,34 +484,61 @@ class LabJackConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
     
+    def auto_reconnect(self, max_attempts: int = 3) -> bool:
+        """
+        Attempt automatic reconnection with exponential backoff
+
+        Args:
+            max_attempts: Maximum number of reconnection attempts
+
+        Returns:
+            True if reconnection successful
+        """
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"🔄 Reconnection attempt {attempt}/{max_attempts}")
+            if self.connect(force_reconnect=True):
+                logger.info(f"✅ Reconnected on attempt {attempt}")
+                return True
+            time.sleep(2 ** (attempt - 1))
+        return False
+
     def health_check(self) -> Dict[str, Any]:
-        """Perform health check and return status"""
+        """Perform health check and return status
+
+        CRITICAL FIX: Skips voltage test when stream is active to prevent error 2605
+        """
         health_status = {
             "healthy": False,
             "issues": [],
             "recommendations": []
         }
-        
+
         try:
             # Check basic connection
             if not self.is_connected():
                 health_status["issues"].append("Device not connected")
                 health_status["recommendations"].append("Call connect() to establish connection")
             else:
-                # Test a simple read operation
-                try:
-                    voltage = self.read_voltage("AIN0")
-                    if voltage is not None:
-                        health_status["healthy"] = True
-                        health_status["test_voltage"] = voltage
-                    else:
-                        health_status["issues"].append("Voltage read test failed")
-                except Exception as e:
-                    health_status["issues"].append(f"Health check read failed: {e}")
-        
+                # CRITICAL: Skip voltage test if stream is active
+                if is_stream_active():
+                    health_status["healthy"] = True
+                    health_status["streaming"] = True
+                    health_status["note"] = "Health check skipped - stream active (prevents error 2605)"
+                else:
+                    # Test a simple read operation
+                    try:
+                        voltage = self.read_voltage("AIN0")
+                        if voltage is not None:
+                            health_status["healthy"] = True
+                            health_status["test_voltage"] = voltage
+                        else:
+                            health_status["issues"].append("Voltage read test failed")
+                    except Exception as e:
+                        health_status["issues"].append(f"Health check read failed: {e}")
+
         except Exception as e:
             health_status["issues"].append(f"Health check error: {e}")
-        
+
         health_status.update(self.get_connection_status())
         return health_status
 
@@ -522,7 +588,9 @@ __all__ = [
     "DeviceInfo",
     "get_connection_manager",
     "connect_labjack",
-    "disconnect_labjack", 
+    "disconnect_labjack",
     "read_labjack_voltage",
-    "is_labjack_connected"
+    "is_labjack_connected",
+    "set_stream_active",
+    "is_stream_active"
 ]

@@ -59,6 +59,7 @@ DEFAULT_GRACE_PERIOD_MS = GRACE_PERIOD_MS  # 2000ms from centralized config
 # Minimum grace period to maintain when clamping (100ms)
 # This is a lower bound for clamped windows, NOT the standard grace period
 MIN_GRACE_PERIOD_MS = 100
+MIN_GRACE_PERIOD_SECONDS = MIN_GRACE_PERIOD_MS / 1000.0
 
 
 class DetectionWindowClampService:
@@ -122,38 +123,27 @@ class DetectionWindowClampService:
                 prev_end = prev_window.end_time
 
                 if desired_grace_start < prev_end:
-                    # OVERLAP DETECTED - split the gap 50/50
-                    gap_seconds = timing.start_time - sorted_videos[i-1].start_time
+                    # OVERLAP DETECTED - split grace so both videos retain at least minimal coverage
+                    target_start = max(
+                        timing.start_time - MIN_GRACE_PERIOD_SECONDS,
+                        desired_grace_start
+                    )
+                    # Make sure we are not extending beyond the previous window start
+                    previous_window = windows[-1]
+                    if target_start < previous_window.start_time:
+                        target_start = previous_window.start_time
 
-                    if gap_seconds <= 0:
-                        logger.error(
-                            f"Invalid video sequence: Video {timing.video_id} starts at or before "
-                            f"previous video {sorted_videos[i-1].video_id}"
-                        )
-                        # Use minimal separation (100ms)
-                        actual_grace_start = prev_end + 0.1
-                        clamp_reason = "zero_gap_minimal_separation"
-                    else:
-                        # Split the gap evenly between videos
-                        gap_midpoint = sorted_videos[i-1].start_time + (gap_seconds / 2.0)
+                    # Update previous window end to the new boundary
+                    previous_window.end_time = target_start
 
-                        # Update previous window's end time to midpoint
-                        prev_window.end_time = gap_midpoint
-                        prev_window.is_clamped = True
-                        prev_window.clamp_reason = f"overlap_split_with_{timing.video_id}"
-
-                        # Set current grace start to midpoint
-                        actual_grace_start = gap_midpoint
-                        clamp_reason = f"overlap_split_with_{sorted_videos[i-1].video_id}"
-
-                        logger.info(
-                            f"Overlap detected between {sorted_videos[i-1].video_id} and {timing.video_id}: "
-                            f"split gap at {gap_midpoint:.3f}s (gap: {gap_seconds:.3f}s)"
-                        )
-
+                    actual_grace_start = target_start
+                    clamp_reason = f"grace_min_split_with_{sorted_videos[i-1].video_id}"
                     is_clamped = True
                     overlap_detected = True
-                    actual_grace_ms = (timing.start_time - actual_grace_start) * 1000.0
+                    actual_grace_ms = max(
+                        (timing.start_time - actual_grace_start) * 1000.0,
+                        float(MIN_GRACE_PERIOD_MS)
+                    )
                 else:
                     # No overlap - use full grace period
                     actual_grace_start = desired_grace_start
@@ -170,19 +160,28 @@ class DetectionWindowClampService:
                 actual_grace_ms = grace_ms
 
             # Determine window end time
-            if timing.end_time is not None:
-                window_end = timing.end_time
-            elif i < len(sorted_videos) - 1:
-                # Not the last video and no explicit end - use next video's grace start
+            if i < len(sorted_videos) - 1:
+                # Not the last video - check if there's a next video
                 next_timing = sorted_videos[i + 1]
-                window_end = next_timing.start_time  # Will be clamped in next iteration
-            else:
-                # Last video without end time - use start + duration or start + grace
-                if timing.duration_ms:
+                # Use explicit end_time if provided, otherwise calculate from start + duration
+                if timing.end_time is not None:
+                    window_end = timing.end_time
+                elif timing.duration_ms:
                     window_end = timing.start_time + (timing.duration_ms / 1000.0)
                 else:
+                    # No explicit end and no duration - use next video's start as boundary
+                    window_end = next_timing.start_time
+            else:
+                # Last video - extend by grace period to catch late detections
+                if timing.end_time is not None:
+                    # Explicit end time - extend by grace period
+                    window_end = timing.end_time + grace_seconds
+                elif timing.duration_ms:
+                    # Calculate from duration and extend by grace period
+                    window_end = timing.start_time + (timing.duration_ms / 1000.0) + grace_seconds
+                else:
                     # Open-ended window
-                    window_end = timing.start_time + grace_seconds * 2  # Allow detections after start
+                    window_end = timing.start_time + grace_seconds * 3  # Allow detections well after start
 
             # Create clamped window
             window = ClampedWindow(
@@ -232,9 +231,10 @@ class DetectionWindowClampService:
         sorted_windows = sorted(clamped_windows, key=lambda x: x.start_time)
 
         # Find windows that contain the detection
+        # Use <= for end_time to include detections exactly at the boundary
         matching_windows = []
         for window in sorted_windows:
-            if window.start_time <= detection_timestamp < window.end_time:
+            if window.start_time <= detection_timestamp <= window.end_time:
                 matching_windows.append(window)
 
         if not matching_windows:

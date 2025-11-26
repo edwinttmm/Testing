@@ -170,13 +170,15 @@ class MetricsEngine:
             for i, gt_obj in enumerate(ground_truth_objects):
                 if i in matched_gt_objects:
                     continue
-                
+
                 # Check temporal match
-                time_diff = abs(detection.timestamp - gt_obj.timestamp)
-                
+                # FIX: Use video_relative_timestamp if available to avoid UNIX epoch vs video-relative mismatch
+                det_timestamp = detection.video_relative_timestamp if hasattr(detection, 'video_relative_timestamp') and detection.video_relative_timestamp is not None else detection.timestamp
+                time_diff = abs(det_timestamp - gt_obj.timestamp)
+
                 # Check class match
                 class_match = detection.class_label == gt_obj.class_label
-                
+
                 if time_diff <= tolerance_seconds and class_match:
                     true_positives += 1
                     matched_gt_objects.add(i)
@@ -216,9 +218,11 @@ class MetricsEngine:
         for detection in detection_events:
             closest_gt = self._find_closest_ground_truth(detection, ground_truth_objects)
             if closest_gt:
-                time_diff_ms = abs(detection.timestamp - closest_gt.timestamp) * 1000
+                # FIX: Use video_relative_timestamp if available to avoid UNIX epoch vs video-relative mismatch
+                det_timestamp = detection.video_relative_timestamp if hasattr(detection, 'video_relative_timestamp') and detection.video_relative_timestamp is not None else detection.timestamp
+                time_diff_ms = abs(det_timestamp - closest_gt.timestamp) * 1000
                 timing_errors.append(time_diff_ms)
-                
+
                 if time_diff_ms <= tolerance_ms:
                     within_tolerance += 1
         
@@ -241,19 +245,22 @@ class MetricsEngine:
             median_timing_error_ms=np.median(timing_errors)
         )
     
-    def _find_closest_ground_truth(self, detection: DetectionEvent, 
+    def _find_closest_ground_truth(self, detection: DetectionEvent,
                                  ground_truth_objects: List[GroundTruthObject]) -> Optional[GroundTruthObject]:
         """Find the closest ground truth object to a detection"""
         closest_gt = None
         min_time_diff = float('inf')
-        
+
+        # FIX: Use video_relative_timestamp if available to avoid UNIX epoch vs video-relative mismatch
+        det_timestamp = detection.video_relative_timestamp if hasattr(detection, 'video_relative_timestamp') and detection.video_relative_timestamp is not None else detection.timestamp
+
         for gt_obj in ground_truth_objects:
             if detection.class_label == gt_obj.class_label:
-                time_diff = abs(detection.timestamp - gt_obj.timestamp)
+                time_diff = abs(det_timestamp - gt_obj.timestamp)
                 if time_diff < min_time_diff:
                     min_time_diff = time_diff
                     closest_gt = gt_obj
-        
+
         return closest_gt
 
 class StatisticalAnalyzer:

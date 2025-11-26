@@ -1,0 +1,3897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADAS HIL Test Report - Video Sequence Test - 2025-11-26 10:51</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #2c3e50;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header .subtitle {
+            color: #7f8c8d;
+            font-size: 1.2em;
+            margin: 10px 0;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .metric-card {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 5px solid #3498db;
+        }
+        .metric-card.pass {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+        .metric-card.fail {
+            border-left-color: #e74c3c;
+            background: #fadbd8;
+        }
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        .success-summary {
+            background: #d5f4e6;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #27ae60;
+            margin: 30px 0;
+        }
+        .success-summary h3 {
+            color: #27ae60;
+            margin-top: 0;
+        }
+        .failures-section {
+            margin: 30px 0;
+        }
+        .failure-event {
+            background: #fadbd8;
+            border: 1px solid #e74c3c;
+            border-radius: 8px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        .failure-header {
+            background: #e74c3c;
+            color: white;
+            padding: 15px 20px;
+            font-weight: bold;
+        }
+        .failure-content {
+            padding: 20px;
+        }
+        .failure-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .failure-snapshot {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .failure-snapshot img {
+            max-width: 100%;
+            border: 2px solid #e74c3c;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .latency-distribution {
+            margin: 30px 0;
+        }
+        .distribution-bar {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .bar-label {
+            width: 100px;
+            font-weight: bold;
+        }
+        .bar-visual {
+            flex: 1;
+            background: #ecf0f1;
+            height: 25px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60, #f39c12, #e74c3c);
+            border-radius: 12px;
+        }
+        .bar-count {
+            width: 60px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .test-outcome {
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 30px 0;
+        }
+        .test-outcome.pass {
+            background: #27ae60;
+            color: white;
+        }
+        .test-outcome.fail {
+            background: #e74c3c;
+            color: white;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #7f8c8d;
+        }
+        @media print {
+            body { background-color: white; }
+            .container { box-shadow: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ADAS HIL Test Report</h1>
+            <div class="subtitle">Video Sequence Test - 2025-11-26 10:51</div>
+            <div class="subtitle">Project: Test</div>
+            <div class="subtitle">Generated: 2025-11-26T10:51:17.287700</div>
+        </div>
+
+        <!-- Test Outcome -->
+        <div class="test-outcome pass">
+            TEST PASS
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+            <div class="metric-card pass">
+                <div class="metric-value">91.8%</div>
+                <div class="metric-label">Pass Rate</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">26.088ms</div>
+                <div class="metric-label">Average Latency</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">159</div>
+                <div class="metric-label">Total Events</div>
+            </div>
+            <div class="metric-card pass">
+                <div class="metric-value">146</div>
+                <div class="metric-label">Passed Events</div>
+            </div>
+            <div class="metric-card fail">
+                <div class="metric-value">13</div>
+                <div class="metric-label">Failed Events</div>
+            </div>
+            <div class="metric-card fail">
+                <div class="metric-value">0</div>
+                <div class="metric-label">Missed Detections</div>
+            </div>
+        </div>
+
+        <!-- Success Summary -->
+        
+        <div class="success-summary">
+            <h3>✅ Success Summary</h3>
+            <p>70/159 detections passed with average latency of -10.6ms. Successful detections: 70 Unknown.</p>
+            
+            <p><strong>VRU Breakdown:</strong> 
+                
+                    70 Unknown
+                
+            </p>
+            
+        </div>
+        
+
+        <!-- Latency Distribution -->
+        
+        <div class="latency-distribution">
+            <h3>Latency Distribution</h3>
+            
+            
+            <div class="distribution-bar">
+                <div class="bar-label">0-50ms</div>
+                <div class="bar-visual">
+                    <div class="bar-fill" style="width: 100.0%"></div>
+                </div>
+                <div class="bar-count">145</div>
+            </div>
+            
+            <div class="distribution-bar">
+                <div class="bar-label">51-100ms</div>
+                <div class="bar-visual">
+                    <div class="bar-fill" style="width: 0.6896551724137931%"></div>
+                </div>
+                <div class="bar-count">1</div>
+            </div>
+            
+            <div class="distribution-bar">
+                <div class="bar-label">101-200ms</div>
+                <div class="bar-visual">
+                    <div class="bar-fill" style="width: 2.0689655172413794%"></div>
+                </div>
+                <div class="bar-count">3</div>
+            </div>
+            
+            <div class="distribution-bar">
+                <div class="bar-label">201-500ms</div>
+                <div class="bar-visual">
+                    <div class="bar-fill" style="width: 6.896551724137931%"></div>
+                </div>
+                <div class="bar-count">10</div>
+            </div>
+            
+            <div class="distribution-bar">
+                <div class="bar-label">500ms+</div>
+                <div class="bar-visual">
+                    <div class="bar-fill" style="width: 0.0%"></div>
+                </div>
+                <div class="bar-count">0</div>
+            </div>
+            
+        </div>
+        
+
+        <!-- Failure Events -->
+        
+        <div class="failures-section">
+            <h2>❌ Failure Analysis</h2>
+            <p>The following events failed to meet the latency threshold of 100ms:</p>
+            
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 1
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154267.945s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>1.2469291687011719ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 2
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.074s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.646778106689453ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 3
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.122s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>10.812997817993164ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 4
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.171s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.502235412597656ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 5
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.197s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>2.7039051055908203ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 6
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.251s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>15.57016372680664ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 7
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.295s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>17.78244972229004ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 8
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.502s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.36815071105957ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 9
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.619s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>8.505105972290039ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 10
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.660s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>7.233381271362305ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 11
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.704s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>9.645938873291016ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 12
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.755s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.98813247680664ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 13
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.793s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.054391860961914ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 14
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.839s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>19.568920135498047ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 15
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.877s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.592025756835938ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 16
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.909s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>6.267309188842773ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 17
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.948s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>3.8907527923583984ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 18
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154268.987s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>1.4619827270507812ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 19
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.030s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>2.2983551025390625ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 20
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.079s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>9.40084457397461ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 21
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.207s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>12.393951416015625ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 22
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.251s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>14.913082122802734ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 23
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.290s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>13.034343719482422ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 24
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.335s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.214847564697266ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 25
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.585s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>15.938758850097656ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 26
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.613s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>2.317190170288086ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 27
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.713s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>19.212961196899414ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 28
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.740s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.40216064453125ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 29
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.831s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>12.076854705810547ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 30
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.919s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.597270965576172ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 31
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.949s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>5.060911178588867ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 32
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.879s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.187999725341797ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 33
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154269.913s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>10.173320770263672ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 34
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.001s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>14.901161193847656ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 35
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.030s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>2.5053024291992188ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 36
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.084s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>14.960765838623047ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 37
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.123s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>12.507200241088867ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 38
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.379s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.323183059692383ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 39
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.408s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>5.245447158813477ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 40
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.492s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>6.328105926513672ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 41
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.585s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.290903091430664ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 42
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.615s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.6939849853515625ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 43
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.654s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>1.314401626586914ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 44
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.740s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.631996154785156ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 45
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.824s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.588842391967773ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 46
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.863s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>2.0961761474609375ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 47
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.906s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>3.902435302734375ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 48
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.949s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.419803619384766ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 49
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.992s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>6.570100784301758ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 50
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.913s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>10.714292526245117ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 51
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154270.998s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>12.566089630126953ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 52
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.031s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>3.1223297119140625ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 53
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.087s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>17.734766006469727ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 54
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.118s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>7.028102874755859ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 55
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.200s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>5.404949188232422ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 56
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.291s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>13.195276260375977ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 57
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.709s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>15.28787612915039ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 58
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154271.837s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.362760543823242ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 59
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.047s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>19.194364547729492ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 60
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.087s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.13793182373047ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 61
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.129s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>18.1581974029541ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 62
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.168s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>15.518426895141602ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 63
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.209s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>15.038728713989258ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 64
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.252s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>16.451120376586914ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 65
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.291s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>13.716459274291992ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 66
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.338s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>19.296884536743164ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 67
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.377s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>15.981197357177734ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 68
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.414s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>11.788368225097656ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 69
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.454s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>9.41777229309082ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 70
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.493s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>7.529020309448242ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 71
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.532s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>4.811286926269531ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 72
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.571s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>1.9237995147705078ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 73
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.611s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>0.7150173187255859ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 74
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.631s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>20.431041717529297ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 75
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.759s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>23.53501319885254ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 76
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.801s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>65.30308723449707ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 77
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.844s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>108.16812515258789ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 78
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.879s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>142.90809631347656ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 79
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.912s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>176.58710479736328ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 80
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.948s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>211.96603775024414ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 81
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154272.985s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>248.8729953765869ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 82
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.019s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>283.63609313964844ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 83
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.053s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>317.05617904663086ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 84
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.082s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>346.1301326751709ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 85
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.108s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>372.16806411743164ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 86
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.136s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>400.21705627441406ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 87
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.169s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>433.3930015563965ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 88
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.197s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>461.0180854797363ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+            <div class="failure-event">
+                <div class="failure-header">
+                    High Latency - Event 89
+                </div>
+                <div class="failure-content">
+                    <div class="failure-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp:</span>
+                            <span>1764154273.235s</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">VRU Type:</span>
+                            <span>Unknown</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Actual Latency:</span>
+                            <span>499.157190322876ms</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Threshold:</span>
+                            <span>0.5ms</span>
+                        </div>
+                        
+                        <div class="detail-item">
+                            <span class="detail-label">Frame Number:</span>
+                            <span>N/A</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Detection Channel:</span>
+                            <span>AIN0</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Failure Snapshot -->
+                    
+                    
+                </div>
+            </div>
+            
+        </div>
+        
+
+        <!-- Test Session Details -->
+        <div style="margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+            <h3>Test Session Details</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="detail-item">
+                    <span class="detail-label">Session ID:</span>
+                    <span>4b9173b0-fd34-4154-b10b-263f2f1a1363</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Started:</span>
+                    <span>2025-11-26T10:51:07.783094</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Completed:</span>
+                    <span>2025-11-26T10:51:14.603684</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Status:</span>
+                    <span>completed</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Videos Tested:</span>
+                    <span>1</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Latency Threshold:</span>
+                    <span>100ms</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>ADAS Camera Hardware-in-the-Loop Testing Platform</p>
+            <p>Report ID: 43b28f5c-a2f1-4ced-ae1e-a09c48d0fc16</p>
+        </div>
+    </div>
+</body>
+</html>

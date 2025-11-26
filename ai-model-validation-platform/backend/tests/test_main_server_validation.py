@@ -2,6 +2,7 @@
 """
 Main Server Validation Tests - Tests the full main.py implementation
 """
+import sys
 import pytest
 import httpx
 import json

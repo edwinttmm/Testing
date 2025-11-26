@@ -1,0 +1,250 @@
+{
+  "analysis_date": "2025-11-20",
+  "total_errors_found": 29,
+  "summary": {
+    "deprecated_services_count": 3,
+    "affected_test_files": 12,
+    "service_locations": {
+      "drift_measurement_service": {
+        "old_location": "services/drift_measurement_service.py",
+        "new_location": "src/services/drift_measurement_service.py",
+        "status": "EXISTS - relocated to src/"
+      },
+      "clock_sync_service_v2": {
+        "old_location": "services/clock_sync_service_v2.py",
+        "new_location": "src/services/clock_sync_service_v2.py",
+        "status": "EXISTS - relocated to src/"
+      },
+      "clock_sync_service": {
+        "old_location": "N/A",
+        "new_location": "services/clock_sync_service.py",
+        "status": "EXISTS - basic validation functions only"
+      },
+      "labjack_timing_service": {
+        "old_location": "services/labjack_timing_service.py",
+        "new_location": "src/services/labjack_timing_service.py",
+        "status": "EXISTS - relocated to src/"
+      }
+    }
+  },
+  "deprecated_imports": [
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/services/test_drift_measurement_service.py",
+      "line": 25,
+      "old_import": "from services.drift_measurement_service import (\n    DriftMeasurementService,\n    VideoDriftMeasurement,\n    StageTimestamp,\n    DriftStage,\n    get_drift_measurement_service,\n    initialize_drift_measurement_service\n)",
+      "recommendation": "UPDATE",
+      "new_import": "from src.services.drift_measurement_service import (\n    DriftMeasurementService,\n    VideoDriftMeasurement,\n    StageTimestamp,\n    DriftStage,\n    get_drift_measurement_service,\n    initialize_drift_measurement_service\n)",
+      "reason": "Service exists in src/services/ directory. Test file has skip markers but imports are fixable."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/services/test_clock_sync_service.py",
+      "line": 25,
+      "old_import": "from services.clock_sync_service_v2 import (\n    ClockSynchronizationService,\n    ClockSyncMeasurement,\n    SessionClockSync,\n    get_clock_sync_service,\n    initialize_clock_sync_service\n)",
+      "recommendation": "UPDATE",
+      "new_import": "from src.services.clock_sync_service_v2 import (\n    ClockSynchronizationService,\n    ClockSyncMeasurement,\n    SessionClockSync,\n    get_clock_sync_service,\n    initialize_clock_sync_service\n)",
+      "reason": "Service exists in src/services/ directory. Test file has skip markers but imports are fixable."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/unit/test_drift_measurement_service.py",
+      "line": 22,
+      "old_import": "from services.drift_measurement_service import (\n    DriftMeasurementService,\n    DriftStage,\n    StageTimestamp,\n    VideoDriftMeasurement\n)",
+      "recommendation": "UPDATE",
+      "new_import": "from src.services.drift_measurement_service import (\n    DriftMeasurementService,\n    DriftStage,\n    StageTimestamp,\n    VideoDriftMeasurement\n)",
+      "reason": "Service exists in src/services/ directory. Test file has skip markers but imports are fixable."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/services/test_drift_integration.py",
+      "line": 25,
+      "old_import": "from services.clock_sync_service_v2 import get_clock_sync_service",
+      "recommendation": "UPDATE",
+      "new_import": "from src.services.clock_sync_service_v2 import get_clock_sync_service",
+      "reason": "Service exists in src/services/ directory."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/services/test_drift_integration.py",
+      "line": 26,
+      "old_import": "from services.drift_measurement_service import get_drift_measurement_service, DriftStage",
+      "recommendation": "UPDATE",
+      "new_import": "from src.services.drift_measurement_service import get_drift_measurement_service, DriftStage",
+      "reason": "Service exists in src/services/ directory."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/test_clock_sync_integration.py",
+      "line": 16,
+      "old_import": "from services.clock_sync_service import (\n    validate_clock_sync,\n    ClockSkewError,\n    check_clock_skew,\n    get_clock_drift\n)",
+      "recommendation": "UPDATE",
+      "new_import": "from services.clock_sync_service import (\n    validate_clock_sync,\n    ClockSkewError\n)",
+      "reason": "Service exists in services/ (not src/). However, only validate_clock_sync and ClockSkewError are available. Functions check_clock_skew and get_clock_drift do NOT exist in this service."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/integration/test_video_lifecycle_e2e.py",
+      "line": 35,
+      "old_import": "from services.drift_measurement_service import (\n    DriftMeasurementService,\n    DriftStage\n)",
+      "recommendation": "UPDATE",
+      "new_import": "from src.services.drift_measurement_service import (\n    DriftMeasurementService,\n    DriftStage\n)",
+      "reason": "Service exists in src/services/ directory."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/integration/test_video_lifecycle_e2e.py",
+      "line": 41,
+      "old_import": "from services.clock_sync_service import ClockSyncService",
+      "recommendation": "DELETE_OR_UPDATE",
+      "new_import": "# ClockSyncService class does not exist in services/clock_sync_service.py\n# Only validate_clock_sync function and ClockSkewError exception exist\n# Either delete this import or use: from services.clock_sync_service import validate_clock_sync",
+      "reason": "ClockSyncService class does NOT exist. Only standalone functions validate_clock_sync and ClockSkewError exist. Test needs refactoring."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/verify_clock_sync_mission.py",
+      "line": 48,
+      "old_import": "from services.clock_sync_service import (\n    validate_clock_sync,\n    ClockSkewError,\n    check_clock_skew\n)",
+      "recommendation": "UPDATE",
+      "new_import": "from services.clock_sync_service import (\n    validate_clock_sync,\n    ClockSkewError\n)\n# Note: check_clock_skew does NOT exist",
+      "reason": "Service exists but check_clock_skew function does NOT exist in this service."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/unit/test_video_lifecycle_orchestrator.py",
+      "line": 267,
+      "old_import": "from services.clock_sync_service import ClockSkewError",
+      "recommendation": "KEEP",
+      "new_import": "from services.clock_sync_service import ClockSkewError",
+      "reason": "This import is correct. ClockSkewError exists in services/clock_sync_service.py."
+    },
+    {
+      "file": "/home/rigade/Testing/ai-model-validation-platform/backend/tests/performance/test_labjack_performance_comprehensive.py",
+      "line": 44,
+      "old_import": "from src.services.labjack_timing_service import LabJackTimingService",
+      "recommendation": "KEEP",
+      "new_import": "from src.services.labjack_timing_service import LabJackTimingService",
+      "reason": "This import is correct. LabJackTimingService exists in src/services/labjack_timing_service.py."
+    }
+  ],
+  "fix_recommendations": [
+    {
+      "priority": "HIGH",
+      "action": "Update imports from services/ to src/services/",
+      "affected_files": [
+        "tests/services/test_drift_measurement_service.py",
+        "tests/services/test_clock_sync_service.py",
+        "tests/unit/test_drift_measurement_service.py",
+        "tests/services/test_drift_integration.py",
+        "tests/integration/test_video_lifecycle_e2e.py"
+      ],
+      "command": "Replace 'from services.drift_measurement_service' with 'from src.services.drift_measurement_service'\nReplace 'from services.clock_sync_service_v2' with 'from src.services.clock_sync_service_v2'"
+    },
+    {
+      "priority": "HIGH",
+      "action": "Fix non-existent class/function imports",
+      "affected_files": [
+        "tests/integration/test_video_lifecycle_e2e.py",
+        "tests/test_clock_sync_integration.py",
+        "tests/verify_clock_sync_mission.py"
+      ],
+      "details": "ClockSyncService class does NOT exist - only validate_clock_sync function exists.\nFunctions check_clock_skew and get_clock_drift do NOT exist in services/clock_sync_service.py.\nThese tests need to be refactored or deleted."
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Remove or update pytest skip markers",
+      "affected_files": [
+        "tests/services/test_drift_measurement_service.py",
+        "tests/services/test_clock_sync_service.py",
+        "tests/unit/test_drift_measurement_service.py"
+      ],
+      "details": "These files have 'pytestmark = pytest.mark.skip' but the services actually exist. After fixing imports, remove skip markers."
+    }
+  ],
+  "service_inventory": {
+    "available_services": [
+      {
+        "name": "DriftMeasurementService",
+        "path": "src/services/drift_measurement_service.py",
+        "classes": [
+          "DriftMeasurementService",
+          "VideoDriftMeasurement",
+          "StageTimestamp"
+        ],
+        "enums": [
+          "DriftStage"
+        ],
+        "functions": [
+          "get_drift_measurement_service",
+          "initialize_drift_measurement_service"
+        ]
+      },
+      {
+        "name": "ClockSynchronizationService",
+        "path": "src/services/clock_sync_service_v2.py",
+        "classes": [
+          "ClockSynchronizationService",
+          "ClockSyncMeasurement",
+          "SessionClockSync"
+        ],
+        "functions": [
+          "get_clock_sync_service",
+          "initialize_clock_sync_service"
+        ]
+      },
+      {
+        "name": "clock_sync_service",
+        "path": "services/clock_sync_service.py",
+        "classes": [
+          "ClockSkewError"
+        ],
+        "functions": [
+          "validate_clock_sync"
+        ],
+        "note": "Basic validation service, NOT a full class-based service"
+      },
+      {
+        "name": "LabJackTimingService",
+        "path": "src/services/labjack_timing_service.py",
+        "classes": [
+          "LabJackTimingService"
+        ],
+        "methods": [
+          "calculate_latency",
+          "validate_timing_data",
+          "analyze_test_results"
+        ]
+      }
+    ]
+  },
+  "pytest_configuration_error": {
+    "error": "ERROR: /home/rigade/Testing/ai-model-validation-platform/backend/pytest.ini:62: duplicate section 'pytest'",
+    "recommendation": "Fix pytest.ini duplicate section before running tests",
+    "priority": "CRITICAL"
+  },
+  "next_steps": [
+    {
+      "step": 1,
+      "action": "Fix pytest.ini duplicate section",
+      "command": "Edit /home/rigade/Testing/ai-model-validation-platform/backend/pytest.ini and remove duplicate [pytest] section"
+    },
+    {
+      "step": 2,
+      "action": "Update imports in test files",
+      "command": "Replace 'from services.' with 'from src.services.' for drift_measurement_service, clock_sync_service_v2, and labjack_timing_service"
+    },
+    {
+      "step": 3,
+      "action": "Refactor or delete tests with non-existent imports",
+      "files": [
+        "tests/integration/test_video_lifecycle_e2e.py (ClockSyncService does not exist)",
+        "tests/test_clock_sync_integration.py (check_clock_skew, get_clock_drift do not exist)",
+        "tests/verify_clock_sync_mission.py (check_clock_skew does not exist)"
+      ]
+    },
+    {
+      "step": 4,
+      "action": "Remove pytest skip markers after fixing imports",
+      "files": [
+        "tests/services/test_drift_measurement_service.py",
+        "tests/services/test_clock_sync_service.py",
+        "tests/unit/test_drift_measurement_service.py"
+      ]
+    },
+    {
+      "step": 5,
+      "action": "Run pytest collection again to verify fixes",
+      "command": "source venv/bin/activate && python -m pytest --collect-only"
+    }
+  ]
+}

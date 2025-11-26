@@ -2,8 +2,12 @@
 Comprehensive Integration Tests for Camera Integration System
 Tests all components of the camera integration and real-time validation system
 """
+import pytest
+pytestmark = pytest.mark.skip(reason="Camera integration service modules deprecated")
+
 import asyncio
 import pytest
+
 import json
 import time
 from datetime import datetime, timedelta

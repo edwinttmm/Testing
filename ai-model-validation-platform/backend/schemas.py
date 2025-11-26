@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
 import re
+from config.timing_config import MATCHING_TOLERANCE_MS
 # Using str for UUID compatibility with SQLite
 
 def snake_to_camel(snake_str: str) -> str:
@@ -253,7 +254,7 @@ class TestSessionBase(CamelCaseModel):
     project_id: str = Field(alias="projectId")
     video_id: Optional[str] = Field(None, alias="videoId")
     video_ids: Optional[List[str]] = Field(None, alias="videoIds")
-    tolerance_ms: Optional[int] = Field(100, alias="toleranceMs")
+    tolerance_ms: Optional[int] = Field(MATCHING_TOLERANCE_MS, alias="toleranceMs")
     description: Optional[str] = None
     session_type: Optional[str] = Field(None, alias="sessionType")
     has_video_sequence: Optional[bool] = Field(None, alias="hasVideoSequence")
@@ -274,7 +275,16 @@ class TestSessionBase(CamelCaseModel):
         return trimmed or "HIL Test Session"
 
 class TestSessionCreate(TestSessionBase):
+    session_id: Optional[str] = Field(None, alias="sessionId", description="Optional pre-generated session ID for proactive room join")
     config: Optional[Dict[str, Any]] = None
+
+    @field_validator('session_id')
+    @classmethod
+    def validate_session_id_format(cls, v):
+        """Validate session_id format if provided (must start with 'session_')"""
+        if v is not None and not v.startswith('session_'):
+            raise ValueError("session_id must start with 'session_' prefix")
+        return v
 
 class TestSessionResponse(TestSessionBase):
     id: str
@@ -353,7 +363,15 @@ class DetectionEventResponse(DetectionEvent):
         None,
         alias="actualLatencyMs",
         description="CANONICAL: Actual measured latency in milliseconds from video event to hardware detection. "
-                   "This is the single source of truth for latency. Use this field only."
+                   "This is the single source of truth for latency. Use this field only. "
+                   "For False Positives, stores REAL latency, not 10000ms sentinel."
+    )
+
+    # FALSE POSITIVE TRACKING - Added 2025-11-25 to replace 10000ms sentinel
+    is_false_positive: bool = Field(
+        default=False,
+        alias="isFalsePositive",
+        description="TRUE if detection is a False Positive. Replaces 10000ms sentinel value in actual_latency_ms."
     )
 
     # DEPRECATED: Legacy fields maintained for backward compatibility

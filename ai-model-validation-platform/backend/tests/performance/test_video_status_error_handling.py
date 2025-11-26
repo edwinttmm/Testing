@@ -5,6 +5,7 @@ Error Handling Tests for Video Status Transitions and Validation
 Tests error conditions, invalid state transitions, and recovery mechanisms.
 """
 
+import os
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from sqlalchemy.orm import Session
@@ -190,7 +191,7 @@ class TestGroundTruthValidationErrors:
     def _create_ground_truth_with_validation(self, db, video_id, gt_data):
         """Helper method to create ground truth with validation"""
         # Validate video exists
-        video = db.query(Video).filter(Video.id == video_id).first()
+        video = db.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
         if not video:
             raise ValueError("Video not found")
         
@@ -303,7 +304,7 @@ class TestVideoValidationWorkflowErrors:
         """Helper method to simulate validation workflow"""
         import time
         
-        video = db.query(Video).filter(Video.id == video_id).first()
+        video = db.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
         
         # Simulate ground truth generation (with potential interruption)
         video.status = "processing"
@@ -320,10 +321,10 @@ class TestVideoValidationWorkflowErrors:
     
     def _validate_ground_truth_completeness(self, db, video_id):
         """Helper method to validate ground truth completeness"""
-        video = db.query(Video).filter(Video.id == video_id).first()
-        ground_truth_objects = db.query(GroundTruthObject).filter(
+        video = db.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
+        ground_truth_objects = db.execute(select(GroundTruthObject).where(
             GroundTruthObject.video_id == video_id
-        ).all()
+        )).scalars().all()
         
         validated_count = sum(1 for gt in ground_truth_objects if gt.validated)
         total_count = len(ground_truth_objects)
@@ -491,7 +492,7 @@ class TestVideoStatusRecoveryMechanisms:
         
         for gt in ground_truth_objects:
             # Check if corresponding video exists
-            video = db.query(Video).filter(Video.id == gt.video_id).first()
+            video = db.execute(select(Video).where(Video.id == gt.video_id)).scalar_one_or_none()
             if not video:
                 orphaned_ids.append(gt.id)
                 # In real implementation, would delete the GT object

@@ -73,7 +73,6 @@ async def readiness_check(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
     # If any check failed, return 503
     if overall_status != 'ready':
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=503,
             detail={
@@ -280,7 +279,8 @@ async def system_info() -> Dict[str, Any]:
     try:
         with open('VERSION', 'r') as f:
             info['app_version'] = f.read().strip()
-    except:
+    except (FileNotFoundError, IOError, OSError) as e:
+        logger.debug(f"Could not read VERSION file: {e}")
         info['app_version'] = 'unknown'
 
     return info

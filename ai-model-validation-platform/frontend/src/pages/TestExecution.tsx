@@ -125,6 +125,8 @@ const TestExecution: React.FC = () => {
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  // Clean video mode - shows ONLY video with zero overlays (press 'C' to toggle)
+  const [cleanVideoMode, setCleanVideoMode] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
@@ -763,117 +765,61 @@ const TestExecution: React.FC = () => {
         </Card>
       )}
 
-      {/* HIL Test Mode Full-Screen Interface */}
+      {/* HIL Test Mode - TRUE FULLSCREEN, no boundaries */}
       {hilTestMode && currentSession && selectedVideos.length > 0 && (
-        <Card sx={{ mb: 3, position: 'relative' }}>
-          <CardContent sx={{ p: 0, position: 'relative' }}>
-            {/* Full-Screen HIL Video Player */}
-            <HILVideoPlayer
-              videoPlaylist={currentVideoPlaylist}
-              currentVideoIndex={currentVideoIndex}
-              testInProgress={isRunning}
-              isFullScreen={isFullscreenMode}
-              detectionEvents={detectionEvents}
-              maxLatencyMs={500}
-              onVideoEnd={() => {
-                if (currentVideoIndex < currentVideoPlaylist.length - 1) {
-                  setCurrentVideoIndex(prev => prev + 1);
-                } else {
-                  handleTestCompletion({});
-                }
-              }}
-              onVideoError={(error) => handleTestError(new Error(error))}
-              onNextVideo={() => setCurrentVideoIndex(prev => Math.min(prev + 1, currentVideoPlaylist.length - 1))}
-              onPreviousVideo={() => setCurrentVideoIndex(prev => Math.max(prev - 1, 0))}
-              onToggleFullScreen={toggleFullscreen}
-              onVideoStart={(videoElement: HTMLVideoElement) => {
-                // Attach timing measurement to video element
-                videoTimingMeasurementRef.current?.attachToVideo(videoElement);
-              }}
-              testStartTime={new Date()}
-            />
-            
-            {/* Detection Overlay */}
-            <DetectionOverlay
-              detections={detectionEvents}
-              videoWidth={1920}
-              videoHeight={1080}
-              currentTime={0}
-              isVisible={isRunning}
-            />
-            
-            {/* Emergency Stop Button - Always visible */}
-            <EmergencyStopButton
-              onEmergencyStop={() => {
-                stopTestExecution();
-                setHilTestMode(false);
-                showSnackbar('Emergency stop activated!', 'error');
-              }}
-              isVisible={true}
-            />
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Regular Video Player for Test Execution */}
-      {!hilTestMode && showVideoPlayer && currentSession && selectedVideos.length > 0 && (
-        <Card 
-          ref={videoPlayerContainerRef}
-          sx={{ 
-            mb: 3,
-            position: isFullscreenMode ? 'fixed' : 'relative',
-            top: isFullscreenMode ? 0 : 'auto',
-            left: isFullscreenMode ? 0 : 'auto',
-            right: isFullscreenMode ? 0 : 'auto',
-            bottom: isFullscreenMode ? 0 : 'auto',
-            zIndex: isFullscreenMode ? 9999 : 1,
-            width: isFullscreenMode ? '100vw' : '100%',
-            height: isFullscreenMode ? '100vh' : 'auto',
-            backgroundColor: isFullscreenMode ? '#000' : 'background.paper',
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+            backgroundColor: '#000',
           }}
         >
-          <CardContent sx={{ p: isFullscreenMode ? 0 : { xs: 1, sm: 2, md: 3 } }}>
-            {isFullscreenMode && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: 16,
-                  right: 16,
-                  zIndex: 10000,
-                  display: 'flex',
-                  gap: 1,
-                }}
-              >
-                <Tooltip title="Exit Fullscreen">
-                  <IconButton
-                    onClick={toggleFullscreen}
-                    sx={{
-                      bgcolor: 'rgba(0, 0, 0, 0.7)',
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: 'rgba(0, 0, 0, 0.9)',
-                      },
-                    }}
-                  >
-                    <ExitFullscreenIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Stop Test">
-                  <IconButton
-                    onClick={stopTestExecution}
-                    sx={{
-                      bgcolor: 'rgba(244, 67, 54, 0.7)',
-                      color: 'white',
-                      '&:hover': {
-                        bgcolor: 'rgba(244, 67, 54, 0.9)',
-                      },
-                    }}
-                  >
-                    <StopIcon />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            )}
+          <HILVideoPlayer
+            videoPlaylist={currentVideoPlaylist}
+            currentVideoIndex={currentVideoIndex}
+            testInProgress={isRunning}
+            isFullScreen={true}
+            cleanVideoMode={true}
+            onToggleCleanMode={() => {}}
+            detectionEvents={detectionEvents}
+            maxLatencyMs={500}
+            onVideoEnd={() => {
+              if (currentVideoIndex < currentVideoPlaylist.length - 1) {
+                setCurrentVideoIndex(prev => prev + 1);
+              } else {
+                handleTestCompletion({});
+              }
+            }}
+            onVideoError={(error) => handleTestError(new Error(error))}
+            onNextVideo={() => setCurrentVideoIndex(prev => Math.min(prev + 1, currentVideoPlaylist.length - 1))}
+            onPreviousVideo={() => setCurrentVideoIndex(prev => Math.max(prev - 1, 0))}
+            onToggleFullScreen={toggleFullscreen}
+            onVideoStart={(videoElement: HTMLVideoElement) => {
+              videoTimingMeasurementRef.current?.attachToVideo(videoElement);
+            }}
+            testStartTime={new Date()}
+          />
+        </Box>
+      )}
+      
+      {/* Regular Video Player - TRUE FULLSCREEN, no boundaries */}
+      {!hilTestMode && showVideoPlayer && currentSession && selectedVideos.length > 0 && (
+        <Box
+          ref={videoPlayerContainerRef}
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+            backgroundColor: '#000',
+          }}
+        >
             
             <SequentialVideoPlayer
               videos={selectedVideos}
@@ -932,15 +878,14 @@ const TestExecution: React.FC = () => {
               }}
               onProgressUpdate={(progress, videoIndex) => {
                 // Update test progress based on video playback
-                updateTestProgress({ 
-                  videoProgress: progress, 
+                updateTestProgress({
+                  videoProgress: progress,
                   currentVideoIndex: videoIndex,
-                  totalProgress: progress 
+                  totalProgress: progress
                 });
               }}
             />
-          </CardContent>
-        </Card>
+        </Box>
       )}
       
       {/* Hardware Signal Panel */}

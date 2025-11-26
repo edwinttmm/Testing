@@ -1,0 +1,63 @@
+@startuml Component Overview - Simple
+!theme plain
+title AI Model Validation Platform - Simple Overview
+skinparam backgroundColor #FEFEFE
+
+skinparam rectangle {
+    RoundCorner 25
+}
+
+' Main actors
+actor "Test\nEngineer" as user
+
+' Main system
+rectangle "AI Model Validation Platform" #E8F5E9 {
+
+    rectangle "Web Interface" #E3F2FD {
+        (Dashboard)
+        (Test Execution)
+        (Results Viewer)
+    }
+
+    rectangle "Core Engine" #FFF3E0 {
+        (Test Management)
+        (Ground Truth\nCorrelation)
+        (Report\nGeneration)
+    }
+
+    rectangle "Hardware Layer" #FCE4EC {
+        (LabJack\nIntegration)
+    }
+}
+
+' External systems
+rectangle "VRU Detection\nSystem" as vru #F3E5F5
+database "Test Results\nDatabase" as db
+
+' Connections
+user --> (Dashboard) : Monitor
+user --> (Test Execution) : Run Tests
+user --> (Results Viewer) : Analyze
+
+(Test Execution) --> (Test Management)
+(Test Management) --> (LabJack\nIntegration)
+(Test Management) --> (Ground Truth\nCorrelation)
+(Ground Truth\nCorrelation) --> (Report\nGeneration)
+(Results Viewer) --> (Report\nGeneration)
+
+vru --> (LabJack\nIntegration) : GPIO Signal
+(Test Management) --> db : Store/Retrieve
+(Report\nGeneration) --> db : Query
+
+' Legend
+legend right
+    **What This Platform Does:**
+
+    1. Captures hardware detection signals
+    2. Correlates with ground truth data
+    3. Measures detection latency
+    4. Validates VRU detection accuracy
+    5. Generates compliance reports
+endlegend
+
+@enduml

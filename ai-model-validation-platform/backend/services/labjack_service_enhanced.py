@@ -13,6 +13,7 @@ import asyncio
 import logging
 import time
 import json
+import os
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -138,9 +139,12 @@ class EnhancedLabJackService:
         try:
             self.statistics["connection_attempts"] += 1
             logger.info("🔌 Attempting LabJack bridge connection...")
-            
-            # Try to connect to bridge service
-            bridge_url = "http://10.255.255.254:8080"
+
+            # Try to connect to bridge service (use env var with localhost default)
+            bridge_host = os.getenv("LABJACK_BRIDGE_HOST", "localhost")
+            bridge_port = os.getenv("LABJACK_BRIDGE_PORT", "8080")
+            bridge_url = f"http://{bridge_host}:{bridge_port}"
+            logger.info(f"🔗 Connecting to LabJack bridge at: {bridge_url}")
             response = requests.get(f"{bridge_url}/status", timeout=2)
             
             if response.status_code == 200:

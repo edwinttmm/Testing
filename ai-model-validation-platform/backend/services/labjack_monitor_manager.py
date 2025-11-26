@@ -503,6 +503,75 @@ class LabJackMonitorManager:
         finally:
             logger.info("💚 Health monitoring stopped")
 
+    async def shutdown(self) -> bool:
+        """Shutdown the monitoring manager and cleanup resources"""
+        try:
+            logger.info("🔄 Shutting down LabJack monitoring manager")
+
+            # Set shutdown flag
+            self._shutdown_requested = True
+
+            # Stop monitoring session
+            await self.stop_monitoring_session()
+
+            # Stop monitor process
+            await self.stop_monitor_process()
+
+            # Cleanup any zombie processes
+            self.cleanup_zombie_processes()
+
+            logger.info("✅ LabJack monitoring manager shutdown complete")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Error during manager shutdown: {e}")
+            return False
+
+    def cleanup_zombie_processes(self):
+        """Clean up orphaned standalone_labjack_monitor processes"""
+        try:
+            import psutil
+
+            cleaned_count = 0
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if proc.info['cmdline']:
+                        # Check if this is a standalone_labjack_monitor process
+                        cmdline_str = ' '.join(proc.info['cmdline'])
+                        if 'standalone_labjack_monitor.py' in cmdline_str:
+                            pid = proc.info['pid']
+
+                            # Don't kill our own managed process
+                            if self.process and self.process.pid == pid:
+                                logger.debug(f"Skipping managed process PID {pid}")
+                                continue
+
+                            # Kill orphaned process
+                            logger.warning(f"🧹 Cleaning up orphaned standalone monitor process PID {pid}")
+                            proc.terminate()
+
+                            # Wait briefly for termination
+                            try:
+                                proc.wait(timeout=3)
+                            except psutil.TimeoutExpired:
+                                logger.warning(f"⚠️ Force killing process PID {pid}")
+                                proc.kill()
+
+                            cleaned_count += 1
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+
+            if cleaned_count > 0:
+                logger.info(f"✅ Cleaned up {cleaned_count} orphaned processes")
+            else:
+                logger.debug("No orphaned processes found")
+
+        except ImportError:
+            logger.warning("⚠️ psutil not available, cannot cleanup zombie processes")
+        except Exception as e:
+            logger.error(f"❌ Error cleaning up zombie processes: {e}")
+
 # Global manager instance
 labjack_monitor_manager = LabJackMonitorManager()
 
@@ -524,3 +593,7 @@ async def ensure_monitor_process_running() -> bool:
     if not labjack_monitor_manager.is_process_running():
         return await labjack_monitor_manager.start_monitor_process()
     return True
+
+def cleanup_zombie_monitor_processes():
+    """Cleanup zombie standalone monitor processes (synchronous wrapper)"""
+    labjack_monitor_manager.cleanup_zombie_processes()

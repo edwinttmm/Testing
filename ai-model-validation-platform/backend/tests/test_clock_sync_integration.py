@@ -8,11 +8,12 @@ Verifies:
 4. Variable names match Queen's Protocol
 """
 
+import os
 import pytest
 import time
 from fastapi.testclient import TestClient
 from main import app
-from services.clock_sync_service import (
+from services.clock_sync_service_v2 import (
     validate_clock_sync,
     ClockSkewError,
     log_clock_drift_metrics
@@ -168,9 +169,9 @@ class TestSocketIOIntegration:
             content = f.read()
 
         # Verify imports
-        assert 'from services.clock_sync_service import validate_clock_sync' in content, \
+        assert 'from services.clock_sync_service_v2 import validate_clock_sync' in content, \
             "Missing clock sync service import"
-        assert 'from services.clock_sync_service import ClockSkewError' in content, \
+        assert 'from services.clock_sync_service_v2 import ClockSkewError' in content, \
             "Missing ClockSkewError import"
 
         # Verify usage in video_started handler

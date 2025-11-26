@@ -126,8 +126,11 @@ class EnhancedMLService:
         try:
             db = SessionLocal()
             
-            # Clear existing ground truth for this video
-            db.query(GroundTruthObject).filter(GroundTruthObject.video_id == video_id).delete()
+            # Clear existing ground truth for this video (only active records)
+            db.query(GroundTruthObject).filter(
+                GroundTruthObject.video_id == video_id,
+                GroundTruthObject.deleted_at.is_(None)  # Only delete active records
+            ).delete()
             
             # Store new ground truth objects
             ground_truth_objects = ground_truth_result.get("objects", [])

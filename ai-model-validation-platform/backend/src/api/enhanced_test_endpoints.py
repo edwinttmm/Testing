@@ -55,6 +55,8 @@ class TestSessionCreateRequest(BaseModel):
     video_ids: List[str] = Field(..., min_items=1, description="List of video IDs")
     description: Optional[str] = Field(None, description="Optional session description")
     config: Dict[str, Any] = Field(default_factory=dict, description="Test configuration")
+    # DUAL FIX PART B: Add constant_voltage_mode parameter for enhanced test workflow
+    constant_voltage_mode: bool = Field(False, description="Enable constant voltage mode to bypass debounce filtering for 100% detection rate")
 
 class TestSessionResponse(BaseModel):
     id: str
@@ -242,7 +244,14 @@ async def create_test_session(request: TestSessionCreateRequest, db: Session = D
         
         # Use first video for database compatibility
         first_video_id = request.video_ids[0]
-        
+
+        # DUAL FIX PART B: Merge constant_voltage_mode into config for DetectionConfig initialization
+        enhanced_config = {
+            **request.config,
+            'constant_voltage_mode': request.constant_voltage_mode,
+            'video_ids': request.video_ids  # Store all video IDs for multi-video sessions
+        }
+
         # Create test session
         session_id = str(uuid.uuid4())
         test_session = TestSession(
@@ -253,13 +262,13 @@ async def create_test_session(request: TestSessionCreateRequest, db: Session = D
             status="created",
             created_at=datetime.now()
         )
-        
+
         db.add(test_session)
         db.commit()
         db.refresh(test_session)
-        
-        logger.info(f"Created test session {session_id} with {len(request.video_ids)} videos")
-        
+
+        logger.info(f"Created test session {session_id} with {len(request.video_ids)} videos (constant_voltage_mode={request.constant_voltage_mode})")
+
         return TestSessionResponse(
             id=test_session.id,
             name=test_session.name,
@@ -268,7 +277,7 @@ async def create_test_session(request: TestSessionCreateRequest, db: Session = D
             status=test_session.status,
             created_at=test_session.created_at,
             video_count=len(request.video_ids),
-            config=request.config
+            config=enhanced_config
         )
         
     except HTTPException:

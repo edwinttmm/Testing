@@ -66,8 +66,12 @@ const normalizeGroundTruthMetrics = (rawMetrics?: any | null) => {
   const truePositives = toNumber(rawMetrics.true_positives ?? rawMetrics.truePositives);
   const falsePositives = toNumber(rawMetrics.false_positives ?? rawMetrics.falsePositives);
   const falseNegatives = toNumber(rawMetrics.false_negatives ?? rawMetrics.falseNegatives);
+  // CRITICAL: ground_truth_events_available is the authoritative total from backend (e.g., 131)
+  // total_ground_truth may sometimes be incorrectly set to matched count (e.g., 65)
   const totalGroundTruth = toNumber(
-    rawMetrics.total_ground_truth ??
+    rawMetrics.ground_truth_events_available ??
+      rawMetrics.groundTruthEventsAvailable ??
+      rawMetrics.total_ground_truth ??
       rawMetrics.totalGroundTruth ??
       rawMetrics.ground_truth_total ??
       rawMetrics.groundTruthTotal,
@@ -242,14 +246,14 @@ const HILResults: React.FC = () => {
       const detections = currentId ? (videoDetectionMap[currentId] ?? []) : [];
       const groundTruth = currentId ? (videoGroundTruthMap[currentId] ?? []) : [];
 
-      // CRITICAL FIX: Always prefer backend ground_truth_comparison over frontend recalculation
+      // CRITICAL FIX: Prefer ground_truth_metrics which has correct total_ground_truth (e.g., 131)
+      // ground_truth_comparison may have incorrect total_ground_truth (e.g., 65) in some cases
       // Backend provides accurate TP/FP/FN from proper ground truth matching
-      // Deprecated createMetricsFromDetections() function has been removed (used wrong validation_result field)
       const existingMetricsRaw =
-        video.ground_truth_comparison ??
-        video.groundTruthComparison ??
         video.ground_truth_metrics ??
         video.groundTruthMetrics ??
+        video.ground_truth_comparison ??
+        video.groundTruthComparison ??
         null;
 
       const existingNormalized = normalizeGroundTruthMetrics(existingMetricsRaw);
@@ -467,9 +471,22 @@ const HILResults: React.FC = () => {
           const combined = Object.entries(next)
             .filter(([key]) => key !== '__all__')
             .flatMap(([, value]) => Array.isArray(value) ? value : []);
+
+          // DEDUPLICATION FIX: Remove duplicates when building __all__ aggregate
+          const seen = new Set<string>();
+          const deduplicated = combined.filter((detection) => {
+            const id = detection?.id ?? detection?.event_id ?? detection?.detection_id;
+            if (!id || seen.has(id)) {
+              return false;
+            }
+            seen.add(id);
+            return true;
+          });
+
           const prevAll = Array.isArray(prev['__all__']) ? prev['__all__'] : [];
-          if (combined.length > prevAll.length) {
-            next['__all__'] = combined;
+          if (deduplicated.length > prevAll.length) {
+            console.log(`🔍 [videoDetectionMap __all__] Deduplication: ${combined.length} → ${deduplicated.length} (removed ${combined.length - deduplicated.length} duplicates)`);
+            next['__all__'] = deduplicated;
           } else if (prevAll.length > 0) {
             next['__all__'] = prevAll;
           }
@@ -696,14 +713,31 @@ const HILResults: React.FC = () => {
           // Backend already calculated correct TP/FP/FN metrics (59 TP, 6 FP, 455 FN)
           // Frontend was recalculating from wrong field (validation_result = "PASS"/"FAIL" not "TP"/"FP"/"FN")
 
-          const sequenceCombinedEvents = normalizeDetectionEvents(
-            [
-              ...(((effectiveSeqResults as any)?.combined_detection_events) ?? []),
-              ...(((effectiveSeqResults as any)?.combinedDetectionEvents) ?? []),
-              ...(((effectiveSeqResults as any)?.detection_events) ?? []),
-              ...collectDetectionCandidates(effectiveSeqResults)
-            ]
-          );
+          // Collect all detection sources and deduplicate before normalization
+          const rawCombinedEvents = [
+            ...(((effectiveSeqResults as any)?.combined_detection_events) ?? []),
+            ...(((effectiveSeqResults as any)?.combinedDetectionEvents) ?? []),
+            ...(((effectiveSeqResults as any)?.detection_events) ?? []),
+            ...collectDetectionCandidates(effectiveSeqResults)
+          ];
+
+          // DEDUPLICATION FIX: Remove duplicates from raw events before normalization
+          const seenRawIds = new Set<string>();
+          const dedupedRawEvents = rawCombinedEvents.filter((event) => {
+            const rawId = event?.id ?? event?.event_id ?? event?.detection_id ?? event?.uuid;
+            if (!rawId) {
+              return true; // Keep events without IDs (will get generated IDs during normalization)
+            }
+            if (seenRawIds.has(String(rawId))) {
+              return false;
+            }
+            seenRawIds.add(String(rawId));
+            return true;
+          });
+
+          console.log(`🔍 [sequenceCombinedEvents] Raw deduplication: ${rawCombinedEvents.length} → ${dedupedRawEvents.length} (removed ${rawCombinedEvents.length - dedupedRawEvents.length} duplicates)`);
+
+          const sequenceCombinedEvents = normalizeDetectionEvents(dedupedRawEvents);
 
           if (sequenceCombinedEvents.length > 0) {
             const seenIds = new Set<string>(normalizedDetections.map(event => event.id));
@@ -841,7 +875,16 @@ const HILResults: React.FC = () => {
             if (firstVideoId) {
               setVideoId(firstVideoId);
               await loadGroundTruthData(firstVideoId);
-              await loadDetectionsForVideo(null);  // Single-video: no filter
+              // CRITICAL FIX: Load detections and store under the actual video ID
+              // Previously stored under '__all__' causing key mismatch with selectedVideoId
+              const videoDetections = await apiService.getTestSessionEvents(sessionId!, 2000, {});
+              const normalizedDetections = normalizeDetectionEvents(videoDetections);
+              console.log(`Loaded ${normalizedDetections.length} detections for single-video session`);
+              // Store under BOTH the video ID AND __all__ to support both lookup patterns
+              setVideoDetectionMap({
+                [firstVideoId]: normalizedDetections,
+                '__all__': normalizedDetections
+              });
               setSelectedVideoId(firstVideoId);
             }
           }
@@ -923,18 +966,57 @@ const HILResults: React.FC = () => {
         // Normalize incoming detection event
         const newDetection = normalizeDetectionEvent(data, baseDetections.length);
 
-        // Add to base detections
+        // Add to base detections with deduplication by event_id
+        // FIX #7: Prevent duplicates when WebSocket delivers events already in REST API response
         setBaseDetections(prev => {
+          const eventId = newDetection.event_id || newDetection.eventId || newDetection.id;
+          // Check if this detection already exists by event_id or frame_number+video_id
+          const isDuplicate = prev.some(existing => {
+            const existingId = existing.event_id || existing.eventId || existing.id;
+            // Match by event_id if available
+            if (eventId && existingId && eventId === existingId) {
+              console.log(`🔄 Skipping duplicate detection by event_id: ${eventId}`);
+              return true;
+            }
+            // Fallback: match by frame_number + video_id combination
+            const existingVideoId = existing.video_id || existing.videoId;
+            const newVideoId = newDetection.video_id || newDetection.videoId;
+            if (existing.frame_number === newDetection.frame_number &&
+                existingVideoId && newVideoId && existingVideoId === newVideoId) {
+              console.log(`🔄 Skipping duplicate detection by frame+video: frame ${newDetection.frame_number}`);
+              return true;
+            }
+            return false;
+          });
+
+          if (isDuplicate) {
+            return prev; // Don't add duplicate
+          }
+
           const updated = [...prev, newDetection];
           console.log('📊 Updated detection count:', updated.length);
           return updated;
         });
 
-        // Update video detection map if video ID is available
+        // Update video detection map if video ID is available (with deduplication)
         const videoIdFromEvent = (data as any).video_id ?? (data as any).videoId ?? selectedVideoId;
         if (videoIdFromEvent) {
           setVideoDetectionMap(prev => {
             const existing = prev[videoIdFromEvent] || [];
+            const eventId = newDetection.event_id || newDetection.eventId || newDetection.id;
+
+            // Check for duplicates in the video-specific map
+            const isDuplicate = existing.some(det => {
+              const existingId = det.event_id || det.eventId || det.id;
+              if (eventId && existingId && eventId === existingId) return true;
+              if (det.frame_number === newDetection.frame_number) return true;
+              return false;
+            });
+
+            if (isDuplicate) {
+              return prev; // Don't add duplicate
+            }
+
             return {
               ...prev,
               [videoIdFromEvent]: [...existing, newDetection]
@@ -1000,39 +1082,75 @@ const HILResults: React.FC = () => {
       return null;
     }
 
-    // CRITICAL FIX: Aggregate ground truth metrics from backend's ground_truth_comparison
-    // Backend provides correct TP/FP/FN from actual ground truth matching in perVideoResults
-    // NEVER recalculate from frontend detection data (uses wrong validation_result field)
-    const totalTP = videos.reduce((sum, v) => {
-      // Prioritize ground_truth_comparison (backend's correct data structure)
-      const gtComp = v.ground_truth_comparison ?? v.groundTruthComparison ?? v.ground_truth_metrics ?? {};
-      const tp = gtComp.true_positives ?? gtComp.truePositives ?? 0;
-      const videoId = v.video_id ?? v.videoId ?? 'unknown';
-      console.log(`[aggregatedMetrics] Video ${videoId}: TP=${tp}, raw gtComp:`, gtComp);
-      return sum + toNumber(tp);
-    }, 0);
-    const totalFP = videos.reduce((sum, v) => {
-      const gtComp = v.ground_truth_comparison ?? v.groundTruthComparison ?? v.ground_truth_metrics ?? {};
-      const fp = gtComp.false_positives ?? gtComp.falsePositives ?? 0;
-      return sum + toNumber(fp);
-    }, 0);
-    const totalFN = videos.reduce((sum, v) => {
-      const gtComp = v.ground_truth_comparison ?? v.groundTruthComparison ?? v.ground_truth_metrics ?? {};
-      const fn = gtComp.false_negatives ?? gtComp.falseNegatives ?? 0;
-      return sum + toNumber(fn);
-    }, 0);
+    // CRITICAL FIX: Use SESSION-LEVEL ground_truth_comparison from enhancedResults
+    // This has the CORRECT values (e.g., 131 GT, 65 TP, 66 FN) calculated from the full session
+    // The per_video_results.ground_truth_metrics has WRONG values because it queries per-video GT objects
+    const sessionGtComp = enhancedResults?.ground_truth_comparison;
 
-    console.log(`[aggregatedMetrics] ✅ AGGREGATED from backend perVideoResults.ground_truth_comparison: TP=${totalTP}, FP=${totalFP}, FN=${totalFN}`);
-    console.log(`[aggregatedMetrics] Source data count: ${videos.length} videos in effectivePerVideoSummaries`);
+    let totalTP: number;
+    let totalFP: number;
+    let totalFN: number;
+    let totalGroundTruthEvents: number;
+    let aggregatedPrecision: number;
+    let aggregatedRecall: number;
+    let aggregatedF1: number;
 
-    // Calculate aggregated precision, recall, F1 from totals
-    const aggregatedPrecision = (totalTP + totalFP) > 0 ? (totalTP / (totalTP + totalFP)) * 100 : 0;
-    const aggregatedRecall = (totalTP + totalFN) > 0 ? (totalTP / (totalTP + totalFN)) * 100 : 0;
-    const aggregatedF1 = (aggregatedPrecision + aggregatedRecall) > 0
-      ? (2 * (aggregatedPrecision * aggregatedRecall) / (aggregatedPrecision + aggregatedRecall))
-      : 0;
+    if (sessionGtComp && sessionGtComp.ground_truth_events_available > 0) {
+      // USE SESSION-LEVEL METRICS (CORRECT SOURCE)
+      totalTP = toNumber(sessionGtComp.true_positives ?? 0);
+      totalFP = toNumber(sessionGtComp.false_positives ?? 0);
+      totalFN = toNumber(sessionGtComp.false_negatives ?? 0);
+      totalGroundTruthEvents = toNumber(sessionGtComp.ground_truth_events_available ?? 0);
+      aggregatedPrecision = toNumber(sessionGtComp.precision ?? 0);
+      aggregatedRecall = toNumber(sessionGtComp.recall ?? 0);
+      aggregatedF1 = toNumber(sessionGtComp.f1_score ?? 0);
 
-    console.log(`[aggregatedMetrics] ✅ CALCULATED: Precision=${aggregatedPrecision.toFixed(1)}%, Recall=${aggregatedRecall.toFixed(1)}%, F1=${aggregatedF1.toFixed(1)}%`);
+      console.log(`[aggregatedMetrics] ✅ USING SESSION-LEVEL ground_truth_comparison:`, {
+        totalTP, totalFP, totalFN, totalGroundTruthEvents,
+        precision: aggregatedPrecision, recall: aggregatedRecall, f1: aggregatedF1
+      });
+    } else {
+      // FALLBACK: Aggregate from per-video metrics (may have incorrect values)
+      console.warn('[aggregatedMetrics] ⚠️ Session-level ground_truth_comparison not available, falling back to per-video aggregation');
+
+      totalTP = videos.reduce((sum, v) => {
+        const gtComp = v.ground_truth_metrics ?? v.groundTruthMetrics ?? v.ground_truth_comparison ?? v.groundTruthComparison ?? {};
+        const tp = gtComp.true_positives ?? gtComp.truePositives ?? 0;
+        return sum + toNumber(tp);
+      }, 0);
+      totalFP = videos.reduce((sum, v) => {
+        const gtComp = v.ground_truth_metrics ?? v.groundTruthMetrics ?? v.ground_truth_comparison ?? v.groundTruthComparison ?? {};
+        const fp = gtComp.false_positives ?? gtComp.falsePositives ?? 0;
+        return sum + toNumber(fp);
+      }, 0);
+      totalFN = videos.reduce((sum, v) => {
+        const gtComp = v.ground_truth_metrics ?? v.groundTruthMetrics ?? v.ground_truth_comparison ?? v.groundTruthComparison ?? {};
+        const fn = gtComp.false_negatives ?? gtComp.falseNegatives ?? 0;
+        return sum + toNumber(fn);
+      }, 0);
+      totalGroundTruthEvents = videos.reduce((sum, v) => {
+        const backendCount = v.ground_truth_metrics?.total_ground_truth ??
+                             v.ground_truth_comparison?.ground_truth_events_available ??
+                             v.ground_truth_comparison?.total_ground_truth ??
+                             v.ground_truth_events_available ?? v.groundTruthEventsAvailable ??
+                             v.ground_truth_count ?? v.groundTruthCount ?? 0;
+        return sum + toNumber(backendCount);
+      }, 0);
+
+      // Calculate precision, recall, F1 from totals
+      aggregatedPrecision = (totalTP + totalFP) > 0 ? (totalTP / (totalTP + totalFP)) * 100 : 0;
+      aggregatedRecall = (totalTP + totalFN) > 0 ? (totalTP / (totalTP + totalFN)) * 100 : 0;
+      const precisionDecimal = aggregatedPrecision / 100;
+      const recallDecimal = aggregatedRecall / 100;
+      aggregatedF1 = (precisionDecimal + recallDecimal) > 0
+        ? (2 * (precisionDecimal * recallDecimal) / (precisionDecimal + recallDecimal)) * 100
+        : 0;
+
+      console.log(`[aggregatedMetrics] ⚠️ FALLBACK aggregation: TP=${totalTP}, FP=${totalFP}, FN=${totalFN}, GT=${totalGroundTruthEvents}`);
+    }
+
+    console.log(`[aggregatedMetrics] FINAL: TP=${totalTP}, FP=${totalFP}, FN=${totalFN}, GT=${totalGroundTruthEvents}`);
+    console.log(`[aggregatedMetrics] FINAL: Precision=${aggregatedPrecision.toFixed(1)}%, Recall=${aggregatedRecall.toFixed(1)}%, F1=${aggregatedF1.toFixed(1)}%`);
 
     // Aggregate detection metrics - ALWAYS use backend data first (source of truth)
     const totalDetections = videos.reduce((sum, v) => {
@@ -1048,25 +1166,6 @@ const HILResults: React.FC = () => {
       const mapCount = currentId ? (videoDetectionMap[currentId]?.length ?? 0) : 0;
       if (mapCount === 0 && backendCount === 0) {
         console.warn(`No detection count available for video ${currentId}`);
-      }
-      return sum + mapCount;
-    }, 0);
-
-    const totalGroundTruthEvents = videos.reduce((sum, v) => {
-      // Backend data is authoritative
-      const backendCount = v.ground_truth_events_available ?? v.groundTruthEventsAvailable ??
-                           v.ground_truth_count ?? v.groundTruthCount ??
-                           v.ground_truth_metrics?.total_ground_truth ?? 0;
-
-      if (backendCount > 0) {
-        return sum + backendCount;
-      }
-
-      // Fallback to map only if backend data missing
-      const currentId = v.videoId ?? v.video_id ?? v.id;
-      const mapCount = currentId ? (videoGroundTruthMap[currentId]?.length ?? 0) : 0;
-      if (mapCount === 0 && backendCount === 0) {
-        console.warn(`No ground truth count available for video ${currentId}`);
       }
       return sum + mapCount;
     }, 0);
@@ -1108,7 +1207,7 @@ const HILResults: React.FC = () => {
       videosPassed,
       totalVideos: videos.length
     };
-  }, [isSequence, sequenceResults, perVideoSummaries, videoDetectionMap, videoGroundTruthMap, effectivePerVideoSummaries]);
+  }, [isSequence, sequenceResults, perVideoSummaries, videoDetectionMap, videoGroundTruthMap, effectivePerVideoSummaries, enhancedResults]);
 
   // Destructure aggregated metrics for easy access
   const {
@@ -1143,8 +1242,23 @@ const HILResults: React.FC = () => {
       const combined = Object.entries(videoDetectionMap)
         .filter(([key]) => key !== '__all__')
         .flatMap(([, value]) => (Array.isArray(value) ? value : []));
+
+      // DEDUPLICATION FIX: Remove duplicates based on unique ID
+      // Issue: Frame 1 shows two entries with "real 9ms" and "real 7ms"
+      // Issue: Frame 5 shows two entries with "real 16ms" and "real 1ms"
+      // Root cause: videoDetectionMap can contain same detection across multiple video keys
       if (combined.length > baseCount) {
-        return combined;
+        const seen = new Set<string>();
+        const deduplicated = combined.filter((detection) => {
+          const id = detection?.id ?? detection?.event_id ?? detection?.detection_id;
+          if (!id || seen.has(id)) {
+            return false;
+          }
+          seen.add(id);
+          return true;
+        });
+        console.log(`🔍 [allDetections] Deduplication: ${combined.length} → ${deduplicated.length} (removed ${combined.length - deduplicated.length} duplicates)`);
+        return deduplicated;
       }
     }
 
@@ -1225,12 +1339,18 @@ const HILResults: React.FC = () => {
   const activeMatchRate = activeExpectedCount > 0 ? (activeMatchedCount / activeExpectedCount) * 100 : 0;
 
   const overallCorrectedStats = enhancedResults?.detection_statistics?.corrected_results as any;
+  // Latency-based pass/fail metrics for the banner
+  // GT metrics (TP/FP/FN, F1, Precision, Recall) are shown in dual_evaluation section
   const overallPassedDetections = overallCorrectedStats?.passed_detections ?? allDetections.filter(d => d?.passed || d?.result === 'pass').length;
   const overallFailedDetections = overallCorrectedStats?.failed_detections ?? Math.max(0, overallDetectionCount - overallPassedDetections);
   const overallPassRate = sequenceResults?.overallPassRate
     ?? sequenceResults?.overall_pass_rate
     ?? overallCorrectedStats?.pass_rate
     ?? (overallDetectionCount > 0 ? (overallPassedDetections / overallDetectionCount) * 100 : 0);
+
+  // GT comparison for accuracy metrics
+  const gtComparisonForStats = enhancedResults?.ground_truth_comparison;
+  const hasGtMetrics = Boolean(gtComparisonForStats && gtComparisonForStats.ground_truth_events_available > 0);
 
   // Extract Ground Truth Comparison Metrics
   // CRITICAL: This uses backend's pre-calculated ground_truth_comparison object
@@ -1255,10 +1375,17 @@ const HILResults: React.FC = () => {
     return groundTruthEvents.length;
   }, [isSequence, videoGroundTruthMap, groundTruthEvents, selectedVideoId]);
 
-  const totalGroundTruth = totalGroundTruthFromMap || gtComparison?.ground_truth_events_available || 0;
+  // CRITICAL: Backend ground_truth_events_available is authoritative (total GT events, e.g., 131)
+  // totalGroundTruthFromMap counts matched events from arrays (e.g., 65 TPs), NOT total GT
+  // Always prefer backend value when available for correct recall denominator
+  const totalGroundTruth = gtComparison?.ground_truth_events_available || totalGroundTruthFromMap || 0;
 
   const precision = gtComparison?.precision ?? 0;
-  const recall = gtComparison?.recall ?? 0;
+  // FIXED: Read from accuracyRecall (decimal 0-1) and convert to percentage
+  // Backend stores recall as decimal in accuracyRecall field
+  // If gtComparison.recall exists (as percentage), use it directly
+  // Otherwise, fallback to accuracyRecall * 100 to convert decimal to percentage
+  const recall = gtComparison?.recall ?? ((enhancedResults as any)?.accuracyRecall ? (enhancedResults as any).accuracyRecall * 100 : 0);
   const f1Score = gtComparison?.f1_score ?? 0;
   const truePositives = gtComparison?.true_positives ?? 0;
   const falsePositives = gtComparison?.false_positives ?? 0;
@@ -1516,6 +1643,8 @@ const HILResults: React.FC = () => {
       </AppBar>
 
       {/* Overall Test Status Banner */}
+      {/* Shows actual detection count vs expected GT count */}
+      {/* TP/FP/FN are accuracy metrics shown separately in dual_evaluation */}
       <TestStatusBanner
         passed={testPassed}
         detectionCount={overallDetectionCount}
@@ -1912,18 +2041,40 @@ const HILResults: React.FC = () => {
           </Stack>
 
           {/* Per-Video Ground Truth Metrics */}
+          {/* CRITICAL FIX: For single-video sessions or when only 1 video exists, use session-level ground_truth_comparison
+              which has correct metrics (131 GT, 66 FN). The per_video_results.ground_truth_metrics has wrong values
+              because backend queries GT objects per video_id instead of session-level totals. */}
           {selectedVideoSummary?.ground_truth_metrics && (
             <Box sx={{ mt: 3 }}>
-              <GroundTruthComparisonCards
-                precision={selectedVideoSummary.ground_truth_metrics.precision ?? 0}
-                recall={selectedVideoSummary.ground_truth_metrics.recall ?? 0}
-                f1Score={selectedVideoSummary.ground_truth_metrics.f1_score ?? selectedVideoSummary.ground_truth_metrics.f1Score ?? 0}
-                truePositives={selectedVideoSummary.ground_truth_metrics.true_positives ?? selectedVideoSummary.ground_truth_metrics.truePositives ?? 0}
-                falsePositives={selectedVideoSummary.ground_truth_metrics.false_positives ?? selectedVideoSummary.ground_truth_metrics.falsePositives ?? 0}
-                falseNegatives={selectedVideoSummary.ground_truth_metrics.false_negatives ?? selectedVideoSummary.ground_truth_metrics.falseNegatives ?? 0}
-                totalGroundTruth={selectedVideoSummary.ground_truth_metrics.total_ground_truth ?? selectedVideoSummary.ground_truth_metrics.totalGroundTruth}
-                title={`Ground Truth Metrics - ${selectedVideoSummary.videoName ?? selectedVideoSummary.video_name ?? 'Selected Video'}`}
-              />
+              {(() => {
+                // Use session-level metrics when only 1 video (per-video metrics are incorrect for single-video sessions)
+                const isSingleVideo = effectivePerVideoSummaries.length <= 1;
+                const sessionGt = enhancedResults?.ground_truth_comparison;
+                const useSessionMetrics = isSingleVideo && sessionGt && sessionGt.ground_truth_events_available > 0;
+
+                const metrics = useSessionMetrics ? {
+                  precision: sessionGt.precision ?? 0,
+                  recall: sessionGt.recall ?? 0,
+                  f1_score: sessionGt.f1_score ?? 0,
+                  true_positives: sessionGt.true_positives ?? 0,
+                  false_positives: sessionGt.false_positives ?? 0,
+                  false_negatives: sessionGt.false_negatives ?? 0,
+                  total_ground_truth: sessionGt.ground_truth_events_available ?? 0
+                } : selectedVideoSummary.ground_truth_metrics;
+
+                return (
+                  <GroundTruthComparisonCards
+                    precision={metrics.precision ?? 0}
+                    recall={metrics.recall ?? 0}
+                    f1Score={metrics.f1_score ?? metrics.f1Score ?? 0}
+                    truePositives={metrics.true_positives ?? metrics.truePositives ?? 0}
+                    falsePositives={metrics.false_positives ?? metrics.falsePositives ?? 0}
+                    falseNegatives={metrics.false_negatives ?? metrics.falseNegatives ?? 0}
+                    totalGroundTruth={metrics.total_ground_truth ?? metrics.totalGroundTruth}
+                    title={`Ground Truth Metrics - ${selectedVideoSummary.videoName ?? selectedVideoSummary.video_name ?? 'Selected Video'}`}
+                  />
+                );
+              })()}
             </Box>
           )}
         </Box>
@@ -1959,6 +2110,11 @@ const HILResults: React.FC = () => {
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>#</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Video</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>
+                  <Tooltip title="Detection source: LabJack (hardware), AI model, or manual">
+                    <span style={{ cursor: 'help', borderBottom: '1px dotted' }}>Source</span>
+                  </Tooltip>
+                </TableCell>
                 {/* FIX #6: Add clear timestamp column headers */}
                 <TableCell sx={{ fontWeight: 'bold' }}>
                   <Tooltip title={isSequence ? "Time relative to the start of this specific video" : "Time from video start"}>
@@ -1988,7 +2144,7 @@ const HILResults: React.FC = () => {
               {/* BUG FIX: Show loading spinner while video data is being fetched */}
               {videoLoadingState[selectedVideoId ?? ''] ? (
                 <TableRow>
-                  <TableCell colSpan={isSequence ? 8 : 7} align="center">
+                  <TableCell colSpan={isSequence ? 9 : 8} align="center">
                     <Box sx={{ py: 5, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                       <CircularProgress size={40} />
                       <Typography color="textSecondary">
@@ -2057,7 +2213,7 @@ const HILResults: React.FC = () => {
                 })()
               ) : (
                 <TableRow>
-                  <TableCell colSpan={isSequence ? 8 : 7} align="center">
+                  <TableCell colSpan={isSequence ? 9 : 8} align="center">
                     <Typography color="textSecondary" sx={{ py: 3 }}>
                       No detection events found for this video
                     </Typography>
@@ -2071,15 +2227,28 @@ const HILResults: React.FC = () => {
 
       {/* Session Information Footer */}
       <Paper sx={{ p: 2, bgcolor: 'grey.50' }} elevation={1}>
-        <Typography variant="caption" color="textSecondary">
-          Session ID: {sessionId}
-          {enhancedResults?.session_info?.project_name && (
-            <> • Project: {enhancedResults.session_info.project_name}</>
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+          <Typography variant="caption" color="textSecondary">
+            Session ID: {sessionId}
+            {enhancedResults?.session_info?.project_name && (
+              <> • Project: {enhancedResults.session_info.project_name}</>
+            )}
+            {enhancedResults?.session_info?.name && (
+              <> • Test: {enhancedResults.session_info.name}</>
+            )}
+          </Typography>
+          {enhancedResults?.session_info?.configuration?.constantVoltageMode && (
+            <Tooltip title="Debounce filter bypassed - 95%+ detection rate enabled. Press Ctrl+Shift+R if values don't update." arrow>
+              <Chip
+                icon={<InfoIcon />}
+                label="🔬 Constant Voltage Mode Active"
+                color="warning"
+                size="small"
+                variant="outlined"
+              />
+            </Tooltip>
           )}
-          {enhancedResults?.session_info?.name && (
-            <> • Test: {enhancedResults.session_info.name}</>
-          )}
-        </Typography>
+        </Stack>
       </Paper>
 
       {/* Video Playback Dialog */}

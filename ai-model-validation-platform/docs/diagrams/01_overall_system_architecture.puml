@@ -1,0 +1,139 @@
+@startuml Overall System Architecture
+!theme plain
+title AI Model Validation Platform - Overall System Architecture
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle uml2
+
+' Define colors
+skinparam component {
+    BackgroundColor<<frontend>> #E3F2FD
+    BackgroundColor<<backend>> #E8F5E9
+    BackgroundColor<<database>> #FFF3E0
+    BackgroundColor<<hardware>> #FCE4EC
+    BackgroundColor<<external>> #F3E5F5
+}
+
+' Top level - Users
+actor "Test Engineer" as user
+actor "Annotator" as annotator
+actor "Reviewer" as reviewer
+
+' Frontend Layer
+package "Frontend (React + TypeScript)" <<frontend>> {
+    component [Dashboard] as dashboard
+    component [Test Execution UI] as testui
+    component [Video Player] as videoplayer
+    component [Annotation Tools] as annotation
+    component [Results Viewer] as results
+    component [HIL Control Panel] as hilpanel
+}
+
+' Communication Layer
+cloud "Communication" {
+    component [REST API\n(Axios)] as restapi
+    component [WebSocket\n(Socket.IO)] as websocket
+}
+
+' Backend Layer
+package "Backend (FastAPI + Python)" <<backend>> {
+    component [API Routers] as routers
+    component [Business Services] as services
+    component [LabJack Integration] as labjack_service
+    component [Ground Truth Service] as gt_service
+    component [Detection Pipeline] as detection
+    component [Report Generator] as reports
+}
+
+' Data Layer
+package "Data Storage" <<database>> {
+    database "SQLite/PostgreSQL" as db
+    database "Redis Cache" as redis
+    folder "File Storage" as files {
+        component [Videos]
+        component [Screenshots]
+        component [Reports]
+    }
+}
+
+' Hardware Layer
+package "Hardware Integration" <<hardware>> {
+    component [LabJack T4/T7\nDAQ Device] as labjack
+    component [Camera System\n(VRU Detection)] as camera
+    component [GPIO Signals] as gpio
+}
+
+' ML Layer
+package "ML/AI Engine" <<external>> {
+    component [YOLOv8/v11\nObject Detection] as yolo
+    component [PyTorch\nInference Engine] as pytorch
+}
+
+' Connections - User to Frontend
+user --> dashboard
+user --> testui
+user --> hilpanel
+annotator --> annotation
+annotator --> videoplayer
+reviewer --> results
+
+' Frontend to Communication
+dashboard --> restapi
+testui --> restapi
+testui --> websocket
+videoplayer --> restapi
+annotation --> restapi
+results --> restapi
+hilpanel --> websocket
+hilpanel --> restapi
+
+' Communication to Backend
+restapi --> routers
+websocket --> routers
+
+' Backend Internal
+routers --> services
+services --> labjack_service
+services --> gt_service
+services --> detection
+services --> reports
+
+' Backend to Data
+services --> db
+services --> redis
+services --> files
+reports --> files
+
+' Backend to Hardware
+labjack_service --> labjack
+labjack --> gpio
+camera --> gpio
+
+' Backend to ML
+detection --> yolo
+yolo --> pytorch
+
+' Notes
+note right of labjack
+    Hardware signal acquisition
+    - Voltage monitoring (200 Hz)
+    - GPIO state detection
+    - Sub-100ms latency
+end note
+
+note right of gt_service
+    Ground Truth Correlation
+    - Hungarian Algorithm
+    - Many-to-One Matching
+    - Latency Calculation
+end note
+
+note bottom of db
+    Stores:
+    - Test Sessions
+    - Detection Events
+    - Ground Truth Objects
+    - Annotations
+    - Reports
+end note
+
+@enduml

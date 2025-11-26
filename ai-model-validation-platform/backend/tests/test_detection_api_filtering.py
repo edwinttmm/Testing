@@ -9,10 +9,11 @@ CRITICAL FIX: Addresses bug where frontend received ALL detections instead
 of video-specific detections, causing 103 database queries.
 """
 
+import os
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from sqlalchemy import event
+from sqlalchemy import event, select, delete, update, func
 from sqlalchemy.engine import Engine
 from datetime import datetime, timezone
 from typing import List

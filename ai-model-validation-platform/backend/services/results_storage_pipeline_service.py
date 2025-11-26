@@ -252,18 +252,20 @@ class ResultsStoragePipelineService:
             best_match = None
             best_score = 0.0
             best_temporal_offset = None
-            
+
             for gt_obj in ground_truth_objects:
                 # Calculate temporal offset
-                temporal_offset = video_timestamp - gt_obj.timestamp
-                
+                # FIX: Use video_relative_timestamp if available to avoid UNIX epoch vs video-relative mismatch
+                det_timestamp = detection_event.video_relative_timestamp if hasattr(detection_event, 'video_relative_timestamp') and detection_event.video_relative_timestamp is not None else video_timestamp
+                temporal_offset = det_timestamp - gt_obj.timestamp
+
                 # Calculate spatial matching (if applicable)
                 iou_score = self._calculate_iou(detection_event, gt_obj)
-                
+
                 # Calculate combined score (temporal + spatial)
                 temporal_score = max(0, 1 - abs(temporal_offset) / tolerance_seconds)
                 combined_score = 0.7 * temporal_score + 0.3 * iou_score
-                
+
                 if combined_score > best_score:
                     best_match = gt_obj
                     best_score = combined_score

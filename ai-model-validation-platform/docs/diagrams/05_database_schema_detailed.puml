@@ -1,0 +1,280 @@
+@startuml Database Schema - Detailed
+!theme plain
+title Database Schema - Detailed Entity Relationships
+skinparam backgroundColor #FEFEFE
+skinparam linetype ortho
+
+skinparam class {
+    BackgroundColor #FFF3E0
+    BorderColor #FF9800
+}
+
+' Authentication
+entity "AuthUser" as auth_user {
+    * id : UUID <<PK>>
+    --
+    email : String <<unique>>
+    username : String <<unique>>
+    hashed_password : String
+    is_active : Boolean
+    is_superuser : Boolean
+    created_at : DateTime
+}
+
+entity "UserSession" as user_session {
+    * id : UUID <<PK>>
+    --
+    * user_id : UUID <<FK>>
+    session_token : String <<unique>>
+    ip_address : String
+    expires_at : DateTime
+    is_active : Boolean
+}
+
+' Project Management
+entity "Project" as project {
+    * id : UUID <<PK>>
+    --
+    name : String
+    description : Text
+    camera_model : String
+    camera_view : String
+    lens_type : String
+    resolution : String
+    frame_rate : Integer
+    signal_type : String
+    status : String
+    owner_id : String
+    created_at : DateTime
+}
+
+entity "Video" as video {
+    * id : UUID <<PK>>
+    --
+    * project_id : UUID <<FK>>
+    filename : String
+    file_path : String
+    file_size : Integer
+    duration : Float
+    fps : Float
+    resolution : String
+    status : String
+    validation_status : String
+    ground_truth_generated : Boolean
+    ground_truth_count : Integer
+    hil_testing_ready : Boolean
+    created_at : DateTime
+}
+
+entity "VideoProjectLink" as vid_proj_link {
+    * id : UUID <<PK>>
+    --
+    * video_id : UUID <<FK>>
+    * project_id : UUID <<FK>>
+    intelligent_match : Boolean
+    confidence_score : Float
+}
+
+' Test Sessions
+entity "TestSession" as session {
+    * id : UUID <<PK>>
+    --
+    * project_id : UUID <<FK>>
+    * video_id : UUID <<FK>>
+    name : String
+    status : String
+    tolerance_ms : Integer
+    has_video_sequence : Boolean
+    sequence_id : String
+    --
+    // Results
+    accuracy_f1_score : Float
+    accuracy_precision : Float
+    accuracy_recall : Float
+    latency_mean_ms : Float
+    latency_max_ms : Float
+    tp_count, fp_count, fn_count : Int
+    overall_test_result : String
+    --
+    // Precision Timing
+    video_start_timestamp : Float
+    video_start_timestamp_ns : String
+    command_start_timestamp : Float
+    presentation_delay_ms : Float
+    precision_timing_enabled : Boolean
+    drift_compensation_active : Boolean
+    --
+    // Approval
+    approval_status : String
+    approved_by : String
+    approved_at : DateTime
+}
+
+entity "DetectionEvent" as detection {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    video_id : UUID <<FK>>
+    sequence_video_result_id : UUID <<FK>>
+    ground_truth_match_id : UUID <<FK>>
+    --
+    timestamp : Float
+    **actual_latency_ms : Float**
+    is_false_positive : Boolean
+    validation_result : String
+    --
+    // LabJack
+    labjack_timestamp : Float
+    labjack_voltage : Float
+    detection_channel : String
+    --
+    // Video Timing
+    video_frame_number : Integer
+    video_relative_timestamp : Float
+    drift_compensated_timestamp : Float
+    timing_sync_quality : String
+    --
+    // Quality
+    quality_category : String
+    confidence : Float
+}
+
+entity "TestResult" as result {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    pass_rate : Float
+    avg_latency_ms : Float
+    max_latency_ms : Float
+    min_latency_ms : Float
+    median_latency_ms : Float
+    std_dev_latency_ms : Float
+    total_detections : Integer
+    passed_detections : Integer
+    failed_detections : Integer
+    threshold_ms : Integer
+    latency_distribution : JSON
+}
+
+' Ground Truth
+entity "GroundTruthObject" as gt {
+    * id : UUID <<PK>>
+    --
+    * video_id : UUID <<FK>>
+    tracking_id : String
+    frame_number : Integer
+    timestamp : Float
+    class_label : String
+    x, y, width, height : Float
+    confidence : Float
+    validated : Boolean
+    difficult : Boolean
+    deleted_at : DateTime
+    deleted_by : String
+}
+
+entity "DetectionComparison" as comparison {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    ground_truth_id : UUID <<FK>>
+    detection_event_id : UUID <<FK>>
+    match_type : String
+    iou_score : Float
+    temporal_offset : Float
+}
+
+' Annotations
+entity "Annotation" as annotation {
+    * id : UUID <<PK>>
+    --
+    * video_id : UUID <<FK>>
+    detection_id : String
+    frame_number : Integer
+    timestamp : Float
+    vru_type : String
+    bounding_box : JSON
+    validated : Boolean
+    annotator : String
+}
+
+entity "AnnotationSession" as ann_session {
+    * id : UUID <<PK>>
+    --
+    * video_id : UUID <<FK>>
+    * project_id : UUID <<FK>>
+    annotator_id : String
+    status : String
+    total_detections : Integer
+    validated_detections : Integer
+    current_frame : Integer
+}
+
+' Multi-Video Sequences
+entity "VideoTestSequence" as vid_seq {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    name : String
+    video_ids : JSON
+    sequence_order : JSON
+    max_latency_ms : Integer
+    status : String
+    current_video_index : Integer
+    total_videos : Integer
+}
+
+entity "SequenceVideoResult" as seq_result {
+    * id : UUID <<PK>>
+    --
+    * video_sequence_id : UUID <<FK>>
+    * video_id : UUID <<FK>>
+    sequence_order : Integer
+    video_status : String
+    actual_detection_count : Integer
+    avg_latency_ms : Float
+    pass_rate_percent : Float
+}
+
+' Reports
+entity "TestReport" as report {
+    * id : UUID <<PK>>
+    --
+    * test_session_id : UUID <<FK>>
+    report_name : String
+    report_type : String
+    formats_generated : JSON
+    total_events : Integer
+    pass_rate_percent : Float
+    test_outcome : String
+    html_report_path : String
+    pdf_report_path : String
+}
+
+' Relationships
+auth_user ||--o{ user_session : has
+
+project ||--o{ video : contains
+project ||--o{ session : has
+project ||--o{ ann_session : has
+project ||--o{ vid_proj_link : linked
+
+video ||--o{ gt : has
+video ||--o{ annotation : has
+video ||--o{ ann_session : has
+video ||--o{ vid_proj_link : linked
+video ||--o{ seq_result : in sequence
+
+session ||--o{ detection : records
+session ||--|| result : produces
+session ||--o{ comparison : compares
+session ||--o{ vid_seq : has sequence
+session ||--o{ report : generates
+
+vid_seq ||--o{ seq_result : contains
+seq_result ||--o{ detection : contains
+
+gt ||--o{ comparison : compared
+detection ||--o{ comparison : compared
+
+@enduml

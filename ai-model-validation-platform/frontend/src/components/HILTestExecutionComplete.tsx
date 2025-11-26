@@ -156,6 +156,7 @@ interface TestConfiguration {
   hardwareSignalTimeout: number;
   precisionTimingEnabled: boolean;
   customSignalThreshold?: number;
+  constantVoltageMode?: boolean; // Bypass debounce filter for testing
 }
 
 const HILTestExecutionComplete: React.FC = () => {
@@ -176,6 +177,7 @@ const HILTestExecutionComplete: React.FC = () => {
     hardwareSignalTimeout: 5000,
     precisionTimingEnabled: true,
     customSignalThreshold: undefined,
+    constantVoltageMode: false, // Default: OFF
   });
   
   // LabJack hardware integration
@@ -1215,6 +1217,26 @@ const HILTestExecutionComplete: React.FC = () => {
                         label="Precision timing (PRD requirement)"
                       />
                     </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <Tooltip
+                        title="Bypass debounce filter for constant voltage injection testing. Enables 95%+ detection rate for validation."
+                        arrow
+                        placement="top"
+                      >
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={testConfig.constantVoltageMode || false}
+                              onChange={(e) => setTestConfig(prev => ({ ...prev, constantVoltageMode: e.target.checked }))}
+                              disabled={testInProgress}
+                              color="warning"
+                            />
+                          }
+                          label="Constant Voltage Mode (Testing)"
+                        />
+                      </Tooltip>
+                    </Grid>
                   </Grid>
                   
                   {selectedProject && videoPlaylist.length > 0 && (
@@ -1623,9 +1645,20 @@ const HILTestExecutionComplete: React.FC = () => {
                 • Signal Type: {labjackStatus?.signalType || 'TTL'}<br />
                 • Auto-advance: {testConfig.autoAdvanceVideos ? 'Yes' : 'No'}<br />
                 • Precision Timing: {testConfig.precisionTimingEnabled ? 'Enabled' : 'Disabled'}<br />
-                • Snapshots: {testConfig.captureSnapshots ? 'Enabled' : 'Disabled'}
+                • Snapshots: {testConfig.captureSnapshots ? 'Enabled' : 'Disabled'}<br />
+                • Constant Voltage Mode: {testConfig.constantVoltageMode ? '🔬 Active (Testing)' : 'Disabled'}
               </Typography>
             </Alert>
+
+            {testConfig.constantVoltageMode && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                <AlertTitle>Constant Voltage Mode Active</AlertTitle>
+                <Typography variant="body2">
+                  Debounce filter bypassed for testing. This mode enables 95%+ detection rate for constant voltage injection tests.
+                  <br /><strong>Note:</strong> If recall values don't update, press Ctrl+Shift+R to hard refresh.
+                </Typography>
+              </Alert>
+            )}
             
             <Typography variant="body1" paragraph>
               Starting this enhanced test will:

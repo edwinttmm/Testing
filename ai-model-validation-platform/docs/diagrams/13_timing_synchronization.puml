@@ -1,0 +1,102 @@
+@startuml Timing Synchronization
+!theme plain
+title Timing Synchronization Model
+skinparam backgroundColor #FEFEFE
+
+participant "Frontend\n(Browser)" as browser
+participant "Backend\n(Server)" as server
+participant "LabJack\n(Hardware)" as labjack
+database "Database" as db
+
+== Clock Synchronization ==
+browser -> server : GET /api/clock-sync
+note over server : server_time = time.time()
+server --> browser : {server_time, monotonic_ns}
+note over browser
+    Calculate offset:
+    RTT = response_time - request_time
+    offset = server_time - browser_time + (RTT/2)
+end note
+
+== Test Start - T0 ==
+browser -> server : POST /api/sessions/{id}/video-start
+note over server
+    **T0 = command_start_timestamp**
+    Record time when start command received
+end note
+server -> db : Store command_start_timestamp
+server -> labjack : start_monitoring()
+note over labjack
+    Record monitoring_start_time
+    Begin voltage streaming
+end note
+server --> browser : OK
+
+== Video Presentation - T1 ==
+browser -> browser : video.play()
+note over browser
+    **T1 = presentation_start**
+    When first frame appears
+    Use performance.now() for precision
+end note
+browser -> server : POST /api/lifecycle\n{event: VIDEO_START, timestamp: T1}
+note over server
+    **Presentation Delay = T1 - T0**
+    Time for browser to render video
+end note
+server -> db : Store presentation_delay_ms
+
+== Detection Timing ==
+note over labjack
+    Each detection has:
+    - labjack_timestamp (hardware)
+    - system_timestamp (Python time.time())
+    - monotonic_ns (time.monotonic_ns())
+end note
+
+labjack -> db : Store detection_event
+
+== Video Relative Calculation ==
+note over server
+    **video_relative_timestamp =**
+    detection_timestamp - video_start_timestamp
+
+    This aligns detection with video timeline
+end note
+
+== Drift Compensation ==
+note over server
+    Monitor clock drift over time:
+    - Compare hardware vs system timestamps
+    - Calculate drift_rate (ms/second)
+    - Apply compensation to detection timestamps
+
+    **drift_compensated_timestamp =**
+    original_timestamp + (drift_rate * elapsed_time)
+end note
+
+== Latency Calculation ==
+note over server #LightYellow
+    **Latency Calculation:**
+
+    1. Get detection video_relative_timestamp
+    2. Find matching ground_truth timestamp
+    3. latency_ms = (det_time - gt_time) * 1000
+
+    **Positive latency:** Detection after GT (normal)
+    **Negative latency:** Detection before GT (pre-trigger)
+end note
+
+== Timeline Alignment ==
+note over browser #LightGreen
+    **Frontend Correlation:**
+
+    Ground Truth: frame_number → timestamp
+    Detection: labjack_timestamp → video_relative
+
+    Match using:
+    - Direct: ±2 frames tolerance
+    - Extended: ±5 frames (constant voltage)
+end note
+
+@enduml

@@ -23,6 +23,7 @@ Test Strategy:
 - End-to-end tests for complete workflow
 """
 
+import os
 import pytest
 import asyncio
 import time
@@ -35,14 +36,14 @@ from contextlib import asynccontextmanager
 
 # Test framework imports
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, delete, update, func
 from sqlalchemy.pool import StaticPool
 
 # System under test imports
-from services.labjack_service import LabJackService, ConnectionMode, ConnectionStatus
+from services.labjack_service_manager import LabJackService, ConnectionMode, ConnectionStatus
 from services.dedicated_labjack_monitor import DedicatedLabJackMonitor
-from services.labjack_detection_service import LabJackDetectionMonitor, DetectionEvent
-from services.labjack_hardware_service import get_labjack_hardware_service
+from services.simple_labjack_detection import LabJackDetectionMonitor, DetectionEvent
+from services.simple_labjack_detection import get_labjack_hardware_service
 from services.video_timing_service import VideoTimingService
 from services.hil_validation_service import HILValidationService
 
@@ -438,9 +439,9 @@ class TestEndToEndPipeline:
         asyncio.run(monitor._store_detection_event_async(test_event))
         
         # Query database to verify storage
-        stored_event = test_database.query(DBDetectionEvent).filter(
+        stored_event = test_database.execute(select(DBDetectionEvent).where(
             DBDetectionEvent.id == test_event.id
-        ).first()
+        )).scalar_one_or_none()
         
         assert stored_event is not None, "Event should be stored in database"
         assert stored_event.labjack_voltage == 4.8, "Voltage should be preserved"
@@ -1174,9 +1175,9 @@ class TestBackwardCompatibility:
         test_database.commit()
         
         # Verify it can be retrieved
-        retrieved = test_database.query(DBDetectionEvent).filter(
+        retrieved = test_database.execute(select(DBDetectionEvent).where(
             DBDetectionEvent.id == "legacy_test_001"
-        ).first()
+        )).scalar_one_or_none()
         
         assert retrieved is not None, "Legacy event should be retrievable"
         assert retrieved.processing_time_ms == 50.0, "Legacy fields should be preserved"
@@ -1185,7 +1186,7 @@ class TestBackwardCompatibility:
         """Test existing HIL workflow still functions with new system"""
         
         # Import legacy HIL components
-        from services.labjack_detection_service import get_detection_service
+        from services.simple_labjack_detection import get_detection_service
         
         # Test legacy detection service
         detection_service = get_detection_service()

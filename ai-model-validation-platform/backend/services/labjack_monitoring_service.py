@@ -49,36 +49,58 @@ class LabJackMonitoringService:
         return True
         
     def stop_monitoring(self):
-        """Stop monitoring LabJack signals"""
+        """Stop monitoring LabJack signals and cleanup resources"""
         if not self.monitoring_active:
+            logger.debug("Monitoring already stopped - nothing to cleanup")
             return
-            
-        logger.info(f"⏹️ Stopping LabJack monitoring for session {self.current_session_id}")
+
+        session_id = self.current_session_id
+        logger.info(f"⏹️ Stopping LabJack monitoring for session {session_id}")
+
+        # CRITICAL FIX: Set flags FIRST to stop loop immediately
         self.monitoring_active = False
         self._stop_event.set()
-        
-        if self.monitor_thread:
-            self.monitor_thread.join(timeout=2)
-            
+
+        # Wait for monitoring thread to terminate
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            logger.debug(f"Waiting for monitoring thread to terminate...")
+            self.monitor_thread.join(timeout=3.0)
+
+            if self.monitor_thread.is_alive():
+                logger.warning(f"⚠️ Monitoring thread did not terminate cleanly")
+            else:
+                logger.debug(f"✅ Monitoring thread terminated successfully")
+
+        # Cleanup resources
         self.current_session_id = None
+        self.monitor_thread = None
+        self._was_high = False  # Reset edge detection state
+
+        logger.info(f"✅ Monitoring stopped and cleaned up for session {session_id}")
         
     def _monitor_loop(self, session_id: str):
         """Background loop to monitor and store LabJack signals"""
         detection_count = 0
         logger.info(f"📊 Starting monitoring loop for session {session_id}")
-        
+
         try:
             # Import signal validation service
             from api_signal_validation import signal_validation_service
             logger.info(f"✅ Successfully imported signal validation service")
-            
+
             sample_interval = 1.0 / self.sample_rate
-            
+
+            # CRITICAL FIX: Check BOTH flags on every iteration
             while self.monitoring_active and not self._stop_event.is_set():
                 try:
+                    # SAFETY: Double-check session is still active before reading
+                    if not self.monitoring_active or self._stop_event.is_set():
+                        logger.debug("Stop signal detected, breaking monitoring loop")
+                        break
+
                     # Read voltage from LabJack
                     result = signal_validation_service.read_voltage_signal("AIN0")
-                    
+
                     if result.get("success") and result.get("voltage") is not None:
                         voltage = result["voltage"]
                         timestamp = time.time()
@@ -103,17 +125,33 @@ class LabJackMonitoringService:
                             # Still high; no new edge
                             pass
                     else:
+                        # CRITICAL FIX: Check if error is due to monitoring being stopped
+                        # If so, exit gracefully without logging as an error
+                        error_msg = result.get("error", "")
+                        if "Monitoring not active" in error_msg or "no sessions running" in error_msg:
+                            logger.debug(f"Monitoring stopped signal received, exiting loop")
+                            break
+                        # Log other errors as warnings
                         logger.warning(f"❌ Failed to read voltage: {result}")
-                    
+
+                    # CRITICAL FIX: Final check before sleeping to avoid unnecessary delay on shutdown
+                    if not self.monitoring_active or self._stop_event.is_set():
+                        logger.debug("Stop signal detected before sleep, breaking monitoring loop")
+                        break
+
                     # Sleep for sample interval
                     time.sleep(sample_interval)
-                    
+
                 except Exception as e:
+                    # Check if this is a shutdown-related exception
+                    if not self.monitoring_active or self._stop_event.is_set():
+                        logger.debug(f"Exception during shutdown, exiting gracefully: {e}")
+                        break
                     logger.error(f"❌ Error in monitoring loop: {e}")
                     import traceback
                     logger.error(f"Traceback: {traceback.format_exc()}")
                     time.sleep(1)  # Back off on error
-                    
+
         except Exception as e:
             logger.error(f"💥 Fatal error in monitoring thread: {e}")
             import traceback

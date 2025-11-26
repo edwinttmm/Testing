@@ -13,12 +13,14 @@ Key Features:
 - HIL compliance validation
 """
 
+import os
 import asyncio
 import logging
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+import signal
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
 import json
@@ -28,7 +30,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import centralized timing configuration
-from config.timing_config import GRACE_PERIOD_MS, GRACE_PERIOD_SECONDS
+from config.timing_config import GRACE_PERIOD_MS, GRACE_PERIOD_SECONDS, MATCHING_TOLERANCE_MS
 
 # Local imports
 from database import get_db, SessionLocal
@@ -36,6 +38,8 @@ from models import TestSession, DetectionEvent, Video, SequenceVideoResult
 from services.video_timing_service import get_video_timing_service, VideoTimingService
 from services.labjack_detection_service import get_detection_service, LabJackDetectionMonitor
 from services.hil_screenshot_service import get_hil_ground_truth_comparison, HILGroundTruthComparison
+from services.labjack_service import get_labjack_service, ConnectionStatus
+from services.detection_metrics import detection_metrics
 
 # Import detection window clamp service for overlap prevention
 from services.detection_window_clamp_service import (
@@ -111,11 +115,16 @@ class DedicatedLabJackMonitor:
         self.total_detections = 0
         self.successful_conversions = 0
         self.failed_conversions = 0
-        
+
+        # Shutdown flag for graceful cleanup
+        self._shutdown_requested = False
+
+        # Register signal handlers for graceful shutdown
+        self._register_shutdown_handlers()
+
         logger.info("Dedicated LabJack Monitor with video timing synchronization initialized")
         # Log dual-write config for observability
         try:
-            import os
             ts_url = os.getenv('TS_INGEST_URL') or os.getenv('TS_INGEST_ENDPOINT')
             has_token = bool(os.getenv('SERVICE_TOKEN'))
             if ts_url and has_token:
@@ -124,8 +133,320 @@ class DedicatedLabJackMonitor:
                 logger.info("🔗 Dual-write to TS ingestion disabled (missing TS_INGEST_URL or SERVICE_TOKEN)")
         except Exception:
             pass
+
+        # Recover any orphaned sessions from previous crashes
+        self.recover_orphaned_sessions()
     
-    def start_monitoring_with_video_sync(self, session_id: str, video_timing_config: Dict[str, Any]) -> bool:
+    def _register_shutdown_handlers(self):
+        """Register signal handlers for graceful shutdown"""
+        def shutdown_handler(signum, frame):
+            logger.info(f"⚠️ Received shutdown signal {signum}, cleaning up sessions...")
+            self.cleanup_all_sessions()
+
+        # Register handlers for common shutdown signals
+        try:
+            signal.signal(signal.SIGTERM, shutdown_handler)
+            signal.signal(signal.SIGINT, shutdown_handler)
+            logger.info("✅ Shutdown signal handlers registered")
+        except Exception as e:
+            logger.warning(f"Failed to register shutdown handlers: {e}")
+
+    def _wait_for_session_visibility(self, db: Session, session_id: str, max_retries: int = 5) -> Optional[TestSession]:
+        """
+        Wait for session to become visible in PostgreSQL with MVCC retry.
+
+        PostgreSQL's MVCC can cause delays between transaction commit and visibility
+        to other transactions. This method retries with exponential backoff to handle
+        this race condition.
+
+        Args:
+            db: Database session
+            session_id: Session ID to find
+            max_retries: Maximum retry attempts (default 5)
+
+        Returns:
+            TestSession or None if not found after all retries
+        """
+        retry_delays = [0.01, 0.02, 0.04, 0.08, 0.16]  # Exponential backoff: 10ms to 160ms
+
+        for attempt in range(max_retries):
+            # Refresh database snapshot to see latest committed transactions
+            db.flush()
+            db.expire_all()
+
+            # Query for session
+            session = db.query(TestSession).filter(
+                TestSession.id == session_id
+            ).first()
+
+            if session:
+                logger.info(f"✅ Session {session_id} found (attempt {attempt + 1}/{max_retries})")
+                return session
+
+            if attempt < max_retries - 1:
+                delay = retry_delays[attempt]
+                logger.debug(f"Session {session_id} not visible yet, retrying in {delay*1000:.1f}ms...")
+                time.sleep(delay)
+
+        logger.warning(f"⚠️ Session {session_id} not found after {max_retries} retries")
+        return None
+
+    def recover_orphaned_sessions(self):
+        """Recover sessions left in monitoring state from crashes"""
+        try:
+            # Find sessions that are "monitoring" but backend was restarted
+            # These were never properly closed
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+
+            db = SessionLocal()
+            try:
+                orphaned = db.query(TestSession).filter(
+                    TestSession.completed_at == None,
+                    TestSession.status == "monitoring",
+                    TestSession.created_at < cutoff_time
+                ).all()
+
+                for session in orphaned:
+                    logger.warning(f"⚠️ Recovering orphaned session: {session.id}")
+                    session.completed_at = datetime.now(timezone.utc)
+                    session.status = "crashed"
+
+                    # Add note about recovery
+                    if session.metadata:
+                        if isinstance(session.metadata, str):
+                            metadata = json.loads(session.metadata)
+                        else:
+                            metadata = dict(session.metadata)
+                    else:
+                        metadata = {}
+
+                    metadata['recovered'] = True
+                    metadata['recovery_reason'] = 'System restart'
+                    metadata['recovery_time'] = datetime.now(timezone.utc).isoformat()
+                    session.metadata = metadata
+
+                if orphaned:
+                    db.commit()
+                    logger.info(f"✅ Recovered {len(orphaned)} orphaned sessions")
+                else:
+                    logger.info("✅ No orphaned sessions found")
+
+                return len(orphaned)
+
+            except Exception as e:
+                logger.error(f"Failed to recover orphaned sessions: {e}")
+                db.rollback()
+                return 0
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"Failed to recover orphaned sessions: {e}")
+            return 0
+
+    def cleanup_all_sessions(self):
+        """Cleanup all active sessions on shutdown"""
+        if self._shutdown_requested:
+            return  # Already shutting down
+
+        self._shutdown_requested = True
+        logger.info("🧹 Shutting down, cleaning up all active sessions...")
+
+        with self.lock:
+            session_ids = list(self.active_sessions.keys())
+
+        for session_id in session_ids:
+            try:
+                self.stop_session_monitoring(session_id)
+                logger.info(f"✅ Cleaned up session: {session_id}")
+            except Exception as e:
+                logger.error(f"Failed to cleanup session {session_id}: {e}")
+
+        logger.info(f"✅ All sessions cleaned up, {len(session_ids)} total")
+
+    def _schedule_auto_stop(self, session_id: str, monitor_duration: Optional[float], reason: str) -> None:
+        """
+        Schedule an automatic stop for a session once playback finishes.
+
+        Args:
+            session_id: Active session identifier
+            monitor_duration: Duration (seconds) of the playback window
+            reason: Description to include in log output for observability
+        """
+        if not isinstance(monitor_duration, (int, float)) or monitor_duration <= 0:
+            logger.error(
+                "❌ Cannot schedule auto-stop for session %s - invalid duration: %s",
+                session_id,
+                monitor_duration,
+            )
+            return
+
+        grace = max(GRACE_PERIOD_SECONDS, 2.0)
+        total_wait = monitor_duration + grace
+        logger.info(
+            "🕒 Scheduling auto-stop for session %s in %.2fs (duration %.2fs + grace %.2fs) – %s",
+            session_id,
+            total_wait,
+            monitor_duration,
+            grace,
+            reason,
+        )
+
+        def _delayed_stop():
+            try:
+                time.sleep(total_wait)
+                self.stop_session_monitoring(session_id)
+                logger.info(
+                    "⏹️ Auto-stopped monitoring for session %s after %.2fs (%s)",
+                    session_id,
+                    total_wait,
+                    reason,
+                )
+            except Exception as stop_error:
+                logger.warning(f"Auto-stop failed for session {session_id}: {stop_error}")
+
+        stop_thread = threading.Thread(target=_delayed_stop, daemon=True)
+        stop_thread.start()
+        session_state = self.active_sessions.get(session_id)
+        if session_state is not None:
+            session_state['auto_stop_thread'] = stop_thread
+
+    def _build_sequence_video_timing_map(
+        self,
+        session_db: TestSession,
+        session_id: str,
+        video_ids: List[str],
+        video_start_time: Optional[float],
+        video_metadata: Dict[str, Any],
+        db: Session,
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Build a deterministic timing map for every video in the session playlist.
+
+        Returns:
+            Dict keyed by video_id with started_at/ended_at/duration entries
+        """
+        if not session_db or not video_ids or video_start_time is None:
+            return {}
+
+        video_timing_map: Dict[str, Dict[str, float]] = {}
+        sequence_id = session_db.sequence_id
+
+        # Look up sequence video rows once to avoid repeated queries
+        sequence_results_map: Dict[str, SequenceVideoResult] = {}
+        if sequence_id:
+            results = (
+                db.query(SequenceVideoResult)
+                .filter(SequenceVideoResult.video_sequence_id == sequence_id)
+                .order_by(SequenceVideoResult.sequence_order.asc())
+                .all()
+            )
+            sequence_results_map = {res.video_id: res for res in results if res.video_id}
+
+        # Determine known durations from SequenceVideoResult entries
+        duration_lookup: Dict[str, float] = {}
+        for result in sequence_results_map.values():
+            duration_seconds: Optional[float] = None
+            if result.actual_duration_ms:
+                duration_seconds = float(result.actual_duration_ms) / 1000.0
+            else:
+                planned_ms = getattr(result, "planned_duration_ms", None)
+                if planned_ms:
+                    try:
+                        duration_seconds = float(planned_ms) / 1000.0
+                    except (TypeError, ValueError):
+                        duration_seconds = None
+            if duration_seconds and duration_seconds > 0:
+                duration_lookup[result.video_id] = duration_seconds
+
+        # Fallback to Video table metadata
+        try:
+            video_records = (
+                db.query(Video)
+                .filter(Video.id.in_(video_ids))
+                .all()
+            )
+            for record in video_records:
+                if record.duration and record.id not in duration_lookup:
+                    try:
+                        parsed_duration = float(record.duration)
+                    except (TypeError, ValueError):
+                        parsed_duration = None
+                    if parsed_duration and parsed_duration > 0:
+                        duration_lookup[record.id] = parsed_duration
+        except Exception as video_lookup_error:
+            logger.warning(f"Failed to load video durations for timing map: {video_lookup_error}")
+
+        def _safe_duration(value: Any) -> Optional[float]:
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError):
+                return None
+            return parsed if parsed > 0 else None
+
+        overall_duration = _safe_duration(video_metadata.get('duration'))
+        default_segment_duration: Optional[float] = None
+        if overall_duration:
+            if len(video_ids) > 1:
+                default_segment_duration = overall_duration / len(video_ids)
+            else:
+                default_segment_duration = overall_duration
+
+        cumulative = float(video_start_time)
+        for index, vid in enumerate(video_ids):
+            segment_duration = duration_lookup.get(vid)
+            if not segment_duration:
+                segment_duration = default_segment_duration
+            if not segment_duration or segment_duration <= 0:
+                segment_duration = 5.0  # Conservative fallback to keep timers flowing
+
+            video_timing_map[vid] = {
+                'started_at': cumulative,
+                'ended_at': cumulative + segment_duration,
+                'duration': segment_duration,
+                'sequence_order': index,
+            }
+
+            seq_result = sequence_results_map.get(vid)
+            if seq_result:
+                seq_result.video_start_time = cumulative
+                seq_result.video_end_time = cumulative + segment_duration
+                if seq_result.sequence_order is None:
+                    seq_result.sequence_order = index
+
+            cumulative += segment_duration
+
+        try:
+            metadata_raw = session_db.sequence_metadata or {}
+            if isinstance(metadata_raw, str):
+                metadata = json.loads(metadata_raw) if metadata_raw else {}
+            elif isinstance(metadata_raw, dict):
+                metadata = dict(metadata_raw)
+            else:
+                metadata = {}
+
+            metadata['video_ids'] = video_ids
+            metadata['video_timing'] = video_timing_map
+            session_db.sequence_metadata = metadata
+            db.commit()
+            logger.info(
+                "✅ Stored planned video timing map for session %s: %s",
+                session_id,
+                {
+                    vid: {
+                        'start': round(entry['started_at'], 3),
+                        'end': round(entry['ended_at'], 3),
+                    }
+                    for vid, entry in video_timing_map.items()
+                },
+            )
+        except Exception as metadata_error:
+            logger.warning(f"Failed to persist video timing metadata: {metadata_error}")
+            db.rollback()
+
+        return video_timing_map
+
+    async def start_monitoring_with_video_sync(self, session_id: str, video_timing_config: Dict[str, Any]) -> bool:
         """
         Start LabJack monitoring with video timing synchronization.
         
@@ -143,33 +464,84 @@ class DedicatedLabJackMonitor:
         try:
             logger.info(f"🚀 Starting monitoring for session {session_id}")
             logger.debug(f"🔧 Video timing config: {video_timing_config}")
-            
+
             with self.lock:
-                # Get video configuration first (but don't start video yet)
+                # FIX: Check if this session is already being monitored
+                if session_id in self.active_sessions:
+                    logger.warning(f"⚠️ Session {session_id} is already being monitored - skipping duplicate start")
+                    return True  # Return success since monitoring is already active
+
+                # FIX: Check if another session is already monitoring the same video
                 video_id = video_timing_config.get('video_id')
+                for existing_session_id, existing_session in self.active_sessions.items():
+                    existing_video_id = existing_session.get('video_timing_config', {}).get('video_id')
+                    if existing_video_id == video_id:
+                        logger.warning(
+                            f"⚠️ Video {video_id} is already being monitored by session {existing_session_id}"
+                            f" - redirecting detections to NEW session {session_id}"
+                        )
+                        # CRITICAL FIX: Instead of skipping, we need to:
+                        # 1. Update the labjack_detection_service to use the NEW session_id
+                        # 2. Create an alias so future detections go to the correct session
+                        try:
+                            # Use the transfer_session method for comprehensive transfer
+                            if self.labjack_monitor and hasattr(self.labjack_monitor, 'transfer_session'):
+                                transfer_success = self.labjack_monitor.transfer_session(existing_session_id, session_id)
+                                if transfer_success:
+                                    logger.info(f"🔄 Detection service transfer complete: {existing_session_id} -> {session_id}")
+                                else:
+                                    logger.warning(f"⚠️ Detection service transfer partial: {existing_session_id} -> {session_id}")
+
+                            # Transfer the active session entry to the new session ID in dedicated_monitor
+                            self.active_sessions[session_id] = existing_session.copy()
+                            self.active_sessions[session_id]['original_session_id'] = existing_session_id
+                            # Remove old session entry
+                            del self.active_sessions[existing_session_id]
+
+                            logger.info(f"✅ Session takeover complete: {existing_session_id} -> {session_id}")
+                            return True
+
+                        except Exception as takeover_error:
+                            logger.error(f"❌ Session takeover failed: {takeover_error}")
+                            # Fall through to normal monitoring start
+                            pass
+
+                # Get video configuration first (but don't start video yet)
                 if not video_id:
                     logger.error(f"❌ Video ID required for session {session_id}")
                     return False
+
+                playlist_video_ids = video_timing_config.get('video_ids')
+                if not playlist_video_ids:
+                    playlist_video_ids = [video_id]
                 
                 # CRITICAL FIX: Start LabJack monitoring BEFORE video timing to catch all events
-                # Configure LabJack monitoring with proper threshold
-                # Use a high default sample rate so we don't miss short pulses between frames.
+                # Configure LabJack monitoring with proper threshold and sampling strategy.
+                # Default to polling-friendly settings that emit regular detections for steady voltages.
                 requested_sample_rate = video_timing_config.get('sample_rate')
-                sample_rate = max(requested_sample_rate or 1000, 240)
+                sample_rate = max(requested_sample_rate or 500, 200)
+
+                default_threshold = float(os.getenv('LABJACK_DEFAULT_THRESHOLD', '0.5'))
+                voltage_threshold = video_timing_config.get('voltage_threshold', default_threshold)
+                force_polling = os.getenv('LABJACK_FORCE_POLLING', '').lower() in ('1', 'true', 'yes')
 
                 labjack_config = {
                     'channels': video_timing_config.get('channels', ['AIN0']),
-                    'voltage_threshold': video_timing_config.get('voltage_threshold', 3.3),  # Use 3.3V threshold as intended
-                    'debounce_ms': video_timing_config.get('debounce_ms', 0),  # No debounce - catch everything
+                    'voltage_threshold': voltage_threshold,
+                    'debounce_ms': video_timing_config.get('debounce_ms', 0),
                     'sample_rate': sample_rate,
-                    'store_in_db': False,  # We handle database storage with video timing synchronization in our custom callback
-                    'enable_websocket': video_timing_config.get('enable_websocket', True)
+                    'store_in_db': True,  # MUST be True to enable database storage worker thread
+                    'enable_websocket': video_timing_config.get('enable_websocket', True),
+                    'use_stream_mode': video_timing_config.get('use_stream_mode', False)
                 }
+                video_timing_map = None
+                sequence_total_duration = None
+                session_db: Optional[TestSession] = None
+
                 try:
-                    import os
                     env_val = os.getenv('LABJACK_CONTINUOUS_MODE')
                     if env_val is None:
-                        env_continuous = True  # default ON
+                        env_continuous = True  # Default ON while running in polling mode
                     else:
                         env_continuous = env_val.lower() in ('1', 'true', 'yes')
                 except Exception:
@@ -180,19 +552,40 @@ class DedicatedLabJackMonitor:
                     continuous_flag = env_continuous
 
                 if continuous_flag:
+                    lower_bound = (
+                        video_timing_config.get('continuous_lower_bound')
+                        or video_timing_config.get('voltage_lower_bound')
+                        or voltage_threshold
+                    )
                     labjack_config.update({
                         'continuous_mode': True,
-                        'continuous_lower_bound': (
-                            video_timing_config.get('continuous_lower_bound')
-                            or video_timing_config.get('voltage_lower_bound')
-                            or video_timing_config.get('voltage_threshold', 3.3)
-                        ),
+                        'continuous_lower_bound': lower_bound,
                         'continuous_upper_bound': video_timing_config.get('continuous_upper_bound'),
-                        'continuous_interval_ms': video_timing_config.get('continuous_interval_ms', 20)
+                        'continuous_interval_ms': video_timing_config.get('continuous_interval_ms', 5)
                     })
+                else:
+                    labjack_config['continuous_mode'] = False
+
+                labjack_config.setdefault(
+                    'steady_high_logging',
+                    video_timing_config.get('steady_high_logging', True)
+                )
+                labjack_config.setdefault(
+                    'steady_high_interval_ms',
+                    video_timing_config.get('steady_high_interval_ms', 5)
+                )
+
+                # FIX: Explicitly enable constant_voltage_mode to bypass debounce
+                # For constant voltage HIL testing, we need to capture every detection
+                # even if they occur rapidly (e.g., 131 GT objects in 5 seconds = 26/second)
+                labjack_config['constant_voltage_mode'] = video_timing_config.get('constant_voltage_mode', True)
+
+                if force_polling:
+                    labjack_config['use_stream_mode'] = False
                 
                 # CRITICAL FIX: Initialize session entry BEFORE creating callback with comprehensive logging
                 session_init_time = datetime.now(timezone.utc)
+                timing_ready_event = threading.Event()
                 logger.info(f"📝 Initializing session {session_id} at {session_init_time}")
                 
                 self.active_sessions[session_id] = {
@@ -201,6 +594,9 @@ class DedicatedLabJackMonitor:
                     'started_at': session_init_time,
                     'video_start_time': None,  # Will be set after video timing starts
                     'detection_callback': None,  # Will store the callback reference for cleanup
+                    'timing_ready_event': timing_ready_event,  # For synchronization
+                    'timing_degraded': False,  # Timing reliability flag
+                    'timing_verified': False,  # Session verification flag
                     'current_video': None,
                     'video_history': [],
                     'video_boundary_buffer': 0.5  # seconds of tolerance around lifecycle events
@@ -219,12 +615,17 @@ class DedicatedLabJackMonitor:
                 self.labjack_monitor.add_detection_callback(detection_callback)
                 
                 # CRITICAL FIX: Start session monitoring in bridge to prevent continued measurements
-                try:
-                    from services.windows_labjack_bridge import windows_labjack_bridge
-                    windows_labjack_bridge.start_session_monitoring(session_id)
-                    logger.info(f"🚀 Bridge session monitoring started for: {session_id}")
-                except Exception as bridge_error:
-                    logger.warning(f"Could not start bridge session monitoring: {bridge_error}")
+                # FIX: Make bridge initialization async to prevent 3-4 second blocking delay
+                def start_bridge_async():
+                    try:
+                        from services.windows_labjack_bridge import windows_labjack_bridge
+                        windows_labjack_bridge.start_session_monitoring(session_id)
+                        logger.info(f"🚀 Bridge session monitoring started for: {session_id}")
+                    except Exception as bridge_error:
+                        logger.warning(f"Could not start bridge session monitoring: {bridge_error}")
+
+                threading.Thread(target=start_bridge_async, daemon=True).start()
+                logger.info(f"🚀 Bridge session monitoring started async for: {session_id}")
                 
                 logger.info(f"✅ Detection callback registered for session {session_id}")
                 
@@ -244,15 +645,52 @@ class DedicatedLabJackMonitor:
                 # Use safe synchronization
                 sync_data = prepare_sync_safely()
 
+                # CRITICAL FIX: Validate hardware connection BEFORE anything else
+                logger.info(f"🔍 PRE-CHECK: Validating LabJack hardware connection")
+                labjack_service = get_labjack_service()
+
+                # Ensure connection is established
+                if labjack_service.status != ConnectionStatus.CONNECTED:
+                    logger.warning(f"⚠️ LabJack not connected, attempting connection...")
+                    connected = await labjack_service.connect()
+                    if not connected:
+                        logger.error(f"❌ Failed to establish LabJack connection")
+                        return False
+
+                # Validate hardware is responding
+                hardware_valid = await labjack_service.validate_hardware_connection()
+                if not hardware_valid:
+                    logger.error(f"❌ Hardware validation failed - device not responding")
+                    return False
+
+                logger.info(f"✅ PRE-CHECK COMPLETE: Hardware validated and ready")
+
+                # CRITICAL FIX: Register session with LabJack service
+                logger.info(f"🚀 STEP 0: Registering session with LabJack hardware service")
+                if labjack_service.start_session(session_id):
+                    logger.info(f"✅ STEP 0 COMPLETE: Session {session_id} registered with LabJack service")
+                else:
+                    logger.error(f"❌ Failed to register session {session_id} with LabJack service")
+                    return False
+
                 # CRITICAL FIX: START LABJACK MONITORING FIRST to prevent early detection loss
                 logger.info(f"🚀 STEP 1: Starting LabJack monitoring FIRST for session {session_id}")
 
                 # STEP 1: Start LabJack monitoring BEFORE video timing
                 # This ensures detections are captured immediately when hardware events occur
-                success = self.labjack_monitor.start_monitoring(session_id, **labjack_config)
+                # CRITICAL FIX: Pass timing_ready_event so monitoring loop can wait for timing data
+                logger.info(f"🔍 SESSION DEBUG 1: Calling start_monitoring with session_id={session_id}")
+                success = self.labjack_monitor.start_monitoring(
+                    session_id,
+                    timing_ready_event=timing_ready_event,  # ADDED: Pass timing synchronization event
+                    **labjack_config
+                )
+                logger.info(f"🔍 SESSION DEBUG 2: start_monitoring returned, session_id still={session_id}")
 
                 if not success:
                     logger.error(f"❌ Failed to start LabJack monitoring for session {session_id}")
+                    # Unregister session from LabJack service
+                    labjack_service.end_session(session_id)
                     return False
 
                 logger.info(f"✅ STEP 1 COMPLETE: LabJack monitoring active and ready to capture detections")
@@ -270,27 +708,109 @@ class DedicatedLabJackMonitor:
                     self.labjack_monitor.stop_monitoring(session_id)
                     return False
 
+                session_has_sequence_flag = False
+                session_sequence_id_value: Optional[str] = None
+
                 try:
+                    # STEP 1: VERIFY SESSION EXISTS WITH MVCC RETRY (FIX-3)
+                    session_db = self._wait_for_session_visibility(db, session_id)
+
+                    if not session_db:
+                        logger.error(f"❌ Session {session_id} not found after MVCC retries")
+                        # Session doesn't exist - mark as degraded and signal
+                        self.active_sessions[session_id]['timing_degraded'] = True
+                        self.active_sessions[session_id]['timing_verified'] = False
+                        timing_ready_event.set()  # Signal so callback doesn't hang
+                        logger.warning(f"⚠️ Timing event signaled with verification failure - monitoring will use wall clock")
+
+                        # Stop monitoring since session is invalid
+                        self.labjack_monitor.stop_monitoring(session_id)
+                        return False
+
+                    # Session exists and verified!
+                    self.active_sessions[session_id]['timing_verified'] = True
+                    logger.info(f"✅ Session {session_id} verified in database")
+
+                    # Initialize timing state flags BEFORE any timing operations
+                    self.active_sessions[session_id]['timing_degraded'] = False
+
                     video_metadata = {
                         'fps': video_timing_config.get('fps'),
                         'duration': video_timing_config.get('duration')
                     }
+                    self.active_sessions[session_id]['tolerance_ms'] = getattr(
+                        session_db,
+                        'tolerance_ms',
+                        MATCHING_TOLERANCE_MS
+                    ) or MATCHING_TOLERANCE_MS
 
-                    # STEP 2: Initialize video timing service AFTER monitor is ready
-                    # This provides timing context for detections that were captured
-                    video_start_time = self.video_timing_service.start_video_timing(
-                        session_id, video_id, db, video_metadata
+                    # STEP 2: INITIALIZE VIDEO TIMING (FIX-1)
+                    # Try to initialize proper timing, but handle failures gracefully
+                    try:
+                        video_start_time = self.video_timing_service.start_video_timing(
+                            session_id, video_id, db, video_metadata
+                        )
+
+                        if video_start_time is None:
+                            logger.warning(f"⚠️ Video timing returned None for session {session_id}")
+                            self.active_sessions[session_id]['timing_degraded'] = True
+                            video_start_time = time.time()  # Fallback to wall clock
+                        else:
+                            logger.info(f"✅ Video timing initialized: {video_start_time:.6f}")
+                            self.active_sessions[session_id]['timing_degraded'] = False
+
+                    except Exception as timing_error:
+                        logger.error(f"❌ Video timing failed: {timing_error}")
+                        self.active_sessions[session_id]['timing_degraded'] = True
+                        video_start_time = time.time()  # Fallback to wall clock
+
+                    self.active_sessions[session_id]['video_start_time'] = video_start_time
+
+                    # STEP 3: UPDATE DATABASE WITH STATUS
+                    try:
+                        session_db.timing_degraded = self.active_sessions[session_id]['timing_degraded']
+                        session_db.timing_verified = self.active_sessions[session_id]['timing_verified']
+                        db.commit()
+                        logger.info(
+                            f"📊 Session status: "
+                            f"verified={self.active_sessions[session_id]['timing_verified']}, "
+                            f"degraded={self.active_sessions[session_id]['timing_degraded']}"
+                        )
+                    except Exception as db_error:
+                        logger.error(f"Failed to update session status: {db_error}")
+                        db.rollback()
+
+                    # STEP 4: SIGNAL EVENT (Always signal, even if degraded)
+                    # This prevents callback from waiting forever
+                    timing_ready_event.set()
+                    logger.info(f"🚦 Timing event signaled for session {session_id}")
+
+                    logger.info(f"✅ STEP 2 COMPLETE: Monitoring ready at {video_start_time:.6f}")
+                    logger.info(f"📹 Timing reference established - early detections will have valid timestamps")
+
+                    session_has_sequence_flag = bool(
+                        getattr(session_db, 'has_video_sequence', False) or getattr(session_db, 'sequence_id', None)
                     )
+                    session_sequence_id_value = getattr(session_db, 'sequence_id', None)
 
-                    if video_start_time is None:
-                        logger.error(f"Failed to start video timing for session {session_id}")
-                        db.close()
-                        # Clean up LabJack monitoring since video timing failed
-                        self.labjack_monitor.stop_monitoring(session_id)
-                        return False
-
-                    logger.info(f"✅ STEP 2 COMPLETE: Video timing initialized at {video_start_time:.6f}")
-                    logger.info(f"📹 Timing reference established - early detections (0-200ms) will have valid timestamps")
+                    # Build deterministic video timing map for multi-video sequences
+                    try:
+                        video_ids = playlist_video_ids or ([video_id] if video_id else [])
+                        video_timing_map = self._build_sequence_video_timing_map(
+                            session_db=session_db,
+                            session_id=session_id,
+                            video_ids=video_ids,
+                            video_start_time=video_start_time,
+                            video_metadata=video_metadata,
+                            db=db,
+                        )
+                        if video_timing_map:
+                            self.active_sessions[session_id]['video_timing_map'] = video_timing_map
+                            sequence_total_duration = sum(
+                                entry.get('duration', 0.0) or 0.0 for entry in video_timing_map.values()
+                            )
+                    except Exception as map_error:
+                        logger.warning(f"Unable to build video timing map: {map_error}")
 
                 finally:
                     db.close()
@@ -341,78 +861,68 @@ class DedicatedLabJackMonitor:
                 self.active_sessions[session_id]['video_timing_config'] = enhanced_video_config
                 self.active_sessions[session_id]['video_start_time'] = video_start_time
 
-                # Auto-stop monitoring when video duration elapses (with small grace period)
-                # DISABLE for multi-video sequences - orchestrator controls lifecycle
+                # Auto-stop monitoring when playback finishes (single and multi-video)
                 try:
-                    # Check if this is a multi-video sequence
-                    is_sequence = video_timing_config.get('is_sequence', False)
-                    sequence_id = video_timing_config.get('sequence_id')
+                    is_sequence = bool(video_timing_config.get('is_sequence')) or session_has_sequence_flag
+                    sequence_id = video_timing_config.get('sequence_id') or session_sequence_id_value
+                    if not is_sequence and playlist_video_ids and len(playlist_video_ids) > 1:
+                        is_sequence = True
 
-                    # Query database if not provided in config
-                    if not is_sequence and not sequence_id:
-                        try:
-                            from database import get_db
-                            from models import TestSession
-                            db = next(get_db())
-                            try:
-                                session = db.query(TestSession).filter(TestSession.id == session_id).first()
-                                if session:
-                                    is_sequence = session.has_video_sequence or session.sequence_id is not None
-                                    sequence_id = session.sequence_id
-                                    if is_sequence:
-                                        logger.info(f"🎬 Multi-video sequence detected for session {session_id} (sequence: {sequence_id})")
-                            finally:
-                                db.close()
-                        except Exception as db_error:
-                            logger.warning(f"Could not query sequence status: {db_error}")
-
-                    # ONLY auto-stop for single-video sessions
                     if is_sequence:
-                        logger.info(f"🎬 Skipping auto-stop timer for multi-video sequence {sequence_id} - orchestrator will control lifecycle")
+                        if sequence_id:
+                            logger.info(f"🎬 Multi-video sequence detected for session {session_id} (sequence: {sequence_id})")
+                        # if sequence_total_duration and sequence_total_duration > 0:
+                        #     self._schedule_auto_stop(
+                        #         session_id,
+                        #         sequence_total_duration,
+                        #         reason="multi-video sequence duration",
+                        #     )
+                        else:
+                            logger.info(
+                                "🎬 Skipping auto-stop timer for multi-video sequence %s - "
+                                "no timing map available; orchestrator must stop session",
+                                sequence_id,
+                            )
                     else:
                         duration = video_timing_config.get('duration')
 
-                        # Enhanced fallback mechanism for missing duration
                         if not isinstance(duration, (int, float)) or duration <= 0:
                             logger.warning(f"⚠️ Missing or invalid video duration in timing config: {duration}")
 
-                            # Fallback 1: Query video from database
                             if video_id:
                                 try:
-                                    from database import get_db
-                                    db = next(get_db())
+                                    db_lookup = next(get_db())
                                     try:
-                                        video = db.query(Video).filter(Video.id == video_id).first()
+                                        video = db_lookup.query(Video).filter(Video.id == video_id).first()
                                         if video and video.duration:
-                                            duration = video.duration
-                                            logger.info(f"✅ Retrieved video duration from database: {duration}s for video {video_id}")
+                                            duration = float(video.duration)
+                                            logger.info(
+                                                f"✅ Retrieved video duration from database: {duration}s for video {video_id}"
+                                            )
                                         else:
-                                            logger.warning(f"❌ Video not found in database or missing duration: video_id={video_id}")
+                                            logger.warning(
+                                                f"❌ Video not found in database or missing duration: video_id={video_id}"
+                                            )
                                     finally:
-                                        db.close()
+                                        db_lookup.close()
                                 except Exception as db_error:
                                     logger.error(f"Database query failed for video duration: {db_error}")
 
-                            # Fallback 2: Use actual video duration for monitoring
                             if not isinstance(duration, (int, float)) or duration <= 0:
-                                duration = 5.25  # Actual video duration 5.25s (was 5.042s, allow extra buffer)
-                                logger.warning(f"⚠️ Using full video monitoring duration: {duration}s for session {session_id}")
+                                duration = 5.25
+                                logger.warning(
+                                    f"⚠️ Using full video monitoring duration fallback: {duration}s for session {session_id}"
+                                )
 
-                        if isinstance(duration, (int, float)) and duration > 0:
-                            grace = max(0.25, min(2.0, duration * 0.05))  # 5% or [0.25s..2s]
-
-                            def _delayed_stop():
-                                try:
-                                    time.sleep(duration + grace)
-                                    self.stop_monitoring(session_id)
-                                    logger.info(f"⏹️ Auto-stopped monitoring after duration {duration}s (+{grace:.2f}s grace) for session {session_id}")
-                                except Exception as e:
-                                    logger.warning(f"Auto-stop failed for session {session_id}: {e}")
-
-                            threading.Thread(target=_delayed_stop, daemon=True).start()
-                            logger.info(f"🕒 Monitoring will auto-stop after {duration + grace:.2f}s (duration: {duration}s + grace: {grace:.2f}s)")
-                        else:
-                            logger.error(f"❌ Cannot start auto-stop timer - invalid duration: {duration}")
+                        # Auto-stop timer disabled - using manual stop
+                        # if isinstance(duration, (int, float)) and duration > 0:
+                        #     self._schedule_auto_stop(
+                        #         session_id,
+                        #         float(duration),
+                        #         reason="single video duration",
+                        #     )
+                        # FIX: Removed incorrect else clause that logged error for valid durations
+                        # The else was paired with line 866's if statement, causing false errors
                 except Exception as e:
                     logger.error(f"Auto-stop timer setup failed for session {session_id}: {e}")
 
@@ -458,6 +968,42 @@ class DedicatedLabJackMonitor:
             if session_id not in self.active_sessions:
                 logger.debug(f"🚫 Skipping detection for inactive session: {session_id}")
                 return
+
+            # Wait for the timing data to be ready
+            session_info = self.active_sessions.get(session_id)
+            if not session_info:
+                logger.warning(f"⚠️ Session {session_id} disappeared while processing detection.")
+                return
+                
+            timing_ready_event = session_info.get('timing_ready_event')
+            timing_available = True
+            timing_degraded = False
+
+            if timing_ready_event:
+                # CRITICAL FIX: Increase timeout from 2s to 10s to prevent early detection discard
+                # Video timing calculation can take 1-2s (DB queries, sequence building)
+                # Fast hardware responds in 5-50ms, so detections arrive before timing ready
+                is_set = timing_ready_event.wait(timeout=10.0)
+                if not is_set:
+                    logger.warning(f"⚠️ Timing data not ready after 10s for session {session_id} - using degraded timing with wall clock timestamps")
+                    timing_available = False
+                    timing_degraded = True
+                    # CRITICAL: DO NOT RETURN - Continue processing with fallback timing
+                    # Detection will be saved with wall clock timestamp instead of video-relative timing
+                else:
+                    # Check if timing was marked as degraded during initialization
+                    timing_degraded = session_info.get('timing_degraded', False)
+                    if timing_degraded:
+                        logger.info(f"⚠️ Timing ready but marked as degraded for session {session_id} - timestamps may be less accurate")
+
+            # Determine if detection is usable for validation
+            usable_for_validation = timing_available and not timing_degraded
+
+            if timing_degraded:
+                logger.warning(
+                    f"⚠️ Detection captured with DEGRADED timing - "
+                    f"will be marked as non-validated (session: {session_id})"
+                )
             
             # CRITICAL FIX: Extract Unix timestamp and voltage data from LabJack event properly
             try:
@@ -543,63 +1089,50 @@ class DedicatedLabJackMonitor:
                     logger.debug(f"🔍 Session data for fallback: {session_data}")
                     
                     # CRITICAL TIMING CALIBRATION FIX: Handle video timing synchronization
+                    # FIX #1: Use ACTUAL video_start_time from session instead of reference_time
                     video_start_time = session_data.get('video_start_time')
                     session_start_time = session_data.get('started_at')
-                    
-                    # TIMING CALIBRATION: Dynamic calibration based on actual measurements
-                    # Get calibration offset from detection service (if available)
-                    try:
-                        if hasattr(self, 'labjack_monitor') and self.labjack_monitor:
-                            calibration_offset_ms = self.labjack_monitor.calculate_calibration_offset(session_id)
-                            logger.info(f"🎯 Calculated dynamic calibration offset: {calibration_offset_ms}ms")
-                        else:
-                            # Fallback: use zero offset if detection service not available
-                            calibration_offset_ms = 0.0
-                            logger.warning("⚠️ Detection service not available for calibration - using zero offset")
-                    except Exception as e:
-                        logger.error(f"❌ Failed to calculate calibration offset: {e}, using zero offset")
-                        calibration_offset_ms = 0.0
 
-                    calibration_offset_seconds = calibration_offset_ms / 1000.0
-                    logger.debug(f"Using dynamic calibration offset: {calibration_offset_ms}ms ({calibration_offset_seconds}s)")
+                    # FIX #1: Use video_start_time as primary reference instead of session_start_time
+                    # This ensures video-relative timestamps are calculated from actual video playback start
+                    if not video_start_time:
+                        # Fallback to session start time if video start time not available
+                        video_start_time = session_start_time
 
-                    # Use multiple fallback strategies with timing calibration
-                    if video_start_time is not None and isinstance(video_start_time, (int, float)):
-                        # Best case: we have video start time
-                        reference_time = video_start_time
-                        logger.debug(f"✅ Using video_start_time: {reference_time}")
-                    elif session_start_time is not None:
-                        # Convert datetime to timestamp if needed and apply calibration offset
-                        if hasattr(session_start_time, 'timestamp'):
-                            reference_time = session_start_time.timestamp() + calibration_offset_seconds
-                        elif isinstance(session_start_time, (int, float)):
-                            reference_time = session_start_time + calibration_offset_seconds
+                    # Use video_start_time as the reference for video-relative timestamp calculation
+                    if video_start_time is not None:
+                        # Convert datetime to timestamp if needed
+                        if hasattr(video_start_time, 'timestamp'):
+                            reference_time = video_start_time.timestamp()
+                        elif isinstance(video_start_time, (int, float)):
+                            reference_time = video_start_time
                         else:
                             reference_time = time.time()
-                        logger.debug(f"✅ Using calibrated session_start_time: {reference_time} (offset: +{calibration_offset_ms}ms)")
+                        logger.debug(f"✅ Using video_start_time as reference: {reference_time}")
                     else:
-                        # Ultimate fallback: current time with calibration
-                        reference_time = time.time() + calibration_offset_seconds
-                        logger.warning(f"⚠️ Using calibrated current time as fallback: {reference_time}")
+                        # Ultimate fallback: current time
+                        reference_time = time.time()
+                        logger.warning(f"⚠️ Using current time as fallback reference: {reference_time}")
 
-                    # Safe calculation with proper type checking
+                    # Calculate ACTUAL video-relative timestamp from video start time
                     if isinstance(labjack_trigger_time, (int, float)) and isinstance(reference_time, (int, float)):
-                        fallback_video_relative = max(0.0, labjack_trigger_time - reference_time)
+                        video_relative_seconds = labjack_trigger_time - reference_time
+                        fallback_video_relative = max(0.0, video_relative_seconds)
                     else:
                         fallback_video_relative = 0.0
                         logger.error(f"❌ Invalid timestamp types: trigger={type(labjack_trigger_time)}, ref={type(reference_time)}")
 
-                    logger.info(f"🎯 CALIBRATED timing: {fallback_video_relative:.3f}s (with {calibration_offset_ms}ms offset)")
+                    logger.info(f"🎯 Video-relative timing: {fallback_video_relative:.3f}s (trigger={labjack_trigger_time:.6f}, video_start={reference_time:.6f})")
 
                     timing_data = {
                         'video_relative_timestamp': fallback_video_relative,
                         'video_relative_timestamp_ns': int(fallback_video_relative * 1e9),
                         'actual_latency_ms': 50.0,  # Default processing time - represents detection pipeline latency
                         'video_frame_number': int(fallback_video_relative * 24),  # CORRECTED: Use 24fps to match ground truth
-                        'timing_sync_quality': 'calibrated_fallback',
+                        'timing_sync_quality': 'video_start_fallback',
                         'timing_precision_ns': 1000000,  # 1ms precision
-                        'calibration_applied': True,
-                        'calibration_offset_ms': calibration_offset_ms
+                        'calibration_applied': False,  # No calibration offset applied when using video_start_time
+                        'fallback_reason': 'video_timing_service_unavailable'
                     }
                     
                 except Exception as fallback_error:
@@ -699,7 +1232,6 @@ class DedicatedLabJackMonitor:
     def _emit_detection_event_sync(self, hil_event: HILDetectionEvent, session_id: str):
         """Thread-safe wrapper for async WebSocket emission to session room"""
         try:
-            import asyncio
             # Create detection data payload - NO session_id (already scoped by room)
             detection_data = {
                 'id': hil_event.id,
@@ -712,8 +1244,8 @@ class DedicatedLabJackMonitor:
                 'channel': hil_event.detection_channel,
                 'frame_number': hil_event.video_frame_number,
                 'timing_quality': hil_event.timing_sync_quality,
-                'detection_type': 'labjack_voltage',
-                'source': 'dedicated_labjack_monitor',
+                'detection_type': 'hardware',
+                'source': 'labjack',
                 'video_id': hil_event.video_id,
                 'sequence_id': hil_event.sequence_id,
                 'sequence_video_result_id': hil_event.sequence_video_result_id,
@@ -766,10 +1298,10 @@ class DedicatedLabJackMonitor:
                 })
 
                 # CRITICAL FIX: Ensure video_id is always set where possible.
-                # For multi-video sessions we DO NOT fall back to the legacy session.video_id,
-                # because that incorrectly assigns every detection to Video 1 before lifecycle
-                # events finish updating timing metadata. Instead we store NULL so that the
-                # reassignment service can back-fill once timing data is available.
+                # Priority order:
+                # 1. Use hil_event.video_id if available (from lifecycle events)
+                # 2. Fall back to session.video_id (works for both single and multi-video)
+                # 3. Log error if neither is available
                 video_id_for_detection = hil_event.video_id
 
                 if not video_id_for_detection:
@@ -780,18 +1312,18 @@ class DedicatedLabJackMonitor:
                         logger.error(f"❌ Failed to load session for detection {hil_event.id}: {fallback_error}")
 
                     if session:
-                        if not session.has_video_sequence and session.video_id:
-                            # Single-video session: safe to fall back to configured video_id
+                        if session.video_id:
+                            # BUG FIX: Always use session.video_id as fallback
+                            # This ensures detections get a video_id even for multi-video sessions
                             video_id_for_detection = session.video_id
-                            logger.warning(
-                                f"⚠️ Using single-video fallback video_id={video_id_for_detection} "
-                                f"for detection {hil_event.id}"
+                            logger.info(
+                                f"✅ Using session fallback video_id={video_id_for_detection} "
+                                f"for detection {hil_event.id} (has_sequence={session.has_video_sequence})"
                             )
                         else:
-                            # Multi-video session: keep NULL and allow reassignment job to fix later
-                            logger.warning(
-                                f"⚠️ Multi-video session {session.id}: leaving detection {hil_event.id} "
-                                f"without video_id until timing metadata is ready"
+                            logger.error(
+                                f"❌ Session {session.id} has no video_id! "
+                                f"Detection {hil_event.id} will have NULL video_id"
                             )
                     else:
                         logger.error(
@@ -836,6 +1368,36 @@ class DedicatedLabJackMonitor:
                             0
                         )
 
+                session_cfg = self.active_sessions.get(hil_event.session_id, {})
+                latency_threshold = session_cfg.get('tolerance_ms', MATCHING_TOLERANCE_MS)
+                latency_value = hil_event.actual_latency_ms
+                validation_result = (
+                    "PASS"
+                    if latency_value is not None and abs(latency_value) <= latency_threshold
+                    else "FAIL"
+                )
+
+                session_cfg = self.active_sessions.get(hil_event.session_id, {})
+                latency_threshold = session_cfg.get('tolerance_ms', MATCHING_TOLERANCE_MS)
+                latency_value = hil_event.actual_latency_ms
+                validation_result = (
+                    "PASS"
+                    if latency_value is not None and abs(latency_value) <= latency_threshold
+                    else "FAIL"
+                )
+
+                # Get timing degradation status for this detection
+                session_timing_degraded = session_cfg.get('timing_degraded', False)
+                detection_usable_for_validation = not session_timing_degraded
+
+                # FIX #5: Calculate video_start_time for timing synchronization
+                # This prevents "No video_start_time found" errors in timing calculator
+                video_start_time = None
+                if hil_event.video_relative_timestamp is not None and labjack_trigger_time is not None:
+                    # video_start_time = detection_time - video_relative_timestamp
+                    video_start_time = labjack_trigger_time - hil_event.video_relative_timestamp
+                    logger.debug(f"Calculated video_start_time: {video_start_time} from trigger {labjack_trigger_time} - relative {hil_event.video_relative_timestamp}")
+
                 detection_event = DetectionEvent(
                     id=hil_event.id,
                     test_session_id=hil_event.session_id,
@@ -843,7 +1405,7 @@ class DedicatedLabJackMonitor:
                     sequence_id=hil_event.sequence_id,
                     sequence_video_result_id=hil_event.sequence_video_result_id,
                     timestamp=labjack_trigger_time,
-                    validation_result="PENDING",
+                    validation_result=validation_result,
                     processing_time_ms=hil_event.actual_latency_ms,
                     labjack_timestamp=float(labjack_trigger_time),
                     labjack_timestamp_ns=int(labjack_trigger_time * 1e9),
@@ -853,8 +1415,8 @@ class DedicatedLabJackMonitor:
                     video_frame_number=hil_event.video_frame_number,
                     actual_latency_ms=hil_event.actual_latency_ms,
                     timing_sync_quality=hil_event.timing_sync_quality,
-                    detection_type="labjack_voltage",
-                    source="dedicated_labjack_monitor",
+                    detection_type="hardware",
+                    source="labjack",
                     screenshot_path=hil_event.screenshot_path,
                     screenshot_zoom_path=hil_event.screenshot_zoom_path,
                     unix_timestamp=float(detection_record_time),
@@ -863,9 +1425,27 @@ class DedicatedLabJackMonitor:
                     sequence_timestamp=hil_event.sequence_timestamp,
                     video_play_offset_ms=hil_event.video_play_offset_ms,
                     detection_metadata=detection_metadata,
-                    signal_type='labjack_voltage'
+                    signal_type='labjack_voltage',
+                    # NEW FIELDS: Track timing quality and validation usability
+                    usable_for_validation=detection_usable_for_validation,
+                    timing_degraded=session_timing_degraded,
+                    # FIX #5: Set video_start_time for timing synchronization calculator
+                    video_start_time=video_start_time
                 )
-                
+
+                status = "✅ VALIDATED" if detection_usable_for_validation else "⚠️ NON-VALIDATED"
+                logger.info(
+                    f"🔌 Detection saved ({status}): "
+                    f"voltage={hil_event.labjack_voltage}V, usable={detection_usable_for_validation}"
+                )
+
+                # Record metrics for detection quality tracking
+                detection_metrics.record_detection(
+                    session_id=hil_event.session_id,
+                    usable_for_validation=detection_usable_for_validation,
+                    timing_degraded=session_timing_degraded
+                )
+
                 db.add(detection_event)
                 db.commit()
                 logger.debug(f"💾 Stored HIL detection event: {hil_event.id}")
@@ -955,7 +1535,8 @@ class DedicatedLabJackMonitor:
             # Try to determine video
             video_id = self._determine_video_from_timing(
                 video_timing=context.get('video_timing', {}),
-                trigger_time=trigger_time
+                trigger_time=trigger_time,
+                session_id=session_id
             )
 
             if video_id:
@@ -1035,9 +1616,7 @@ class DedicatedLabJackMonitor:
             if not cached_context or 'video_timing' not in cached_context or is_multi_video:
                 context = self._load_sequence_context(session_id)
                 with self.lock:
-                    # Only cache for single-video sequences
-                    if not is_multi_video:
-                        session_cache['sequence_context'] = context or {}
+                    session_cache['sequence_context'] = context or {}
             else:
                 context = cached_context
 
@@ -1081,7 +1660,11 @@ class DedicatedLabJackMonitor:
                         context = refreshed_context
                         sequence_id = context.get('sequence_id')
                         video_timing = context.get('video_timing', {})
-                        video_id = self._determine_video_from_timing(video_timing, labjack_trigger_time)
+                        video_id = self._determine_video_from_timing(
+                            video_timing,
+                            labjack_trigger_time,
+                            session_id=session_id
+                        )
 
                         if video_id:
                             logger.info(
@@ -1102,7 +1685,11 @@ class DedicatedLabJackMonitor:
                         context = refreshed_context
                         sequence_id = context.get('sequence_id')
                         video_timing = context.get('video_timing', {})
-                        video_id = self._determine_video_from_timing(video_timing, labjack_trigger_time)
+                        video_id = self._determine_video_from_timing(
+                            video_timing,
+                            labjack_trigger_time,
+                            session_id=session_id
+                        )
 
                 # FIX #3: Validate video status before assignment
                 if video_id and not self._validate_video_status(video_id, session_id):
@@ -1284,7 +1871,6 @@ class DedicatedLabJackMonitor:
     def _validate_video_status(self, video_id: str, session_id: str) -> bool:
         """Validate that video is in 'playing' status before assignment."""
         try:
-            from models import TestSession, SequenceVideoResult, Video
             db = next(get_db())
             try:
                 # Ensure the video exists in the catalog
@@ -1389,7 +1975,12 @@ class DedicatedLabJackMonitor:
             logger.error(f"Failed to generate clamped windows for session {session_id}: {e}")
             return []
 
-    def _determine_video_from_timing(self, video_timing: Dict[str, Any], trigger_time: float) -> Optional[str]:
+    def _determine_video_from_timing(
+        self,
+        video_timing: Dict[str, Any],
+        trigger_time: float,
+        session_id: Optional[str] = None
+    ) -> Optional[str]:
         """
         Determine video ID based on clamped detection windows.
 
@@ -1408,21 +1999,22 @@ class DedicatedLabJackMonitor:
             return None
 
         # Get session_id from active sessions (needed for caching)
-        session_id = None
-        with self.lock:
-            for sid, session_data in self.active_sessions.items():
-                session_video_timing = session_data.get('sequence_context', {}).get('video_timing', {})
-                if session_video_timing == video_timing:
-                    session_id = sid
-                    break
+        lookup_session_id = session_id
+        if lookup_session_id is None:
+            with self.lock:
+                for sid, session_data in self.active_sessions.items():
+                    session_video_timing = session_data.get('sequence_context', {}).get('video_timing', {})
+                    if session_video_timing == video_timing:
+                        lookup_session_id = sid
+                        break
 
-        if not session_id:
+        if not lookup_session_id:
             logger.warning("Could not determine session_id for clamped windows - using legacy logic")
             # Fallback to legacy grace period logic if we can't determine session
             return self._determine_video_from_timing_legacy(video_timing, trigger_time)
 
         # Get or create clamped windows
-        clamped_windows = self._get_or_create_clamped_windows(session_id, video_timing)
+        clamped_windows = self._get_or_create_clamped_windows(lookup_session_id, video_timing)
 
         if not clamped_windows:
             logger.warning("No clamped windows available - using legacy logic")
@@ -1525,12 +2117,12 @@ class DedicatedLabJackMonitor:
                 # CRITICAL FIX: Ensure video_id is always set - fallback to session's video_id
                 video_id_for_detection = hil_event.video_id
                 if not video_id_for_detection:
-                    # Fallback: Get video_id from session
+                    # BUG FIX: Get video_id from session
                     try:
                         session = db.query(TestSession).filter_by(id=hil_event.session_id).first()
                         if session and session.video_id:
                             video_id_for_detection = session.video_id
-                            logger.warning(f"⚠️ Using session video_id fallback: {video_id_for_detection} for detection {hil_event.id}")
+                            logger.info(f"✅ Using session video_id fallback: {video_id_for_detection} for detection {hil_event.id}")
                         else:
                             logger.error(f"❌ CRITICAL: Cannot determine video_id for detection {hil_event.id} - will be stored as NULL")
                     except Exception as fallback_error:
@@ -1540,12 +2132,18 @@ class DedicatedLabJackMonitor:
                 # Use HIL event's unix_timestamp as the detection timestamp
                 detection_timestamp = hil_event.unix_timestamp
 
+                # FIX #5: Calculate video_start_time for timing synchronization
+                video_start_time = None
+                if hil_event.video_relative_timestamp is not None and detection_timestamp is not None:
+                    video_start_time = detection_timestamp - hil_event.video_relative_timestamp
+                    logger.debug(f"Async: Calculated video_start_time: {video_start_time}")
+
                 detection_event = DetectionEvent(
                     id=hil_event.id,
                     test_session_id=hil_event.session_id,
                     video_id=video_id_for_detection,  # ✅ FIXED: Always attempt to set video_id
                     timestamp=detection_timestamp,  # TIMING FIX: Store hardware trigger time
-                    validation_result="PASS" if hil_event.actual_latency_ms and hil_event.actual_latency_ms <= 100 else "PENDING",
+                    validation_result=validation_result,
 
                     # FIXED: Store the actual calculated latency for frontend display
                     processing_time_ms=hil_event.actual_latency_ms,  # Use calculated processing latency
@@ -1559,22 +2157,24 @@ class DedicatedLabJackMonitor:
                     video_frame_number=hil_event.video_frame_number,
                     actual_latency_ms=hil_event.actual_latency_ms,
                     timing_sync_quality=hil_event.timing_sync_quality,
-                    detection_type="labjack_voltage",
-                    source="dedicated_labjack_monitor",
+                    detection_type="hardware",
+                    source="labjack",
                     unix_timestamp=float(detection_timestamp),  # TIMING FIX: Detection record time
                     detection_timestamp=datetime.fromtimestamp(detection_timestamp, tz=timezone.utc),  # TIMING FIX: DateTime version
 
                     # HIL screenshot and ground truth fields
                     screenshot_path=hil_event.screenshot_path,
-                    screenshot_zoom_path=hil_event.screenshot_zoom_path
+                    screenshot_zoom_path=hil_event.screenshot_zoom_path,
+                    # FIX #5: Set video_start_time for timing synchronization calculator
+                    video_start_time=video_start_time
                 )
                 
                 db.add(detection_event)
                 db.commit()
-                
+
                 # Dual-write: forward to TS ingestion API if configured
                 try:
-                    import os, requests, time
+                    import requests
                     ts_url = os.getenv('TS_INGEST_URL') or os.getenv('TS_INGEST_ENDPOINT')
                     service_token = os.getenv('SERVICE_TOKEN')
                     if ts_url and service_token:
@@ -1718,18 +2318,26 @@ class DedicatedLabJackMonitor:
                 except Exception as e:
                     logger.warning(f"Failed to cleanup HIL resources for session {session_id}: {e}")
                 
-                # STEP 6: Clean up session data (but preserve global connection)
+                # STEP 6: Unregister session from LabJack service
+                try:
+                    labjack_service = get_labjack_service()
+                    labjack_service.end_session(session_id)
+                    logger.info(f"✅ Session {session_id} unregistered from LabJack service")
+                except Exception as e:
+                    logger.warning(f"Failed to unregister session from LabJack service: {e}")
+
+                # STEP 7: Clean up session data (but preserve global connection)
                 self.active_sessions.pop(session_id, None)
                 # Keep detection events for potential retrieval unless explicitly cleaned up
-                
+
                 remaining_sessions = len(self.active_sessions)
                 logger.info(f"✅ HIL session monitoring stopped (connection preserved) {session_id}: "
                            f"{detection_count} detections, {average_latency:.1f}ms avg latency, "
                            f"{remaining_sessions} sessions remaining")
-                
+
                 if remaining_sessions == 0:
                     logger.info("ℹ️ No active sessions remain - hardware connection is idle but preserved")
-                
+
                 return statistics
                 
         except Exception as e:
@@ -1803,34 +2411,74 @@ class DedicatedLabJackMonitor:
             with self.lock:
                 self.active_sessions.pop(session_id, None)
                 self.detection_events.pop(session_id, None)
-                
+
                 # Also cleanup from underlying services
                 self.video_timing_service.clear_session_timing(session_id)
                 self.labjack_monitor.cleanup_session_data(session_id)
-                
+
                 # Cleanup HIL screenshot and ground truth resources
                 try:
                     self.hil_comparison_service.cleanup_session(session_id)
                 except Exception as e:
                     logger.warning(f"Failed to cleanup HIL resources: {e}")
-                
+
                 logger.info(f"Cleaned up HIL monitoring data for session {session_id}")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Error cleaning up session data: {e}")
             return False
+
+    def cleanup(self) -> None:
+        """
+        Cleanup all resources for graceful shutdown.
+
+        This method is called by signal handlers to ensure all monitoring
+        resources are properly released when the application shuts down.
+        """
+        try:
+            logger.info("Starting DedicatedLabJackMonitor cleanup...")
+
+            # Stop monitoring for all active sessions
+            with self.lock:
+                active_session_ids = list(self.active_sessions.keys())
+
+            for session_id in active_session_ids:
+                try:
+                    logger.info(f"Stopping monitoring for session: {session_id}")
+                    self.stop_session_monitoring(session_id)
+                except Exception as e:
+                    logger.error(f"Error stopping session {session_id}: {e}")
+
+            # Cleanup underlying services
+            try:
+                if hasattr(self.labjack_monitor, 'cleanup'):
+                    self.labjack_monitor.cleanup()
+                elif hasattr(self.labjack_monitor, 'close'):
+                    self.labjack_monitor.close()
+            except Exception as e:
+                logger.error(f"Error cleaning up LabJack monitor: {e}")
+
+            # Cleanup HIL comparison service
+            try:
+                if hasattr(self.hil_comparison_service, 'cleanup'):
+                    self.hil_comparison_service.cleanup()
+            except Exception as e:
+                logger.error(f"Error cleaning up HIL comparison service: {e}")
+
+            logger.info("DedicatedLabJackMonitor cleanup complete")
+
+        except Exception as e:
+            logger.error(f"Error during DedicatedLabJackMonitor cleanup: {e}", exc_info=True)
     
     def _schedule_hil_processing(self, session_id: str, detection_data: Dict[str, Any], video_path: str, video_config: Dict[str, Any]):
         """Schedule HIL screenshot capture and ground truth processing"""
         try:
             # Run HIL processing in background thread to avoid blocking detection
-            import threading
-            
+
             def _hil_processing_worker():
                 try:
                     # Create new event loop for async operations in thread
-                    import asyncio
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     
@@ -1913,10 +2561,34 @@ def get_dedicated_labjack_monitor(websocket_emit_fn: Optional[Callable] = None) 
 
 
 # Convenience functions
-def start_hil_monitoring(session_id: str, video_timing_config: Dict[str, Any]) -> bool:
-    """Start HIL monitoring with video timing synchronization"""
+async def start_hil_monitoring(video_timing_config: Dict[str, Any]) -> bool:
+    """
+    Start HIL monitoring with video timing synchronization
+
+    ✅ FIX-2: Extract primary session ID from config instead of accepting as parameter
+    This prevents session ID duplication and ensures monitor uses API-created session
+
+    Args:
+        video_timing_config: Configuration dict MUST contain 'test_session_id'
+
+    Returns:
+        True if monitoring started successfully
+
+    Raises:
+        ValueError: If test_session_id not provided in config
+    """
+    # ✅ FIX-2: Extract PRIMARY session ID from config
+    primary_session_id = video_timing_config.get('test_session_id')
+
+    if not primary_session_id:
+        logger.error("❌ FIX-2: test_session_id must be provided in video_timing_config")
+        logger.error(f"❌ Config keys: {list(video_timing_config.keys())}")
+        raise ValueError("test_session_id must be provided in video_timing_config")
+
+    logger.info(f"✅ FIX-2: Using PRIMARY session ID: {primary_session_id}")
+
     monitor = get_dedicated_labjack_monitor()
-    return monitor.start_monitoring_with_video_sync(session_id, video_timing_config)
+    return await monitor.start_monitoring_with_video_sync(primary_session_id, video_timing_config)
 
 
 def stop_hil_monitoring(session_id: str) -> Dict[str, Any]:

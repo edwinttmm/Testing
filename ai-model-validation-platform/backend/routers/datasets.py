@@ -81,7 +81,7 @@ async def get_video_annotations_for_dataset(
                     try:
                         import json
                         bounding_box = json.loads(annotation.bounding_box) if isinstance(annotation.bounding_box, str) else annotation.bounding_box
-                    except:
+                    except (json.JSONDecodeError, TypeError, ValueError):
                         bounding_box = {
                             "x": getattr(annotation, 'bounding_box_x', 0),
                             "y": getattr(annotation, 'bounding_box_y', 0), 

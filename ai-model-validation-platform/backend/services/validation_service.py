@@ -28,7 +28,9 @@ class ValidationService:
             
             # Find matching ground truth within tolerance
             tolerance_seconds = test_session.tolerance_ms / 1000.0
-            
+
+            # FIX: For validating single detection, we assume timestamp is already video-relative
+            # since this is called during detection processing, not from ground truth matching
             for gt_obj in ground_truth_objects:
                 time_diff = abs(gt_obj.timestamp - timestamp)
                 if time_diff <= tolerance_seconds:
@@ -167,8 +169,10 @@ class ValidationService:
             for i, gt_obj in enumerate(ground_truth_objects):
                 if i in detected_gt_objects:
                     continue
-                    
-                time_diff = abs(gt_obj.timestamp - detection.timestamp)
+
+                # FIX: Use video_relative_timestamp if available to avoid UNIX epoch vs video-relative mismatch
+                det_timestamp = detection.video_relative_timestamp if hasattr(detection, 'video_relative_timestamp') and detection.video_relative_timestamp is not None else detection.timestamp
+                time_diff = abs(gt_obj.timestamp - det_timestamp)
                 if time_diff <= tolerance_seconds:
                     true_positives += 1
                     detected_gt_objects.add(i)

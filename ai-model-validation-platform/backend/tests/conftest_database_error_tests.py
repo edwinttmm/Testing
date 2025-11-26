@@ -4,6 +4,7 @@ Pytest Configuration for Database Error Tests
 Shared fixtures and configuration for database error testing suite.
 """
 
+from typing import Any
 import pytest
 import asyncio
 from unittest.mock import Mock, MagicMock, patch

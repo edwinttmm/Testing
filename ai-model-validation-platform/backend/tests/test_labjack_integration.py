@@ -17,9 +17,9 @@ import json
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from services.labjack_service import LabJackService
+    from services.labjack_service_manager import LabJackService
     from services.labjack_integration_service import LabJackIntegrationService
-    from services.precision_timing_service import PrecisionTimingService
+    from services.labjack_timing_service import PrecisionTimingService
 except ImportError as e:
     print(f"⚠️  Could not import LabJack services: {e}")
     LabJackService = None

@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError, Ti
 from sqlalchemy import func, select, delete, text
 from typing import List, Optional, AsyncIterator, Dict, Any
 import asyncio
+import anyio
 from pydantic import ValidationError
 from datetime import datetime, timezone
 import threading
@@ -20,7 +21,8 @@ import uuid
 import statistics
 from pathlib import Path
 from contextlib import asynccontextmanager
-from config import settings, setup_logging, create_directories, validate_environment
+from config import settings
+from config_settings import setup_logging, create_directories, validate_environment
 # Temporarily disable advanced security features until properly configured
 # from security_middleware import setup_security_middleware, SecurityHeadersMiddleware
 # from logging_config import setup_logging as setup_enhanced_logging, security_logger
@@ -35,7 +37,7 @@ try:
     from api_ground_truth_matching import router as ground_truth_router
 except ImportError:
     ground_truth_router = None
-    logger.warning("Ground truth matching API not available")
+    print("⚠️ Ground truth matching API not available (scipy not installed)")
 from schemas import (
     ProjectCreate, ProjectResponse, ProjectUpdate,
     VideoUploadResponse, GroundTruthResponse,
@@ -875,8 +877,10 @@ try:
 except Exception as e:
     logger.error(f"❌ Failed to load video validation endpoints: {e}")
 
+# DEPRECATED 2025-11-21: simple_detection disabled (duplicate detection source)
+# Use dedicated_labjack_monitor endpoints instead
 # Include simple detection router
-app.include_router(simple_detection_router)
+# app.include_router(simple_detection_router)
 
 # Include basic results router FIRST to take precedence
 app.include_router(basic_results_router)
@@ -907,7 +911,7 @@ except ImportError as e:
 # Include HIL Results API router
 try:
     from src.api.hil_results_endpoints import router as hil_results_router
-    app.include_router(hil_results_router)
+    app.include_router(hil_results_router, prefix="/api")
     print("✅ HIL Test Results API endpoints registered at /api/test-sessions")
     
     # Enhanced HIL Results with Timing Synchronization Correction
@@ -1160,8 +1164,8 @@ try:
                             "connection_id": connection_id,
                             "timestamp": datetime.now(timezone.utc).timestamp()
                         }, "error")
-                    except:
-                        pass  # Connection likely closed
+                    except Exception as send_error:
+                        logger.debug(f"Could not send error message (connection likely closed): {send_error}")
                     break
             
             # Cancel the update task when loop ends
@@ -1218,31 +1222,35 @@ try:
         logger.warning(f"⚠️ LabJack hardware service error: {e}")
     
     # Initialize COMPREHENSIVE LabJack hardware services - CRITICAL P0 FUNCTIONALITY
-    try:
-        from services.labjack_hardware_service import initialize_hardware_service
-        from services.video_hardware_sync_service import get_video_hardware_sync_service
-        from services.labjack_error_handler import get_error_handler_service
-        
-        # Initialize core hardware service - override WSL check since USB passthrough is working
-        hardware_initialized = initialize_hardware_service(force_wsl_connection=True)
-        if hardware_initialized:
-            logger.info("✅ CRITICAL: LabJack hardware service fully initialized")
-        else:
-            logger.warning("⚠️ LabJack hardware service initialized in fallback mode")
-        
-        # Initialize video-hardware sync service
-        sync_service = get_video_hardware_sync_service()
-        logger.info("✅ Video-hardware synchronization service ready")
-        
-        # Initialize error handler
-        error_handler = get_error_handler_service()
-        logger.info("✅ LabJack error handling and recovery system active")
-        
-        logger.info("🎯 HIL TESTING CAPABILITY: FULLY OPERATIONAL")
-        
-    except Exception as init_error:
-        logger.error(f"⚠️ Comprehensive LabJack service initialization issue: {init_error}")
-        logger.warning("    Continuing with basic LabJack functionality")
+    disable_legacy_hardware = os.getenv("DISABLE_LEGACY_LABJACK_HARDWARE", "").lower() in ("1", "true", "yes")
+    if not disable_legacy_hardware:
+        try:
+            from services.labjack_hardware_service import initialize_hardware_service
+            from services.video_hardware_sync_service import get_video_hardware_sync_service
+            from services.labjack_error_handler import get_error_handler_service
+            
+            # Initialize core hardware service - override WSL check since USB passthrough is working
+            hardware_initialized = initialize_hardware_service(force_wsl_connection=True)
+            if hardware_initialized:
+                logger.info("✅ CRITICAL: LabJack hardware service fully initialized")
+            else:
+                logger.warning("⚠️ LabJack hardware service initialized in fallback mode")
+            
+            # Initialize video-hardware sync service
+            sync_service = get_video_hardware_sync_service()
+            logger.info("✅ Video-hardware synchronization service ready")
+            
+            # Initialize error handler
+            error_handler = get_error_handler_service()
+            logger.info("✅ LabJack error handling and recovery system active")
+            
+            logger.info("🎯 HIL TESTING CAPABILITY: FULLY OPERATIONAL")
+            
+        except Exception as init_error:
+            logger.error(f"⚠️ Comprehensive LabJack service initialization issue: {init_error}")
+            logger.warning("    Continuing with basic LabJack functionality")
+    else:
+        logger.info("ℹ️ Legacy LabJackHardwareService explicitly disabled via DISABLE_LEGACY_LABJACK_HARDWARE")
     
 except Exception as e:
     logger.error(f"❌ Failed to initialize LabJack hardware integration: {e}")
@@ -3600,6 +3608,7 @@ async def get_video_detections(
         # Convert to response format with complete data
         detection_list = []
         for detection in detections:
+            metadata = getattr(detection, "detection_metadata", None)
             detection_data = {
                 "id": detection.id,
                 "detection_id": detection.detection_id,
@@ -3687,6 +3696,7 @@ async def get_test_session_detections(
         
         detection_list = []
         for detection in detections:
+            metadata = getattr(detection, "detection_metadata", None)
             detection_data = {
                 "id": detection.id,
                 "detection_id": detection.detection_id,
@@ -3703,7 +3713,9 @@ async def get_test_session_detections(
                 } if detection.bounding_box_x is not None else None,
                 "screenshot_path": detection.screenshot_path,
                 "screenshot_zoom_path": detection.screenshot_zoom_path,
-                "validation_result": detection.validation_result
+                "validation_result": detection.validation_result,
+                "metadata": metadata,
+                "state": metadata.get("state") if isinstance(metadata, dict) else None
             }
             detection_list.append(detection_data)
         
@@ -4025,6 +4037,7 @@ except ImportError:
 
 # Register WebSocket endpoints
 from services.websocket_service import handle_websocket_connection
+from services.labjack_detection_service import get_detection_service
 from fastapi import WebSocket
 
 @app.websocket("/ws/progress/{connection_type}")
@@ -4057,28 +4070,97 @@ async def websocket_test_session_endpoint_alt(websocket: WebSocket, session_id: 
     """WebSocket endpoint for test execution with session ID (alternative path)"""
     await handle_websocket_connection(websocket, "test_session", f"test_session_{session_id}")
 
+@app.get("/api/ws/health")
+async def websocket_health_check():
+    """Check if WebSocket server is ready for connections"""
+    return {
+        "status": "ready",
+        "websocket_available": True,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
 @app.websocket("/ws/test-sessions/{session_id}/detections")
 async def websocket_test_session_detections(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for real-time detection events during HIL testing"""
-    await websocket.accept()  # Accept connection without authentication for now
+    await websocket.accept()
+
+    # Send immediate connection confirmation
+    await websocket.send_json({
+        "type": "connection_established",
+        "session_id": session_id,
+        "timestamp_ms": int(time.time() * 1000),  # Numeric milliseconds (frontend requirement)
+        "timestamp": time.time(),  # Fallback: numeric seconds
+        "server_time": datetime.now(timezone.utc).isoformat()  # Informational only
+    })
+
     logger.info(f"🔌 WebSocket connected for test session detections: {session_id}")
 
-    try:
-        while True:
-            # Keep connection alive and send heartbeat
-            data = await websocket.receive_text()
-            logger.debug(f"📨 Received WebSocket data for {session_id}: {data}")
+    # DISABLED: Using dedicated_labjack_monitor instead to prevent duplicate detections
+    # The labjack_detection_service (source='labjack') was creating duplicate detections
+    # alongside dedicated_labjack_monitor (source='dedicated_labjack_monitor')
+    # Removed to eliminate 100% duplication (167 + 167 = 334 total)
+    # detection_monitor = get_detection_service()
+    detection_monitor = None
 
-            # Echo back or send detection events
-            await websocket.send_json({
-                "type": "heartbeat",
-                "session_id": session_id,
-                "timestamp": datetime.now().isoformat()
-            })
+    # Track if we've registered callback
+    callback_registered = False
+
+    async def send_detection_to_client(detection_data: dict, event_session_id: str):
+        """Send detection event to this WebSocket client"""
+        if event_session_id == session_id:
+            try:
+                await websocket.send_json({
+                    "type": "detection_event",
+                    "data": detection_data,
+                    "timestamp": datetime.now().isoformat()
+                })
+                logger.debug(f"📤 Sent detection event to WebSocket client: {session_id}")
+            except Exception as e:
+                logger.error(f"❌ Failed to send detection to WebSocket: {e}")
+
+    try:
+        # ⚠️ DO NOT overwrite emission function - HIL monitor already has it configured at startup (line 238-244)
+        # Overwriting breaks detection flow since HIL monitor's internal emission function gets replaced
+        # if detection_monitor and hasattr(detection_monitor, 'set_websocket_emit_function'):
+        #     detection_monitor.set_websocket_emit_function(send_detection_to_client)
+        #     callback_registered = True
+        #     logger.info(f"✅ Registered WebSocket emission callback for session {session_id}")
+
+        # WebSocket connection established - detections will be received via broadcast mechanism
+        logger.info(f"✅ WebSocket connection established for session {session_id} - using pre-configured emission function")
+
+        # Keep connection alive and handle client messages
+        while True:
+            try:
+                # Non-blocking receive with timeout
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+
+                # Send heartbeat response
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "session_id": session_id,
+                    "timestamp": datetime.now().isoformat()
+                })
+                logger.debug(f"💓 Heartbeat sent to WebSocket client: {session_id}")
+
+            except asyncio.TimeoutError:
+                # Send heartbeat on timeout
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "session_id": session_id,
+                    "timestamp": datetime.now().isoformat()
+                })
+
+    except WebSocketDisconnect:
+        logger.info(f"🔌 WebSocket disconnected for session: {session_id}")
     except Exception as e:
-        logger.error(f"❌ WebSocket error for {session_id}: {e}")
+        logger.error(f"❌ WebSocket error for session {session_id}: {e}")
     finally:
-        logger.info(f"🔌 WebSocket disconnected for test session: {session_id}")
+        # Cleanup: No need to clear emission function (it remains configured from startup)
+        # if callback_registered and detection_monitor:
+        #     detection_monitor.set_websocket_emit_function(None)
+        #     logger.info(f"🧹 Cleaned up WebSocket callback for session {session_id}")
+        logger.info(f"🧹 WebSocket disconnected for session {session_id}")
 
 logger.info("WebSocket endpoints registered")
 
@@ -4128,10 +4210,11 @@ socketio_app = create_socketio_app(app)
 @app.middleware("http")
 async def database_error_middleware(request, call_next):
     """
-    Database error handling middleware - FOCUSED SCOPE
-    
-    This middleware ONLY handles database-related errors.
-    Client disconnections should be handled at the endpoint level.
+    Database error handling middleware with robust exception handling.
+    Prevents generator context manager issues by properly catching all exceptions.
+
+    This middleware handles database-related errors and client disconnections
+    to prevent "generator didn't stop after throw()" errors.
     """
     try:
         response = await call_next(request)
@@ -4150,7 +4233,7 @@ async def database_error_middleware(request, call_next):
             }
         )
     except SQLAlchemyError as e:
-        logger.error(f"Database error in middleware: {e}")
+        logger.error(f"Database error in middleware: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
@@ -4158,38 +4241,52 @@ async def database_error_middleware(request, call_next):
                 "error": "Internal server error"
             }
         )
-    # Let all other exceptions (including client disconnections) bubble up
-    # They should be handled by FastAPI's default exception handlers or endpoint-specific logic
+    except anyio.EndOfStream as e:
+        logger.warning(f"Client disconnected during request: {request.url.path}")
+        return JSONResponse(
+            status_code=499,
+            content={"detail": "Client disconnected"}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in database middleware: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"}
+        )
 
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     """
-    Security headers middleware - FOCUSED SCOPE
-    
-    This middleware ONLY adds security headers to responses.
-    Exception handling is left to other layers.
+    Security headers middleware with exception handling.
+    Prevents generator context manager issues.
     """
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
+    try:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+    except Exception as e:
+        logger.error(f"Error in security headers middleware: {e}", exc_info=True)
+        raise
 
-@app.middleware("http") 
+@app.middleware("http")
 async def add_process_time_header(request, call_next):
     """
-    Performance timing middleware - FOCUSED SCOPE
-    
-    This middleware ONLY tracks processing time.
-    Exception handling is left to other layers.
+    Performance timing middleware with exception handling.
+    Prevents generator context manager issues.
     """
     import time
     start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        return response
+    except Exception as e:
+        logger.error(f"Error in process time middleware: {e}", exc_info=True)
+        raise
 
 # Proper client disconnection handling - APPLICATION LEVEL
 # DISABLED: These exception handlers are causing FastAPI middleware AssertionError
@@ -4450,7 +4547,34 @@ async def startup_event():
         
     except Exception as e:
         logger.warning(f"⚠️ Service initialization warnings: {e}")
-    
+
+    # Install signal handlers for graceful shutdown
+    try:
+        from src.utils.signal_handlers import GracefulShutdown
+        shutdown_handler = GracefulShutdown(timeout_seconds=10)
+
+        # Register database cleanup
+        from database import engine
+        shutdown_handler.register_cleanup(lambda: engine.dispose())
+        logger.info("✅ Registered database cleanup")
+
+        # Register LabJack monitor cleanup
+        try:
+            from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
+            monitor = get_dedicated_labjack_monitor()
+            shutdown_handler.register_cleanup(lambda: monitor.cleanup())
+            logger.info("✅ Registered LabJack monitor cleanup")
+        except Exception as e:
+            logger.warning(f"⚠️ LabJack monitor cleanup registration failed: {e}")
+
+        # Install signal handlers
+        shutdown_handler.install_handlers()
+        logger.info("✅ Signal handlers installed for graceful shutdown")
+
+    except Exception as e:
+        logger.error(f"❌ Signal handler installation failed: {e}")
+        # Non-fatal - continue without signal handlers
+
     logger.info("🎯 AI Model Validation Platform API ready for requests")
 
 @app.on_event("shutdown")

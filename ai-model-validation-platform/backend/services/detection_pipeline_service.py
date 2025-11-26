@@ -13,12 +13,13 @@ except ImportError:
     TORCH_CUDA_AVAILABLE = False
     torch = None
 import time
+import os
 import logging
 from pathlib import Path
 import uuid
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import DetectionEvent, TestSession, Video, GroundTruthObject
+from models import DetectionEvent, TestSession, Video, GroundTruthObject, Project
 import json
 
 logger = logging.getLogger(__name__)
@@ -131,10 +132,7 @@ class ModelRegistry:
                 # Try to load real YOLOv8 first
                 try:
                     from ultralytics import YOLO
-                    import torch
-                    
                     # Check if model file exists
-                    from pathlib import Path
                     model_path = Path(model_info["path"])
                     
                     if not model_path.exists():
@@ -993,11 +991,6 @@ class DetectionPipeline:
     
     async def process_video_with_storage(self, video_path: str, video_id: str, config: dict = None) -> List[Dict]:
         """Process video AND store all results in database with screenshots - Complete workflow"""
-        from database import SessionLocal
-        from models import DetectionEvent, TestSession
-        from datetime import datetime
-        import time
-        
         db = SessionLocal()
         try:
             # First run the detection processing - FIXED: Pass video_id for API compatibility
@@ -1014,14 +1007,12 @@ class DetectionPipeline:
             if not test_session:
                 # Create a standalone detection session for AI annotations
                 logger.info(f"🔄 No active test session found for video {video_id}. Creating standalone detection session.")
-                
-                # Import Video model to get video info
-                from models import Video
+
+                # Get video info
                 video_record = db.query(Video).filter(Video.id == video_id).first()
                 
                 if video_record:
                     # Get or create default project for AI detections
-                    from models import Project
                     default_project = db.query(Project).filter(Project.name == "AI Detection Project").first()
                     
                     if not default_project:

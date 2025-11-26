@@ -36,8 +36,8 @@ def get_device_type_string(device_type_num: int) -> str:
             return "T8"
         elif device_type_num == ljm.constants.dtTSERIES:
             return "TSERIES"
-    except:
-        pass
+    except (AttributeError, KeyError):
+        pass  # LJM constants not available or invalid device type
     
     return device_type_map.get(device_type_num, f"Unknown({device_type_num})")
 
@@ -61,8 +61,8 @@ def get_connection_type_string(connection_type_num: int) -> str:
             return "ETHERNET"
         elif connection_type_num == ljm.constants.ctWIFI:
             return "WIFI"
-    except:
-        pass
+    except (AttributeError, KeyError):
+        pass  # LJM constants not available or invalid connection type
         
     return connection_type_map.get(connection_type_num, f"Unknown({connection_type_num})")
 

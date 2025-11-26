@@ -132,14 +132,28 @@ async def emit_dashboard_stats_update(sio: socketio.AsyncServer, stats_data: Dic
 async def emit_detection_event_stream(sio: socketio.AsyncServer, test_session_id: str, detection_data: Dict[str, Any]):
     """Stream detection events in real-time during testing"""
     try:
+        # CRITICAL FIX: Ensure timestamp is ALWAYS in ISO 8601 format
+        from datetime import datetime
+        timestamp_iso = datetime.now().isoformat()
+
+        # Validate detection_data has timestamp
+        if 'timestamp' not in detection_data:
+            logger.warning(f"⚠️ Detection data missing timestamp field, adding current time")
+            detection_data['timestamp'] = timestamp_iso
+        elif not isinstance(detection_data['timestamp'], str) or len(detection_data['timestamp']) < 10:
+            logger.warning(f"⚠️ Detection data has invalid timestamp format: {detection_data.get('timestamp')}, replacing with ISO format")
+            detection_data['timestamp'] = timestamp_iso
+
         await sio.emit('detection_event', {
             'test_session_id': test_session_id,
             'detection': detection_data,
-            'timestamp': asyncio.get_event_loop().time()
+            'timestamp': timestamp_iso  # Event emission timestamp in ISO format
         }, room=f"test_session_{test_session_id}")
-        
+
+        logger.debug(f"✅ Detection event emitted with timestamp: {timestamp_iso}")
+
     except Exception as e:
-        logger.error(f"Error in detection_event stream: {str(e)}")
+        logger.error(f"❌ Error in detection_event stream: {str(e)}")
 
 # Enhanced WebSocket Event Handlers
 

@@ -200,14 +200,30 @@ export const normalizeDetectionEvent = (event: any, index: number): EnhancedDete
           ? 'pass'
           : 'fail';
 
-  const id =
+  // IMPROVED ID GENERATION: Use multiple fields to create unique composite ID
+  // Old fallback `detection-${index}` was collision-prone when detections from different
+  // videos were combined, causing duplicate IDs when index resets per video
+  const baseId =
     source.id ??
     source.event_id ??
     source.detection_id ??
     source.detectionId ??
     source.uuid ??
-    source.identifier ??
-    `detection-${index}`;
+    source.identifier;
+
+  let id: string;
+  if (baseId) {
+    id = String(baseId);
+  } else {
+    // Generate collision-resistant ID using multiple fields
+    const videoIdPart = source.video_id ?? source.videoId ?? 'unknown';
+    const timestampPart = source.timestamp ?? source.time ?? source.unix_timestamp ?? index;
+    const framePart = source.frame_number ?? source.frameNumber ?? '';
+    const latencyPart = source.actual_latency_ms ?? source.latency_ms ?? source.real_latency_ms ?? '';
+
+    // Create composite ID that's unique across videos and frames
+    id = `detection-${videoIdPart}-${timestampPart}-${framePart}-${latencyPart}-${index}`;
+  }
 
   // UNIFIED LATENCY FIELD - actual_latency_ms is the single source of truth
   const latencyMs = toNumber(
@@ -264,7 +280,27 @@ export const normalizeDetectionEvent = (event: any, index: number): EnhancedDete
     sequenceVideoResultId: sequenceVideoResultIdValue,
     // NEW BACKEND FIELDS (Issue #2 - Agent 1)
     sequence_id: sequenceId,      // NEW: Video sequence identifier
-    sequenceId: sequenceId        // Camel case variant
+    sequenceId: sequenceId,       // Camel case variant
+    usable_for_validation: typeof source.usable_for_validation === 'boolean'
+      ? source.usable_for_validation
+      : typeof source.usableForValidation === 'boolean'
+        ? source.usableForValidation
+        : true,
+    usableForValidation: typeof source.usableForValidation === 'boolean'
+      ? source.usableForValidation
+      : typeof source.usable_for_validation === 'boolean'
+        ? source.usable_for_validation
+        : true,
+    timing_degraded: typeof source.timing_degraded === 'boolean'
+      ? source.timing_degraded
+      : typeof source.timingDegraded === 'boolean'
+        ? source.timingDegraded
+        : false,
+    timingDegraded: typeof source.timingDegraded === 'boolean'
+      ? source.timingDegraded
+      : typeof source.timing_degraded === 'boolean'
+        ? source.timing_degraded
+        : false
   } as EnhancedDetectionEvent;
 };
 

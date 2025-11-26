@@ -132,9 +132,9 @@ class TestDoubleMatchingPrevention:
             f"Expected 1 FN, got {results.false_negatives} (both GTs matched!)"
 
         # Verify detection classified correctly
-        detection = db_session.query(DetectionEvent).filter_by(
+        detection = db_session.execute(select(DetectionEvent).filter_by(
             id=scenario["detection"].id
-        ).first()
+        )).scalar_one_or_none()
 
         assert detection.classification == "TP", \
             f"Detection should be TP, got {detection.classification}"
@@ -230,9 +230,9 @@ class TestDoubleMatchingPrevention:
             f"Expected 2 FN (2 GTs missed), got {results.false_negatives}"
 
         # Verify each detection matched exactly once
-        detections = db_session.query(DetectionEvent).filter_by(
+        detections = db_session.execute(select(DetectionEvent).filter_by(
             session_id=session.id
-        ).all()
+        )).scalars().all()
 
         tp_count = sum(1 for d in detections if d.classification == "TP")
         assert tp_count == 3, f"Expected 3 TP detections, got {tp_count}"
@@ -397,9 +397,9 @@ class TestMatchedDetectionTracking:
             "Two GTs should be unmatched (FN)"
 
         # Verify detection classification
-        det = db_session.query(DetectionEvent).filter_by(
+        det = db_session.execute(select(DetectionEvent).filter_by(
             id="track-det"
-        ).first()
+        )).scalar_one_or_none()
 
         assert det.classification == "TP"
         assert det.latency_ms == 0.0  # Exact match to GT2

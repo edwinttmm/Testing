@@ -20,12 +20,14 @@ import json
 from datetime import datetime
 
 from database import get_db
-from src.services.simple_labjack_detection import (
-    start_simple_detection,
-    stop_simple_detection, 
-    get_detection_status,
-    analyze_detection_results
-)
+# DEPRECATED 2025-11-21: simple_labjack_detection disabled to eliminate duplicate writes
+# Entire endpoint file disabled - use dedicated_labjack_monitor directly
+# from src.services.simple_labjack_detection import (
+#     start_simple_detection,
+#     stop_simple_detection,
+#     get_detection_status,
+#     analyze_detection_results
+# )
 from src.models.detection_session import DetectionSession, VideoEvent, StoredDetectionEvent
 from models import Project, Video
 

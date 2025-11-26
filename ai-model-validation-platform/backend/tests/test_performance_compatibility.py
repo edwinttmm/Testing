@@ -21,7 +21,7 @@ import gc
 import logging
 
 from main import app
-from services.labjack_service import LabJackService, ConnectionMode
+from services.labjack_service_manager import LabJackService, ConnectionMode
 from database import get_db, SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -231,7 +231,7 @@ class TestDatabasePerformance:
             db = SessionLocal()
             try:
                 from models import DetectionEvent
-                events = db.query(DetectionEvent).limit(100).all()
+                events = db.execute(select(DetectionEvent).limit(100)).scalars().all()
                 return len(events)
             finally:
                 db.close()
@@ -248,7 +248,7 @@ class TestDatabasePerformance:
             db = SessionLocal()
             try:
                 from models import TestSession
-                sessions = db.query(TestSession).limit(2000).all()
+                sessions = db.execute(select(TestSession).limit(2000)).scalars().all()
                 return len(sessions)
             finally:
                 db.close()
@@ -331,7 +331,7 @@ class TestConcurrentPerformance:
             db = SessionLocal()
             try:
                 from models import DetectionEvent
-                events = db.query(DetectionEvent).limit(10).all()
+                events = db.execute(select(DetectionEvent).limit(10)).scalars().all()
                 return len(events) >= 0
             finally:
                 db.close()

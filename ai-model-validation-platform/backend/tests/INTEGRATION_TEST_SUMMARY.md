@@ -224,7 +224,7 @@ npm test -- detectionWebSocket.test.ts
 **Fix**: Update `conftest.py` line 46:
 ```python
 # Change from:
-from config import get_db
+from database import get_db
 
 # To:
 from database import get_db

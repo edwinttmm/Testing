@@ -1,0 +1,152 @@
+@startuml Backend Architecture
+!theme plain
+title Backend Architecture - FastAPI Application
+skinparam backgroundColor #FEFEFE
+
+skinparam package {
+    BackgroundColor #E8F5E9
+}
+skinparam component {
+    BackgroundColor #C8E6C9
+}
+
+' API Layer
+package "API Layer (FastAPI Routers)" {
+    component [/auth] as r_auth
+    component [/api/projects] as r_projects
+    component [/api/videos] as r_videos
+    component [/api/test-sessions] as r_sessions
+    component [/api/ground-truth] as r_gt
+    component [/api/hil] as r_hil
+    component [/api/reports] as r_reports
+    component [/api/dashboard] as r_dashboard
+}
+
+' Service Layer
+package "Business Logic Services" {
+    package "Core Services" {
+        component [TestExecutionService] as s_test
+        component [SessionManagementService] as s_session
+        component [VideoProcessingService] as s_video
+        component [AnnotationService] as s_annotation
+    }
+
+    package "Ground Truth Services" {
+        component [GroundTruthService] as s_gt
+        component [GroundTruthMatchingService] as s_gtmatch
+        component [EnhancedGroundTruthService] as s_enh_gt
+    }
+
+    package "Hardware Services" {
+        component [DedicatedLabJackMonitor] as s_labjack
+        component [LabJackServiceManager] as s_ljmgr
+        component [DetectionValidationService] as s_detect_val
+    }
+
+    package "Timing Services" {
+        component [TemporalSyncService] as s_sync
+        component [DriftMonitoringService] as s_drift
+        component [ClockSyncService] as s_clock
+    }
+
+    package "Report Services" {
+        component [ReportGenerationService] as s_report
+        component [FailureSnapshotService] as s_snapshot
+    }
+}
+
+' Data Access Layer
+package "Data Access Layer" {
+    component [SQLAlchemy ORM] as dal_orm
+    component [CRUD Operations] as dal_crud
+    component [Database Session] as dal_session
+}
+
+' Infrastructure
+package "Infrastructure" {
+    component [Middleware] as infra_mw
+    component [Error Handlers] as infra_err
+    component [WebSocket Server] as infra_ws
+    component [Background Tasks] as infra_bg
+}
+
+' External Integrations
+package "External Integrations" {
+    component [LabJack LJM SDK] as ext_ljm
+    component [YOLOv8/PyTorch] as ext_yolo
+    component [OpenCV] as ext_opencv
+}
+
+' Database
+database "SQLite/PostgreSQL" as db
+database "Redis" as redis
+
+' Connections - API to Services
+r_auth --> dal_crud
+r_projects --> s_session
+r_videos --> s_video
+r_sessions --> s_test
+r_gt --> s_gt
+r_hil --> s_gtmatch
+r_reports --> s_report
+r_dashboard --> dal_crud
+
+' Services interconnections
+s_test --> s_session
+s_test --> s_labjack
+s_test --> s_gtmatch
+s_gtmatch --> s_gt
+s_gtmatch --> s_sync
+s_labjack --> s_ljmgr
+s_labjack --> s_drift
+
+' Services to DAL
+s_session --> dal_crud
+s_gt --> dal_crud
+s_video --> dal_crud
+s_report --> dal_crud
+
+' DAL to Database
+dal_orm --> db
+dal_crud --> dal_orm
+dal_session --> db
+dal_crud --> redis
+
+' External integrations
+s_labjack --> ext_ljm
+s_video --> ext_opencv
+s_detect_val --> ext_yolo
+
+' Infrastructure connections
+infra_mw --> r_auth
+infra_ws --> s_labjack
+infra_bg --> s_report
+
+' Notes
+note right of s_gtmatch
+    Matching Algorithms:
+    1. Hungarian (optimal)
+    2. Many-to-One (constant V)
+    3. Greedy (large datasets)
+
+    Tolerance: ±250ms
+end note
+
+note right of s_labjack
+    Dedicated Process:
+    - Exclusive device access
+    - 200 Hz sampling
+    - Real-time voltage monitoring
+    - IPC via Unix sockets
+end note
+
+note bottom of db
+    30+ Tables including:
+    - test_sessions
+    - detection_events
+    - ground_truth_objects
+    - videos
+    - projects
+end note
+
+@enduml

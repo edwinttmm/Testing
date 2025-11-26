@@ -20,7 +20,7 @@ from services.timing_orchestration_service import (
     T1TimingCapture,
     T1MinusT0Measurement
 )
-from services.precision_timing_service import PrecisionTimingService
+from services.labjack_timing_service import PrecisionTimingService
 from services.video_timing_service import VideoTimingService
 from models import TestSession
 from database import get_db

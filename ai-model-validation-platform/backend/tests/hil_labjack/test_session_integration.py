@@ -19,7 +19,7 @@ from typing import Dict, Any, List
 # Import services and models
 import sys
 sys.path.append('/home/rigade/Testing/ai-model-validation-platform/backend')
-from services.labjack_monitoring_service import LabJackMonitoringService
+from services.dedicated_labjack_monitor import LabJackMonitoringService
 
 logger = logging.getLogger(__name__)
 

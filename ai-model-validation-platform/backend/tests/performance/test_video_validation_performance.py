@@ -9,7 +9,7 @@ import pytest
 import time
 import statistics
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine, func, select, delete, update
 from sqlalchemy.orm import sessionmaker
 import tempfile
 import os
@@ -98,7 +98,7 @@ class TestVideoQueryPerformance:
         
         # Test query performance
         start_time = time.time()
-        videos = perf_db.query(Video).filter(Video.project_id == project_id).all()
+        videos = perf_db.execute(select(Video).where(Video.project_id == project_id)).scalars().all()
         query_time = time.time() - start_time
         
         assert len(videos) == 1000
@@ -110,10 +110,10 @@ class TestVideoQueryPerformance:
         
         # Test filtering by single status
         start_time = time.time()
-        validated_videos = perf_db.query(Video).filter(
+        validated_videos = perf_db.execute(select(Video).where(
             Video.project_id == project_id,
             Video.status == "validated"
-        ).all()
+        )).scalars().all()
         single_filter_time = time.time() - start_time
         
         assert len(validated_videos) == 200
@@ -139,9 +139,9 @@ class TestVideoQueryPerformance:
         page_times = []
         for page in range(5):  # Test first 5 pages
             start_time = time.time()
-            videos = perf_db.query(Video).filter(
-                Video.project_id == project_id
-            ).offset(page * page_size).limit(page_size).all()
+            videos = perf_db.execute(select(Video).where(
+            Video.project_id == project_id
+        )).scalars().offset(page * page_size).limit(page_size).all()
             page_time = time.time() - start_time
             page_times.append(page_time)
             
@@ -183,9 +183,9 @@ class TestBatchVideoOperationsPerformance:
     def test_batch_status_update_performance(self, perf_db, large_dataset):
         """Test performance of batch video status updates"""
         # Get videos to update (all processing videos)
-        processing_videos = perf_db.query(Video).filter(
+        processing_videos = perf_db.execute(select(Video).where(
             Video.status == "processing"
-        ).all()
+        )).scalars().all()
         
         assert len(processing_videos) == 250
         
@@ -203,15 +203,15 @@ class TestBatchVideoOperationsPerformance:
         assert batch_update_time < 5.0  # Under 5 seconds for 250 updates
         
         # Verify updates
-        validated_count = perf_db.query(Video).filter(Video.status == "validated").count()
+        validated_count = perf_db.execute(select(func.count()).select_from(Video).where(Video.status == "validated")).scalar()
         assert validated_count == 450  # 200 original + 250 updated
     
     def test_bulk_ground_truth_assignment_performance(self, perf_db, large_dataset):
         """Test performance of bulk ground truth assignment"""
         # Get videos that need ground truth
-        videos_needing_gt = perf_db.query(Video).filter(
+        videos_needing_gt = perf_db.execute(select(Video).where(
             Video.ground_truth_generated == False
-        ).limit(100).all()  # Test with 100 videos
+        )).scalars().limit(100).all()  # Test with 100 videos
         
         # Create ground truth objects in bulk
         start_time = time.time()
@@ -260,7 +260,7 @@ class TestBatchVideoOperationsPerformance:
             worker_db = PerfSessionLocal()
             try:
                 for video_id in video_ids:
-                    video = worker_db.query(Video).filter(Video.id == video_id).first()
+                    video = worker_db.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
                     if video:
                         video.status = "processing"
                         worker_db.commit()
@@ -349,14 +349,14 @@ class TestVideoValidationWorkflowPerformance:
             # Step 3: Validation checks
             start_time = time.time()
             # Check if video meets validation criteria
-            gt_count = perf_db.query(GroundTruthObject).filter(
+            gt_count = session.execute(select(func.count()).select_from(GroundTruthObject).where(
                 GroundTruthObject.video_id == video.id
-            ).count()
+            )).scalar()
             
-            validated_gt_count = perf_db.query(GroundTruthObject).filter(
+            validated_gt_count = perf_db.execute(select(func.count()).select_from(GroundTruthObject).where(
                 GroundTruthObject.video_id == video.id,
                 GroundTruthObject.validated == True
-            ).count()
+            )).scalar()
             
             if gt_count > 0 and validated_gt_count == gt_count:
                 video.status = "validated"
@@ -386,11 +386,11 @@ class TestVideoValidationWorkflowPerformance:
         # Test performance of finding HIL-eligible videos
         start_time = time.time()
         
-        hil_eligible_videos = perf_db.query(Video).filter(
+        hil_eligible_videos = perf_db.execute(select(Video).where(
             Video.status == "validated",
             Video.ground_truth_generated == True,
             Video.processing_status == "completed"
-        ).all()
+        )).scalars().all()
         
         eligibility_check_time = time.time() - start_time
         
@@ -403,10 +403,10 @@ class TestVideoValidationWorkflowPerformance:
         # More complex eligibility check including ground truth validation
         eligible_with_gt_check = []
         for video in hil_eligible_videos[:50]:  # Test first 50 to avoid timeout
-            gt_count = perf_db.query(GroundTruthObject).filter(
+            gt_count = perf_db.execute(select(func.count()).select_from(GroundTruthObject).where(
                 GroundTruthObject.video_id == video.id,
                 GroundTruthObject.validated == True
-            ).count()
+            )).scalar()
             
             if gt_count >= 3:  # Minimum 3 validated ground truth objects
                 eligible_with_gt_check.append(video)

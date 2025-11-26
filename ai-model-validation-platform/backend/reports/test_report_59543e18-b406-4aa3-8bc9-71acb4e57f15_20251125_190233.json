@@ -1,0 +1,38 @@
+{
+  "report_id": "56e26ff7-6779-4919-85a3-973582a31e50",
+  "test_session_id": "59543e18-b406-4aa3-8bc9-71acb4e57f15",
+  "generated_at": "2025-11-25T19:02:33.163217",
+  "test_session": {
+    "id": "59543e18-b406-4aa3-8bc9-71acb4e57f15",
+    "name": "Video Sequence Test - 2025-11-25 19:02",
+    "project_name": "Test",
+    "started_at": "2025-11-25T19:02:20.723257",
+    "completed_at": "2025-11-25T19:02:32.609742",
+    "status": "completed",
+    "latency_threshold_ms": 100
+  },
+  "metrics": {
+    "total_events": 0,
+    "passed_events": 0,
+    "failed_events": 0,
+    "high_latency_failures": 0,
+    "missed_detections": 0,
+    "pass_rate_percent": 0,
+    "fail_rate_percent": 0,
+    "average_latency_ms": 0,
+    "min_latency_ms": 0,
+    "max_latency_ms": 0,
+    "latency_threshold_ms": 100,
+    "latency_distribution": {},
+    "test_outcome": "NO_DATA"
+  },
+  "success_summary": {
+    "summary_text": "No successful detections recorded.",
+    "passed_count": 0,
+    "total_count": 0
+  },
+  "failure_events": [],
+  "failure_snapshots": [],
+  "videos_tested": 1,
+  "total_events": 0
+}

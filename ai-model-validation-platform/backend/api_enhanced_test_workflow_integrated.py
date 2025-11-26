@@ -21,11 +21,24 @@ import uuid
 logger = logging.getLogger(__name__)
 
 class DetectionTestConfig(BaseModel):
+    """Enhanced test detection configuration
+
+    Args:
+        project_id: Project identifier
+        detection_window_ms: Time window for detection matching (Pass/Fail threshold)
+        voltage_threshold: Voltage threshold for detection trigger
+        sample_rate: Sampling rate in Hz
+        channels: LabJack analog input channels
+        constant_voltage_mode: Bypass debounce for constant voltage testing
+            When True: Detects every frame (100% detection rate)
+            When False: Uses 100ms debounce (33% detection rate, default)
+    """
     project_id: str
     detection_window_ms: float = 500.0   # Time window for detection (Pass/Fail)
     voltage_threshold: float = 2.5       # LabJack detection threshold
     sample_rate: int = 1000              # LabJack sampling rate
     channels: List[str] = ["AIN0", "AIN1"]
+    constant_voltage_mode: bool = False  # Bypass debounce for constant voltage tests
 
 class TestResultResponse(BaseModel):
     video_id: str
@@ -230,6 +243,15 @@ async def run_detection_validation_workflow(websocket: WebSocket):
         while (time.time() - start_monitor_time) < timeout and current_test_state["active"]:
             try:
                 # Read voltage from LabJack
+                # NOTE: This workflow uses direct voltage reading instead of detection service monitoring.
+                # The constant_voltage_mode parameter is defined in DetectionTestConfig but only applies
+                # when using the detection service API endpoints (/api/detection/start).
+                #
+                # For constant voltage testing with 100% detection rate (bypassing 100ms debounce):
+                # 1. Use POST /api/detection/start with constant_voltage_mode=true
+                # 2. Or integrate this workflow with detection service monitoring (future enhancement)
+                #
+                # Current limitation: This direct polling approach doesn't support debounce bypass.
                 voltage = await labjack_service.read_single_voltage("AIN0")
                 current_time = time.time()
                 

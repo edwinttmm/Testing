@@ -3,6 +3,7 @@
 Comprehensive Production Validation Tests for AI Model Validation Platform
 Tests all critical functionality against real backend implementation
 """
+import sys
 import pytest
 import httpx
 import json

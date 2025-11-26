@@ -1,0 +1,199 @@
+================================================================================
+DATABASE LOCATION INVESTIGATION - EXECUTIVE SUMMARY
+Session ID: 2c9a93f6-8471-4f2e-b1a7-06f239fca548
+Investigation Date: 2025-11-24
+================================================================================
+
+1. ALL DATABASES FOUND (30 total)
+================================================================================
+
+PRIMARY DATABASE (ACTIVE):
+   /home/rigade/Testing/ai-model-validation-platform/backend/dev_database.db
+   Size: 109MB | Last Modified: Nov 24 19:36 | ✅ SESSION FOUND HERE
+
+OTHER DATABASES SEARCHED:
+   - test_database.db (3.2MB)
+   - test_gt_validation.db (2.3MB)
+   - test_reports.db (1.1MB)
+   - simple_test.db (36KB)
+   - 25 other .db files (swarm memory, backups, etc.)
+   - None contained the session
+
+2. SESSION LOCATION
+================================================================================
+
+✅ FOUND: YES
+
+Database: /home/rigade/Testing/ai-model-validation-platform/backend/dev_database.db
+Table: test_sessions
+Found: YES (1 record)
+API Status: Running (localhost:8000)
+
+3. SESSION DATA EXTRACTED
+================================================================================
+
+accuracyRecall: 0.3229571984435798 (32.3%)
+truePositives: 83
+falsePositives: 8
+falseNegatives: 174
+test_configuration: NULL
+
+Additional Metrics:
+- accuracy_precision: 0.9120879120879121 (91.2%)
+- accuracy_f1_score: 0.47701149425287354 (47.7%)
+- actual_detections: 91
+- pass_fail_result: FAIL
+- latency_result: PASS
+- latency_mean_ms: 11.8ms
+
+4. API RESPONSE
+================================================================================
+
+Endpoint: http://localhost:8000/api/test-sessions/2c9a93f6-8471-4f2e-b1a7-06f239fca548
+Status: ✅ 200 OK
+Data: Matches database exactly
+
+Key API Fields:
+{
+  "truePositives": 83,
+  "falsePositives": 8,
+  "falseNegatives": 174,
+  "accuracyRecall": 0.3229571984435798,
+  "actualDetections": 91,
+  "overallTestResult": "FAIL"
+}
+
+5. DATABASE CONNECTION STRING
+================================================================================
+
+From code (database.py):
+
+def get_database_url():
+    database_url = (
+        os.getenv("VRU_DATABASE_URL") or
+        os.getenv("DATABASE_URL") or
+        os.getenv("AIVALIDATION_DATABASE_URL") or
+        "sqlite:///./dev_database.db"  # ← ACTIVE
+    )
+    return database_url
+
+Active Connection: sqlite:///./dev_database.db
+Environment Variables: None set (using default fallback)
+
+6. ACTUAL GROUND TRUTH COUNT
+================================================================================
+
+✅ VERIFIED: 257 TOTAL GROUND TRUTH OBJECTS
+
+Breakdown by Video:
+- Video 10c2b16c-86fa-4140-b1cf-c0ea42f82ca5: 131 objects
+- Video 550e3cf8-2755-42df-8c3c-041300735f93: 126 objects
+- TOTAL: 257 objects
+
+Validation:
+   Expected (TP + FN): 83 + 174 = 257 ✅ MATCHES
+   Database Count: 257 ✅ MATCHES
+
+Query Method:
+   SELECT COUNT(*) FROM ground_truth_objects
+   WHERE video_id IN (session.video_ids)
+
+Note: ground_truth_objects table does NOT have session_id column.
+      Ground truth is linked via video_id, not directly to sessions.
+
+================================================================================
+CRITICAL FINDINGS
+================================================================================
+
+✅ SUCCESSES:
+1. Session successfully located in dev_database.db
+2. All data extracted and verified
+3. API is running and accessible
+4. Data integrity verified (DB and API match)
+5. Ground truth count verified: 257 objects
+6. All calculations validated:
+   - Recall = 83/257 = 0.323 ✅
+   - Precision = 83/91 = 0.912 ✅
+   - F1 = 0.477 ✅
+
+⚠️ ISSUES IDENTIFIED:
+
+Issue #1: Column Name Mismatch
+   Database: tp_count, fp_count, fn_count
+   API: truePositives, falsePositives, falseNegatives
+   Impact: Potential confusion in queries
+
+Issue #2: Missing session_id in ground_truth_objects
+   Current: Links via video_id only
+   Impact: Cannot directly query ground truth by session
+   Solution: Must join through videos
+
+Issue #3: expected_detections NULL
+   Database: NULL
+   Calculated: 257 (TP + FN)
+   Impact: Expected value not explicitly stored
+
+Issue #4: No Environment Variables
+   Using default fallback configuration
+   Impact: Unclear database path configuration
+
+================================================================================
+CALCULATION VERIFICATION
+================================================================================
+
+True Positives (TP): 83
+False Positives (FP): 8
+False Negatives (FN): 174
+Ground Truth Objects: 257
+
+Precision = TP / (TP + FP) = 83 / 91 = 0.912 ✅
+Recall = TP / (TP + FN) = 83 / 257 = 0.323 ✅
+F1 Score = 2 * (P * R) / (P + R) = 0.477 ✅
+
+Actual Detections = TP + FP = 91 ✅
+Expected Detections = TP + FN = 257 ✅
+
+ALL CALCULATIONS CORRECT ✅
+
+================================================================================
+FINAL ANSWER
+================================================================================
+
+SESSION LOCATED: ✅ YES
+
+Database Path: /home/rigade/Testing/ai-model-validation-platform/backend/dev_database.db
+Table: test_sessions
+Session ID: 2c9a93f6-8471-4f2e-b1a7-06f239fca548
+
+EXTRACTED VALUES:
+   accuracyRecall: 0.3229571984435798
+   truePositives: 83
+   falsePositives: 8
+   falseNegatives: 174
+   test_configuration: NULL
+
+GROUND TRUTH COUNT: 257 (verified)
+
+STATUS: ✅ INVESTIGATION COMPLETE - ALL DATA FOUND AND VERIFIED
+
+================================================================================
+DETAILED REPORTS GENERATED
+================================================================================
+
+1. DATABASE_INVESTIGATION_REPORT.md
+   - Complete database search results
+   - Schema analysis
+   - Issue identification
+   - Recommendations
+
+2. SESSION_2c9a93f6_COMPLETE_ANALYSIS.md
+   - Full session data extraction
+   - Metric calculations and validation
+   - Video sequence analysis
+   - Latency and accuracy breakdowns
+   - Data consistency verification
+
+3. This file: INVESTIGATION_SUMMARY.txt
+   - Executive summary of findings
+
+================================================================================

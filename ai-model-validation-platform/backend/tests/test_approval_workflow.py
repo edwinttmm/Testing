@@ -98,9 +98,9 @@ class TestApprovalWorkflow:
         db_session.commit()
 
         # Verify
-        session_check = db_session.query(TestSession).filter_by(
+        session_check = db_session.execute(select(TestSession).filter_by(
             id=session.id
-        ).first()
+        )).scalar_one_or_none()
 
         assert session_check.approval_status == "approved"
         assert session_check.approved_by == user.id
@@ -130,9 +130,9 @@ class TestApprovalWorkflow:
         db_session.commit()
 
         # Verify
-        session_check = db_session.query(TestSession).filter_by(
+        session_check = db_session.execute(select(TestSession).filter_by(
             id=session.id
-        ).first()
+        )).scalar_one_or_none()
 
         assert session_check.approval_status == "rejected"
         assert session_check.approved_by == user.id
@@ -437,9 +437,9 @@ class TestApprovalAuditTrail:
         db_session.commit()
 
         # Verify audit trail
-        session_check = db_session.query(TestSession).filter_by(
+        session_check = db_session.execute(select(TestSession).filter_by(
             id=session.id
-        ).first()
+        )).scalar_one_or_none()
 
         assert session_check.approved_by == user.id
         assert session_check.approved_at is not None

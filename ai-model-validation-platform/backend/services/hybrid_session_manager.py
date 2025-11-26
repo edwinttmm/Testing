@@ -368,7 +368,7 @@ class HybridSessionManager:
             }
             
             # Start dedicated HIL monitoring with video sync
-            success = self.dedicated_monitor.start_monitoring_with_video_sync(
+            success = await self.dedicated_monitor.start_monitoring_with_video_sync(
                 session_id=config.session_id,
                 video_timing_config=video_timing_config
             )

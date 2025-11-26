@@ -194,7 +194,7 @@ class RawLabJackLogger:
         
         logger.info("Raw LabJack Logger initialized with 1000Hz capture capability")
         
-    def start_session(self,
+    async def start_session(self,
                      session_name: str,
                      channels: List[str],
                      sample_rate: int = 1000,
@@ -272,7 +272,7 @@ class RawLabJackLogger:
                     'device_info': device_info,
                     'detection_threshold': kwargs.get('detection_threshold', 3.3),
                     'constant_voltage_mode': kwargs.get('constant_voltage_mode', False),
-                    'debounce_ms': kwargs.get('debounce_ms', 20 if not kwargs.get('constant_voltage_mode', False) else 0)  # FIXED: Changed from 100ms to 20ms for 24 FPS video (41.67ms frame period)
+                    'debounce_ms': kwargs.get('debounce_ms', 10 if not kwargs.get('constant_voltage_mode', False) else 0)  # PHASE 1 FIX: Changed from 20ms to 10ms for improved responsiveness
                 }
                 self.session_metrics[session_id] = PerformanceMetrics()
                 
@@ -561,7 +561,7 @@ class RawLabJackLogger:
                 debounce_ms = 0  # Disable debounce for continuous detection
                 logger.info(f"Constant voltage mode enabled for session {session_id} - debounce disabled")
             else:
-                debounce_ms = config.get('debounce_ms', 20)  # FIXED: Changed from 100ms to 20ms for 24 FPS video (41.67ms frame period)
+                debounce_ms = config.get('debounce_ms', 10)  # PHASE 1 FIX: Changed from 20ms to 10ms for improved responsiveness
                 logger.debug(f"Normal mode for session {session_id} - debounce set to {debounce_ms}ms")
 
             # Get last detection timestamp for this session
@@ -577,7 +577,7 @@ class RawLabJackLogger:
 
                     if debounce_ms > 0 and time_since_last_ms < debounce_ms:
                         logger.debug(f"Debouncing detection: {time_since_last_ms:.1f}ms since last (threshold: {debounce_ms}ms)")
-                        break  # Skip this detection - too close to previous one
+                        continue  # FIX #8: Skip THIS channel only, continue checking others (was: break)
 
                     # Record this detection timestamp
                     self._last_detection_time[session_key] = timestamp_ns
@@ -674,13 +674,13 @@ class RawLabJackLogger:
                 compression_algorithm = config.get('compression_algorithm', CompressionAlgorithm.ADAPTIVE)
                 
                 # Compress data
-                compression_result = await self.compressor.compress_buffer_async(
+                compression_result = asyncio.run(self.compressor.compress_buffer_async(
                     voltage_data=voltage_data,
                     channels=config['channels'],
                     sample_rate=config['actual_sample_rate'],
                     timestamp_ns=buffer.start_time_ns,
                     algorithm=compression_algorithm
-                )
+                ))
                 
                 if compression_result.error:
                     logger.error(f"Compression failed: {compression_result.error}")

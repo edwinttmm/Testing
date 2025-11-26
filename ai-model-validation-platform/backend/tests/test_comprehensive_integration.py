@@ -270,7 +270,7 @@ class TestCompleteWorkflowWithFixes:
         matching_service = GroundTruthMatchingService(db_session)
 
         # First, reassign NULL video_ids (simulating session completion)
-        from services.video_id_resolver import VideoIdResolver
+        # Use video_id_resolver function
 
         # Reassign early detection
         if det_early.video_id is None:
@@ -312,9 +312,9 @@ class TestCompleteWorkflowWithFixes:
             f"Expected 1 FN, got {results.false_negatives}"
 
         # Verify no double-matching
-        tp_comparisons = db_session.query(DetectionComparison).filter_by(
+        tp_comparisons = db_session.execute(select(DetectionComparison).filter_by(
             match_type="TP"
-        ).all()
+        )).scalars().all()
 
         # Each detection should match at most once
         detection_ids = [c.detection_event_id for c in tp_comparisons]
@@ -365,9 +365,9 @@ class TestCompleteWorkflowWithFixes:
         db_session.commit()
 
         # Final verification
-        session_check = db_session.query(TestSession).filter_by(
+        session_check = db_session.execute(select(TestSession).filter_by(
             id=session.id
-        ).first()
+        )).scalar_one_or_none()
 
         assert session_check.status == "completed"
         assert session_check.outcome is not None
@@ -415,9 +415,9 @@ class TestCompleteWorkflowWithFixes:
         db_session.rollback()
         db_session.expire_all()
 
-        session_check = db_session.query(TestSession).filter_by(
+        session_check = db_session.execute(select(TestSession).filter_by(
             id=session.id
-        ).first()
+        )).scalar_one_or_none()
 
         assert session_check.status == "running", \
             "Session should remain running after failure"

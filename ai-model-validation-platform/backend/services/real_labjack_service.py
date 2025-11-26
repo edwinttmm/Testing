@@ -695,8 +695,8 @@ class RealLabJackService:
         try:
             if self.is_connected():
                 self.disconnect()
-        except:
-            pass
+        except Exception:
+            pass  # Silently ignore cleanup errors during destruction
 
 
 # Global service instance for singleton pattern

@@ -37,7 +37,7 @@ def test_database_connection():
         
         # Try a simple query
         from models import Project
-        project_count = db.query(Project).count()
+        project_count = db.execute(select(func.count()).select_from(Project)).scalar()
         db.close()
         
         print(f"✅ Database connection successful - {project_count} projects found")
@@ -238,11 +238,11 @@ def test_database_queries():
         db = SessionLocal()
         
         # Test project queries
-        project_count = db.query(Project).count()
+        project_count = db.execute(select(func.count()).select_from(Project)).scalar()
         print(f"✅ Projects in database: {project_count}")
         
         # Test video queries
-        video_count = db.query(Video).count()
+        video_count = db.execute(select(func.count()).select_from(Video)).scalar()
         print(f"✅ Videos in database: {video_count}")
         
         # Test join query
@@ -251,7 +251,7 @@ def test_database_queries():
             print(f"✅ Videos with projects: {videos_with_projects}")
         
         # Test filtering
-        recent_projects = db.query(Project).filter(Project.status == "Active").count()
+        recent_projects = db.execute(select(func.count()).select_from(Project).where(Project.status == "Active")).scalar()
         print(f"✅ Active projects: {recent_projects}")
         
         db.close()
@@ -280,7 +280,7 @@ def cleanup_test_data():
         cleaned_count = 0
         for project in test_projects:
             # Delete associated videos first
-            videos = db.query(Video).filter(Video.project_id == project.id).all()
+            videos = db.execute(select(Video).where(Video.project_id == project.id)).scalars().all()
             for video in videos:
                 # Delete physical file if it exists
                 try:

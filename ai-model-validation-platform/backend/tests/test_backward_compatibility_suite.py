@@ -16,6 +16,7 @@ Testing Areas:
 - Migration path validation
 """
 
+import os
 import pytest
 import asyncio
 import json
@@ -31,7 +32,7 @@ import logging
 from main import app
 from database import get_db, SessionLocal
 from models import TestSession, DetectionEvent, Video, Project, GroundTruthObject
-from services.labjack_service import LabJackService, ConnectionMode, ConnectionStatus
+from services.labjack_service_manager import LabJackService, ConnectionMode, ConnectionStatus
 from api.hil_test_complete import router as hil_router
 from src.api.enhanced_hil_results_endpoints import router as enhanced_router
 
@@ -93,8 +94,8 @@ class BackwardCompatibilityTestSuite:
     def cleanup_test_data(self):
         """Cleanup test data after tests"""
         try:
-            self.db_session.query(DetectionEvent).delete()
-            self.db_session.query(TestSession).delete()
+            self.db_session.execute(delete(DetectionEvent))
+            self.db_session.execute(delete(TestSession))
             self.db_session.commit()
         except Exception as e:
             logger.error(f"Cleanup error: {e}")
@@ -225,7 +226,7 @@ class TestDatabaseSchemaCompatibility:
         db = compatibility_suite.db_session
         
         # Test TestSession table
-        session = db.query(TestSession).first()
+        session = db.execute(select(TestSession)).scalar_one_or_none()
         assert session is not None, "TestSession table should have data"
         
         # Verify core fields exist
@@ -241,7 +242,7 @@ class TestDatabaseSchemaCompatibility:
         """Verify DetectionEvent schema maintains compatibility"""
         db = compatibility_suite.db_session
         
-        event = db.query(DetectionEvent).first()
+        event = db.execute(select(DetectionEvent)).scalar_one_or_none()
         assert event is not None, "DetectionEvent table should have data"
         
         # Verify essential fields
@@ -254,9 +255,9 @@ class TestDatabaseSchemaCompatibility:
             assert hasattr(event, field), f"Essential field '{field}' missing from DetectionEvent"
             
         # Test data access patterns
-        events = db.query(DetectionEvent).filter(
+        events = db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == 1
-        ).all()
+        )).scalars().all()
         
         assert len(events) == 10, "Should retrieve all detection events"
     
@@ -265,7 +266,7 @@ class TestDatabaseSchemaCompatibility:
         db = compatibility_suite.db_session
         
         # Query with legacy field names
-        events = db.query(DetectionEvent).all()
+        events = db.execute(select(DetectionEvent)).scalars().all()
         
         for event in events:
             # Legacy fields should work
@@ -282,7 +283,7 @@ class TestDatabaseSchemaCompatibility:
         db = compatibility_suite.db_session
         
         # Simulate adding new field to existing record
-        event = db.query(DetectionEvent).first()
+        event = db.execute(select(DetectionEvent)).scalar_one_or_none()
         
         # Should be able to update with new fields without breaking
         if hasattr(event, 'video_frame_number'):
@@ -498,9 +499,9 @@ class TestPerformanceCompatibility:
         start_time = time.time()
         
         # Query that should be fast
-        events = db.query(DetectionEvent).filter(
+        events = db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == 1
-        ).all()
+        )).scalars().all()
         
         query_time = time.time() - start_time
         

@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from unittest.mock import Mock, patch
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -234,18 +234,18 @@ class TestDatabaseIntegration:
         db_session.commit()
         
         # Verify objects exist
-        assert db_session.query(DetectionEvent).filter(DetectionEvent.test_session_id == test_session.id).count() == 3
-        assert db_session.query(GroundTruthObject).filter(GroundTruthObject.video_id == test_video.id).count() == 2
+        assert db_session.execute(select(func.count()).select_from(DetectionEvent).where(DetectionEvent.test_session_id == test_session.id)).scalar() == 3
+        assert db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.video_id == test_video.id)).scalar() == 2
         
         # Delete project (should cascade to videos, sessions, detections, ground truth)
         db_session.delete(test_project)
         db_session.commit()
         
         # Verify cascade deletion
-        assert db_session.query(Video).filter(Video.project_id == test_project.id).count() == 0
-        assert db_session.query(TestSession).filter(TestSession.project_id == test_project.id).count() == 0
-        assert db_session.query(DetectionEvent).filter(DetectionEvent.test_session_id == test_session.id).count() == 0
-        assert db_session.query(GroundTruthObject).filter(GroundTruthObject.video_id == test_video.id).count() == 0
+        assert db_session.execute(select(func.count()).select_from(Video).where(Video.project_id == test_project.id)).scalar() == 0
+        assert db_session.execute(select(func.count()).select_from(TestSession).where(TestSession.project_id == test_project.id)).scalar() == 0
+        assert db_session.execute(select(func.count()).select_from(DetectionEvent).where(DetectionEvent.test_session_id == test_session.id)).scalar() == 0
+        assert db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.video_id == test_video.id)).scalar() == 0
     
     def test_unique_constraints(self, db_session: Session, test_project):
         """Test unique constraints are enforced"""
@@ -317,7 +317,7 @@ class TestDatabaseIntegration:
         db_session.commit()
         
         # Retrieve and verify JSON data
-        retrieved_session = db_session.query(TestSession).filter(TestSession.id == test_session.id).first()
+        retrieved_session = db_session.execute(select(TestSession).where(TestSession.id == test_session.id)).scalar_one_or_none()
         
         assert retrieved_session.configuration is not None
         assert retrieved_session.configuration["video_timing"]["fps"] == 60.0
@@ -330,7 +330,7 @@ class TestDatabaseIntegration:
         db_session.commit()
         
         # Verify updates persisted
-        final_session = db_session.query(TestSession).filter(TestSession.id == test_session.id).first()
+        final_session = db_session.execute(select(TestSession).where(TestSession.id == test_session.id)).scalar_one_or_none()
         assert final_session.configuration["test_metadata"]["updated"] is True
         assert final_session.configuration["new_field"]["test"] == "value"
     
@@ -361,8 +361,8 @@ class TestDatabaseIntegration:
         db_session.commit()
         
         # Retrieve and verify timestamps
-        retrieved_session = db_session.query(TestSession).filter(TestSession.id == test_session.id).first()
-        retrieved_detection = db_session.query(DetectionEvent).filter(DetectionEvent.id == detection_event.id).first()
+        retrieved_session = db_session.execute(select(TestSession).where(TestSession.id == test_session.id)).scalar_one_or_none()
+        retrieved_detection = db_session.execute(select(DetectionEvent).where(DetectionEvent.id == detection_event.id)).scalar_one_or_none()
         
         # Verify timestamp preservation
         assert retrieved_session.started_at.replace(microsecond=0) == utc_now.replace(microsecond=0)
@@ -406,11 +406,11 @@ class TestDatabaseIntegration:
         
         # Test indexed queries performance
         queries_to_test = [
-            ("video_id index", lambda: db_session.query(GroundTruthObject).filter(GroundTruthObject.video_id == test_video.id).count()),
-            ("timestamp index", lambda: db_session.query(GroundTruthObject).filter(GroundTruthObject.timestamp >= 50.0).count()),
-            ("class_label index", lambda: db_session.query(GroundTruthObject).filter(GroundTruthObject.class_label == "pedestrian").count()),
-            ("confidence index", lambda: db_session.query(GroundTruthObject).filter(GroundTruthObject.confidence >= 0.90).count()),
-            ("validated index", lambda: db_session.query(GroundTruthObject).filter(GroundTruthObject.validated == True).count())
+            ("video_id index", lambda: db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.video_id == test_video.id)).scalar()),
+            ("timestamp index", lambda: db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.timestamp >= 50.0)).scalar()),
+            ("class_label index", lambda: db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.class_label == "pedestrian")).scalar()),
+            ("confidence index", lambda: db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.confidence >= 0.90)).scalar()),
+            ("validated index", lambda: db_session.execute(select(func.count()).select_from(GroundTruthObject).where(GroundTruthObject.validated == True)).scalar())
         ]
         
         for query_name, query_func in queries_to_test:
@@ -456,16 +456,16 @@ class TestDatabaseIntegration:
             db_session.commit()
             
             # Verify objects were created
-            assert db_session.query(TestSession).filter(TestSession.id == test_session.id).first() is not None
-            assert db_session.query(GroundTruthObject).filter(GroundTruthObject.id == ground_truth.id).first() is not None
+            assert db_session.execute(select(TestSession).where(TestSession.id == test_session.id)).scalar_one_or_none() is not None
+            assert db_session.execute(select(GroundTruthObject).where(GroundTruthObject.id == ground_truth.id)).scalar_one_or_none() is not None
             
         except Exception as e:
             db_session.rollback()
             pytest.fail(f"Successful transaction failed: {e}")
         
         # Test transaction rollback on error
-        initial_session_count = db_session.query(TestSession).count()
-        initial_gt_count = db_session.query(GroundTruthObject).count()
+        initial_session_count = db_session.execute(select(func.count()).select_from(TestSession)).scalar()
+        initial_gt_count = db_session.execute(select(func.count()).select_from(GroundTruthObject)).scalar()
         
         try:
             # Start transaction
@@ -517,8 +517,8 @@ class TestDatabaseIntegration:
             db_session.rollback()
             
             # Verify rollback worked - counts should be unchanged
-            final_session_count = db_session.query(TestSession).count()
-            final_gt_count = db_session.query(GroundTruthObject).count()
+            final_session_count = db_session.execute(select(func.count()).select_from(TestSession)).scalar()
+            final_gt_count = db_session.execute(select(func.count()).select_from(GroundTruthObject)).scalar()
             
             assert final_session_count == initial_session_count, "Session count changed after rollback"
             assert final_gt_count == initial_gt_count, "Ground truth count changed after rollback"
@@ -576,10 +576,12 @@ class TestDatabaseIntegration:
         assert len(successful_operations) >= 5, f"Too many concurrent operations failed: {len(failed_operations)}"
         
         # Verify created objects exist in database
-        created_objects = db_session.query(GroundTruthObject).filter(
-            GroundTruthObject.tracking_id.like("concurrent_test_vru_%")
-        ).all()
-        
+        created_objects = db_session.execute(
+            select(GroundTruthObject).where(
+                GroundTruthObject.tracking_id.like("concurrent_test_vru_%")
+            )
+        ).scalars().all()
+
         assert len(created_objects) == len(successful_operations)
     
     def test_database_schema_validation(self, db_session: Session):

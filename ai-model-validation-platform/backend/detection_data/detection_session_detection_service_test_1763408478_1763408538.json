@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "session_id": "detection_service_test_1763408478",
+  "start_time": 1763408478.4379973,
+  "end_time": 1763408538.5021758,
+  "duration_seconds": 60.064178466796875,
+  "total_detections": 3,
+  "detection_events": [
+    {
+      "timestamp": 1763408511.8025792,
+      "pin_state": true,
+      "detection_id": "DET_detection_service_test_1763408478_0001",
+      "metadata": {
+        "session_start_offset": 33.364581823349,
+        "detection_sequence": 1,
+        "sample_rate_hz": 24,
+        "detection_type": "level_sampled"
+      }
+    },
+    {
+      "timestamp": 1763408521.5721939,
+      "pin_state": true,
+      "detection_id": "DET_detection_service_test_1763408478_0002",
+      "metadata": {
+        "session_start_offset": 43.134196519851685,
+        "detection_sequence": 2,
+        "sample_rate_hz": 24,
+        "detection_type": "level_sampled"
+      }
+    },
+    {
+      "timestamp": 1763408532.9790704,
+      "pin_state": true,
+      "detection_id": "DET_detection_service_test_1763408478_0003",
+      "metadata": {
+        "session_start_offset": 54.54107308387756,
+        "detection_sequence": 3,
+        "sample_rate_hz": 24,
+        "detection_type": "level_sampled"
+      }
+    }
+  ],
+  "message": "Detection session completed - 3 events collected"
+}

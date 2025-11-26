@@ -10,7 +10,7 @@ Date: 2025-11-12
 
 import pytest
 import numpy as np
-from services.optimal_matching_service import (
+from services.ground_truth_matching_service import (
     optimal_detection_matching,
     greedy_detection_matching,
     compare_matching_algorithms

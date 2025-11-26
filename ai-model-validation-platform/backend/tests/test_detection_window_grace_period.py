@@ -8,6 +8,7 @@ Tests cover:
 4. No false "frame 0" classifications
 """
 
+import os
 import pytest
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
@@ -18,7 +19,7 @@ from models import (
     DetectionEvent,
     GroundTruthObject,
     Project,
-    LabjackSignal
+    LabJackSignal
 )
 from services.ground_truth_matching_service import GroundTruthMatchingService
 

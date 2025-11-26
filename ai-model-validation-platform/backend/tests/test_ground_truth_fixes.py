@@ -12,6 +12,7 @@ Tests all 6 critical fixes:
 Coverage: >90% for new code paths
 """
 
+import os
 import pytest
 import time
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ from unittest.mock import Mock, patch, MagicMock, call
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, select, delete, update, func
 
 # Import models and services
 from models import (
@@ -29,7 +30,7 @@ from models import (
 from services.ground_truth_matching_service import (
     GroundTruthMatchingService, SessionMetrics, MatchResult
 )
-from services.video_sequence_orchestrator import (
+from services.video_lifecycle_orchestrator import (
     VideoSequenceOrchestrator, SequenceStatus, VideoStatus
 )
 from crud import get_test_session
@@ -198,7 +199,7 @@ class TestIssue6SoftDeleteProtection:
             delete_project(db_session, active_test_session.project_id)
 
         # Verify video still exists
-        video = db_session.query(Video).filter(Video.id == video_id).first()
+        video = db_session.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
         assert video is not None, "Video should not be deleted while session is active"
 
     def test_completed_session_allows_deletion(self, db_session, completed_test_session):
@@ -220,7 +221,7 @@ class TestIssue6SoftDeleteProtection:
         delete_project(db_session, completed_test_session.project_id, user_id="test-user")
 
         # Session should still exist for historical queries
-        session = db_session.query(TestSession).filter(TestSession.id == session_id).first()
+        session = db_session.execute(select(TestSession).where(TestSession.id == session_id)).scalar_one_or_none()
         # Implementation may vary - either session exists or cascade deletes are controlled
 
 
@@ -284,9 +285,9 @@ class TestIssue5N1QueryElimination:
         with patch.object(db_session, 'query', side_effect=counting_query):
             # Batch query using IN clause
             video_ids = [v.id for v in multi_video_sequence]
-            events = db_session.query(DetectionEvent).filter(
-                DetectionEvent.video_id.in_(video_ids)
-            ).all()
+            events = db_session.execute(select(DetectionEvent).where(
+            DetectionEvent.video_id.in_(video_ids)
+        )).scalars().all()
 
         # Should be significantly fewer queries than number of videos
         assert query_count <= 3, f"Expected <=3 queries for batch operation, got {query_count}"
@@ -329,9 +330,9 @@ class TestIssue5N1QueryElimination:
         start_time = time.time()
 
         video_ids = [v.id for v in videos]
-        gt_objects = db_session.query(GroundTruthObject).filter(
+        gt_objects = db_session.execute(select(GroundTruthObject).where(
             GroundTruthObject.video_id.in_(video_ids)
-        ).all()
+        )).scalars().all()
 
         elapsed_time = time.time() - start_time
 
@@ -373,9 +374,9 @@ class TestIssue2BatchLimitValidation:
 
         # Query all objects - should not hit limit
         start_time = time.time()
-        all_objects = db_session.query(GroundTruthObject).filter(
+        all_objects = db_session.execute(select(GroundTruthObject).where(
             GroundTruthObject.video_id == sample_video.id
-        ).all()
+        )).scalars().all()
         elapsed_time = time.time() - start_time
 
         assert len(all_objects) == total_objects, f"Should retrieve all {total_objects} objects"
@@ -410,9 +411,9 @@ class TestIssue2BatchLimitValidation:
         page = 0
 
         while True:
-            chunk = db_session.query(GroundTruthObject).filter(
-                GroundTruthObject.video_id == sample_video.id
-            ).offset(page * page_size).limit(page_size).all()
+            chunk = db_session.execute(select(GroundTruthObject).where(
+            GroundTruthObject.video_id == sample_video.id
+        )).scalars().offset(page * page_size).limit(page_size).all()
 
             if not chunk:
                 break
@@ -584,9 +585,9 @@ class TestIssue4DetectionCountAccuracy:
         assert result.actual_detection_count == 5, "Should have 5 detections"
 
         # Verify count matches event count
-        event_count = db_session.query(DetectionEvent).filter(
+        event_count = session.execute(select(func.count()).select_from(DetectionEvent).where(
             DetectionEvent.sequence_video_result_id == result.id
-        ).count()
+        )).scalar()
         assert event_count == result.actual_detection_count, "Event count should match stored count"
 
     def test_concurrent_detection_updates(self, db_session, active_test_session, sample_video):
@@ -741,9 +742,9 @@ class TestPerformanceBenchmarks:
         db_session.commit()
 
         def query_all_gt():
-            return db_session.query(GroundTruthObject).filter(
+            return db_session.execute(select(GroundTruthObject).where(
                 GroundTruthObject.video_id == sample_video.id
-            ).all()
+            )).scalars().all()
 
         # Benchmark the query
         results = benchmark(query_all_gt)

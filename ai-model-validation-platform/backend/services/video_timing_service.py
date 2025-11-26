@@ -134,29 +134,65 @@ class VideoTimingService:
             return precision
         return 1000  # 1μs default
     
-    def start_video_timing(self, session_id: str, video_id: str, db: Session = None, 
+    def start_video_timing(self, session_id: str, video_id: str, db: Session = None,
                           video_metadata: Optional[Dict[str, Any]] = None) -> float:
         """
         Record precise video start timestamp with frame-accurate synchronization.
-        
+
+        **FIX-3: Enhanced with session verification and cache consistency**
+
         Args:
             session_id: Test session identifier
             video_id: Video being played
             db: Database session (optional)
             video_metadata: Video metadata (fps, duration, etc.)
-            
+
         Returns:
             High-precision timestamp (seconds since epoch)
-            
+
         Raises:
-            VideoTimingError: If timing recording fails
+            VideoTimingError: If timing recording fails or session doesn't exist
+
+        **Transaction Requirements**:
+        - If db is provided, caller MUST commit the transaction
+        - Session must already exist and be committed/flushed before calling
+        - This method does NOT commit - caller controls transaction boundary
+        - Cache is updated ONLY after successful database write
+
+        **Error Handling**:
+        - Raises VideoTimingError if session doesn't exist (fail-fast)
+        - Raises VideoTimingError if database write fails
+        - Cache is NOT updated if database write fails (consistency)
+
+        **Concurrency**:
+        - Thread-safe via internal lock
+        - Multiple calls for same session_id are idempotent (last write wins)
         """
         try:
+            # FIX-3 STEP 1: Verify session exists BEFORE any operations
+            if db:
+                try:
+                    # Flush pending writes to ensure session is visible (transaction isolation)
+                    db.flush()
+
+                    # Explicitly verify TestSession exists
+                    test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
+                    if not test_session:
+                        raise VideoTimingError(
+                            f"TestSession '{session_id}' not found in database. "
+                            f"Session must exist and be committed before starting video timing."
+                        )
+                    logger.debug(f"✓ Session verification passed for {session_id}")
+                except VideoTimingError:
+                    raise  # Re-raise our custom error
+                except SQLAlchemyError as db_error:
+                    raise VideoTimingError(f"Database error during session verification: {db_error}")
+
             with self._lock:
-                # Create precision timing sync point
+                # FIX-3 STEP 2: Create precision timing sync point (existing logic)
                 sync_point_id = f"video_start_{session_id}_{video_id}"
                 sync_point = self._precision_service.create_sync_point(sync_point_id)
-                
+
                 # Record synchronized timestamps using both wall clock and monotonic references
                 utc_timestamp = sync_point.utc_timestamp
                 start_timestamp = utc_timestamp.timestamp()  # Unix epoch (seconds)
@@ -168,11 +204,11 @@ class VideoTimingService:
                     start_timestamp,
                     monotonic_reference_s
                 )
-                
+
                 # Extract video metadata
                 fps = video_metadata.get('fps') if video_metadata else None
                 duration_s = video_metadata.get('duration') if video_metadata else None
-                
+
                 # Create enhanced timing data
                 timing_data = EnhancedVideoTimingData(
                     session_id=session_id,
@@ -189,37 +225,48 @@ class VideoTimingService:
                     thread_id=threading.get_ident(),
                     process_id=os.getpid() if 'os' in globals() else 0
                 )
-                
-                # Cache timing data
+
+                # FIX-3 STEP 3: Store in database BEFORE updating cache (write-through consistency)
+                if db:
+                    try:
+                        self._store_enhanced_video_timing(session_id, timing_data, db)
+                        # Verify write succeeded before caching (catch constraint violations, etc.)
+                        db.flush()
+                        logger.debug(f"✓ Database write successful for session {session_id}")
+                    except SQLAlchemyError as db_error:
+                        logger.error(f"Database write failed for session {session_id}: {db_error}")
+                        raise VideoTimingError(f"Failed to persist timing data to database: {db_error}")
+
+                # FIX-3 STEP 4: Update cache ONLY AFTER successful database write
+                # This ensures cache-DB consistency and prevents stale data
                 self._timing_cache[session_id] = timing_data
-                
+
                 # Track videos per session
                 if session_id not in self._session_videos:
                     self._session_videos[session_id] = []
                 if video_id not in self._session_videos[session_id]:
                     self._session_videos[session_id].append(video_id)
-                
+
                 # Generate frame timestamps if video metadata available
                 if fps and duration_s:
                     frame_timestamps = self._precision_service.synchronize_video_frames(
                         video_id, fps, duration_s, start_timestamp
                     )
                     self._video_frames[video_id] = frame_timestamps
-                
-                # Store in database if session provided
-                if db:
-                    self._store_enhanced_video_timing(session_id, timing_data, db)
-                
+
                 self._timing_starts += 1
-                
-                logger.info(f"Enhanced video timing started - Session: {session_id}, Video: {video_id}, "
+
+                logger.info(f"✅ Enhanced video timing started - Session: {session_id}, Video: {video_id}, "
                            f"Timestamp: {start_timestamp:.6f}, Precision: {timing_data.precision_ns}ns")
-                
+
                 return start_timestamp
-                
+
+        except VideoTimingError:
+            # Re-raise our custom errors with full context
+            raise
         except Exception as e:
-            logger.error(f"Failed to start enhanced video timing for session {session_id}: {e}")
-            raise VideoTimingError(f"Failed to record video start time: {e}")
+            logger.error(f"Unexpected error in start_video_timing for session {session_id}: {e}", exc_info=True)
+            raise VideoTimingError(f"Failed to start video timing: {e}")
     
     def get_video_start_time(self, session_id: str, db: Session = None) -> Optional[float]:
         """
@@ -262,7 +309,6 @@ class VideoTimingService:
     def _cleanup_old_timing_data(self):
         """Clean up timing data older than 1 hour to prevent processing old sessions"""
         try:
-            import time
             current_time = time.time()
             old_sessions = []
             
@@ -356,71 +402,116 @@ class VideoTimingService:
             return None
     
     def _store_enhanced_video_timing(self, session_id: str, timing_data: EnhancedVideoTimingData, db: Session):
-        """Store enhanced timing data in database with HIL synchronization fields"""
+        """
+        Store enhanced timing data in database with HIL synchronization fields
+
+        **FIX-3: Enhanced with explicit error handling and no auto-commit**
+
+        Args:
+            session_id: Test session identifier
+            timing_data: Enhanced timing data to store
+            db: Database session (caller must commit)
+
+        Raises:
+            SQLAlchemyError: If database operation fails
+
+        Note:
+            This method does NOT commit - caller must call db.commit()
+            This allows proper transaction control by the caller
+        """
         try:
+            # FIX-3: Session existence already verified by caller, but double-check for safety
             test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
-            
-            if test_session:
-                # Store enhanced timing data in existing fields
-                test_session.video_start_timestamp = timing_data.start_timestamp
-                test_session.video_start_timestamp_ns = str(timing_data.start_timestamp_ns)
-                test_session.precision_timing_enabled = True
-                test_session.timing_accuracy_ns = timing_data.precision_ns
-                test_session.sync_point_id = timing_data.sync_point_id
-                test_session.timing_validation_status = "synced"
-                test_session.hil_compliance_verified = timing_data.precision_ns <= 1000000  # 1ms compliance
-                
-                # NEW HIL TIMING SYNCHRONIZATION FIELDS
-                if hasattr(test_session, 'video_playback_start_time'):
-                    test_session.video_playback_start_time = timing_data.start_timestamp
-                    test_session.video_playback_start_time_ns = str(timing_data.start_timestamp_ns)
-                    test_session.hil_timing_enabled = True
-                    test_session.video_timing_sync_status = "synced"
-                
-                db.commit()
-                logger.info(f"Enhanced video timing with HIL synchronization stored for session {session_id}")
-            else:
-                logger.error(f"Test session {session_id} not found for timing storage")
-                
+
+            if not test_session:
+                # This should never happen if caller verified session, but handle gracefully
+                raise SQLAlchemyError(f"TestSession {session_id} not found during timing storage")
+
+            # Store enhanced timing data in existing fields
+            test_session.video_start_timestamp = timing_data.start_timestamp
+            test_session.video_start_timestamp_ns = str(timing_data.start_timestamp_ns)
+            test_session.precision_timing_enabled = True
+            test_session.timing_accuracy_ns = timing_data.precision_ns
+            test_session.sync_point_id = timing_data.sync_point_id
+            test_session.timing_validation_status = "synced"
+            test_session.hil_compliance_verified = timing_data.precision_ns <= 1000000  # 1ms compliance
+
+            # NEW HIL TIMING SYNCHRONIZATION FIELDS (if available in schema)
+            if hasattr(test_session, 'video_playback_start_time'):
+                test_session.video_playback_start_time = timing_data.start_timestamp
+                test_session.video_playback_start_time_ns = str(timing_data.start_timestamp_ns)
+                test_session.hil_timing_enabled = True
+                test_session.video_timing_sync_status = "synced"
+
+            # FIX-3: DO NOT COMMIT HERE - let caller control transaction boundary
+            # The caller will call db.flush() or db.commit() as appropriate
+            logger.debug(f"✓ Timing data prepared for session {session_id} (pending flush/commit)")
+
         except SQLAlchemyError as e:
-            logger.error(f"Database error storing enhanced video timing: {e}")
-            db.rollback()
+            logger.error(f"Database error storing enhanced video timing for session {session_id}: {e}")
+            # FIX-3: DO NOT ROLLBACK HERE - let caller decide how to handle transaction
+            # Re-raise the exception so caller knows the operation failed
+            raise
     
-    def convert_unix_to_video_relative(self, session_id: str, unix_timestamp: float) -> Optional[float]:
+    def convert_unix_to_video_relative(self, session_id: str, unix_timestamp: float,
+                                      drift_ms: float = 0.0) -> Optional[float]:
         """
         Convert Unix timestamp to video-relative time for ground truth matching.
-        
+
+        CRITICAL FIX: Apply drift compensation BEFORE clamping to prevent
+        negative latencies caused by timing synchronization issues.
+
         Args:
             session_id: Test session identifier
             unix_timestamp: Unix timestamp to convert (e.g., from LabJack)
-            
+            drift_ms: Measured drift in milliseconds to compensate
+
         Returns:
             Video-relative timestamp in seconds, or None if conversion fails
         """
         try:
             timing_data = self.get_timing_data(session_id)
-            
+
             if timing_data is None:
                 logger.error(f"No timing data found for session {session_id}")
                 return None
-            
-            # Calculate offset: video_relative_time = unix_timestamp - video_start_time
-            video_relative_time = unix_timestamp - timing_data.start_timestamp
-            
-            # Clamp to [0, duration] if duration known to avoid drift beyond video end
+
+            # CRITICAL FIX: Apply drift compensation FIRST (before clamping)
+            # This ensures we're working with corrected timestamps
+            compensated_timestamp = unix_timestamp - (drift_ms / 1000.0)
+
+            logger.debug(
+                f"Applied drift compensation: {unix_timestamp:.6f} - {drift_ms:.3f}ms "
+                f"= {compensated_timestamp:.6f}"
+            )
+
+            # Calculate offset using drift-compensated timestamp
+            # Formula: video_relative_time = compensated_timestamp - video_start_time
+            video_relative_time = compensated_timestamp - timing_data.start_timestamp
+
+            # THEN clamp to [0, duration] if duration known
+            # Clamping happens AFTER drift compensation to prevent masking timing errors
             if timing_data.duration_s is not None:
                 if video_relative_time < 0:
-                    logger.debug(
-                        f"Video-relative time negative ({video_relative_time:.3f}s); clamping to 0.0s for session {session_id}")
+                    logger.warning(
+                        f"⚠️ Video-relative time negative ({video_relative_time:.3f}s) AFTER drift "
+                        f"compensation ({drift_ms:.2f}ms); clamping to 0.0s for session {session_id}. "
+                        f"This may indicate timing synchronization issues."
+                    )
                     video_relative_time = 0.0
                 elif video_relative_time > timing_data.duration_s:
                     logger.info(
-                        f"Video-relative time {video_relative_time:.3f}s exceeds duration {timing_data.duration_s:.3f}s; clamping to duration for session {session_id}")
+                        f"Video-relative time {video_relative_time:.3f}s exceeds duration "
+                        f"{timing_data.duration_s:.3f}s; clamping to duration for session {session_id}"
+                    )
                     video_relative_time = timing_data.duration_s
-            
-            logger.debug(f"Converted Unix timestamp {unix_timestamp:.6f} to video-relative time {video_relative_time:.6f}s")
+
+            logger.debug(
+                f"Converted Unix timestamp {unix_timestamp:.6f} to video-relative time "
+                f"{video_relative_time:.6f}s (drift_ms={drift_ms:.2f})"
+            )
             return video_relative_time
-            
+
         except Exception as e:
             logger.error(f"Failed to convert Unix timestamp to video-relative time: {e}")
             return None
@@ -575,18 +666,59 @@ class VideoTimingService:
             logger.error(f"Database error retrieving video start time: {e}")
             return None
     
+    def update_video_start_time(self, session_id: str, actual_start_timestamp: float) -> bool:
+        """
+        Update the video start timestamp for a session when video actually starts playing.
+
+        CRITICAL FIX: This method corrects the timing reference when the actual video playback
+        starts (T1 capture from frontend), which may be several seconds after the initial
+        timing data was created during backend initialization.
+
+        Args:
+            session_id: Test session identifier
+            actual_start_timestamp: Unix timestamp of actual video playback start (T1)
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            with self._lock:
+                timing_data = self._timing_cache.get(session_id)
+
+                if not timing_data:
+                    logger.warning(f"No timing data found for session {session_id} - cannot update start time")
+                    return False
+
+                old_start = timing_data.start_timestamp
+                timing_data.start_timestamp = actual_start_timestamp
+                timing_data.start_timestamp_ns = int(actual_start_timestamp * 1_000_000_000)
+
+                # Update the sync quality to indicate this was corrected
+                timing_data.sync_point_id = f"t1_corrected_{session_id}"
+
+                logger.info(
+                    f"🎯 VIDEO_TIMING_SERVICE SYNC: Updated start_timestamp for session {session_id}: "
+                    f"{old_start:.6f} -> {actual_start_timestamp:.6f} "
+                    f"(correction: {actual_start_timestamp - old_start:.3f}s)"
+                )
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to update video start time for session {session_id}: {e}")
+            return False
+
     def clear_session_timing(self, session_id: str) -> bool:
         """Clear cached timing data for a session"""
         try:
             with self._lock:
                 removed_timing = self._timing_cache.pop(session_id, None)
                 removed_videos = self._session_videos.pop(session_id, None)
-                
+
                 if removed_timing:
                     logger.info(f"Cleared timing data for session {session_id}")
                     return True
                 return False
-                
+
         except Exception as e:
             logger.error(f"Failed to clear timing data for session {session_id}: {e}")
             return False

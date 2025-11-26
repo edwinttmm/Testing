@@ -16,6 +16,7 @@ Endpoints:
 - GET /api/video-sequences/{sequence_id}/status - Get sequence status
 - GET /api/video-sequences/{sequence_id}/results - Get complete results
 - POST /api/video-sequences/{sequence_id}/detection - Record detection event
+- POST /api/video-sequences/{sequence_id}/heartbeat - Record playback heartbeat
 - POST /api/video-sequences/{sequence_id}/stop - Stop sequence early
 """
 
@@ -51,7 +52,26 @@ from services.websocket_service import websocket_manager
 from config import get_settings
 from sqlalchemy import func
 from services.ground_truth_matching_service import get_ground_truth_matching_service
-from services.detection_video_reassignment import DetectionVideoReassignmentService
+from services.test_results_processor import get_test_results_processor
+
+# Security imports
+from utils.validation import (
+    validate_session_id,
+    validate_project_id,
+    validate_video_id,
+    validate_sequence_id,
+    ValidationError
+)
+from utils.security import (
+    verify_session_ownership,
+    verify_sequence_ownership,
+    SecurityError
+)
+from utils.rate_limiter import (
+    session_retry_limiter,
+    detection_event_limiter,
+    api_request_limiter
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +85,22 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+async def _stop_hil_monitoring_safe(session_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Stop LabJack monitoring in a background thread when running inside async endpoints.
+    """
+    if not HIL_MONITORING_AVAILABLE:
+        return None
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        return await loop.run_in_executor(None, stop_hil_monitoring, session_id)
+    return stop_hil_monitoring(session_id)
 
 # Import video sequence orchestrator service
 try:
@@ -108,6 +144,7 @@ def _compute_public_base_url() -> str:
 
 PUBLIC_BASE_URL = _compute_public_base_url()
 UPLOADS_SEGMENT = (getattr(settings, "upload_directory", "uploads") or "uploads").strip("/\\") or "uploads"
+START_TIME_MIN_GAP_SECONDS = 0.001  # Ensure sequential videos never share identical start times
 
 
 def resolve_video_public_url(video: Optional[Video]) -> Optional[str]:
@@ -166,6 +203,51 @@ def resolve_video_public_url(video: Optional[Video]) -> Optional[str]:
 
     base_url = PUBLIC_BASE_URL or "http://localhost:8000"
     return f"{base_url.rstrip('/')}{candidate_path}"
+
+
+def _estimate_video_duration_seconds(
+    timing_entry: Optional[Dict[str, Any]],
+    sequence_video_result: Optional[SequenceVideoResult]
+) -> Optional[float]:
+    """Best-effort duration estimate for a video."""
+    if isinstance(timing_entry, dict):
+        duration = timing_entry.get("actual_duration")
+        if isinstance(duration, (int, float)):
+            return float(duration)
+    if sequence_video_result and sequence_video_result.actual_duration_ms:
+        return float(sequence_video_result.actual_duration_ms) / 1000.0
+    return None
+
+
+def _estimate_video_end_time(
+    video_id: str,
+    video_timing: Dict[str, Any],
+    video_results_map: Dict[str, SequenceVideoResult]
+) -> Optional[float]:
+    """Determine the best known end time for a video."""
+    timing_entry = video_timing.get(video_id)
+    if isinstance(timing_entry, dict):
+        ended_at = timing_entry.get("ended_at")
+        if isinstance(ended_at, (int, float)):
+            return float(ended_at)
+        started_at = timing_entry.get("started_at")
+        duration = timing_entry.get("actual_duration")
+        if isinstance(started_at, (int, float)) and isinstance(duration, (int, float)):
+            return float(started_at + duration)
+
+    video_result = video_results_map.get(video_id)
+    if video_result:
+        if video_result.video_end_time is not None:
+            return float(video_result.video_end_time)
+        if (
+            video_result.video_start_time is not None
+            and video_result.actual_duration_ms
+        ):
+            return float(
+                video_result.video_start_time
+                + (video_result.actual_duration_ms / 1000.0)
+            )
+    return None
 
 
 # ============================================================================
@@ -245,6 +327,10 @@ class VideoEndedResponse(CamelCaseModel):
     evaluation_result: str = Field(..., description="Pass/fail evaluation result")
     next_video: Optional[NextVideoInfo] = Field(None, description="Next video info or null if sequence complete")
     sequence_complete: bool = Field(..., description="True if this was the last video")
+    post_processing_status: Optional[str] = Field(
+        None,
+        description="Status of post-test processing once the final video completes",
+    )
 
 
 class SequenceStatusResponse(CamelCaseModel):
@@ -262,6 +348,14 @@ class SequenceStatusResponse(CamelCaseModel):
     estimated_remaining_time: Optional[float] = Field(None, description="Estimated remaining time in seconds")
     sequence_started_at: str = Field(..., description="ISO 8601 start timestamp")
     current_video_started_at: Optional[str] = Field(None, description="ISO 8601 current video start or null")
+    post_processing_status: Optional[str] = Field(
+        None,
+        description="Queued/in_progress/completed status for post-test processing",
+    )
+    post_processing_details: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Raw metadata describing the current post-processing state",
+    )
 
 
 class DetectionEventSummary(CamelCaseModel):
@@ -332,6 +426,14 @@ class SequenceResultsResponse(CamelCaseModel):
     ground_truth_comparison: Optional[Dict[str, Any]] = Field(
         None, description="Overall ground truth performance metrics for the sequence"
     )
+    post_processing_status: Optional[str] = Field(
+        None,
+        description="Queued/in_progress/completed status for post-test processing",
+    )
+    post_processing_details: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Raw metadata describing the current post-processing state",
+    )
 
 
 class DetectionEventRequest(CamelCaseModel):
@@ -396,25 +498,48 @@ async def start_video_sequence(
     - sequence_id: Unique identifier for this test sequence
     - video_playlist: Ordered list of videos with metadata
     - LabjJack monitoring status
+
+    **Security:**
+    - Validates all UUID parameters against SQL injection
+    - Verifies all videos belong to the specified project
     """
     try:
-        # Validate project exists
-        project = db.query(Project).filter(Project.id == request.project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail=f"Project {request.project_id} not found")
+        # SECURITY: Validate UUID format to prevent SQL injection
+        try:
+            project_id = validate_project_id(request.project_id)
+            validated_video_ids = [validate_video_id(vid) for vid in request.video_ids]
+        except ValidationError as e:
+            logger.warning(f"Security: UUID validation failed - {e}")
+            raise HTTPException(status_code=400, detail=str(e))
 
-        # Validate all videos exist and belong to project
+        # SECURITY: Check rate limit for API requests
+        if not api_request_limiter.is_allowed(f"project_{project_id}"):
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Too many requests."
+            )
+
+        # Validate project exists
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # SECURITY: Validate all videos exist and belong to project
         videos = []
-        for video_id in request.video_ids:
+        for video_id in validated_video_ids:
             video = db.query(Video).filter(
                 Video.id == video_id,
-                Video.project_id == request.project_id
+                Video.project_id == project_id
             ).first()
 
             if not video:
+                logger.warning(
+                    f"Security: Attempted access to video {video_id} "
+                    f"not in project {project_id}"
+                )
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Video {video_id} not found or does not belong to project {request.project_id}"
+                    detail=f"Video {video_id} not found or does not belong to project {project_id}"
                 )
             videos.append(video)
 
@@ -488,10 +613,13 @@ async def start_video_sequence(
         cumulative_duration = 0.0
 
         for idx, video in enumerate(videos):
-            # Get ground truth count for this video
+            # Get ground truth count for this video (only active records, exclude soft-deleted)
             gt_count = db.query(GroundTruthObject).filter(
-                GroundTruthObject.video_id == video.id
+                GroundTruthObject.video_id == video.id,
+                GroundTruthObject.deleted_at.is_(None)  # Only count active records
             ).count()
+
+            logger.info(f"📊 Video {idx} ({video.filename}): Found {gt_count} active ground truth annotations")
 
             # Create sequence video result entry
             sequence_video_result = SequenceVideoResult(
@@ -510,6 +638,7 @@ async def start_video_sequence(
             )
 
             db.add(sequence_video_result)
+            logger.debug(f"✅ Created SequenceVideoResult for video {video.id} with expected_detection_count={gt_count}")
 
             # Build metadata for response
             video_metadata = VideoMetadata(
@@ -537,22 +666,37 @@ async def start_video_sequence(
                 # ✅ CRITICAL FIX: Build proper video_timing_config for monitoring
                 # 🔥 FIX FOR MULTI-VIDEO: Use TOTAL sequence duration, not just first video
                 first_video = videos[0]
+                default_threshold = float(os.getenv("LABJACK_DEFAULT_THRESHOLD", "0.5"))
+                # ✅ FIX-2: Include primary session ID in video_timing_config
+                # This ensures monitor uses the SAME session ID as the API-created test_session
+                # CRITICAL: Without this, monitor creates its own ID, causing detection data loss
                 video_timing_config = {
+                    'test_session_id': test_session_id,  # ✅ FIX-2: PRIMARY SESSION ID
                     'video_id': request.video_ids[0],
+                    'video_ids': request.video_ids,
+                    'sequence_id': sequence_id,
+                    'is_sequence': True,
                     'fps': first_video.fps or 24,
-                    'duration': cumulative_duration,  # 🔥 FIXED: Use total sequence duration to prevent early monitoring stop
-                    'voltage_threshold': 3.3,  # Standard detection threshold
-                    'debounce_ms': 0,  # No debounce for continuous capture
+                    'duration': cumulative_duration,
+                    'voltage_threshold': default_threshold,
+                    'debounce_ms': 0,
                     'channels': ['AIN0'],
-                    'sample_rate': 20,
+                    'sample_rate': 200,
                     'enable_websocket': True,
-                    'store_in_db': True
+                    'store_in_db': True,
+                    'use_stream_mode': False,
+                    'continuous_mode': True,
+                    'continuous_lower_bound': default_threshold,
+                    'continuous_upper_bound': None,
+                    'continuous_interval_ms': 5,
+                    'steady_high_logging': True,
+                    'steady_high_interval_ms': 5
                 }
 
-                # Call with correct parameters (NOT async - remove await)
-                success = start_hil_monitoring(
-                    session_id=test_session_id,
-                    video_timing_config=video_timing_config
+                # ✅ FIX-2: start_hil_monitoring now extracts session_id from config
+                # This ensures only ONE session ID exists: the primary one created by API
+                success = await start_hil_monitoring(
+                    video_timing_config=video_timing_config  # Contains test_session_id
                 )
 
                 if success:
@@ -579,6 +723,12 @@ async def start_video_sequence(
 
     except HTTPException:
         raise
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except SecurityError as e:
+        logger.warning(f"Security error: {e}")
+        raise HTTPException(status_code=403, detail=str(e))
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error starting video sequence: {e}")
@@ -611,8 +761,27 @@ async def record_video_started(
 
     **Returns:**
     - Confirmation with updated sequence state
+
+    **Security:**
+    - Validates sequence_id and video_id UUIDs
+    - Verifies video belongs to sequence
     """
     try:
+        # SECURITY: Validate UUID formats
+        try:
+            sequence_id = validate_sequence_id(sequence_id)
+            video_id = validate_video_id(request.video_id)
+        except ValidationError as e:
+            logger.warning(f"Security: UUID validation failed - {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # SECURITY: Check rate limit
+        if not api_request_limiter.is_allowed(f"sequence_{sequence_id}"):
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Too many requests."
+            )
+
         # Find test session by sequence_id
         test_session = db.query(TestSession).filter(
             TestSession.sequence_id == sequence_id
@@ -639,37 +808,113 @@ async def record_video_started(
             sequence_metadata = dict(sequence_metadata_raw)
         video_ids = sequence_metadata.get("video_ids", [])
 
-        if request.video_id not in video_ids:
+        # SECURITY: Verify video belongs to sequence
+        if video_id not in video_ids:
+            logger.warning(
+                f"Security: Attempted to start video {video_id} "
+                f"not in sequence {sequence_id}"
+            )
             raise HTTPException(
                 status_code=400,
-                detail=f"Video {request.video_id} is not part of sequence {sequence_id}"
+                detail=f"Video {video_id} is not part of sequence {sequence_id}"
             )
 
-        # Update sequence metadata with video start time
-        video_timing = sequence_metadata.get("video_timing", {})
-        video_timing[request.video_id] = {
-            "started_at": request.started_at,
-            "started_at_iso": datetime.fromtimestamp(request.started_at, timezone.utc).isoformat(),
-            "client_timestamp": request.client_timestamp
-        }
-        sequence_metadata["video_timing"] = video_timing
-        sequence_metadata["current_video_id"] = request.video_id
-        sequence_metadata["current_video_started_at"] = request.started_at
+        # Load sequence_video_results once for this sequence to support adjustments
+        sequence_results = db.query(SequenceVideoResult).filter(
+            SequenceVideoResult.video_sequence_id == sequence_id
+        ).all()
+        video_results_map = {result.video_id: result for result in sequence_results}
 
-        # Update current video index
+        # Determine current/previous video indexes
+        current_index = None
+        previous_video_id = None
         try:
             current_index = video_ids.index(request.video_id)
             sequence_metadata["current_video_index"] = current_index
+            if current_index > 0:
+                previous_video_id = video_ids[current_index - 1]
         except ValueError:
-            pass
+            logger.warning(
+                "Video %s not found in playlist ordering despite metadata presence",
+                request.video_id
+            )
+
+        # Enforce monotonic start times to avoid overlapping windows
+        adjusted_started_at = request.started_at
+        raw_started_at = None
+        adjustment_reasons: List[str] = []
+
+        if previous_video_id:
+            prev_end_time = _estimate_video_end_time(
+                previous_video_id,
+                sequence_metadata.get("video_timing", {}),
+                video_results_map
+            )
+            if prev_end_time is not None and adjusted_started_at <= prev_end_time:
+                raw_started_at = adjusted_started_at
+                adjusted_started_at = prev_end_time + START_TIME_MIN_GAP_SECONDS
+                adjustment_reasons.append("start_time_before_previous_end")
+                logger.warning(
+                    "Adjusted start time for video %s to %.6fs to keep it after previous video end %.6fs "
+                    "(original %.6fs)",
+                    request.video_id,
+                    adjusted_started_at,
+                    prev_end_time,
+                    raw_started_at
+                )
+
+        # If this is the first video and detections already exist before the reported start,
+        # shift the start backward to the earliest detection to keep latency near zero.
+        if current_index == 0:
+            earliest_detection = (
+                db.query(DetectionEvent)
+                .filter(
+                    DetectionEvent.test_session_id == test_session.id,
+                    DetectionEvent.timestamp.isnot(None),
+                )
+                .order_by(DetectionEvent.timestamp.asc())
+                .first()
+            )
+            if earliest_detection and earliest_detection.timestamp is not None:
+                earliest_timestamp = float(earliest_detection.timestamp)
+                if adjusted_started_at - earliest_timestamp > START_TIME_MIN_GAP_SECONDS:
+                    if raw_started_at is None:
+                        raw_started_at = adjusted_started_at
+                    adjusted_started_at = earliest_timestamp
+                    adjustment_reasons.append("start_time_after_first_detection")
+                    logger.warning(
+                        "Shifted first video start for session %s back to earliest detection %.6fs "
+                        "(original %.6fs)",
+                        test_session.id,
+                        adjusted_started_at,
+                        raw_started_at,
+                    )
+
+        # Update sequence metadata with video start time
+        video_timing = sequence_metadata.get("video_timing", {})
+        start_payload = {
+            "started_at": adjusted_started_at,
+            "started_at_iso": datetime.fromtimestamp(adjusted_started_at, timezone.utc).isoformat(),
+            "client_timestamp": request.client_timestamp
+        }
+        if adjustment_reasons:
+            start_payload.update({
+                "raw_started_at": raw_started_at or request.started_at,
+                "start_adjustment_applied": True,
+                "start_adjustment_reason": adjustment_reasons if len(adjustment_reasons) > 1 else adjustment_reasons[0]
+            })
+        else:
+            start_payload["start_adjustment_applied"] = False
+
+        video_timing[request.video_id] = start_payload
+        sequence_metadata["video_timing"] = video_timing
+        sequence_metadata["current_video_id"] = request.video_id
+        sequence_metadata["current_video_started_at"] = adjusted_started_at
 
         # Persist per-video timing in sequence_video_results for backend resilience
-        sequence_video_result = db.query(SequenceVideoResult).filter(
-            SequenceVideoResult.video_sequence_id == sequence_id,
-            SequenceVideoResult.video_id == request.video_id
-        ).first()
+        sequence_video_result = video_results_map.get(request.video_id)
         if sequence_video_result:
-            sequence_video_result.video_start_time = request.started_at
+            sequence_video_result.video_start_time = adjusted_started_at
             sequence_video_result.video_status = "playing"
         else:
             logger.warning(
@@ -689,6 +934,23 @@ async def record_video_started(
 
         db.commit()
 
+        # ✅ QUEEN FIX: Flush detection queue now that SequenceVideoResult exists
+        try:
+            from services.detection_queue_service import flush_detection_queue
+            flushed_count = flush_detection_queue(test_session.id, request.video_id, db)
+            if flushed_count > 0:
+                logger.info(f"✅ Flushed {flushed_count} queued detections for video {request.video_id}")
+        except Exception as queue_error:
+            logger.error(f"❌ Error flushing detection queue: {queue_error}")
+        # FIX #2: Invalidate cache in dedicated monitor to force reload
+        try:
+            from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
+            monitor = get_dedicated_labjack_monitor()
+            monitor.invalidate_sequence_cache(test_session.id)
+            logger.info(f"✅ Video timing cache invalidated for session {test_session.id}")
+        except Exception as cache_error:
+            logger.warning(f"Failed to invalidate sequence cache: {cache_error}")
+
         # Get video name for response
         video = db.query(Video).filter(Video.id == request.video_id).first()
         video_name = video.filename if video else "Unknown"
@@ -699,12 +961,18 @@ async def record_video_started(
             "sequence_id": sequence_id,
             "video_id": request.video_id,
             "video_name": video_name,
-            "started_at": request.started_at,
+            "started_at": adjusted_started_at,
             "message": "Video start time recorded successfully"
         }
 
     except HTTPException:
         raise
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except SecurityError as e:
+        logger.warning(f"Security error: {e}")
+        raise HTTPException(status_code=403, detail=str(e))
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error recording video start: {e}")
@@ -836,6 +1104,7 @@ async def record_video_ended(
 
         sequence_complete = next_index >= len(video_ids)
         next_video_info = None
+        post_processing_status: Optional[str] = None
 
         if not sequence_complete:
             next_video_id = video_ids[next_index]
@@ -890,6 +1159,42 @@ async def record_video_ended(
         assert request.video_id in test_session.sequence_metadata.get("video_timing", {}), "video timing not persisted"
 
         db.commit()
+
+        hil_stop_result: Optional[Dict[str, Any]] = None
+        if sequence_complete and HIL_MONITORING_AVAILABLE:
+            try:
+                hil_stop_result = await _stop_hil_monitoring_safe(test_session.id)
+                logger.info(
+                    "⏹️ Auto-stopped LabjJack monitoring for sequence %s (session %s): %s",
+                    sequence_id,
+                    test_session.id,
+                    hil_stop_result,
+                )
+            except Exception as stop_error:
+                logger.warning(
+                    "⚠️ Failed to auto-stop LabjJack monitoring for sequence %s: %s",
+                    sequence_id,
+                    stop_error,
+                )
+
+        # Kick off post-test processing when the last video completes
+        if sequence_complete:
+            processor = get_test_results_processor()
+            queued_meta = processor.mark_queued(
+                test_session.id,
+                note="Triggered by final video completion",
+            )
+            post_processing_status = (queued_meta or {}).get("status") or "queued"
+            try:
+                asyncio.create_task(processor.process_test_completion(test_session.id))
+            except Exception as processing_error:  # pragma: no cover - scheduler failure
+                logger.error(
+                    "Failed to schedule post-test processing for %s: %s",
+                    test_session.id,
+                    processing_error,
+                )
+                processor.mark_failed(test_session.id, str(processing_error))
+                post_processing_status = "failed"
 
         logger.info(f"✅ Recorded video end: {video.filename} in sequence {sequence_id}")
 
@@ -951,7 +1256,8 @@ async def record_video_ended(
             detection_count=detection_count,
             evaluation_result=evaluation_result,
             next_video=next_video_info,
-            sequence_complete=sequence_complete
+            sequence_complete=sequence_complete,
+            post_processing_status=post_processing_status
         )
 
     except HTTPException:
@@ -982,8 +1288,25 @@ async def get_sequence_status(
 
     **Returns:**
     - Current sequence status and progress metrics
+
+    **Security:**
+    - Validates sequence_id UUID format
     """
     try:
+        # SECURITY: Validate UUID format
+        try:
+            sequence_id = validate_sequence_id(sequence_id)
+        except ValidationError as e:
+            logger.warning(f"Security: UUID validation failed - {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # SECURITY: Check rate limit
+        if not api_request_limiter.is_allowed(f"sequence_status_{sequence_id}"):
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Too many requests."
+            )
+
         # Find test session by sequence_id
         test_session = db.query(TestSession).filter(
             TestSession.sequence_id == sequence_id
@@ -1007,6 +1330,10 @@ async def get_sequence_status(
         current_video_index = sequence_metadata.get("current_video_index", 0)
         videos_completed = sequence_metadata.get("videos_completed", 0)
         current_video_id = sequence_metadata.get("current_video_id")
+        post_processing_meta = None
+        raw_post_processing = sequence_metadata.get("post_processing")
+        if isinstance(raw_post_processing, dict):
+            post_processing_meta = raw_post_processing
 
         # Get current video name
         current_video_name = None
@@ -1049,11 +1376,19 @@ async def get_sequence_status(
             sequence_elapsed_time=elapsed_time,
             estimated_remaining_time=estimated_remaining_time,
             sequence_started_at=sequence_started_at.isoformat(),
-            current_video_started_at=current_video_started_at
+            current_video_started_at=current_video_started_at,
+            post_processing_status=(post_processing_meta or {}).get("status"),
+            post_processing_details=post_processing_meta
         )
 
     except HTTPException:
         raise
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except SecurityError as e:
+        logger.warning(f"Security error: {e}")
+        raise HTTPException(status_code=403, detail=str(e))
     except SQLAlchemyError as e:
         logger.error(f"Database error getting sequence status: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
@@ -1091,25 +1426,42 @@ async def get_sequence_results(
         if not test_session:
             raise HTTPException(status_code=404, detail=f"Sequence {sequence_id} not found")
 
-        # Ensure detection events are linked to the correct video before calculating metrics
+        def _load_sequence_metadata(session_obj: TestSession) -> Dict[str, Any]:
+            raw_metadata = session_obj.sequence_metadata or {}
+            if isinstance(raw_metadata, str):
+                try:
+                    return json.loads(raw_metadata)
+                except json.JSONDecodeError:
+                    logger.warning("⚠️ Unable to parse sequence metadata JSON for %s", sequence_id)
+                    return {}
+            return dict(raw_metadata)
+
+        sequence_metadata = _load_sequence_metadata(test_session)
+        post_processing_meta = (
+            sequence_metadata.get("post_processing")
+            if isinstance(sequence_metadata.get("post_processing"), dict)
+            else None
+        )
+
+        processor = get_test_results_processor()
         if test_session.has_video_sequence and test_session.sequence_id:
-            try:
-                reassignment_service = DetectionVideoReassignmentService()
-                reassignment_result = await reassignment_service.reassign_null_video_ids(
-                    session_id=test_session.id,
-                    dry_run=False
-                )
-                if not reassignment_result.get("success", True):
-                    logger.warning(
-                        "Video reassignment reported issues for session %s: %s",
-                        test_session.id,
-                        reassignment_result.get("error")
-                    )
-            except Exception as reassignment_error:
-                logger.warning(
-                    "Video reassignment failed for session %s: %s",
+            status = (post_processing_meta or {}).get("status")
+            if status not in ("in_progress", "completed"):
+                processor.mark_queued(
                     test_session.id,
-                    reassignment_error
+                    note="Triggered by results fetch",
+                )
+                logger.info(
+                    "Post-test processing not completed for %s; running now via results endpoint",
+                    test_session.id,
+                )
+                await processor.process_test_completion(test_session.id)
+                db.refresh(test_session)
+                sequence_metadata = _load_sequence_metadata(test_session)
+                post_processing_meta = (
+                    sequence_metadata.get("post_processing")
+                    if isinstance(sequence_metadata.get("post_processing"), dict)
+                    else None
                 )
 
         # Ensure ground truth comparisons are generated so downstream metrics stay in sync
@@ -1128,16 +1480,6 @@ async def get_sequence_results(
                 matching_error
             )
             session_metrics = None
-
-        raw_sequence_metadata = test_session.sequence_metadata or {}
-        if isinstance(raw_sequence_metadata, str):
-            try:
-                sequence_metadata = json.loads(raw_sequence_metadata)
-            except json.JSONDecodeError:
-                logger.warning("⚠️ Unable to parse sequence metadata JSON for %s", sequence_id)
-                sequence_metadata = {}
-        else:
-            sequence_metadata = dict(raw_sequence_metadata)
 
         video_ids: List[str] = sequence_metadata.get("video_ids", []) or []
         video_timing = sequence_metadata.get("video_timing", {}) or {}
@@ -1412,15 +1754,20 @@ async def get_sequence_results(
                 else 0.0
             )
 
+            # CRITICAL: Per-video metrics - calculated ONLY for THIS video
+            # WARNING: In multi-video sessions, per-video recall != session-wide recall
+            # Per-video recall = TP for this video / GT events for this video
+            # Session recall = Total TP across all videos / Total GT events across all videos
             ground_truth_metrics = {
                 "true_positives": tp_count,
                 "false_positives": fp_count,
                 "false_negatives": fn_count,
                 "total_ground_truth": total_ground_truth_events,
                 "precision": round(precision_ratio * 100, 1),
-                "recall": round(recall_ratio * 100, 1),
+                "recall": round(recall_ratio * 100, 1),  # Per-video only: TP / GT for THIS video
                 "f1_score": round(f1_ratio * 100, 1),
-                "ground_truth_events_available": total_ground_truth_events
+                "ground_truth_events_available": total_ground_truth_events,
+                "metric_scope": "per_video"  # CRITICAL: Indicates this is for a single video only
             }
 
             sequence_true_positives += tp_count
@@ -1540,6 +1887,9 @@ async def get_sequence_results(
         ground_truth_comparison: Optional[Dict[str, Any]] = None
 
         if session_metrics:
+            # CRITICAL: Session-wide metrics calculated from ALL videos
+            # This is the CORRECT recall for multi-video sequences
+            # Individual videos may have different (often higher) recall values
             ground_truth_comparison = {
                 "ground_truth_events_available": session_metrics.total_ground_truth,
                 "total_detections": session_metrics.total_detections,
@@ -1547,9 +1897,10 @@ async def get_sequence_results(
                 "false_positives": session_metrics.false_positives,
                 "false_negatives": session_metrics.false_negatives,
                 "precision": round(session_metrics.precision * 100, 1),
-                "recall": round(session_metrics.recall * 100, 1),
+                "recall": round(session_metrics.recall * 100, 1),  # Session-wide: TP / Total GT Events across ALL videos
                 "f1_score": round(session_metrics.f1_score * 100, 1),
-                "matched_detections": session_metrics.matched_detections
+                "matched_detections": session_metrics.matched_detections,
+                "metric_scope": "session_wide"  # CRITICAL: Indicates this is aggregated across all videos
             }
         elif total_ground_truth_events > 0 or sequence_false_positives > 0:
             precision_ratio = (
@@ -1567,6 +1918,9 @@ async def get_sequence_results(
                 if (precision_ratio + recall_ratio) > 0
                 else 0.0
             )
+            # CRITICAL: Fallback session-wide metrics calculated from aggregated per-video data
+            # This is the CORRECT recall for multi-video sequences
+            # recall = total TP across all videos / total GT events across all videos
             ground_truth_comparison = {
                 "ground_truth_events_available": total_ground_truth_events,
                 "total_detections": sequence_true_positives + sequence_false_positives,
@@ -1574,9 +1928,10 @@ async def get_sequence_results(
                 "false_positives": sequence_false_positives,
                 "false_negatives": sequence_false_negatives,
                 "precision": round(precision_ratio * 100, 1),
-                "recall": round(recall_ratio * 100, 1),
+                "recall": round(recall_ratio * 100, 1),  # Session-wide: Sum(TP) / Sum(GT) across ALL videos
                 "f1_score": round(f1_ratio * 100, 1),
-                "matched_detections": sequence_true_positives
+                "matched_detections": sequence_true_positives,
+                "metric_scope": "session_wide"  # CRITICAL: Indicates this is aggregated across all videos
             }
 
         response_payload = SequenceResultsResponse(
@@ -1595,7 +1950,9 @@ async def get_sequence_results(
             total_detections=total_detections,
             aggregate_metrics=aggregate_metrics,
             per_video_results=per_video_results,
-            ground_truth_comparison=ground_truth_comparison
+            ground_truth_comparison=ground_truth_comparison,
+            post_processing_status=(post_processing_meta or {}).get("status"),
+            post_processing_details=post_processing_meta
         )
 
         # Persist a copy of the response for cross-service debugging
@@ -1646,8 +2003,29 @@ async def record_detection_event(
 
     **Returns:**
     - Detection event confirmation with correlation info
+
+    **Security:**
+    - Validates sequence_id UUID format
+    - Rate limits detection events per sequence (1000/min)
     """
     try:
+        # SECURITY: Validate UUID format
+        try:
+            sequence_id = validate_sequence_id(sequence_id)
+        except ValidationError as e:
+            logger.warning(f"Security: UUID validation failed - {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # SECURITY: Check rate limit for detection events
+        if not detection_event_limiter.is_allowed(f"sequence_{sequence_id}"):
+            logger.warning(
+                f"Security: Detection event rate limit exceeded for sequence {sequence_id}"
+            )
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Too many detection events."
+            )
+
         # Find test session by sequence_id
         test_session = db.query(TestSession).filter(
             TestSession.sequence_id == sequence_id
@@ -1828,6 +2206,12 @@ async def record_detection_event(
         assert detection_event.test_session_id is not None, "test_session_id not set on detection event"
 
         def _commit_with_retry(session: Session, retries: int = 5, base_delay: float = 0.05):
+            """
+            Retry database commit with exponential backoff.
+
+            SECURITY NOTE: Rate limiting prevents DoS via connection exhaustion.
+            Retries are limited by detection_event_limiter (1000/min per sequence).
+            """
             last_exc: Optional[OperationalError] = None
             for attempt in range(retries):
                 try:
@@ -1838,6 +2222,7 @@ async def record_detection_event(
                     session.rollback()
                     message = str(exc).lower()
                     if "database is locked" in message or "statements in progress" in message:
+                        # SECURITY: Rate limiter prevents excessive retries
                         time.sleep(base_delay * (attempt + 1))
                         continue
                     raise
@@ -1882,6 +2267,12 @@ async def record_detection_event(
 
     except HTTPException:
         raise
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except SecurityError as e:
+        logger.warning(f"Security error: {e}")
+        raise HTTPException(status_code=403, detail=str(e))
     except SQLAlchemyError as e:
         db.rollback()
         logger.error(f"Database error recording detection: {e}")
@@ -1948,8 +2339,8 @@ async def stop_sequence(
         # Stop LabjJack monitoring if enabled
         if HIL_MONITORING_AVAILABLE:
             try:
-                await stop_hil_monitoring(session_id=test_session.id, db=db)
-                logger.info(f"✅ Stopped LabjJack monitoring for sequence {sequence_id}")
+                stop_result = await _stop_hil_monitoring_safe(test_session.id)
+                logger.info(f"✅ Stopped LabjJack monitoring for sequence {sequence_id}: {stop_result}")
             except Exception as e:
                 if not request.force:
                     raise
@@ -2003,3 +2394,72 @@ async def health_check():
             "hil_monitoring": HIL_MONITORING_AVAILABLE
         }
     }
+
+
+@router.post("/{sequence_id}/heartbeat", status_code=200)
+async def record_heartbeat(
+    sequence_id: str = Path(..., description="Video sequence UUID"),
+    request: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Record heartbeat signal from frontend video player.
+
+    Tracks current playback state for monitoring and session management.
+    Updates sequence state and timing information based on frontend playback status.
+    """
+    try:
+        # Validate sequence exists
+        sequence = db.query(VideoTestSequence).filter(
+            VideoTestSequence.id == sequence_id
+        ).first()
+
+        if not sequence:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Video sequence {sequence_id} not found"
+            )
+
+        # Extract heartbeat data
+        current_video_id = request.get('currentVideoId')
+        current_video_index = request.get('currentVideoIndex', 0)
+        video_time = request.get('videoTime', 0.0)
+        sequence_elapsed_time = request.get('sequenceElapsedTime', 0.0)
+        is_playing = request.get('isPlaying', False)
+
+        # Update sequence current state
+        sequence.current_video_index = current_video_index
+        sequence.sequence_elapsed_time_ms = sequence_elapsed_time
+
+        # Update status based on playing state
+        if is_playing and sequence.status == "pending":
+            sequence.status = "running"
+
+        # The updated_at timestamp is automatically updated by SQLAlchemy
+        db.commit()
+
+        logger.debug(
+            f"Heartbeat received for sequence {sequence_id}: "
+            f"video_index={current_video_index}, time={video_time:.2f}s, "
+            f"sequence_elapsed={sequence_elapsed_time:.2f}ms, playing={is_playing}"
+        )
+
+        return {
+            "status": "ok",
+            "sequence_id": sequence_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "current_video_index": current_video_index,
+            "is_playing": is_playing
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing heartbeat for sequence {sequence_id}: {e}")
+        # Don't fail heartbeat - it's monitoring only
+        return {
+            "status": "warning",
+            "message": "Heartbeat recorded with errors",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }

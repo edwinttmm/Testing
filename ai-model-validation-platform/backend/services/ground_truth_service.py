@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
+import uuid
 
 # Optional ML dependencies - make them optional for Docker environments without ML packages
 try:
@@ -42,7 +43,7 @@ except ImportError:
     logger.warning("Path utilities not available - using basic path handling")
 
 from database import SessionLocal
-from crud import create_ground_truth_object, update_video_status, get_video
+from crud import create_ground_truth_object, update_video_status, get_video, get_ground_truth_objects
 from schemas import GroundTruthResponse, GroundTruthObject as GroundTruthObjectSchema
 
 class GroundTruthService:
@@ -94,7 +95,6 @@ class GroundTruthService:
                     self.model_version = 'yolov8n'
                 
                 # Test the model with a dummy input to ensure it works
-                import torch
                 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
                 logger.info(f"✅ YOLO model loaded successfully on {device}: {self.model_version}")
                 
@@ -151,15 +151,13 @@ class GroundTruthService:
         
         try:
             logger.info(f"🚀 Starting ground truth processing for video {video_id} at {video_file_path}")
-            
+
             # Resolve video file path using path manager
-            import os
             resolved_path = video_file_path
             
             # Try to use path utilities if available
             if PATH_UTILS_AVAILABLE:
                 try:
-                    from src.utils.path_utils import get_path_manager, resolve_upload_path
                     path_manager = get_path_manager()
                     resolved_path = resolve_upload_path(video_file_path)
                     logger.info(f"🔍 Resolved path: {video_file_path} → {resolved_path}")
@@ -195,12 +193,11 @@ class GroundTruthService:
             video_file_path = resolved_path  # Use resolved path for processing
             try:
                 # Log basic metadata to aid troubleshooting
-                import cv2 as _cv2
-                _cap = _cv2.VideoCapture(video_file_path)
-                _fps = _cap.get(_cv2.CAP_PROP_FPS)
-                _frames = int(_cap.get(_cv2.CAP_PROP_FRAME_COUNT))
-                _width = int(_cap.get(_cv2.CAP_PROP_FRAME_WIDTH))
-                _height = int(_cap.get(_cv2.CAP_PROP_FRAME_HEIGHT))
+                _cap = cv2.VideoCapture(video_file_path)
+                _fps = _cap.get(cv2.CAP_PROP_FPS)
+                _frames = int(_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                _width = int(_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                _height = int(_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 logger.info(f"🎥 Video metadata: fps={_fps:.2f}, frames={_frames}, size={_width}x{_height}")
                 _cap.release()
             except Exception as _meta_err:
@@ -298,8 +295,7 @@ class GroundTruthService:
 
     def process_video_blocking(self, video_id: str, video_file_path: str):
         """Process video in a blocking manner suitable for BackgroundTasks."""
-        from database import SessionLocal as _SessionLocal
-        db = _SessionLocal()
+        db = SessionLocal()
         try:
             logger.info(f"🧵 Blocking GT processing started for {video_id}")
             # Validate file exists
@@ -471,8 +467,6 @@ class GroundTruthService:
     
     def _generate_screenshot(self, frame, x1, y1, x2, y2, frame_number, class_label):
         """Generate screenshots for ground truth detection"""
-        import uuid
-        
         try:
             # Create screenshots directory with proper path resolution
             screenshots_dir = "screenshots"
@@ -530,8 +524,6 @@ class GroundTruthService:
         """Get ground truth data for a video"""
         db = SessionLocal()
         try:
-            from crud import get_ground_truth_objects
-            
             objects = get_ground_truth_objects(db, video_id)
             
             ground_truth_objects = [

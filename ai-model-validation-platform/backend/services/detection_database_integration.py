@@ -61,10 +61,15 @@ class DetectionEvent(Base):
     # Detection status
     detected = Column(Boolean, default=True)
     is_duplicate = Column(Boolean, default=False)
-    
+
     # Metadata
     metadata = Column(String(1000), nullable=True)  # JSON string
-    
+
+    # Timing calibration fields for corrected latency calculation
+    video_relative_timestamp = Column(Float, nullable=True, index=True)  # Timestamp relative to video start
+    actual_latency_ms = Column(Float, nullable=True, index=True)  # Actual measured latency
+    video_start_time = Column(Float, nullable=True, index=True)  # Video start reference time
+
     # Optional relationships (if validation sessions exist)
     # validation_session_id = Column(Integer, ForeignKey('validation_sessions.id'), nullable=True)
     
@@ -81,14 +86,18 @@ class DetectionEvent(Base):
             'threshold': self.threshold,
             'detected': self.detected,
             'is_duplicate': self.is_duplicate,
-            'metadata': json.loads(self.metadata) if self.metadata else None
+            'metadata': json.loads(self.metadata) if self.metadata else None,
+            # FIX: Include timing calibration fields for corrected latency calculation
+            'video_relative_timestamp': self.video_relative_timestamp,
+            'actual_latency_ms': self.actual_latency_ms,
+            'video_start_time': self.video_start_time
         }
     
     @classmethod
     def from_detection_data(cls, event_data: DetectionEventData):
         """Create DetectionEvent from DetectionEventData"""
         metadata_json = json.dumps(event_data.metadata) if event_data.metadata else None
-        
+
         return cls(
             session_id=event_data.session_id,
             event_id=event_data.id,
@@ -98,7 +107,11 @@ class DetectionEvent(Base):
             threshold=event_data.threshold,
             detected=event_data.detected,
             is_duplicate=event_data.is_duplicate,
-            metadata=metadata_json
+            metadata=metadata_json,
+            # FIX: Copy timing calibration fields for corrected latency calculation
+            video_relative_timestamp=event_data.video_relative_timestamp,
+            actual_latency_ms=event_data.actual_latency_ms,
+            video_start_time=event_data.video_start_time
         )
     
     def __repr__(self) -> str:

@@ -11,6 +11,14 @@ from schemas import TestSessionCreate
 
 logger = logging.getLogger(__name__)
 
+# Import video lifecycle handlers
+try:
+    from services.video_lifecycle_websocket_handlers import register_video_lifecycle_handlers
+    _video_lifecycle_handlers_available = True
+except ImportError as e:
+    logger.warning(f"Video lifecycle handlers not available: {e}")
+    _video_lifecycle_handlers_available = False
+
 # Global sequence counter for lifecycle events
 _lifecycle_event_sequence = 0
 _sequence_lock = asyncio.Lock()
@@ -60,6 +68,10 @@ sio = socketio.AsyncServer(
 # Store active test sessions
 active_sessions: Dict[str, Any] = {}
 
+# Track active detection streaming sessions (prevents premature closure)
+active_detection_streams: Dict[str, Dict[str, Any]] = {}
+connection_heartbeat_tasks: Dict[str, asyncio.Task] = {}
+
 @sio.event
 async def connect(sid, environ, auth):
     """Handle client connections with enhanced authentication and setup"""
@@ -98,14 +110,16 @@ async def connect(sid, environ, auth):
                 'heartbeat': True,
                 'rooms': True,
                 'authentication': client_info['authenticated'],
-                'broadcast': True
+                'broadcast': True,
+                'keep_alive': True  # Indicate keep-alive support
             }
         }, room=sid)
-        
-        # Start heartbeat for this connection
-        asyncio.create_task(heartbeat_connection(sid))
-        
-        logger.info(f"Client {sid} successfully connected and configured")
+
+        # Start heartbeat for this connection with enhanced keep-alive
+        heartbeat_task = asyncio.create_task(heartbeat_connection(sid))
+        connection_heartbeat_tasks[sid] = heartbeat_task
+
+        logger.info(f"🔌 Client {sid} successfully connected with keep-alive enabled")
         return True
         
     except Exception as e:
@@ -115,9 +129,23 @@ async def connect(sid, environ, auth):
 @sio.event
 async def disconnect(sid):
     """Handle client disconnections with comprehensive cleanup"""
-    logger.info(f"Client {sid} disconnected")
+    logger.info(f"🔌 Client {sid} disconnected")
 
     try:
+        # Cancel heartbeat task for this connection
+        if sid in connection_heartbeat_tasks:
+            heartbeat_task = connection_heartbeat_tasks[sid]
+            if not heartbeat_task.done():
+                heartbeat_task.cancel()
+            del connection_heartbeat_tasks[sid]
+            logger.info(f"Cancelled heartbeat task for {sid}")
+
+        # Clean up active detection streams
+        if sid in active_detection_streams:
+            stream_info = active_detection_streams[sid]
+            logger.info(f"🔌 Detection stream closed: {stream_info.get('session_id')} (sid: {sid})")
+            del active_detection_streams[sid]
+
         # Clean up any active sessions for this client
         sessions_to_remove = []
         for session_id, session_data in active_sessions.items():
@@ -263,6 +291,92 @@ async def join_session(sid, data):
         return {'error': str(e)}
 
 @sio.event
+async def subscribe_detections(sid, data):
+    """Subscribe to detection events for a test session
+
+    CRITICAL: This registers the client for detection streaming and enables
+    keep-alive mechanisms to prevent premature connection closure.
+    """
+    try:
+        session_id = data.get('session_id')
+
+        if not session_id:
+            await sio.emit('error', {
+                'message': 'session_id required to subscribe to detections'
+            }, room=sid)
+            return {'error': 'session_id required'}
+
+        # Register detection stream (enables keep-alive)
+        active_detection_streams[sid] = {
+            'session_id': session_id,
+            'subscribed_at': asyncio.get_event_loop().time(),
+            'detection_count': 0
+        }
+
+        # Join detection monitoring room
+        room_name = f"test_session_{session_id}"
+        await sio.enter_room(sid, room_name)
+
+        logger.info(
+            f"🔌 Detection stream opened: {session_id} (sid: {sid}) - "
+            f"Keep-alive enabled"
+        )
+
+        # Send confirmation
+        await sio.emit('detection_subscription_confirmed', {
+            'session_id': session_id,
+            'room': room_name,
+            'keep_alive_enabled': True,
+            'heartbeat_interval_seconds': 5,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=sid)
+
+        return {'success': True, 'room': room_name}
+
+    except Exception as e:
+        logger.error(f"Error subscribing to detections for {sid}: {str(e)}")
+        await sio.emit('error', {
+            'message': f'Failed to subscribe to detections: {str(e)}'
+        }, room=sid)
+        return {'error': str(e)}
+
+@sio.event
+async def unsubscribe_detections(sid, data):
+    """Unsubscribe from detection events
+
+    This allows graceful cleanup of detection streaming sessions.
+    """
+    try:
+        session_id = data.get('session_id')
+
+        # Remove from active detection streams
+        if sid in active_detection_streams:
+            stream_info = active_detection_streams[sid]
+            logger.info(
+                f"🔌 Detection stream closed: {stream_info.get('session_id')} (sid: {sid}) - "
+                f"Detections received: {stream_info.get('detection_count', 0)}"
+            )
+            del active_detection_streams[sid]
+
+        # Leave room if session_id provided
+        if session_id:
+            room_name = f"test_session_{session_id}"
+            await sio.leave_room(sid, room_name)
+            logger.info(f"Client {sid} unsubscribed from detections for {session_id}")
+
+        # Send confirmation
+        await sio.emit('detection_unsubscription_confirmed', {
+            'session_id': session_id,
+            'timestamp': asyncio.get_event_loop().time()
+        }, room=sid)
+
+        return {'success': True}
+
+    except Exception as e:
+        logger.error(f"Error unsubscribing from detections for {sid}: {str(e)}")
+        return {'error': str(e)}
+
+@sio.event
 async def leave_session(sid, data):
     """Client leaves session room"""
     try:
@@ -355,11 +469,11 @@ async def run_test_session(session_id: str):
                 }
             }
             
-            # Emit to session room
+            # FIXED: Emit detection_event only to session room to prevent duplicates
+            # Clients should subscribe to the session-specific room, NOT the general 'detections' room
             await sio.emit('detection_event', detection_data, room=room)
-            
-            # Emit to monitoring rooms
-            await sio.emit('detection_event', detection_data, room='detections')
+
+            # Emit separate event type for monitoring dashboards (different event name)
             await sio.emit('hil_update', detection_data, room='general')
             
             # Emit progress update every 5 events
@@ -409,24 +523,63 @@ async def run_test_session(session_id: str):
 
 def create_socketio_app(fastapi_app: FastAPI):
     """Integrate Socket.IO with FastAPI"""
+    # Register video lifecycle handlers if available
+    if _video_lifecycle_handlers_available:
+        try:
+            register_video_lifecycle_handlers(sio, SessionLocal)
+            logger.info("✅ Video lifecycle WebSocket handlers registered")
+        except Exception as e:
+            logger.error(f"Failed to register video lifecycle handlers: {e}")
+
     socketio_asgi_app = socketio.ASGIApp(sio, fastapi_app)
     return socketio_asgi_app
 
 # Utility functions for real-time detection events
 async def emit_detection_event(detection_data: dict, test_session_id: str):
-    """Emit real-time detection event to all connected clients"""
+    """Emit real-time detection event to all connected clients
+
+    CRITICAL: This function updates detection counters for keep-alive monitoring.
+    """
     try:
-        # Emit to test session room
-        room = f"test_session_{test_session_id}"
+        from datetime import datetime
+
+        # CRITICAL FIX: Validate and ensure timestamp field is ALWAYS present and properly formatted
+        if 'timestamp' not in detection_data:
+            logger.warning(f"⚠️ Detection event missing timestamp, adding current time")
+            detection_data['timestamp'] = datetime.now().isoformat()
+        elif not isinstance(detection_data['timestamp'], str):
+            # Convert non-string timestamps to ISO format
+            ts = detection_data['timestamp']
+            if hasattr(ts, 'isoformat'):
+                detection_data['timestamp'] = ts.isoformat()
+            elif isinstance(ts, (int, float)):
+                detection_data['timestamp'] = datetime.fromtimestamp(ts).isoformat()
+            else:
+                logger.warning(f"⚠️ Invalid timestamp type {type(ts)}, using current time")
+                detection_data['timestamp'] = datetime.now().isoformat()
+        elif len(detection_data['timestamp']) < 10:
+            logger.warning(f"⚠️ Timestamp too short: {detection_data['timestamp']}, replacing")
+            detection_data['timestamp'] = datetime.now().isoformat()
+
+        # Log timestamp validation
+        logger.debug(f"✅ Timestamp validated: {detection_data['timestamp']}")
+
+        # Update detection counter for active streams
+        for sid, stream_info in active_detection_streams.items():
+            if stream_info.get('session_id') == test_session_id:
+                stream_info['detection_count'] = stream_info.get('detection_count', 0) + 1
+
+        # FIXED: Emit to test session room only to prevent duplicates
+        # Clients should subscribe to session-specific room, NOT the general 'detections' room
+        # CRITICAL FIX: Use "session_" prefix to match client join_session room naming
+        room = f"session_{test_session_id}"
         await sio.emit('detection_event', detection_data, room=room)
-        
-        # Emit to general detections room for monitoring
-        await sio.emit('detection_event', detection_data, room='detections')
-        
+
         logger.debug(f"Emitted detection event to room {room}")
-        
+
     except Exception as e:
-        logger.error(f"Failed to emit detection event: {str(e)}")
+        logger.error(f"❌ Failed to emit detection event: {str(e)}")
+        logger.error(f"   Detection data keys: {list(detection_data.keys()) if detection_data else 'None'}")
 
 async def emit_processing_status(status_data: dict, session_id: str):
     """Emit processing status update"""
@@ -440,37 +593,95 @@ async def emit_processing_status(status_data: dict, session_id: str):
 
 # Heartbeat functionality for connection keepalive
 async def heartbeat_connection(sid: str):
-    """Send periodic heartbeat to maintain connection"""
-    heartbeat_interval = 30  # seconds
+    """Send periodic heartbeat to maintain connection during streaming
+
+    CRITICAL: This prevents premature WebSocket closure during detection streaming
+    by maintaining active communication even when no detections are being sent.
+    """
+    heartbeat_interval = 5  # REDUCED: Send every 5 seconds for active streaming
     max_missed_heartbeats = 3
     missed_count = 0
-    
-    while sid in [s.get('sid') for s in active_sessions.values() if isinstance(s, dict)]:
-        try:
+    heartbeat_count = 0
+
+    logger.info(f"🔌 KEEP-ALIVE: Heartbeat started for client {sid} (interval: {heartbeat_interval}s)")
+
+    try:
+        while True:
             await asyncio.sleep(heartbeat_interval)
-            
-            # Send heartbeat ping
-            heartbeat_data = {
-                'type': 'heartbeat',
-                'timestamp': asyncio.get_event_loop().time(),
-                'sid': sid
-            }
-            
-            await sio.emit('heartbeat_ping', heartbeat_data, room=sid)
-            logger.debug(f"Sent heartbeat to client {sid}")
-            missed_count = 0
-            
-        except Exception as e:
-            missed_count += 1
-            logger.warning(f"Heartbeat failed for client {sid}: {str(e)} (missed: {missed_count})")
-            
-            if missed_count >= max_missed_heartbeats:
-                logger.info(f"Client {sid} missed {missed_count} heartbeats, considering disconnected")
-                # Clean up the client session
-                client_session_key = f"client_{sid}"
-                if client_session_key in active_sessions:
-                    del active_sessions[client_session_key]
+
+            # Check if connection is still tracked
+            client_session_key = f"client_{sid}"
+            is_active_client = client_session_key in active_sessions
+            has_detection_stream = sid in active_detection_streams
+
+            # Keep connection alive if either condition is true
+            if not (is_active_client or has_detection_stream):
+                logger.info(f"🔌 KEEP-ALIVE: Client {sid} no longer active, stopping heartbeat")
                 break
+
+            try:
+                heartbeat_count += 1
+
+                # Enhanced heartbeat with connection state info
+                heartbeat_data = {
+                    'type': 'heartbeat',
+                    'timestamp': asyncio.get_event_loop().time(),
+                    'sid': sid,
+                    'count': heartbeat_count,
+                    'has_detection_stream': has_detection_stream,
+                    'is_active_session': is_active_client
+                }
+
+                await sio.emit('heartbeat_ping', heartbeat_data, room=sid)
+
+                # Log heartbeat status (verbose for detection streams)
+                if has_detection_stream:
+                    stream_info = active_detection_streams[sid]
+                    logger.debug(
+                        f"🔌 KEEP-ALIVE: Heartbeat #{heartbeat_count} sent to {sid} "
+                        f"(detection stream: {stream_info.get('session_id')})"
+                    )
+                else:
+                    logger.debug(f"🔌 KEEP-ALIVE: Heartbeat #{heartbeat_count} sent to {sid}")
+
+                missed_count = 0
+
+            except Exception as heartbeat_error:
+                missed_count += 1
+                logger.warning(
+                    f"⚠️ KEEP-ALIVE: Heartbeat failed for client {sid}: {str(heartbeat_error)} "
+                    f"(missed: {missed_count}/{max_missed_heartbeats})"
+                )
+
+                if missed_count >= max_missed_heartbeats:
+                    logger.warning(
+                        f"🔌 KEEP-ALIVE: Client {sid} missed {missed_count} heartbeats, "
+                        f"considering disconnected"
+                    )
+
+                    # Clean up the client session
+                    if client_session_key in active_sessions:
+                        del active_sessions[client_session_key]
+
+                    # Clean up detection stream
+                    if sid in active_detection_streams:
+                        stream_info = active_detection_streams[sid]
+                        logger.warning(
+                            f"🔌 KEEP-ALIVE: Closing stale detection stream: "
+                            f"{stream_info.get('session_id')}"
+                        )
+                        del active_detection_streams[sid]
+
+                    break
+
+    except asyncio.CancelledError:
+        logger.info(f"🔌 KEEP-ALIVE: Heartbeat task cancelled for {sid} (total: {heartbeat_count} heartbeats)")
+    except Exception as e:
+        logger.error(f"🔌 KEEP-ALIVE: Unexpected error in heartbeat for {sid}: {str(e)}")
+    finally:
+        # Cleanup on exit
+        if sid in connection_heartbeat_tasks:
+            del connection_heartbeat_tasks[sid]
 
 @sio.event
 async def heartbeat_pong(sid, data):
@@ -1013,5 +1224,6 @@ async def emit_system_notification(notification_type: str, message: str, data: d
 # Export the Socket.IO server for use in main.py
 __all__ = [
     'sio', 'create_socketio_app', 'emit_detection_event', 'emit_processing_status',
-    'emit_hil_status_update', 'emit_system_notification', 'heartbeat_connection'
+    'emit_hil_status_update', 'emit_system_notification', 'heartbeat_connection',
+    'active_detection_streams', 'connection_heartbeat_tasks'
 ]

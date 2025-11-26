@@ -1,0 +1,83 @@
+@startuml Test Execution Sequence
+!theme plain
+title Test Execution Sequence Diagram
+skinparam backgroundColor #FEFEFE
+
+actor "Test Engineer" as user
+participant "Frontend\n(React)" as frontend
+participant "Backend API\n(FastAPI)" as backend
+participant "LabJack Monitor\n(Dedicated)" as labjack
+database "Database" as db
+
+== Test Setup ==
+user -> frontend : Select Video & Configure Test
+frontend -> backend : POST /api/test-sessions\n{video_id, tolerance_ms}
+backend -> db : Create TestSession
+db --> backend : session_id
+backend --> frontend : {session_id, status: "created"}
+
+== Start Test ==
+user -> frontend : Click "Start Test"
+frontend -> backend : POST /api/test-sessions/{id}/start
+backend -> labjack : start_monitoring(session_id)
+labjack -> labjack : Initialize LabJack\nOpen Device Handle
+labjack --> backend : monitoring_started
+backend -> db : Update status = "running"
+backend --> frontend : {status: "running"}
+
+== Video Playback ==
+frontend -> frontend : Load Video
+frontend -> backend : POST /api/sessions/{id}/video-start\n{frontend_timestamp}
+backend -> backend : Record T0 (command_start)
+backend --> frontend : OK
+
+frontend -> frontend : Start Video Playback
+note over frontend : Video begins playing\nRecord T1 (presentation_start)
+
+frontend -> backend : POST /api/sessions/{id}/lifecycle\n{event: "VIDEO_START", timestamp}
+backend -> db : Store VideoLifecycleEvent
+backend -> backend : Calculate presentation_delay
+
+== Detection Events ==
+loop Video Playing
+    labjack -> labjack : Stream Voltage (200Hz)
+    labjack -> labjack : Check threshold (>2.5V)
+
+    alt Detection Found
+        labjack -> db : INSERT detection_event\n{timestamp, voltage}
+        labjack -> frontend : WebSocket: detection_event
+        frontend -> frontend : Update UI
+    end
+end
+
+== Video Complete ==
+frontend -> backend : POST /api/sessions/{id}/lifecycle\n{event: "VIDEO_END"}
+backend -> labjack : stop_monitoring()
+labjack --> backend : {detection_count, duration}
+backend -> db : Store end timestamp
+
+== Results Processing ==
+backend -> db : Load all detection_events
+backend -> db : Load all ground_truth_objects
+
+backend -> backend : Run Correlation Algorithm
+note over backend
+    1. Build cost matrix
+    2. Apply Hungarian/Many-to-One
+    3. Classify TP/FP/FN
+    4. Calculate latencies
+end note
+
+backend -> db : UPDATE detection_events\n{actual_latency_ms, is_false_positive}
+backend -> db : INSERT detection_comparisons
+backend -> db : UPDATE test_session\n{metrics, status: "completed"}
+
+backend --> frontend : {status: "completed", results}
+
+== View Results ==
+frontend -> backend : GET /api/hil/{id}/ground-truth-comparison
+backend -> db : Query results with joins
+backend --> frontend : {events, metrics, correlations}
+frontend -> user : Display Results & Timeline
+
+@enduml

@@ -10,6 +10,7 @@ Focus Areas:
 - Latency compensation
 """
 
+import os
 import pytest
 import asyncio
 import time

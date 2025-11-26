@@ -661,6 +661,11 @@ class DetectionVideoReassignmentService:
         ]
         video_ranges.sort(key=lambda item: item[1] if item[1] is not None else float("inf"))
 
+        def _fmt_time(value: Optional[float]) -> str:
+            if isinstance(value, (int, float)):
+                return f"{value:.3f}s"
+            return "None"
+
         # Check each video's time range
         for video_id, start_time, end_time in video_ranges:
             if start_time is None:
@@ -673,7 +678,7 @@ class DetectionVideoReassignmentService:
                 if detection_timestamp >= (start_time - buffer_s):
                     self.logger.debug(
                         f"Detection {detection.id} (timestamp: {detection_timestamp:.3f}s) "
-                        f"matches video {video_id} (start: {start_time:.3f}s, no end time)"
+                        f"matches video {video_id} (start: {_fmt_time(start_time)}, no end time)"
                     )
                     return video_id
             else:
@@ -681,7 +686,7 @@ class DetectionVideoReassignmentService:
                 if (start_time - buffer_s) <= detection_timestamp <= (end_time + buffer_s):
                     self.logger.debug(
                         f"Detection {detection.id} (timestamp: {detection_timestamp:.3f}s) "
-                        f"matches video {video_id} (range: {start_time:.3f}s - {end_time:.3f}s)"
+                        f"matches video {video_id} (range: {_fmt_time(start_time)} - {_fmt_time(end_time)})"
                     )
                     return video_id
 
@@ -716,7 +721,7 @@ class DetectionVideoReassignmentService:
         # Log available time ranges for debugging
         for video_id, start_time, end_time in video_ranges:
             self.logger.debug(
-                f"  Video {video_id}: {start_time:.3f}s - {end_time:.3f}s"
+                f"  Video {video_id}: {_fmt_time(start_time)} - {_fmt_time(end_time)}"
             )
 
         return None

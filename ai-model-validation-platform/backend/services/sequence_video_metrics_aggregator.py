@@ -139,13 +139,13 @@ class SequenceVideoMetricsAggregator:
             )
 
             # Calculate latency stats from TP detections only
-            # CRITICAL: Exclude latencies >= 10000ms (invalid/timeout values)
+            # Use is_false_positive field to filter out invalid detections
             valid_latencies = [
                 d.actual_latency_ms
                 for d in detections
                 if d.match_status == 'TP'
                 and d.actual_latency_ms is not None
-                and d.actual_latency_ms < 10000.0
+                and not d.is_false_positive
             ]
 
             if not valid_latencies:

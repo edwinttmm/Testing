@@ -1,0 +1,108 @@
+@startuml API Endpoint Structure
+!theme plain
+title API Endpoint Structure
+skinparam backgroundColor #FEFEFE
+
+skinparam package {
+    BackgroundColor #E3F2FD
+}
+
+package "Authentication API" {
+    [POST /auth/register] as auth_reg
+    [POST /auth/login] as auth_login
+    [POST /auth/logout] as auth_logout
+    [POST /auth/refresh] as auth_refresh
+    [GET /auth/profile] as auth_profile
+}
+
+package "Project Management API" {
+    [POST /api/projects] as proj_create
+    [GET /api/projects] as proj_list
+    [GET /api/projects/{id}] as proj_get
+    [PUT /api/projects/{id}] as proj_update
+    [DELETE /api/projects/{id}] as proj_delete
+    [POST /api/projects/{id}/videos/link] as proj_link
+    [GET /api/projects/{id}/statistics] as proj_stats
+}
+
+package "Video Management API" {
+    [POST /api/videos] as vid_upload
+    [GET /api/videos] as vid_list
+    [GET /api/videos/{id}] as vid_get
+    [DELETE /api/videos/{id}] as vid_delete
+    [GET /api/videos/{id}/ground-truth] as vid_gt
+    [POST /api/videos/{id}/annotations] as vid_ann
+    [GET /api/videos/{id}/detections] as vid_det
+}
+
+package "Test Sessions API" {
+    [POST /api/test-sessions] as sess_create
+    [GET /api/test-sessions] as sess_list
+    [GET /api/test-sessions/{id}] as sess_get
+    [POST /api/test-sessions/{id}/start] as sess_start
+    [POST /api/test-sessions/{id}/complete] as sess_complete
+    [GET /api/test-sessions/{id}/events] as sess_events
+    [GET /api/test-sessions/{id}/detections] as sess_det
+}
+
+package "HIL Testing API" {
+    [GET /api/hil/{id}/ground-truth-comparison] as hil_gt
+    [GET /api/hil/{id}/detection-events] as hil_det
+    [GET /api/hil/{id}/analysis] as hil_analysis
+    [GET /api/hil/screenshots/{file}] as hil_screenshot
+}
+
+package "Dashboard API" {
+    [GET /api/dashboard/stats] as dash_stats
+    [GET /api/dashboard/stats/enhanced] as dash_enh
+    [GET /api/dashboard/health/system] as dash_health
+    [GET /api/dashboard/metrics/performance] as dash_perf
+}
+
+package "Reports API" {
+    [POST /api/reports/generate] as rep_gen
+    [GET /api/reports] as rep_list
+    [GET /api/reports/{id}/view/html] as rep_html
+    [GET /api/reports/{id}/download/{fmt}] as rep_download
+}
+
+' WebSocket Events
+package "WebSocket Events" #LightGreen {
+    [detection_event] as ws_det
+    [video_lifecycle] as ws_vid
+    [test_progress] as ws_prog
+    [hardware_status] as ws_hw
+}
+
+' Response Types
+note right of sess_create
+    **Request Body:**
+    - name: string
+    - project_id: uuid
+    - video_id: uuid
+    - tolerance_ms: int
+
+    **Response:**
+    - id: uuid
+    - status: string
+    - created_at: datetime
+end note
+
+note right of hil_gt
+    **Response includes:**
+    - ground_truth_events[]
+    - detection_events[]
+    - correlation_results[]
+    - metrics{}
+    - screenshots[]
+end note
+
+note right of ws_det
+    **Real-time events via Socket.IO**
+    - Detection notifications
+    - Video playback status
+    - Test progress updates
+    - LabJack status changes
+end note
+
+@enduml

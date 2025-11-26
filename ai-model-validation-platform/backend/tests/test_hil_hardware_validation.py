@@ -18,7 +18,7 @@ import asyncio
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
 
-from services.labjack_service import LabJackService, ConnectionMode, ConnectionStatus
+from services.labjack_service_manager import LabJackService, ConnectionMode, ConnectionStatus
 from services.hil_validation_service import (
     HILValidationService, HILValidationError, HardwareRequirement, HILHardwareStatus
 )

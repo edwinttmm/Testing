@@ -34,6 +34,8 @@ from services.hil_validation_service import (
 )
 # BUG #4 FIX: Import VideoSequenceOrchestrator for multi-video session management
 from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+# CRITICAL FIX: Import dedicated LabJack monitor to sync video_start_time
+from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/hil-test", tags=["HIL Test Execution"])
@@ -273,7 +275,43 @@ async def start_hil_test_session(
     try:
         # CRITICAL: Validate hardware BEFORE starting any HIL session
         await validate_hil_hardware_requirements()
-        
+
+        # CRITICAL FIX: Check if an active/running session already exists for this project
+        # This prevents duplicate sessions when frontend calls both /test-sessions and /session/start
+        existing_session = db.query(TestSession).filter(
+            TestSession.project_id == session_data.project_id,
+            TestSession.status.in_(['running', 'pending', 'created'])
+        ).order_by(TestSession.created_at.desc()).first()
+
+        if existing_session:
+            logger.warning(
+                f"⚠️ DUPLICATE SESSION PREVENTION: Existing {existing_session.status} session "
+                f"{existing_session.id} found for project {session_data.project_id}. "
+                f"Reusing existing session instead of creating new one."
+            )
+            # Update the existing session to running status and return it
+            existing_session.status = "running"
+            existing_session.started_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(existing_session)
+
+            # Store in hil_manager for real-time tracking
+            hil_manager.active_sessions[existing_session.id] = {
+                "session": existing_session,
+                "start_time": existing_session.started_at,
+                "t0_capture": None,
+                "current_video_index": 0,
+                "expected_events": [],
+                "detection_events": [],
+                "status": "running",
+                "timing_quality": "medium",
+                "orchestrator": None,
+                "active_video_id": None
+            }
+
+            logger.info(f"✅ REUSED existing session {existing_session.id} for HIL test")
+            return existing_session
+
         # CRITICAL: Capture T0 timestamp IMMEDIATELY when test start command is received
         # This captures the precise moment the "Start Test" command was initiated
         t0_capture = timing_orchestration_service.capture_t0_command_timestamp(
@@ -281,7 +319,7 @@ async def start_hil_test_session(
             db=None,  # Will store after session creation
             metadata={"command": "start_hil_test", "project_id": session_data.project_id}
         )
-        
+
         # Create test session with T0 command timestamp
         test_start_time = datetime.fromtimestamp(t0_capture.command_timestamp, timezone.utc)
 
@@ -298,7 +336,9 @@ async def start_hil_test_session(
             has_video_sequence=has_video_sequence
         )
 
-        test_session = create_test_session(db, session_create)
+        test_session = create_test_session(db, session_create, user_id="anonymous")
+
+        logger.info(f"✅ CREATED NEW HIL session {test_session.id} for project {session_data.project_id}")
 
         # BUG #4 FIX: Initialize VideoSequenceOrchestrator for multi-video sessions
         orchestrator = None
@@ -589,6 +629,34 @@ async def start_video_playback(
         # BUG #5 FIX: Set active_video_id so detections are tagged correctly
         active_session["active_video_id"] = video_id
         logger.info(f"Set active_video_id={video_id} for session {session_id} - detections will be tagged")
+
+        # CRITICAL FIX: Sync video_start_time with T1 capture across ALL timing services
+        # This ensures detection timestamps are calculated relative to ACTUAL video playback start,
+        # not the backend initialization time (which can be 6+ seconds earlier)
+        try:
+            # 1. Sync dedicated_labjack_monitor
+            dedicated_monitor = get_dedicated_labjack_monitor()
+            if str(session_id) in dedicated_monitor.active_sessions:
+                old_video_start = dedicated_monitor.active_sessions[str(session_id)].get('video_start_time')
+                dedicated_monitor.active_sessions[str(session_id)]['video_start_time'] = t1_capture.video_start_timestamp
+                logger.info(
+                    f"🎯 TIMING SYNC [1/2]: Updated dedicated_labjack_monitor video_start_time for session {session_id}: "
+                    f"{old_video_start:.6f} -> {t1_capture.video_start_timestamp:.6f} "
+                    f"(delta: {(t1_capture.video_start_timestamp - old_video_start) if old_video_start else 0:.3f}s)"
+                )
+            else:
+                logger.warning(f"⚠️ Session {session_id} not found in dedicated_labjack_monitor.active_sessions")
+
+            # 2. Sync video_timing_service cache (used by calculate_video_relative_latency)
+            from services.video_timing_service import get_video_timing_service
+            video_timing_svc = get_video_timing_service()
+            if video_timing_svc.update_video_start_time(str(session_id), t1_capture.video_start_timestamp):
+                logger.info(f"🎯 TIMING SYNC [2/2]: Updated video_timing_service cache for session {session_id}")
+            else:
+                logger.warning(f"⚠️ Could not update video_timing_service cache for session {session_id}")
+
+        except Exception as sync_error:
+            logger.error(f"❌ Failed to sync video_start_time with timing services: {sync_error}")
 
         # BUG #4 FIX: Notify orchestrator that video started (if using orchestrator)
         orchestrator = active_session.get("orchestrator")
@@ -1443,14 +1511,29 @@ async def monitor_test_session(session_id: int, db: Session):
                 await complete_test_session(session_id, db)
                 break
             
-            # Check LabJack connection
+            # Check LabJack connection with auto-reconnection
             labjack_status = await labjack_service.get_connection_status()
             if not labjack_status.connected:
-                logger.warning(f"LabJack disconnected during session {session_id}")
-                await hil_manager.broadcast_status({
-                    "type": "labjack_disconnected",
-                    "session_id": session_id
-                })
+                logger.warning(f"LabJack disconnected during session {session_id}, attempting reconnection...")
+
+                # Attempt automatic reconnection (3 attempts)
+                for attempt in range(1, 4):
+                    reconnect_success = labjack_service.connect(force_reconnect=True)
+                    if reconnect_success:
+                        logger.info(f"✅ LabJack reconnected on attempt {attempt}")
+                        await hil_manager.broadcast_status({
+                            "type": "labjack_reconnected",
+                            "session_id": session_id,
+                            "attempt": attempt
+                        })
+                        break
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    logger.error(f"❌ LabJack reconnection failed after 3 attempts")
+                    await hil_manager.broadcast_status({
+                        "type": "labjack_disconnected",
+                        "session_id": session_id
+                    })
                 
     except Exception as e:
         logger.error(f"Error monitoring test session {session_id}: {e}")

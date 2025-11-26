@@ -20,6 +20,8 @@ import {
   Timeline,
 } from '@mui/icons-material';
 import { VideoFile, DetectionOutcome } from '../services/types';
+import { clockSyncService } from '../services/clockSyncService';
+import websocketService from '../services/websocketService';
 
 // HIL Video Player Component for full-screen test execution
 // Implements PRD Module 3 requirements for sequential video playback
@@ -28,11 +30,15 @@ interface HILVideoPlayerProps {
   // Video playlist and current video
   videoPlaylist: VideoFile[];
   currentVideoIndex: number;
-  
+
   // Test execution state
   testInProgress: boolean;
   isFullScreen: boolean;
-  
+
+  // Clean video mode - shows ONLY video, no overlays at all
+  cleanVideoMode?: boolean;
+  onToggleCleanMode?: () => void;
+
   // Hardware signal detection events
   detectionEvents: Array<{
     id: number;
@@ -43,10 +49,10 @@ interface HILVideoPlayerProps {
     outcome: DetectionOutcome;
     createdAt: string;
   }>;
-  
+
   // Maximum latency threshold for pass/fail determination
   maxLatencyMs: number;
-  
+
   // Event handlers
   onVideoEnd: () => void;
   onVideoError: (error: string) => void;
@@ -54,7 +60,7 @@ interface HILVideoPlayerProps {
   onPreviousVideo: () => void;
   onToggleFullScreen: () => void;
   onVideoStart?: (videoElement: HTMLVideoElement) => void;
-  
+
   // Optional test session info
   testStartTime?: Date;
 }
@@ -64,6 +70,8 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
   currentVideoIndex,
   testInProgress,
   isFullScreen,
+  cleanVideoMode = false,
+  onToggleCleanMode,
   detectionEvents,
   maxLatencyMs,
   onVideoEnd,
@@ -82,8 +90,59 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [controlsTimeout, setControlsTimeout] = useState<NodeJS.Timeout | null>(null);
-  
+  const [clockSyncInitialized, setClockSyncInitialized] = useState(false);
+
   const currentVideo = videoPlaylist[currentVideoIndex];
+
+  // Keyboard shortcut 'C' to toggle clean video mode (no overlays)
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if ((e.key === 'c' || e.key === 'C') && onToggleCleanMode) {
+        e.preventDefault();
+        onToggleCleanMode();
+      }
+      // Also support 'Escape' to exit clean mode
+      if (e.key === 'Escape' && cleanVideoMode && onToggleCleanMode) {
+        e.preventDefault();
+        onToggleCleanMode();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [cleanVideoMode, onToggleCleanMode]);
+
+  // Initialize clock synchronization on test start
+  useEffect(() => {
+    if (testInProgress && !clockSyncInitialized) {
+      clockSyncService.synchronize()
+        .then((offset) => {
+          console.log(`[HILVideoPlayer] Clock synchronized. Offset: ${offset.toFixed(2)}ms`);
+          setClockSyncInitialized(true);
+
+          // Warn if drift is high
+          if (!clockSyncService.isDriftAcceptable()) {
+            console.warn(`[HILVideoPlayer] Clock drift detected: ${offset.toFixed(2)}ms`);
+          }
+        })
+        .catch((error) => {
+          console.error('[HILVideoPlayer] Clock sync failed:', error);
+          onVideoError('Clock sync failed - timestamps may be inaccurate');
+        });
+
+      // Re-sync every 30 seconds during test
+      const syncInterval = setInterval(() => {
+        if (testInProgress) {
+          clockSyncService.autoSyncIfNeeded();
+        }
+      }, 30000);
+
+      return () => clearInterval(syncInterval);
+    }
+  }, [testInProgress, clockSyncInitialized, onVideoError]);
   
   // Auto-hide controls in full-screen mode
   useEffect(() => {
@@ -131,11 +190,39 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
   
   const handleVideoPlay = useCallback(() => {
     setIsPlaying(true);
+
+    // Capture exact video start time with clock synchronization
+    if (videoRef.current && currentVideo) {
+      const syncedTimestamp = clockSyncService.getSynchronizedTime();
+
+      console.log('[HILVideoPlayer] VIDEO_STARTED event', {
+        videoId: currentVideo.id,
+        timestamp: syncedTimestamp,
+        testSessionId: testStartTime?.toISOString()
+      });
+
+      // Emit VIDEO_STARTED via WebSocket
+      if (websocketService.isConnected) {
+        websocketService.emit('video-lifecycle', {
+          event: 'VIDEO_STARTED',
+          sessionId: testStartTime?.toISOString() || 'unknown',
+          videoId: currentVideo.id,
+          timestamp: syncedTimestamp,
+          clockOffset: clockSyncService.getOffset(),
+          videoIndex: currentVideoIndex,
+          videoUrl: currentVideo.filePath,
+          clientTimestamp: new Date().toISOString()
+        });
+      } else {
+        console.warn('[HILVideoPlayer] WebSocket not connected - VIDEO_STARTED event not sent');
+      }
+    }
+
     // Notify parent component that video has started for timing measurement
     if (onVideoStart && videoRef.current) {
       onVideoStart(videoRef.current);
     }
-  }, [onVideoStart]);
+  }, [onVideoStart, currentVideo, currentVideoIndex, testStartTime]);
   
   const handleVideoPause = useCallback(() => {
     setIsPlaying(false);
@@ -152,13 +239,43 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
   
   const handleVideoEnded = useCallback(() => {
     setIsPlaying(false);
+
+    // Capture exact video end time with clock synchronization
+    if (videoRef.current && currentVideo) {
+      const syncedTimestamp = clockSyncService.getSynchronizedTime();
+      const duration = videoRef.current.currentTime;
+
+      console.log('[HILVideoPlayer] VIDEO_ENDED event', {
+        videoId: currentVideo.id,
+        timestamp: syncedTimestamp,
+        duration,
+        testSessionId: testStartTime?.toISOString()
+      });
+
+      // Emit VIDEO_ENDED via WebSocket
+      if (websocketService.isConnected) {
+        websocketService.emit('video-lifecycle', {
+          event: 'VIDEO_ENDED',
+          sessionId: testStartTime?.toISOString() || 'unknown',
+          videoId: currentVideo.id,
+          timestamp: syncedTimestamp,
+          duration,
+          clockOffset: clockSyncService.getOffset(),
+          videoIndex: currentVideoIndex,
+          clientTimestamp: new Date().toISOString()
+        });
+      } else {
+        console.warn('[HILVideoPlayer] WebSocket not connected - VIDEO_ENDED event not sent');
+      }
+    }
+
     onVideoEnd();
-  }, [onVideoEnd]);
+  }, [onVideoEnd, currentVideo, currentVideoIndex, testStartTime]);
   
   const handleVideoError = useCallback(() => {
     const error = videoRef.current?.error;
     let errorMessage = 'Unknown video error';
-    
+
     if (error) {
       switch (error.code) {
         case MediaError.MEDIA_ERR_ABORTED:
@@ -177,9 +294,34 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
           errorMessage = error.message || 'Video error occurred';
       }
     }
-    
+
+    // Emit VIDEO_ERROR via WebSocket
+    if (currentVideo) {
+      const syncedTimestamp = clockSyncService.getSynchronizedTime();
+
+      console.error('[HILVideoPlayer] VIDEO_ERROR event', {
+        videoId: currentVideo.id,
+        timestamp: syncedTimestamp,
+        error: errorMessage,
+        errorCode: error?.code
+      });
+
+      if (websocketService.isConnected) {
+        websocketService.emit('video-lifecycle', {
+          event: 'VIDEO_ERROR',
+          sessionId: testStartTime?.toISOString() || 'unknown',
+          videoId: currentVideo.id,
+          timestamp: syncedTimestamp,
+          error: errorMessage,
+          errorCode: error?.code,
+          videoIndex: currentVideoIndex,
+          clientTimestamp: new Date().toISOString()
+        });
+      }
+    }
+
     onVideoError(`Video error: ${errorMessage}`);
-  }, [onVideoError]);
+  }, [onVideoError, currentVideo, currentVideoIndex, testStartTime]);
   
   // Auto-play when test starts and video changes
   useEffect(() => {
@@ -257,10 +399,9 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        cursor: isFullScreen && !showControls ? 'none' : 'default'
       }}
     >
-      {/* Main Video Element */}
+      {/* Main Video Element - CLEAN: No overlays, just pure video */}
       <video
         ref={videoRef}
         src={currentVideo.filePath}
@@ -278,229 +419,6 @@ const HILVideoPlayer: React.FC<HILVideoPlayerProps> = ({
         playsInline
         preload="metadata"
       />
-      
-      {/* Video Loading Overlay */}
-      {!videoDuration && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            color: 'white'
-          }}
-        >
-          <Typography variant="h6">Loading video...</Typography>
-        </Box>
-      )}
-      
-      {/* Full-Screen Controls Overlay */}
-      <Fade in={showControls || !isFullScreen}>
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: showControls || !isFullScreen ? 'auto' : 'none',
-            background: isFullScreen 
-              ? 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.5) 100%)'
-              : 'none'
-          }}
-        >
-          {/* Top Bar - Video Info and Test Progress */}
-          <Box
-            sx={{
-              position: 'absolute',
-              top: isFullScreen ? 16 : 8,
-              left: isFullScreen ? 16 : 8,
-              right: isFullScreen ? 16 : 8,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              color: 'white',
-              zIndex: 2
-            }}
-          >
-            <Box>
-              <Typography variant={isFullScreen ? 'h5' : 'h6'} sx={{ fontWeight: 'bold' }}>
-                Video {currentVideoIndex + 1} of {videoPlaylist.length}
-              </Typography>
-              <Typography variant={isFullScreen ? 'body1' : 'body2'}>
-                {currentVideo.filename}
-              </Typography>
-              {testStartTime && (
-                <Typography variant={isFullScreen ? 'body2' : 'caption'} sx={{ opacity: 0.8 }}>
-                  Test running for {Math.floor((Date.now() - testStartTime.getTime()) / 1000)}s
-                </Typography>
-              )}
-            </Box>
-            
-            {/* Full-Screen Toggle */}
-            <Tooltip title={isFullScreen ? "Exit Full Screen" : "Enter Full Screen"}>
-              <IconButton
-                onClick={onToggleFullScreen}
-                sx={{ color: 'white' }}
-                size={isFullScreen ? 'large' : 'medium'}
-              >
-                {isFullScreen ? <FullscreenExit /> : <Fullscreen />}
-              </IconButton>
-            </Tooltip>
-          </Box>
-          
-          {/* Center Play/Pause Button */}
-          {!testInProgress && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 2
-              }}
-            >
-              <IconButton
-                onClick={togglePlayPause}
-                sx={{
-                  color: 'white',
-                  backgroundColor: 'rgba(0,0,0,0.5)',
-                  '&:hover': { backgroundColor: 'rgba(0,0,0,0.7)' }
-                }}
-                size={isFullScreen ? 'large' : 'medium'}
-              >
-                {isPlaying ? <Pause sx={{ fontSize: 48 }} /> : <PlayArrow sx={{ fontSize: 48 }} />}
-              </IconButton>
-            </Box>
-          )}
-          
-          {/* Bottom Controls Bar */}
-          <Box
-            sx={{
-              position: 'absolute',
-              bottom: isFullScreen ? 16 : 8,
-              left: isFullScreen ? 16 : 8,
-              right: isFullScreen ? 16 : 8,
-              backgroundColor: 'rgba(0,0,0,0.7)',
-              borderRadius: 2,
-              p: isFullScreen ? 2 : 1,
-              color: 'white'
-            }}
-          >
-            {/* Progress Bar */}
-            <LinearProgress
-              variant="determinate"
-              value={videoProgress}
-              sx={{
-                mb: 1,
-                backgroundColor: 'rgba(255,255,255,0.3)',
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: 'white'
-                }
-              }}
-            />
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {/* Playback Controls */}
-              <IconButton
-                onClick={onPreviousVideo}
-                disabled={currentVideoIndex === 0}
-                sx={{ color: 'white' }}
-                size="small"
-              >
-                <SkipPrevious />
-              </IconButton>
-              
-              {!testInProgress && (
-                <IconButton onClick={togglePlayPause} sx={{ color: 'white' }} size="small">
-                  {isPlaying ? <Pause /> : <PlayArrow />}
-                </IconButton>
-              )}
-              
-              <IconButton
-                onClick={onNextVideo}
-                disabled={currentVideoIndex >= videoPlaylist.length - 1}
-                sx={{ color: 'white' }}
-                size="small"
-              >
-                <SkipNext />
-              </IconButton>
-              
-              <IconButton onClick={toggleMute} sx={{ color: 'white' }} size="small">
-                {isMuted ? <VolumeOff /> : <VolumeUp />}
-              </IconButton>
-              
-              {/* Time Display */}
-              <Typography variant="body2" sx={{ minWidth: 80 }}>
-                {formatTime(videoCurrentTime)} / {formatTime(videoDuration)}
-              </Typography>
-              
-              {/* Spacer */}
-              <Box sx={{ flexGrow: 1 }} />
-              
-              {/* Test Statistics for Current Video */}
-              {testInProgress && videoEvents.length > 0 && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Typography variant="body2">
-                    <Timeline sx={{ fontSize: 16, mr: 0.5 }} />
-                    {videoEvents.length} events
-                  </Typography>
-                  <Typography variant="body2" color="success.light">
-                    ✓ {passedEvents.length}
-                  </Typography>
-                  <Typography variant="body2" color="error.light">
-                    ✗ {failedEvents.length}
-                  </Typography>
-                  <Typography variant="body2">
-                    Avg: {averageLatency.toFixed(1)}ms
-                  </Typography>
-                </Box>
-              )}
-              
-              {/* Overall Test Progress */}
-              {testInProgress && (
-                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                  {Math.round((currentVideoIndex / videoPlaylist.length) * 100)}% Complete
-                </Typography>
-              )}
-            </Box>
-          </Box>
-        </Box>
-      </Fade>
-      
-      {/* Test Status Alerts */}
-      {testInProgress && videoEvents.length > 0 && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: isFullScreen ? 100 : 60,
-            right: isFullScreen ? 16 : 8,
-            maxWidth: 300,
-            zIndex: 3
-          }}
-        >
-          {/* Recent high latency alert */}
-          {failedEvents.slice(-1).map(event => (
-            <Alert 
-              key={event.id}
-              severity="warning" 
-              sx={{ 
-                mb: 1,
-                backgroundColor: 'rgba(255, 152, 0, 0.9)',
-                color: 'white',
-                '& .MuiAlert-icon': { color: 'white' }
-              }}
-            >
-              High latency detected: {event.latencyMs?.toFixed(1)}ms (max: {maxLatencyMs}ms)
-            </Alert>
-          ))}
-        </Box>
-      )}
     </Box>
   );
 };

@@ -8,6 +8,7 @@ to the correct rooms with proper payload structure.
 CRITICAL FIX: Verifies video_id filtering and multi-video sequence support.
 """
 
+import os
 import pytest
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
@@ -422,7 +423,7 @@ class TestDetectionWebSocketEmission:
                 pytest.fail(f"WebSocket emission should handle errors gracefully: {e}")
 
         # Verify detection still in database
-        stored_detection = test_db.query(DetectionEvent).filter_by(id=detection.id).first()
+        stored_detection = test_db.execute(select(DetectionEvent).filter_by(id=detection.id)).scalar_one_or_none()
         assert stored_detection is not None
 
     async def test_websocket_room_subscription(self, test_session: TestSession):

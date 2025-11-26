@@ -5,15 +5,15 @@
 cd /home/rigade/Testing/ai-model-validation-platform/backend
 
 echo "=== STOPPING BACKEND ==="
-pkill -f "uvicorn main:app" || echo "No backend running"
-pkill -f "python main.py" || echo "No python main running"
+fuser -k 8000/tcp || echo "Port 8000 is free"
+pkill -f "ai-model-validation-platform/backend" || echo "No backend running"
 
 echo "Waiting for cleanup..."
 sleep 2
 
 echo ""
 echo "=== STARTING BACKEND WITH FIXES ACTIVE ==="
-nohup python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload > ../logs/backend_fixed.log 2>&1 &
+nohup /home/rigade/Testing/ai-model-validation-platform/backend/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload > ../logs/backend_fixed.log 2>&1 &
 
 echo "Waiting for startup..."
 sleep 3

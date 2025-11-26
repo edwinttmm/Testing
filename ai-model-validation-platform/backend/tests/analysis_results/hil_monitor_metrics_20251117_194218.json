@@ -1,0 +1,95 @@
+{
+  "system_name": "HIL Monitor (labjack_monitoring_service)",
+  "test_duration_seconds": 62.170267820358276,
+  "thread_profiles": [
+    {
+      "thread_id": 139253859381376,
+      "thread_name": "MainThread",
+      "is_daemon": false,
+      "is_alive": true,
+      "cpu_time": 0.0
+    },
+    {
+      "thread_id": 139253798401728,
+      "thread_name": "Thread-1 (_monitor_loop)",
+      "is_daemon": true,
+      "is_alive": true,
+      "cpu_time": 0.0
+    }
+  ],
+  "main_thread_cpu_percent": 0.0,
+  "worker_thread_cpu_percent": 0.0,
+  "thread_communication_method": "Direct in-process calls",
+  "thread_safety_mechanisms": [
+    "threading.Event",
+    "threading.Thread"
+  ],
+  "avg_cpu_percent": 1.6500000000000001,
+  "peak_cpu_percent": 9.9,
+  "avg_memory_mb": 103.47786458333333,
+  "peak_memory_mb": 103.64453125,
+  "memory_growth_mb": 38.68359375,
+  "resource_snapshots": [
+    {
+      "timestamp": 1763408416.3740535,
+      "cpu_percent": 0.0,
+      "memory_mb": 102.64453125,
+      "thread_count": 10,
+      "open_files": 0
+    },
+    {
+      "timestamp": 1763408426.39255,
+      "cpu_percent": 0.0,
+      "memory_mb": 103.64453125,
+      "thread_count": 10,
+      "open_files": 0
+    },
+    {
+      "timestamp": 1763408436.4441767,
+      "cpu_percent": 0.0,
+      "memory_mb": 103.64453125,
+      "thread_count": 10,
+      "open_files": 0
+    },
+    {
+      "timestamp": 1763408446.4983914,
+      "cpu_percent": 0.0,
+      "memory_mb": 103.64453125,
+      "thread_count": 10,
+      "open_files": 0
+    },
+    {
+      "timestamp": 1763408456.5419266,
+      "cpu_percent": 0.0,
+      "memory_mb": 103.64453125,
+      "thread_count": 10,
+      "open_files": 0
+    },
+    {
+      "timestamp": 1763408468.393649,
+      "cpu_percent": 9.9,
+      "memory_mb": 103.64453125,
+      "thread_count": 10,
+      "open_files": 0
+    }
+  ],
+  "avg_detection_latency_ms": 0,
+  "p50_latency_ms": 0,
+  "p95_latency_ms": 0,
+  "p99_latency_ms": 0,
+  "max_latency_ms": 0,
+  "latency_measurements": [],
+  "connection_drops": 0,
+  "retry_attempts": 0,
+  "recovery_time_ms": 0,
+  "error_count": 0,
+  "failover_behavior": "Thread restart on failure",
+  "total_detections": 100,
+  "missed_detections": 0,
+  "false_positives": 0,
+  "detection_accuracy_percent": 100.0,
+  "uptime_percent": 100.0,
+  "crashes": 0,
+  "memory_leaks_detected": false,
+  "performance_degradation_percent": 0
+}

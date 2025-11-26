@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import SessionLocal
 from models import TestSession, DetectionEvent as DBDetectionEvent
 from datetime import datetime
-from services.labjack_detection_service import get_detection_service
+from services.simple_labjack_detection import get_detection_service
 import json
 
 def test_multi_video_latency_fix():
@@ -30,15 +30,15 @@ def test_multi_video_latency_fix():
     db = SessionLocal()
     try:
         # Find a multi-video session with detections
-        sessions = db.query(TestSession).filter(
+        sessions = db.execute(select(TestSession).where(
             TestSession.sequence_id.isnot(None)
-        ).all()
+        )).scalars().all()
 
         test_session = None
         for session in sessions:
-            det_count = db.query(DBDetectionEvent).filter(
+            det_count = session.execute(select(func.count()).select_from(DBDetectionEvent).where(
                 DBDetectionEvent.test_session_id == session.id
-            ).count()
+            )).scalar()
 
             if det_count > 0:
                 metadata = session.sequence_metadata

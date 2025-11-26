@@ -158,12 +158,13 @@ export const safeVideoPlay = async (videoElement: HTMLVideoElement | null, optio
   });
 
   try {
-    // Check if video is ready to play
-    if (videoElement.readyState < HTMLMediaElement.HAVE_METADATA) {
-      console.log('🔍 DEBUG: Video metadata not loaded, readyState:', videoElement.readyState);
-      return { success: false, error: new Error('Video metadata not loaded') };
+    // Check if video has enough data to play
+    // HAVE_CURRENT_DATA (2) ensures we have buffered data for the current playback position
+    if (videoElement.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      console.log('🔍 DEBUG: Video not ready for playback, readyState:', videoElement.readyState, 'Need:', HTMLMediaElement.HAVE_CURRENT_DATA);
+      return { success: false, error: new Error('Video not ready for playback') };
     }
-    console.log('🔍 DEBUG: Video metadata is loaded, proceeding with playback');
+    console.log('🔍 DEBUG: Video ready for playback, proceeding');
 
     const { forceMuted = false, userInitiated = false, retryWithMuted = true } = options;
     

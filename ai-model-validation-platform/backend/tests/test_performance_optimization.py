@@ -16,7 +16,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest.mock import Mock, patch
 import logging
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 
 # Import application components
@@ -217,7 +217,7 @@ class PerformanceTestSuite:
     
     def test_query_execution_plan_validation(self):
         """Validate query execution plans for efficiency"""
-        from sqlalchemy import text
+        from sqlalchemy import create_engine, text, select, delete, update, func
         
         # Test the optimized projects query execution plan
         with engine.connect() as conn:

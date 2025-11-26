@@ -1,0 +1,220 @@
+================================================================================
+CIRCULAR IMPORT DEPENDENCY ANALYSIS REPORT
+================================================================================
+
+SERVICES IMPORTING OTHER SERVICES:
+--------------------------------------------------------------------------------
+
+backward_compatibility_layer.py:
+  -> services.hybrid_event_synchronization
+  -> services.hybrid_session_manager
+
+dedicated_labjack_monitor.py:
+  -> services.detection_metrics
+  -> services.detection_window_clamp_service
+  -> services.hil_screenshot_service
+  -> services.labjack_detection_service
+  -> services.labjack_service
+  -> services.timing_synchronization_service
+  -> services.video_timing_service
+  -> services.websocket_rooms
+  -> services.windows_labjack_bridge
+
+dedicated_monitoring_service.py:
+  -> services.signal_validation_service
+  -> services.signal_validation_wsl
+
+detection_database_integration.py:
+  -> services.labjack_detection_service
+
+detection_pipeline_service.py:
+  -> services.websocket_service
+
+enhanced_video_processing_service.py:
+  -> services.ground_truth_service
+  -> services.results_storage_pipeline_service
+  -> services.signal_validation_service
+  -> services.websocket_service
+
+ground_truth_matching_service.py:
+  -> services.match_validator
+  -> services.optimal_matching_service
+  -> services.quality_warnings
+
+hil_screenshot_service.py:
+  -> services.detection_pipeline_service
+  -> services.ground_truth_matching_service
+  -> services.video_timing_service
+
+hil_validation_service.py:
+  -> services.labjack_service
+
+hybrid_conflict_resolver.py:
+  -> services.hybrid_event_synchronization
+
+hybrid_event_synchronization.py:
+  -> services.video_timing_service
+
+hybrid_session_manager.py:
+  -> services.dedicated_labjack_monitor
+  -> services.labjack_detection_service
+  -> services.labjack_service
+  -> services.video_timing_service
+
+labjack_connection_manager.py:
+  -> services.ljm_helpers
+
+labjack_detection_service.py:
+  -> services.detection_queue_service
+  -> services.labjack_connection_manager
+  -> services.labjack_hardware_service
+  -> services.labjack_service
+  -> services.video_id_resolver
+  -> services.video_sequence_orchestrator
+
+labjack_hardware_service.py:
+  -> services.ljm_helpers
+
+labjack_service.py:
+  -> services.ljm_helpers
+  -> services.mock_labjack
+
+latency_validation_service.py:
+  -> services.labjack_detection_service
+  -> services.video_timing_service
+
+match_validator.py:
+  -> services.ground_truth_matching_service
+
+pre_annotation_service.py:
+  -> services.video_annotation_service
+
+raw_labjack_integration.py:
+  -> services.dedicated_labjack_monitor
+  -> services.labjack_detection_service
+  -> services.raw_labjack_compression
+  -> services.raw_labjack_logger
+
+raw_labjack_logger.py:
+  -> services.labjack_service
+  -> services.raw_labjack_compression
+
+real_labjack_service.py:
+  -> services.ljm_helpers
+
+report_generation_service.py:
+  -> services.failure_snapshot_service
+  -> services.test_report_generator
+
+results_storage_pipeline_service.py:
+  -> services.detection_results_service
+  -> services.signal_validation_service
+  -> services.websocket_enhanced
+  -> services.websocket_service
+
+session_completion_service.py:
+  -> services.detection_video_reassignment
+  -> services.ground_truth_matching_service
+  -> services.labjack_monitor_manager
+  -> services.sequence_video_metrics_aggregator
+  -> services.test_execution_service
+
+signal_validation_service.py:
+  -> services.mock_labjack
+
+test_execution_service.py:
+  -> services.latency_validation_service
+
+test_results_processor.py:
+  -> services.detection_video_reassignment
+  -> services.ground_truth_matching_service
+  -> services.report_generation_service
+
+timing_orchestration_service.py:
+  -> services.labjack_service
+  -> services.precision_timing_service
+  -> services.video_timing_service
+
+timing_validation_service.py:
+  -> services.labjack_hardware_service
+  -> services.video_hardware_sync_service
+
+validation_analysis_service.py:
+  -> services.project_management_service
+
+validation_service.py:
+  -> services.ground_truth_matching_service
+
+video_hardware_sync_service.py:
+  -> services.labjack_hardware_service
+
+video_ingestion_service.py:
+  -> services.vru_tracking_service
+
+video_lifecycle_websocket_handlers.py:
+  -> services.video_lifecycle_orchestrator
+
+video_processing_queue.py:
+  -> services.video_ingestion_service
+
+video_sequence_orchestrator.py:
+  -> services.clock_sync_service
+  -> services.dedicated_labjack_monitor
+  -> services.unified_state_service
+  -> services.video_timing_service
+
+TEST FILES WITH DIRECT SERVICE/MODEL IMPORTS:
+--------------------------------------------------------------------------------
+
+High-risk files (3 files with >5 module-level imports):
+
+  test_end_to_end_validation.py (7 imports):
+    Line 30: from services.labjack_service import LabJackService, ConnectionMode
+    Line 31: from services.dedicated_labjack_monitor import DedicatedLabJackMonitor
+    Line 32: from services.labjack_detection_service import LabJackDetectionMonitor
+    Line 33: from services.video_timing_service import VideoTimingService
+    Line 34: from services.hil_validation_service import HILValidationService
+    Line 37: from database import get_db, engine
+    Line 38: from models import TestSession, DetectionEvent, Video
+
+  test_integration_production_fixes.py (6 imports):
+    Line 35: from models import TestSession, DetectionEvent, GroundTruthObject, DetectionComparison, SequenceVideoResult
+    Line 36: from services.session_completion_service import complete_test_session
+    Line 37: from services.ground_truth_matching_service import match_detections_to_ground_truth
+    Line 38: from services.detection_buffer import detection_buffer
+    Line 39: from services.session_monitor import SessionMonitor
+    Line 50: from database import SessionLocal
+
+  test_labjack_hybrid_logging_system.py (8 imports):
+    Line 43: from services.labjack_service import LabJackService, ConnectionMode, ConnectionStatus
+    Line 44: from services.dedicated_labjack_monitor import DedicatedLabJackMonitor
+    Line 45: from services.labjack_detection_service import LabJackDetectionMonitor, DetectionEvent
+    Line 46: from services.labjack_hardware_service import get_labjack_hardware_service
+    Line 47: from services.video_timing_service import VideoTimingService
+    Line 48: from services.hil_validation_service import HILValidationService
+    Line 51: from database import get_db, engine
+    Line 52: from models import TestSession, DetectionEvent as DBDetectionEvent, Video
+
+================================================================================
+RECOMMENDATIONS:
+================================================================================
+
+1. LAZY LOADING: Move imports inside test functions for heavy modules
+   - Instead of: from services.video_service import VideoService (at top)
+   - Use: from services.video_service import VideoService (inside function)
+
+2. TYPE_CHECKING: Use for type annotations only
+   - from typing import TYPE_CHECKING
+   - if TYPE_CHECKING: from services.xyz import XYZ
+   - Use string annotations: def func(x: 'XYZ')
+
+3. REORGANIZE: Extract shared utilities to separate modules
+   - Move circular dependencies to a common/utils module
+   - Use dependency injection patterns
+
+4. MOCK IMPORTS: For tests, use mocks instead of real imports
+   - Use unittest.mock for testing without importing actual services
+
+5. FIX SERVICE CROSS-IMPORTS: Services importing other services
+   - Use factory patterns or dependency injection
+   - Pass dependencies as function parameters

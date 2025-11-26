@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import text
+from sqlalchemy import text, select, delete, update, func
 from sqlalchemy.orm import Session
 
 from models import (
@@ -242,9 +242,9 @@ class TestGroundTruthPersistence:
         session_id = test_session_standard.id
 
         # BEFORE: Verify no validation results set
-        detections_before = test_db.query(DetectionEvent).filter(
+        detections_before = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         assert len(detections_before) == 5
         for det in detections_before:
@@ -259,9 +259,9 @@ class TestGroundTruthPersistence:
         assert metrics.true_positives > 0, "Should have TP detections"
 
         # AFTER: Verify detection_events table updated
-        detections_after = test_db.query(DetectionEvent).filter(
+        detections_after = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         # Count validation results
         tp_count = sum(1 for d in detections_after if d.validation_result == 'TP')
@@ -279,9 +279,9 @@ class TestGroundTruthPersistence:
                 f"TP detection {det.id} missing ground_truth_match_id"
 
             # Verify ground_truth_match_id points to valid GT object
-            gt_obj = test_db.query(GroundTruthObject).filter(
+            gt_obj = test_db.execute(select(GroundTruthObject).where(
                 GroundTruthObject.id == det.ground_truth_match_id
-            ).first()
+            )).scalar_one_or_none()
             assert gt_obj is not None, \
                 f"TP detection {det.id} has invalid ground_truth_match_id"
 
@@ -310,19 +310,19 @@ class TestGroundTruthPersistence:
         assert metrics.false_negatives > 0, "Should have missed ground truth objects (FN)"
 
         # FN should NOT appear in detection_events
-        fn_in_detections = test_db.query(DetectionEvent).filter(
+        fn_in_detections = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id,
             DetectionEvent.validation_result == 'FN'
-        ).all()
+        )).scalars().all()
 
         assert len(fn_in_detections) == 0, \
             "FN should not be in detection_events (only TP/FP for actual detections)"
 
         # FN should appear in detection_comparisons
-        fn_comparisons = test_db.query(DetectionComparison).filter(
+        fn_comparisons = test_db.execute(select(DetectionComparison).where(
             DetectionComparison.test_session_id == session_id,
             DetectionComparison.match_type == 'FN'
-        ).all()
+        )).scalars().all()
 
         assert len(fn_comparisons) == metrics.false_negatives, \
             f"Expected {metrics.false_negatives} FN in comparisons, got {len(fn_comparisons)}"
@@ -350,9 +350,9 @@ class TestGroundTruthPersistence:
         assert metrics is not None
 
         # Count from detection_events
-        detections = test_db.query(DetectionEvent).filter(
+        detections = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         tp_count = sum(1 for d in detections if d.validation_result == 'TP')
         fp_count = sum(1 for d in detections if d.validation_result == 'FP')
@@ -375,17 +375,17 @@ class TestGroundTruthPersistence:
 
         session_id = "2a946b2d-64f0-4c92-a597-f0b65a809e6a"
 
-        session = test_db.query(TestSession).filter(
+        session = test_db.execute(select(TestSession).where(
             TestSession.id == session_id
-        ).first()
+        )).scalar_one_or_none()
 
         if session is None:
             pytest.skip(f"Session {session_id} not found in test database")
 
         # Get detection count before matching
-        detections_before = test_db.query(DetectionEvent).filter(
+        detections_before = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         if len(detections_before) == 0:
             pytest.skip(f"No detection events for session {session_id}")
@@ -397,9 +397,9 @@ class TestGroundTruthPersistence:
             pytest.skip(f"Matching returned None (likely no ground truth)")
 
         # Verify detection_events updated
-        detections_after = test_db.query(DetectionEvent).filter(
+        detections_after = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         # All detections should have validation_result
         validated_count = sum(
@@ -431,9 +431,9 @@ class TestGroundTruthPersistence:
         session_id = test_session_standard.id
 
         # Verify detections not yet validated
-        detections_before = test_db.query(DetectionEvent).filter(
+        detections_before = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         assert all(d.validation_result is None for d in detections_before)
 
@@ -449,9 +449,9 @@ class TestGroundTruthPersistence:
         assert metrics is not None
 
         # Verify detection_events updated after completion
-        detections_after = test_db.query(DetectionEvent).filter(
+        detections_after = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         validated_count = sum(
             1 for d in detections_after
@@ -478,9 +478,9 @@ class TestGroundTruthPersistence:
         # (In production: POST /api/sessions/{session_id}/match)
 
         # BEFORE: No validation results
-        detections_before = test_db.query(DetectionEvent).filter(
+        detections_before = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         assert all(d.validation_result is None for d in detections_before)
 
@@ -493,9 +493,9 @@ class TestGroundTruthPersistence:
         assert metrics is not None, "Manual trigger should return metrics"
 
         # VERIFY: Detection events updated
-        detections_after = test_db.query(DetectionEvent).filter(
+        detections_after = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         tp_count = sum(1 for d in detections_after if d.validation_result == 'TP')
         fp_count = sum(1 for d in detections_after if d.validation_result == 'FP')
@@ -522,9 +522,9 @@ class TestGroundTruthPersistence:
         assert metrics1 is not None
 
         # Verify results exist
-        detections1 = test_db.query(DetectionEvent).filter(
+        detections1 = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         tp_count1 = sum(1 for d in detections1 if d.validation_result == 'TP')
         assert tp_count1 > 0
@@ -545,9 +545,9 @@ class TestGroundTruthPersistence:
         assert metrics2 is not None
 
         # Verify results updated
-        detections2 = test_db.query(DetectionEvent).filter(
+        detections2 = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         tp_count2 = sum(1 for d in detections2 if d.validation_result == 'TP')
 
@@ -572,10 +572,10 @@ class TestGroundTruthPersistence:
         assert metrics is not None
 
         # Get TP detections
-        tp_detections = test_db.query(DetectionEvent).filter(
+        tp_detections = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id,
             DetectionEvent.validation_result == 'TP'
-        ).all()
+        )).scalars().all()
 
         assert len(tp_detections) > 0
 
@@ -584,9 +584,9 @@ class TestGroundTruthPersistence:
             assert det.ground_truth_match_id is not None
 
             # Get matched GT object
-            matched_gt = test_db.query(GroundTruthObject).filter(
+            matched_gt = test_db.execute(select(GroundTruthObject).where(
                 GroundTruthObject.id == det.ground_truth_match_id
-            ).first()
+            )).scalar_one_or_none()
 
             assert matched_gt is not None
 
@@ -624,9 +624,9 @@ class TestGroundTruthPersistence:
         assert metrics.false_positives == len(detection_events_mixed)
 
         # All detections should be marked as FP
-        detections = test_db.query(DetectionEvent).filter(
+        detections = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         for det in detections:
             assert det.validation_result == 'FP', \
@@ -680,18 +680,18 @@ class TestPersistenceEdgeCases:
         assert metrics is not None
 
         # Only ONE detection should match (first-match wins)
-        tp_count = test_db.query(DetectionEvent).filter(
+        tp_count = test_db.execute(select(func.count()).select_from(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id,
             DetectionEvent.validation_result == 'TP'
-        ).count()
+        )).scalar()
 
         assert tp_count == 1, "Only one detection should match to the same GT object"
 
         # Other two should be FP
-        fp_count = test_db.query(DetectionEvent).filter(
+        fp_count = test_db.execute(select(func.count()).select_from(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id,
             DetectionEvent.validation_result == 'FP'
-        ).count()
+        )).scalar()
 
         assert fp_count == 2, "Remaining detections should be FP"
 
@@ -709,9 +709,9 @@ class TestPersistenceEdgeCases:
 
         # Store original field values
         original_data = {}
-        detections_before = test_db.query(DetectionEvent).filter(
+        detections_before = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         for det in detections_before:
             original_data[det.id] = {
@@ -726,9 +726,9 @@ class TestPersistenceEdgeCases:
         matching_service.match_detections_to_ground_truth(session_id)
 
         # Verify other fields unchanged
-        detections_after = test_db.query(DetectionEvent).filter(
+        detections_after = test_db.execute(select(DetectionEvent).where(
             DetectionEvent.test_session_id == session_id
-        ).all()
+        )).scalars().all()
 
         for det in detections_after:
             original = original_data[det.id]

@@ -45,7 +45,7 @@ def test_clock_sync_service():
     print("\n📋 Testing Clock Sync Service...")
 
     try:
-        from services.clock_sync_service import (
+        from services.clock_sync_service_v2 import (
             validate_clock_sync,
             ClockSkewError,
             log_clock_drift_metrics
@@ -152,7 +152,7 @@ def main():
     print("\n📋 Task 4: SocketIO Clock Skew Validation")
     socketio_path = os.path.join(backend_root, 'socketio_server.py')
     patterns = {
-        'from services.clock_sync_service import validate_clock_sync': 'validate_clock_sync import',
+        'from services.clock_sync_service_v2 import validate_clock_sync': 'validate_clock_sync import',
         'ClockSkewError': 'ClockSkewError import/usage',
         'log_clock_drift_metrics': 'Drift metrics logging',
         'validate_clock_sync(': 'Validation function call'

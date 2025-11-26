@@ -1,0 +1,98 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  detailed:
+    format: '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+  json:
+    class: pythonjsonlogger.jsonlogger.JsonFormatter
+    format: '%(asctime)s %(levelname)s %(name)s %(funcName)s %(lineno)d %(message)s'
+
+  simple:
+    format: '%(levelname)s | %(name)s | %(message)s'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: detailed
+    level: INFO
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.RotatingFileHandler
+    filename: logs/hil-detection.log
+    maxBytes: 104857600  # 100MB
+    backupCount: 10
+    formatter: json
+    level: DEBUG
+
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    filename: logs/hil-errors.log
+    maxBytes: 104857600  # 100MB
+    backupCount: 5
+    formatter: json
+    level: ERROR
+
+  detection_events_file:
+    class: logging.handlers.RotatingFileHandler
+    filename: logs/detection-events.log
+    maxBytes: 52428800  # 50MB
+    backupCount: 20
+    formatter: json
+    level: DEBUG
+
+  websocket_file:
+    class: logging.handlers.RotatingFileHandler
+    filename: logs/websocket.log
+    maxBytes: 52428800  # 50MB
+    backupCount: 10
+    formatter: json
+    level: DEBUG
+
+loggers:
+  services.dedicated_labjack_monitor:
+    level: DEBUG
+    handlers: [console, file, error_file]
+    propagate: false
+
+  services.labjack_detection_service:
+    level: DEBUG
+    handlers: [console, file, detection_events_file, error_file]
+    propagate: false
+
+  services.detection_queue_service:
+    level: DEBUG
+    handlers: [console, file, error_file]
+    propagate: false
+
+  routers.hil_testing:
+    level: INFO
+    handlers: [console, file, error_file]
+    propagate: false
+
+  routers.video_sequence_testing:
+    level: INFO
+    handlers: [console, file, error_file]
+    propagate: false
+
+  services.websocket_rooms:
+    level: INFO
+    handlers: [console, websocket_file, error_file]
+    propagate: false
+
+  services.video_timing_service:
+    level: DEBUG
+    handlers: [console, file, error_file]
+    propagate: false
+
+  services.timing_synchronization_service:
+    level: DEBUG
+    handlers: [console, file, error_file]
+    propagate: false
+
+root:
+  level: INFO
+  handlers: [console, file, error_file]

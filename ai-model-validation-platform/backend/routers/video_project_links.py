@@ -138,6 +138,14 @@ async def get_project_videos(
                 Annotation.video_id == video.id
             ).scalar() or 0
             
+            # FIX: Construct HTTP URL instead of using filesystem path
+            # video.file_path contains absolute filesystem path, which frontend can't access
+            # Always construct proper HTTP URL for frontend consumption
+            video_url = getattr(video, 'url', None)
+            if not video_url or not video_url.startswith('http'):
+                # Construct HTTP URL from filename
+                video_url = f"http://localhost:8000/uploads/{video.filename}"
+
             video_file = VideoFile(
                 id=video.id,
                 filename=video.filename,
@@ -146,7 +154,7 @@ async def get_project_videos(
                 size=video.file_size,
                 status=video.status,
                 createdAt=video.created_at.isoformat() if video.created_at else None,
-                url=getattr(video, 'url', None) or video.file_path or f"/uploads/{video.filename}",
+                url=video_url,
                 # Additional metadata
                 isShared=linked_projects > 1,
                 linkedProjectCount=linked_projects,

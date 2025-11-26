@@ -9,13 +9,14 @@ Tests the core functionality of multi-video sequential testing including:
 - Sequence-level aggregation
 """
 
+import os
 import pytest
 import time
 from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime
 
 # Import the orchestrator
-from services.video_sequence_orchestrator import (
+from services.video_lifecycle_orchestrator import (
     VideoSequenceOrchestrator,
     VideoSequenceOrchestratorError,
     SequenceStatus,

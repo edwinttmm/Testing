@@ -40,8 +40,8 @@ try:
     from database import SessionLocal, get_db, get_database_health
     from models import Base, Project, Video, TestSession, DetectionEvent, GroundTruthObject
     from main import app
-    from services.enhanced_ml_service import EnhancedMLService
-    from services.validation_service import ValidationService
+    from services.ml_generation_service import EnhancedMLService
+    from services.detection_validation_service import ValidationService
     from services.project_management_service import ProjectManager as ProjectManagementService
     from services.video_processing_service import VideoProcessingService
     from services.websocket_service import WebSocketService

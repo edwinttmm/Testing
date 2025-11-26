@@ -1,0 +1,139 @@
+@startuml Frontend Architecture
+!theme plain
+title Frontend Architecture - React Application
+skinparam backgroundColor #FEFEFE
+
+' Define colors
+skinparam package {
+    BackgroundColor #E3F2FD
+}
+skinparam component {
+    BackgroundColor #BBDEFB
+}
+
+' Pages Layer
+package "Pages (Views)" {
+    component [Dashboard] as pg_dashboard
+    component [Projects] as pg_projects
+    component [Test Execution] as pg_test
+    component [HIL Results] as pg_results
+    component [Ground Truth] as pg_gt
+    component [Annotation\nValidation] as pg_annotation
+    component [Settings] as pg_settings
+}
+
+' Components Layer
+package "Core Components" {
+    package "Video Components" {
+        component [SequentialVideoPlayer] as c_seqvideo
+        component [EnhancedVideoPlayer] as c_enhvideo
+        component [HILVideoPlayer] as c_hilvideo
+        component [VideoViewport] as c_viewport
+    }
+
+    package "Detection & Results" {
+        component [FrameCorrelationTimeline] as c_timeline
+        component [DetectionResultsPanel] as c_detpanel
+        component [GroundTruthComparison] as c_gtcomp
+        component [MetricsSummaryCards] as c_metrics
+    }
+
+    package "Hardware Integration" {
+        component [LabJackStatusPanel] as c_labjack
+        component [HardwareSignalPanel] as c_signal
+        component [TimingMetricsPanel] as c_timing
+    }
+
+    package "Annotation Tools" {
+        component [AnnotationCanvas] as c_canvas
+        component [AnnotationToolbar] as c_toolbar
+        component [BoundingBoxEditor] as c_bbox
+    }
+
+    package "UI Components" {
+        component [ErrorBoundary] as c_error
+        component [LoadingState] as c_loading
+        component [ResponsiveContainer] as c_responsive
+    }
+}
+
+' Services Layer
+package "Services" {
+    component [apiService] as s_api
+    component [websocketService] as s_ws
+    component [hilTestService] as s_hil
+    component [groundTruthService] as s_gt
+    component [timingService] as s_timing
+    component [detectionService] as s_detection
+}
+
+' Hooks Layer
+package "Custom Hooks" {
+    component [useWebSocket] as h_ws
+    component [useDetection] as h_det
+    component [useHILTestExecution] as h_hil
+    component [useVideoPlayer] as h_video
+    component [useErrorHandler] as h_error
+}
+
+' State Management
+package "State Management" {
+    component [React Context] as state_ctx
+    component [Local State\n(useState)] as state_local
+    component [Memoization\n(useMemo/useCallback)] as state_memo
+}
+
+' External Communication
+cloud "Backend API" as backend {
+    component [REST Endpoints] as api_rest
+    component [WebSocket Server] as api_ws
+}
+
+' Connections
+pg_dashboard --> c_metrics
+pg_dashboard --> s_api
+pg_test --> c_seqvideo
+pg_test --> c_labjack
+pg_test --> c_timing
+pg_results --> c_timeline
+pg_results --> c_gtcomp
+pg_results --> c_detpanel
+pg_gt --> c_gtcomp
+pg_annotation --> c_canvas
+pg_annotation --> c_toolbar
+
+c_seqvideo --> h_video
+c_labjack --> h_ws
+c_timeline --> s_gt
+c_detpanel --> s_detection
+
+h_ws --> s_ws
+h_hil --> s_hil
+h_det --> s_detection
+
+s_api --> api_rest
+s_ws --> api_ws
+s_hil --> api_rest
+s_hil --> api_ws
+
+state_ctx --> pg_dashboard
+state_local --> c_seqvideo
+state_memo --> c_timeline
+
+' Notes
+note right of s_ws
+    Real-time Updates:
+    - Detection events
+    - Test progress
+    - Hardware status
+    - Live metrics
+end note
+
+note right of c_timeline
+    Many-to-One GT Matching:
+    - Direct (green): ±2 frames
+    - Extended (blue): ±5 frames
+    - No Match (red): Missed
+end note
+
+@enduml

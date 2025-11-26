@@ -15,6 +15,7 @@ Test Coverage:
 8. New features are purely additive
 """
 
+import os
 import pytest
 import asyncio
 import json
@@ -23,7 +24,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Any, Optional
 from unittest.mock import Mock, patch, AsyncMock
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, select, delete, update, func
 import httpx
 
 # Test framework imports
@@ -34,7 +35,7 @@ from fastapi import status
 from main import app
 from database import get_db, engine
 from models import TestSession, DetectionEvent, Project, Video, GroundTruthObject
-from services.labjack_service import LabJackService, ConnectionMode
+from services.labjack_service_manager import LabJackService, ConnectionMode
 from services.dedicated_labjack_monitor import get_dedicated_labjack_monitor
 from api.hil_test_complete import HILTestManager
 from src.api.enhanced_hil_results_endpoints import get_corrected_hil_results
@@ -324,7 +325,7 @@ class TestBackwardCompatibility:
         
         # Test that existing environment variables are still supported
         import os
-        from services.labjack_service import BridgeConfig
+        from services.labjack_service_manager import BridgeConfig
         
         # Test bridge config with environment variables
         old_host = os.environ.get("LABJACK_BRIDGE_HOST")
@@ -382,11 +383,11 @@ class TestBackwardCompatibility:
         db_session.commit()
         
         # Test that queries work with mixed legacy/enhanced data
-        session = db_session.query(TestSession).filter(TestSession.id == "migration-test-123").first()
+        session = db_session.execute(select(TestSession).where(TestSession.id == "migration-test-123")).scalar_one_or_none()
         assert session is not None
         assert session.name == "Migration Test Session"
         
-        event = db_session.query(DetectionEvent).filter(DetectionEvent.id == "legacy-event-1").first()
+        event = db_session.execute(select(DetectionEvent).where(DetectionEvent.id == "legacy-event-1")).scalar_one_or_none()
         assert event is not None
         assert event.actual_latency_ms == 85.3
         
@@ -591,7 +592,7 @@ class TestAsyncBackwardCompatibility:
     async def test_detection_service_integration(self):
         """Test detection service integration maintains compatibility"""
         
-        from services.labjack_detection_service import get_detection_service
+        from services.simple_labjack_detection import get_detection_service
         
         detection_service = get_detection_service()
         

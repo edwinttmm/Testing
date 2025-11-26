@@ -1,0 +1,141 @@
+@startuml HIL Test Workflow
+!theme plain
+title Hardware-in-the-Loop (HIL) Test Workflow
+skinparam backgroundColor #FEFEFE
+
+|Test Engineer|
+start
+:Select Project;
+:Select Video with\nGround Truth;
+
+|System|
+:Validate Ground Truth\nAvailability;
+
+if (Ground Truth Ready?) then (yes)
+    :Create Test Session;
+else (no)
+    :Show Warning;
+    |Test Engineer|
+    :Generate/Upload\nGround Truth;
+    |System|
+endif
+
+|Test Engineer|
+:Configure Test Parameters;
+note right
+    - Latency threshold (ms)
+    - Tolerance window
+    - Precision timing
+end note
+
+:Click "Start Test";
+
+|System|
+:Initialize LabJack Monitor;
+note right
+    Dedicated process with
+    exclusive device access
+end note
+
+:Record T0 (Command Start);
+:Send Video Play Command;
+
+|Frontend|
+:Load Video;
+:Start Playback;
+:Record T1 (Presentation Start);
+:Send Lifecycle Event;
+
+|System|
+:Calculate Presentation Delay;
+note right
+    Presentation Delay = T1 - T0
+    (Browser rendering time)
+end note
+
+fork
+    |LabJack Monitor|
+    :Stream Voltage (200 Hz);
+    repeat
+        :Read Voltage Sample;
+        if (Voltage > 2.5V?) then (yes)
+            :Check Debounce (10ms);
+            if (Valid Detection?) then (yes)
+                :Create Detection Event;
+                :Record LabJack Timestamp;
+                :Store in Database;
+            endif
+        endif
+    repeat while (Video Playing?)
+fork again
+    |Frontend|
+    :Play Video Frames;
+    :Send Progress Updates;
+    :Track Frame Numbers;
+end fork
+
+|Frontend|
+:Video Playback Complete;
+:Send VIDEO_END Event;
+
+|System|
+:Stop LabJack Monitoring;
+:Collect All Detection Events;
+:Load Ground Truth Objects;
+
+:Run Correlation Algorithm;
+note right
+    Algorithm Selection:
+    1. If det < 95% of GT: Many-to-One
+    2. If > 1000 elements: Greedy
+    3. Otherwise: Hungarian (Optimal)
+end note
+
+:Match Detections to GT;
+partition "For Each Match" {
+    :Calculate Latency;
+    note right
+        latency_ms = detection_time - gt_time
+        Positive = Normal
+        Negative = Pre-trigger
+    end note
+    :Classify as TP/FP/FN;
+}
+
+:Calculate Metrics;
+note right
+    **Accuracy Metrics:**
+    - Precision = TP / (TP + FP)
+    - Recall = TP / (TP + FN)
+    - F1 Score
+
+    **Latency Metrics:**
+    - Mean, Max, Min
+    - % within threshold
+    - Distribution
+end note
+
+:Update Test Session;
+:Mark Session Complete;
+
+|Test Engineer|
+:View Results;
+:Review Frame Correlation Timeline;
+
+if (Results Acceptable?) then (yes)
+    :Approve Test;
+    |System|
+    :Update approval_status;
+else (no)
+    :Reject with Comments;
+    |System|
+    :Store rejection_reason;
+endif
+
+|System|
+:Generate Report (Optional);
+:Capture Failure Snapshots;
+
+stop
+
+@enduml

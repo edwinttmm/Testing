@@ -23,7 +23,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from database import get_db
-from sqlalchemy import text
+from sqlalchemy import text, select, delete, update, func
 from sqlalchemy.orm import Session
 
 # Configure logging

@@ -9,6 +9,7 @@ Author: Claude Code Frontend Performance Testing Agent
 Date: 2025-01-24
 """
 
+import sys
 import asyncio
 import websockets
 import json

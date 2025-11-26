@@ -1,0 +1,211 @@
+# HIL Detection Pipeline Monitoring Configuration
+
+metrics:
+  # Detection Pipeline Metrics
+  - name: hil_detections_total
+    type: counter
+    description: Total detection events recorded
+    labels: [session_id, video_id, channel]
+
+  - name: hil_websocket_emissions_total
+    type: counter
+    description: Total WebSocket emissions sent
+    labels: [session_id, success]
+
+  - name: hil_queue_flush_total
+    type: counter
+    description: Total queue flush operations
+    labels: [session_id, video_id, events_count]
+
+  - name: hil_detection_latency_ms
+    type: histogram
+    description: Detection processing latency
+    buckets: [10, 50, 100, 200, 500, 1000, 2000]
+
+  - name: hil_null_video_id_rate
+    type: gauge
+    description: Percentage of detections with NULL video_id
+
+  - name: hil_labjack_connection_status
+    type: gauge
+    description: LabJack connection status (1=connected, 0=disconnected)
+
+  # Queue Processing Metrics
+  - name: hil_queue_size
+    type: gauge
+    description: Current number of events in detection queue
+    labels: [session_id]
+
+  - name: hil_queue_processing_time_ms
+    type: histogram
+    description: Time to process queue flush operations
+    buckets: [10, 50, 100, 250, 500, 1000]
+
+  # Video Lifecycle Metrics
+  - name: hil_video_starts_total
+    type: counter
+    description: Total video start events
+    labels: [session_id, video_id]
+
+  - name: hil_video_ends_total
+    type: counter
+    description: Total video end events
+    labels: [session_id, video_id]
+
+  # Timing Synchronization Metrics
+  - name: hil_timing_sync_quality
+    type: gauge
+    description: Timing synchronization quality (0-1)
+    labels: [session_id, video_id]
+
+  - name: hil_calibration_offset_ms
+    type: gauge
+    description: Timing calibration offset in milliseconds
+    labels: [session_id]
+
+  # Database Metrics
+  - name: hil_db_storage_success_total
+    type: counter
+    description: Successful database storage operations
+    labels: [session_id]
+
+  - name: hil_db_storage_failures_total
+    type: counter
+    description: Failed database storage operations
+    labels: [session_id, error_type]
+
+  # Window Validation Metrics
+  - name: hil_window_validation_skipped_early_total
+    type: counter
+    description: Detections skipped (too early)
+    labels: [session_id]
+
+  - name: hil_window_validation_skipped_late_total
+    type: counter
+    description: Detections skipped (too late)
+    labels: [session_id]
+
+  - name: hil_window_validation_accepted_total
+    type: counter
+    description: Detections accepted within valid window
+    labels: [session_id]
+
+alerts:
+  # Critical Alerts
+  - name: HighNullVideoIdRate
+    condition: hil_null_video_id_rate > 0.05
+    severity: critical
+    message: "NULL video_id rate exceeded 5% - queue flush may not be working"
+
+  - name: NoDetections
+    condition: rate(hil_detections_total[5m]) == 0
+    severity: critical
+    message: "No detection events in 5 minutes during active session"
+
+  - name: WebSocketEmissionFailure
+    condition: rate(hil_websocket_emissions_total{success="false"}[1m]) > 0.1
+    severity: warning
+    message: "WebSocket emission failure rate > 10%"
+
+  - name: LabJackDisconnected
+    condition: hil_labjack_connection_status == 0
+    severity: warning
+    message: "LabJack hardware disconnected"
+
+  - name: HighQueueSize
+    condition: hil_queue_size > 100
+    severity: warning
+    message: "Detection queue size exceeded 100 events"
+
+  - name: SlowQueueProcessing
+    condition: histogram_quantile(0.95, hil_queue_processing_time_ms) > 500
+    severity: warning
+    message: "Queue processing P95 latency > 500ms"
+
+  - name: LowTimingSyncQuality
+    condition: avg(hil_timing_sync_quality) < 0.8
+    severity: warning
+    message: "Average timing sync quality below 80%"
+
+  - name: HighDbStorageFailures
+    condition: rate(hil_db_storage_failures_total[5m]) / rate(hil_db_storage_success_total[5m]) > 0.05
+    severity: critical
+    message: "Database storage failure rate > 5%"
+
+dashboards:
+  - name: HIL Detection Pipeline
+    panels:
+      - title: Detection Event Rate
+        query: rate(hil_detections_total[5m])
+        type: graph
+
+      - title: NULL Video ID Percentage
+        query: hil_null_video_id_rate * 100
+        type: gauge
+        unit: percent
+        thresholds:
+          - value: 1
+            color: yellow
+          - value: 5
+            color: red
+
+      - title: Detection Latency (p95)
+        query: histogram_quantile(0.95, hil_detection_latency_ms)
+        type: graph
+        unit: milliseconds
+
+      - title: WebSocket Emission Success Rate
+        query: |
+          rate(hil_websocket_emissions_total{success="true"}[5m]) /
+          rate(hil_websocket_emissions_total[5m]) * 100
+        type: graph
+        unit: percent
+
+      - title: Queue Size
+        query: hil_queue_size
+        type: graph
+
+      - title: Queue Processing Time (p95)
+        query: histogram_quantile(0.95, hil_queue_processing_time_ms)
+        type: graph
+        unit: milliseconds
+
+      - title: Timing Sync Quality
+        query: avg(hil_timing_sync_quality) * 100
+        type: gauge
+        unit: percent
+
+      - title: Window Validation Stats
+        query: |
+          sum(rate(hil_window_validation_accepted_total[5m])) as "Accepted",
+          sum(rate(hil_window_validation_skipped_early_total[5m])) as "Skipped Early",
+          sum(rate(hil_window_validation_skipped_late_total[5m])) as "Skipped Late"
+        type: graph
+
+      - title: Database Storage Success Rate
+        query: |
+          rate(hil_db_storage_success_total[5m]) /
+          (rate(hil_db_storage_success_total[5m]) + rate(hil_db_storage_failures_total[5m])) * 100
+        type: graph
+        unit: percent
+
+      - title: Video Lifecycle Events
+        query: |
+          rate(hil_video_starts_total[5m]) as "Video Starts",
+          rate(hil_video_ends_total[5m]) as "Video Ends"
+        type: graph
+
+  - name: HIL Performance
+    panels:
+      - title: Detection Latency Distribution
+        query: rate(hil_detection_latency_ms_bucket[5m])
+        type: heatmap
+
+      - title: Calibration Offset
+        query: hil_calibration_offset_ms
+        type: graph
+        unit: milliseconds
+
+      - title: LabJack Connection Status
+        query: hil_labjack_connection_status
+        type: stat

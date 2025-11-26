@@ -5,6 +5,7 @@ Tests to verify that LabJack device access is properly managed to prevent
 "LJME_DEVICE_CURRENTLY_CLAIMED_BY_ANOTHER_PROCESS" errors.
 """
 
+import os
 import pytest
 import time
 import threading
@@ -89,7 +90,7 @@ class TestDeviceExclusivity:
     
     def test_single_process_exclusive_access(self, mock_labjack_service):
         """Test that a single process can claim and use the device exclusively"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         service = LabJackMonitoringService()
         session_id = "exclusive_test_001"
@@ -117,7 +118,7 @@ class TestDeviceExclusivity:
     
     def test_concurrent_thread_prevention(self, mock_labjack_service):
         """Test that concurrent threads cannot claim the same device"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         results = queue.Queue()
         
@@ -221,7 +222,7 @@ class TestDeviceExclusivity:
     
     def test_device_claim_timeout(self, mock_labjack_service):
         """Test device claim with timeout mechanism"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         # First service claims device
         service1 = LabJackMonitoringService()
@@ -267,7 +268,7 @@ class TestDeviceExclusivity:
     
     def test_graceful_device_release(self, mock_labjack_service):
         """Test graceful device release on service shutdown"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         service = LabJackMonitoringService()
         session_id = "graceful_release_test"
@@ -299,7 +300,7 @@ class TestDeviceExclusivity:
     
     def test_device_recovery_after_crash(self, mock_labjack_service):
         """Test device recovery after process crash simulation"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         # Simulate crashed process that didn't release device
         crashed_process_id = 99999
@@ -343,7 +344,7 @@ class TestDeviceExclusivity:
     
     def test_device_sharing_prevention(self, mock_labjack_service):
         """Test that device sharing is properly prevented"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         # Start first monitoring session
         service1 = LabJackMonitoringService()
@@ -378,7 +379,7 @@ class TestDeviceExclusivity:
     
     def test_device_availability_check(self, mock_labjack_service):
         """Test device availability checking before starting monitoring"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         def check_device_availability():
             """Simulate device availability check"""
@@ -402,7 +403,7 @@ class TestDeviceExclusivity:
     
     def test_error_handling_on_device_conflict(self, mock_labjack_service):
         """Test proper error handling when device conflicts occur"""
-        from services.labjack_monitoring_service import LabJackMonitoringService
+        from services.dedicated_labjack_monitor import LabJackMonitoringService
         
         # Claim device externally
         external_process = 88888

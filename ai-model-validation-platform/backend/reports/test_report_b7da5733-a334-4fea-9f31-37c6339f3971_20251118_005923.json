@@ -1,0 +1,106 @@
+{
+  "report_id": "2fcf0593-6f6c-4a3f-a4ea-ea8fd8bcebb4",
+  "test_session_id": "b7da5733-a334-4fea-9f31-37c6339f3971",
+  "generated_at": "2025-11-18T00:59:23.999908",
+  "test_session": {
+    "id": "b7da5733-a334-4fea-9f31-37c6339f3971",
+    "name": "Video Sequence Test - 2025-11-18 00:59",
+    "project_name": "Test",
+    "started_at": "2025-11-18T00:59:06.325040",
+    "completed_at": "2025-11-18T00:59:23.384005",
+    "status": "completed",
+    "latency_threshold_ms": 100
+  },
+  "metrics": {
+    "total_events": 18,
+    "passed_events": 15,
+    "failed_events": 3,
+    "high_latency_failures": 3,
+    "missed_detections": 0,
+    "pass_rate_percent": 83.33,
+    "fail_rate_percent": 16.67,
+    "average_latency_ms": 137.724,
+    "min_latency_ms": -20.521,
+    "max_latency_ms": 1371.245,
+    "latency_threshold_ms": 100,
+    "latency_distribution": {
+      "0-50ms": 15,
+      "51-100ms": 0,
+      "101-200ms": 0,
+      "201-500ms": 1,
+      "500ms+": 2
+    },
+    "test_outcome": "FAIL"
+  },
+  "success_summary": {
+    "summary_text": "14/18 detections passed with average latency of 4.1ms. Successful detections: 14 Unknown.",
+    "passed_count": 14,
+    "total_count": 18,
+    "average_success_latency_ms": 4.13,
+    "vru_breakdown": {
+      "Unknown": 14
+    },
+    "success_rate_percent": 83.33
+  },
+  "failure_events": [
+    {
+      "event_id": "ae7ae140-ba75-4785-a849-72898a814caf",
+      "video_id": "10c2b16c-86fa-4140-b1cf-c0ea42f82ca5",
+      "timestamp": 1763427549.506873,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 15.166044235229492,
+      "threshold_ms": 0.5,
+      "labjack_timestamp": null,
+      "frame_number": 0,
+      "vru_type": null,
+      "detection_channel": "AIN0",
+      "voltage_level": 4.2576985359191895,
+      "created_at": "2025-11-18T00:59:09"
+    },
+    {
+      "event_id": "d6cc9e5e-093d-4cce-86c3-5d60c08889cc",
+      "video_id": "550e3cf8-2755-42df-8c3c-041300735f93",
+      "timestamp": 1763427551.812977,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 487.93697357177734,
+      "threshold_ms": 0.5,
+      "labjack_timestamp": null,
+      "frame_number": 0,
+      "vru_type": null,
+      "detection_channel": "AIN0",
+      "voltage_level": 4.212672233581543,
+      "created_at": "2025-11-18T00:59:11"
+    },
+    {
+      "event_id": "8d78da53-a6f4-4766-a3cd-e341f1e5dce8",
+      "video_id": "550e3cf8-2755-42df-8c3c-041300735f93",
+      "timestamp": 1763427551.871876,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 546.8358993530273,
+      "threshold_ms": 100,
+      "labjack_timestamp": 1763427551.871876,
+      "frame_number": null,
+      "vru_type": null,
+      "detection_channel": "AIN0",
+      "voltage_level": null,
+      "created_at": "2025-11-18T00:59:13"
+    },
+    {
+      "event_id": "afe1010b-39b8-415b-b6fd-eada2b309bc5",
+      "video_id": "550e3cf8-2755-42df-8c3c-041300735f93",
+      "timestamp": 1763427552.696285,
+      "failure_type": "HIGH_LATENCY",
+      "latency_ms": 1371.2449073791504,
+      "threshold_ms": 0.5,
+      "labjack_timestamp": null,
+      "frame_number": 0,
+      "vru_type": null,
+      "detection_channel": "AIN0",
+      "voltage_level": 4.224106311798096,
+      "created_at": "2025-11-18T00:59:18"
+    }
+  ],
+  "failure_snapshots": [],
+  "videos_tested": 2,
+  "total_events": 18
+}

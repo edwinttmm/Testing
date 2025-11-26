@@ -203,7 +203,7 @@ class TestVideoUploadComprehensive:
         video_id = response.json()["id"]
         
         # Verify database record
-        video = db_session.query(Video).filter(Video.id == video_id).first()
+        video = db_session.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
         assert video is not None
         assert video.filename == "test_db_record.mp4"
         assert video.project_id == test_project.id
@@ -213,7 +213,7 @@ class TestVideoUploadComprehensive:
     
     def test_database_integrity_on_upload_failure(self, client, test_project, db_session):
         """Test database rollback when upload fails"""
-        initial_count = db_session.query(Video).count()
+        initial_count = db_session.execute(select(func.count()).select_from(Video)).scalar()
         
         # Simulate upload failure by providing invalid data
         response = client.post(
@@ -224,7 +224,7 @@ class TestVideoUploadComprehensive:
         assert response.status_code in [400, 422]
         
         # Verify no orphaned records
-        final_count = db_session.query(Video).count()
+        final_count = db_session.execute(select(func.count()).select_from(Video)).scalar()
         assert final_count == initial_count
 
     # Test 4: File Storage and Permissions
@@ -510,7 +510,7 @@ class TestVideoUploadIntegration:
         assert video_detail["project_id"] == project_id
         
         # 5. Verify database consistency
-        video_record = db_session.query(Video).filter(Video.id == video_id).first()
+        video_record = db_session.execute(select(Video).where(Video.id == video_id)).scalar_one_or_none()
         assert video_record is not None
         assert video_record.project_id == project_id
 

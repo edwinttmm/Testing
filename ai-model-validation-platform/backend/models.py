@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Float, Integer, Boolean, Text, ForeignKey, JSON, Index
+from sqlalchemy import Column, String, DateTime, Float, Integer, Boolean, Text, ForeignKey, JSON, Index, CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from passlib.context import CryptContext
@@ -6,6 +6,7 @@ import uuid
 from sqlalchemy.ext.mutable import MutableDict
 
 from database import Base
+from config.timing_config import MATCHING_TOLERANCE_MS
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -216,7 +217,7 @@ class TestSession(Base):
     name = Column(String, nullable=False, index=True)  # Index for search
     project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
-    tolerance_ms = Column(Integer, default=100)
+    tolerance_ms = Column(Integer, default=MATCHING_TOLERANCE_MS)
     status = Column(String, default="created", index=True)  # Index for status filtering
     session_type = Column(String, default="user_created", index=True)  # "user_created", "auto_generated", "system_test"
     started_at = Column(DateTime(timezone=True), index=True)  # Index for time-based queries
@@ -302,6 +303,10 @@ class TestSession(Base):
     approval_comments = Column(Text, nullable=True)  # Optional comments from approver
     rejection_reason = Column(Text, nullable=True)  # Reason for rejection if applicable
 
+    # TIMING QUALITY TRACKING - CRITICAL FOR DATA INTEGRITY
+    timing_degraded = Column(Boolean, default=False, nullable=False, index=True)  # Whether timing uses wall clock (degraded) vs precision timing
+    timing_verified = Column(Boolean, default=False, nullable=False)  # Whether timing has been verified against database
+
     project = relationship("Project", back_populates="test_sessions")
     detection_events = relationship("DetectionEvent", back_populates="test_session", cascade="all, delete-orphan")
     results = relationship("TestResult", back_populates="test_session", cascade="all, delete-orphan")
@@ -330,7 +335,7 @@ class DetectionEvent(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
-    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=True, index=True)  # FIXED: Added video_id relationship
+    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"), nullable=True, index=True)  # BUG #3 FIX: video_id for per-video detection counts
     sequence_video_result_id = Column(String(36), ForeignKey("sequence_video_results.id", ondelete="SET NULL"), nullable=True, index=True)  # Multi-video sequence support
     timestamp = Column(Float, nullable=False, index=True)  # Index for temporal queries
     validation_result = Column(String, index=True)  # Index for filtering by validation result ('Pass', 'Fail')
@@ -340,7 +345,11 @@ class DetectionEvent(Base):
     # LATENCY FIELDS - CANONICAL FIELD IS actual_latency_ms
     # PRIMARY: Use this field for all latency calculations and displays
     actual_latency_ms = Column(Float, nullable=True, index=True,
-                               comment="CANONICAL: Actual measured latency from video event to hardware detection (milliseconds)")
+                               comment="CANONICAL: Actual measured latency from video event to hardware detection (milliseconds). For FPs, stores REAL latency, not 10000ms sentinel.")
+
+    # FALSE POSITIVE TRACKING - Added 2025-11-25 to replace 10000ms sentinel value
+    is_false_positive = Column(Boolean, default=False, nullable=False, index=True,
+                              comment="TRUE if detection is a False Positive. Replaces 10000ms sentinel value in actual_latency_ms.")
 
     # DEPRECATED: Legacy fields maintained for backward compatibility only
     latency_ns = Column(String, nullable=True,
@@ -356,6 +365,12 @@ class DetectionEvent(Base):
     timing_accuracy_ns = Column(Float, nullable=True)  # Estimated accuracy for this measurement
     frame_accurate_timestamp = Column(Float, nullable=True)  # Frame-accurate timestamp if available
     labjack_voltage = Column(Float, nullable=True)  # LabJack voltage reading if available
+
+    # DRIFT COMPENSATION FIELDS - HIL VALIDATION (Added 2025-11-21)
+    drift_compensated_timestamp = Column(Float, nullable=True, index=True,
+                                        comment="Timestamp after applying drift compensation from video lifecycle")
+    drift_applied = Column(Boolean, default=False, nullable=False,
+                          comment="Flag indicating if drift compensation was applied to this detection")
     latency_threshold_ms = Column(Float, nullable=True)  # Threshold used for validation
     latency_result = Column(String, nullable=True, index=True)  # 'pass', 'fail', 'error', 'timeout'
     voltage_level = Column(Float, nullable=True)  # LabJack voltage reading that triggered detection
@@ -397,7 +412,21 @@ class DetectionEvent(Base):
     t3_yolo_confidence = Column(Float, nullable=True, index=True)  # T3: YOLO detection confidence score
     t3_model_version = Column(String, nullable=True)  # T3: YOLO model version used for detection
     t3_detection_quality = Column(String, default="unknown", index=True)  # T3: Detection quality assessment
-    
+
+    # TIMING QUALITY AND VALIDATION FLAGS
+    usable_for_validation = Column(Boolean, default=True, nullable=False, index=True)  # Whether detection has valid timing for validation
+    timing_degraded = Column(Boolean, default=False, nullable=False, index=True)  # Whether timing is degraded (wall clock vs precision)
+
+    # DETECTION QUALITY TRACKING (FIX: Store quality assessment results)
+    quality_category = Column(String, nullable=True, index=True)  # "excellent", "good", "acceptable", "unreliable"
+    quality_validation_suitability = Column(String, nullable=True, index=True)  # "suitable", "conditional", "unsuitable"
+    quality_confidence_score = Column(Float, nullable=True)  # Quality assessment confidence (0.0-1.0)
+    quality_notes = Column(Text, nullable=True)  # Human-readable quality assessment notes
+
+    # TIMING CLAMPING DETECTION (FIX: Flag clamped detections instead of hiding)
+    timing_clamped = Column(Boolean, default=False, nullable=False, index=True)  # Whether timing was clamped to video duration
+    original_video_relative = Column(Float, nullable=True)  # Original unclamped video_relative_timestamp if clamped
+
     # LEGACY AI FIELDS (deprecated but kept for backward compatibility)
     confidence = Column(Float, index=True)  # Index for confidence-based filtering (deprecated for LabJack)
     class_label = Column(String, index=True)  # Index for filtering by detection type (deprecated for LabJack)
@@ -747,7 +776,7 @@ class DetectionComparison(Base):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
-    ground_truth_id = Column(String(36), ForeignKey("annotations.id", ondelete="SET NULL"))
+    ground_truth_id = Column(String(36), ForeignKey("ground_truth_objects.id", ondelete="SET NULL"))
     detection_event_id = Column(String(36), ForeignKey("detection_events.id", ondelete="SET NULL"))
     match_type = Column(String, nullable=False, index=True)  # 'TP', 'FP', 'FN', 'TN'
     iou_score = Column(Float)
@@ -756,9 +785,9 @@ class DetectionComparison(Base):
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
-    # Relationships - CASCADE handled by parent TestSession  
+    # Relationships - CASCADE handled by parent TestSession
     test_session = relationship("TestSession", back_populates="detection_comparisons")
-    ground_truth = relationship("Annotation")
+    ground_truth = relationship("GroundTruthObject")
     detection_event = relationship("DetectionEvent")
     
     # Enhanced composite indexes for analysis
@@ -859,6 +888,57 @@ class ReportSnapshot(Base):
         Index('idx_snapshot_failure_captured', 'failure_type', 'captured_at'),
         Index('idx_snapshot_success_type', 'capture_success', 'failure_type'),
         Index('idx_snapshot_report_timestamp', 'report_id', 'timestamp_ms'),
+    )
+
+# Video Lifecycle Event Tracking - Added 2025-11-20 for drift calculation
+class VideoLifecycleEvent(Base):
+    """Video lifecycle events (START/END/ERROR) for drift calculation in HIL testing"""
+    __tablename__ = "video_lifecycle_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    test_session_id = Column(String(36), ForeignKey("test_sessions.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    video_id = Column(String(36), ForeignKey("videos.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+
+    # Event identification
+    event_type = Column(String(20), nullable=False, index=True)  # 'VIDEO_START', 'VIDEO_END', 'VIDEO_ERROR'
+
+    # Timestamp chain for drift calculation
+    frontend_timestamp = Column(Float, nullable=False)  # Browser performance.now()
+    backend_received_timestamp = Column(Float, nullable=False)  # When backend received event
+    labjack_command_sent_timestamp = Column(Float, nullable=True)  # T0: When LabJack command sent
+    labjack_monitoring_timestamp = Column(Float, nullable=True)  # T1: When LabJack monitoring started
+
+    # Clock synchronization and drift
+    clock_offset_ms = Column(Float, nullable=True)  # Browser-backend clock offset
+    calculated_drift_ms = Column(Float, nullable=True, index=True)  # Total drift for this video
+
+    # Additional metadata (using 'event_metadata' to avoid SQLAlchemy reserved 'metadata')
+    event_metadata = Column(MutableDict.as_mutable(JSON), nullable=True)  # Additional event context
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    test_session = relationship("TestSession", backref="lifecycle_events")
+    video = relationship("Video", backref="lifecycle_events")
+
+    # Constraints
+    __table_args__ = (
+        # Primary indexes
+        Index('idx_lifecycle_session_event_created', 'test_session_id', 'event_type', 'created_at'),
+        Index('idx_lifecycle_video_event', 'video_id', 'event_type'),
+
+        # Unique constraint
+        Index('idx_lifecycle_unique_event', 'test_session_id', 'video_id', 'event_type', unique=True),
+
+        # Check constraints
+        CheckConstraint("event_type IN ('VIDEO_START', 'VIDEO_END', 'VIDEO_ERROR')",
+                       name='ck_lifecycle_event_type'),
+        CheckConstraint("calculated_drift_ms IS NULL OR (calculated_drift_ms >= -1000 AND calculated_drift_ms <= 1000)",
+                       name='ck_lifecycle_drift_range'),
     )
 
 # Import simple detection models

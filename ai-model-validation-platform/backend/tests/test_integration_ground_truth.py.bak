@@ -1,0 +1,438 @@
+"""
+Production-Grade Integration Tests for Ground Truth Fixes
+
+End-to-end integration testing:
+- Multi-video session with all fixes active
+- Interaction between Issue #1 (orchestrator) + #4 (counts)
+- Performance of Issue #2 (batch) + #5 (N+1)
+- Issue #6 (soft delete) protection during active sessions
+
+Coverage: Full system integration paths
+"""
+
+import os
+import pytest
+import time
+from datetime import datetime, timezone
+from typing import List
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func, select, delete, update
+
+from models import (
+    TestSession, Video, DetectionEvent, GroundTruthObject,
+    VideoTestSequence, SequenceVideoResult, Project
+)
+from services.ground_truth_matching_service import GroundTruthMatchingService
+from services.video_sequence_orchestrator import VideoSequenceOrchestrator
+from crud import delete_project, get_test_session
+from database import SessionLocal
+
+
+# ===== FIXTURES =====
+
+@pytest.fixture
+def integration_db():
+    """Database session for integration tests"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.rollback()
+        db.close()
+
+
+@pytest.fixture
+def integration_project(integration_db):
+    """Create integration test project"""
+    project = Project(
+        id="integration-project",
+        name="Integration Test Project",
+        camera_model="Integration Camera",
+        camera_view="Front-facing VRU",
+        signal_type="GPIO",
+        owner_id="integration-user"
+    )
+    integration_db.add(project)
+    integration_db.commit()
+    integration_db.refresh(project)
+    return project
+
+
+@pytest.fixture
+def multi_video_test_data(integration_db, integration_project):
+    """Create multi-video test dataset with ground truth"""
+    videos = []
+
+    # Create 10 videos with ground truth
+    for i in range(10):
+        video = Video(
+            id=f"integration-video-{i:02d}",
+            project_id=integration_project.id,
+            filename=f"integration_video_{i}.mp4",
+            file_path=f"/test/integration/video_{i}.mp4",
+            duration=15.0,
+            fps=30.0,
+            status="completed"
+        )
+        integration_db.add(video)
+        videos.append(video)
+
+        # 10 ground truth objects per video
+        for j in range(10):
+            gt = GroundTruthObject(
+                id=f"integration-gt-{i:02d}-{j:02d}",
+                video_id=video.id,
+                timestamp=float(j * 1.5),  # One every 1.5 seconds
+                class_label="pedestrian",
+                x=100.0 + (j * 10),
+                y=100.0 + (j * 10),
+                width=50.0,
+                height=100.0,
+                confidence=0.90 + (j * 0.01)
+            )
+            integration_db.add(gt)
+
+    integration_db.commit()
+    return videos
+
+
+# ===== END-TO-END MULTI-VIDEO SEQUENCE TEST =====
+
+class TestEndToEndMultiVideoSequence:
+    """End-to-end test of complete multi-video sequence with all fixes"""
+
+    def test_complete_multi_video_sequence_flow(self, integration_db, integration_project, multi_video_test_data):
+        """
+        Integration Test: Complete multi-video sequence with all 6 fixes active
+
+        Tests:
+        - Issue #1: Orchestrator sync on video end
+        - Issue #2: Batch limit validation (10 videos, 100 GT objects)
+        - Issue #4: Detection count accuracy
+        - Issue #5: N+1 query elimination
+        - Issue #6: Soft delete protection (active session)
+        """
+        orchestrator = VideoSequenceOrchestrator()
+        gt_service = GroundTruthMatchingService()
+
+        # Step 1: Start multi-video sequence
+        video_ids = [v.id for v in multi_video_test_data]
+        session_id = "integration-session"
+
+        sequence_id = orchestrator.start_sequence(
+            project_id=integration_project.id,
+            video_ids=video_ids,
+            max_latency_ms=100.0,
+            db=integration_db,
+            session_id=session_id
+        )
+
+        assert sequence_id is not None, "Sequence should initialize"
+
+        # Step 2: Verify session is active
+        session = get_test_session(integration_db, session_id, user_id="integration-user")
+        assert session.status == "running", "Session should be running"
+
+        # Step 3: Test Issue #6 - Active session prevents deletion
+        with pytest.raises(Exception):
+            delete_project(integration_db, integration_project.id, user_id="integration-user")
+
+        # Step 4: Process all videos in sequence
+        base_time = time.time()
+        total_detections = 0
+
+        for idx, video_id in enumerate(video_ids):
+            # Start video
+            video_start_time = base_time + (idx * 20)
+            orchestrator.notify_video_started(
+                sequence_id=sequence_id,
+                video_id=video_id,
+                actual_start_timestamp=video_start_time,
+                db=integration_db
+            )
+
+            # Create 8 detection events per video (80% detection rate)
+            for j in range(8):
+                detection_time = video_start_time + (j * 1.5)
+                event_id = orchestrator.process_detection_event(
+                    sequence_id=sequence_id,
+                    labjack_signal={'voltage': 3.3, 'channel': 0, 'type': 'GPIO'},
+                    sequence_timestamp=detection_time,
+                    db=integration_db
+                )
+
+                assert event_id is not None, f"Detection {j} should be created"
+                total_detections += 1
+
+            # End video - triggers Issue #1 (orchestrator sync)
+            video_end_time = video_start_time + 15.0
+            result = orchestrator.notify_video_ended(
+                sequence_id=sequence_id,
+                video_id=video_id,
+                actual_end_timestamp=video_end_time,
+                db=integration_db
+            )
+
+            assert result is True, f"Video {idx} should end successfully"
+
+            # Issue #4: Verify detection counts are accurate
+            sequence = orchestrator._active_sequences[sequence_id]
+            video_result = sequence.video_results[video_id]
+            assert video_result.detected_count == 8, f"Video {idx} should have 8 detections"
+
+        # Step 5: Verify sequence completion
+        sequence = orchestrator._active_sequences[sequence_id]
+        assert sequence.total_detected == total_detections, "Total detection count should match"
+        assert sequence.total_detected == 80, "Should have 80 total detections (8 per video)"
+
+        # Step 6: Test Issue #5 - N+1 query elimination
+        # Count queries during ground truth matching
+        query_count = 0
+        original_execute = integration_db.execute
+
+        def counting_execute(*args, **kwargs):
+            nonlocal query_count
+            query_count += 1
+            return original_execute(*args, **kwargs)
+
+        # Perform ground truth matching for all videos
+        from unittest.mock import patch
+        with patch.object(integration_db, 'execute', side_effect=counting_execute):
+            for video_id in video_ids[:3]:  # Test first 3 videos
+                metrics = gt_service.match_detections_to_ground_truth(
+                    session_id=session_id,
+                    tolerance_ms=100
+                )
+
+        # Should use batch queries, not O(n)
+        assert query_count < 50, f"Should use batch queries, got {query_count} queries"
+
+        # Step 7: Verify results
+        results = orchestrator.get_sequence_results(sequence_id, integration_db)
+
+        assert results['video_count'] == 10, "Should have 10 videos"
+        assert results['total_detected'] == 80, "Should have 80 detections"
+        assert len(results['video_results']) == 10, "Should have results for all videos"
+
+        # Step 8: Complete session and test Issue #6 - Deletion allowed after completion
+        session.status = "completed"
+        session.completed_at = datetime.now(timezone.utc)
+        integration_db.commit()
+
+        # Now deletion should succeed
+        # (Skip actual deletion to preserve test data)
+
+
+# ===== ISSUE #1 + #4 INTERACTION TEST =====
+
+class TestIssue1And4Interaction:
+    """Test interaction between orchestrator sync (Issue #1) and count accuracy (Issue #4)"""
+
+    def test_orchestrator_sync_maintains_count_accuracy(self, integration_db, integration_project, multi_video_test_data):
+        """Test that orchestrator sync correctly maintains detection counts"""
+        orchestrator = VideoSequenceOrchestrator()
+
+        # Use first 3 videos
+        video_ids = [v.id for v in multi_video_test_data[:3]]
+
+        sequence_id = orchestrator.start_sequence(
+            project_id=integration_project.id,
+            video_ids=video_ids,
+            max_latency_ms=100.0,
+            db=integration_db
+        )
+
+        # Process each video
+        base_time = time.time()
+        expected_counts = {}
+
+        for idx, video_id in enumerate(video_ids):
+            video_start = base_time + (idx * 20)
+
+            orchestrator.notify_video_started(
+                sequence_id=sequence_id,
+                video_id=video_id,
+                actual_start_timestamp=video_start,
+                db=integration_db
+            )
+
+            # Variable detection counts
+            detection_count = 5 + idx  # 5, 6, 7
+            expected_counts[video_id] = detection_count
+
+            for j in range(detection_count):
+                orchestrator.process_detection_event(
+                    sequence_id=sequence_id,
+                    labjack_signal={'voltage': 3.3, 'channel': 0},
+                    sequence_timestamp=video_start + j,
+                    db=integration_db
+                )
+
+            # Issue #1: Video end triggers sync
+            orchestrator.notify_video_ended(
+                sequence_id=sequence_id,
+                video_id=video_id,
+                actual_end_timestamp=video_start + 15,
+                db=integration_db
+            )
+
+        # Issue #4: Verify counts in database
+        sequence = orchestrator._active_sequences[sequence_id]
+
+        for video_id, expected_count in expected_counts.items():
+            video_result = sequence.video_results[video_id]
+            assert video_result.detected_count == expected_count, \
+                f"Video {video_id} count mismatch: expected {expected_count}, got {video_result.detected_count}"
+
+            # Verify database has matching count
+            db_count = session.execute(select(func.count()).select_from(DetectionEvent).where(
+                DetectionEvent.video_id == video_id
+            )).scalar()
+            assert db_count == expected_count, \
+                f"Database count mismatch for {video_id}: expected {expected_count}, got {db_count}"
+
+
+# ===== ISSUE #2 + #5 PERFORMANCE TEST =====
+
+class TestIssue2And5PerformanceUnderLoad:
+    """Test performance of batch queries (Issue #2) with N+1 elimination (Issue #5)"""
+
+    @pytest.mark.performance
+    def test_large_dataset_performance(self, integration_db, integration_project):
+        """Test batch query performance with large dataset"""
+        # Create 50 videos with 100 GT objects each (5000 total)
+        videos = []
+
+        print("\nCreating test dataset...")
+        for i in range(50):
+            video = Video(
+                id=f"perf-video-{i:03d}",
+                project_id=integration_project.id,
+                filename=f"perf_video_{i}.mp4",
+                file_path=f"/test/perf/video_{i}.mp4",
+                duration=30.0,
+                fps=30.0,
+                status="completed"
+            )
+            integration_db.add(video)
+            videos.append(video)
+
+            # 100 GT objects per video
+            objects = []
+            for j in range(100):
+                gt = GroundTruthObject(
+                    id=f"perf-gt-{i:03d}-{j:03d}",
+                    video_id=video.id,
+                    timestamp=float(j * 0.3),
+                    class_label="pedestrian",
+                    x=100.0,
+                    y=100.0,
+                    width=50.0,
+                    height=100.0,
+                    confidence=0.95
+                )
+                objects.append(gt)
+
+            integration_db.bulk_save_objects(objects)
+
+        integration_db.commit()
+        print(f"Created {len(videos)} videos with {len(videos) * 100} GT objects")
+
+        # Issue #5: Test batch query with N+1 elimination
+        print("\nTesting batch query performance...")
+        start_time = time.time()
+
+        video_ids = [v.id for v in videos]
+        all_gt = integration_db.execute(select(GroundTruthObject).where(
+            GroundTruthObject.video_id.in_(video_ids)
+        )).scalars().all()
+
+        query_time = time.time() - start_time
+
+        print(f"Query completed in {query_time:.3f}s")
+        print(f"Retrieved {len(all_gt)} GT objects")
+
+        # Issue #2: Should handle large dataset
+        assert len(all_gt) == 5000, "Should retrieve all 5000 GT objects"
+
+        # Issue #5: Should use efficient batch query
+        assert query_time < 2.0, f"Batch query took {query_time:.3f}s, should be <2s"
+
+        # Test query count (should be O(1), not O(n))
+        query_count = 0
+        original_execute = integration_db.execute
+
+        def counting_execute(*args, **kwargs):
+            nonlocal query_count
+            query_count += 1
+            return original_execute(*args, **kwargs)
+
+        from unittest.mock import patch
+        with patch.object(integration_db, 'execute', side_effect=counting_execute):
+            # Query subset
+            subset_gt = integration_db.query(GroundTruthObject).filter(
+                GroundTruthObject.video_id.in_(video_ids[:10])
+            ).all()
+
+        print(f"Query count: {query_count}")
+        assert query_count <= 3, f"Should use batch query, got {query_count} queries"
+
+
+# ===== ISSUE #6 PROTECTION DURING ACTIVE SESSION =====
+
+class TestIssue6ProtectionDuringActiveSession:
+    """Test Issue #6 soft delete protection during active session operations"""
+
+    def test_deletion_blocked_during_detection_processing(self, integration_db, integration_project, multi_video_test_data):
+        """Test that deletion is blocked while actively processing detections"""
+        orchestrator = VideoSequenceOrchestrator()
+
+        video_ids = [v.id for v in multi_video_test_data[:3]]
+
+        sequence_id = orchestrator.start_sequence(
+            project_id=integration_project.id,
+            video_ids=video_ids,
+            max_latency_ms=100.0,
+            db=integration_db
+        )
+
+        # Start first video
+        video_start = time.time()
+        orchestrator.notify_video_started(
+            sequence_id=sequence_id,
+            video_id=video_ids[0],
+            actual_start_timestamp=video_start,
+            db=integration_db
+        )
+
+        # Create some detections
+        for i in range(5):
+            orchestrator.process_detection_event(
+                sequence_id=sequence_id,
+                labjack_signal={'voltage': 3.3, 'channel': 0},
+                sequence_timestamp=video_start + i,
+                db=integration_db
+            )
+
+        # Attempt deletion while active - should fail
+        with pytest.raises(Exception):
+            delete_project(integration_db, integration_project.id, user_id="integration-user")
+
+        # Verify project still exists
+        project = integration_db.execute(select(Project).where(
+            Project.id == integration_project.id
+        )).scalar_one_or_none()
+        assert project is not None, "Project should not be deleted during active session"
+
+        # Verify detections preserved
+        detection_count = integration_db.execute(select(func.count()).select_from(DetectionEvent).where(
+            DetectionEvent.video_id == video_ids[0]
+        )).scalar()
+        assert detection_count == 5, "Detections should be preserved"
+
+
+# ===== RUN INTEGRATION TESTS =====
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short", "--color=yes", "-m", "not performance"])

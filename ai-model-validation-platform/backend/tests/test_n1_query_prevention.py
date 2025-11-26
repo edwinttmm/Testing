@@ -2,8 +2,9 @@
 Test suite to verify N+1 query patterns are prevented
 Tests query counts for critical endpoints to ensure proper eager loading
 """
+import os
 import pytest
-from sqlalchemy import event, create_engine
+from sqlalchemy import event, create_engine, select, delete, update, func
 from sqlalchemy.orm import Session, sessionmaker
 from fastapi.testclient import TestClient
 from typing import List

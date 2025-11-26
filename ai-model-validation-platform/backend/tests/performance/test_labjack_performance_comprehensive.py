@@ -38,7 +38,7 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from services.labjack_service import LabJackService, ConnectionStatus, ConnectionMode
+from services.labjack_service_manager import LabJackService, ConnectionStatus, ConnectionMode
 from services.dedicated_labjack_monitor import DedicatedLabJackMonitor
 from services.hil_validation_service import HILValidationService
 from src.services.labjack_timing_service import LabJackTimingService

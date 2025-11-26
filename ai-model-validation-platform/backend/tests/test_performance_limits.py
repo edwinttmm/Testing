@@ -10,6 +10,8 @@ Test Categories:
 - Database query optimization
 """
 
+import sys
+import os
 import pytest
 import time
 import statistics

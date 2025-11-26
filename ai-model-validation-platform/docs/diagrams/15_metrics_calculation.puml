@@ -1,0 +1,128 @@
+@startuml Metrics Calculation
+!theme plain
+title Test Metrics Calculation
+skinparam backgroundColor #FEFEFE
+
+start
+
+partition "Input Data" #E3F2FD {
+    :Collect Detection Events;
+    :Collect Ground Truth Objects;
+    :Run Correlation Algorithm;
+}
+
+partition "Classification" #E8F5E9 {
+    :Classify each event;
+
+    fork
+        :Count True Positives (TP);
+        note right
+            Detection matched to GT
+            within tolerance window
+        end note
+    fork again
+        :Count False Positives (FP);
+        note right
+            Detection without
+            matching GT
+        end note
+    fork again
+        :Count False Negatives (FN);
+        note right
+            GT without
+            matching detection
+        end note
+    end fork
+}
+
+partition "Accuracy Metrics" #FFF3E0 {
+    :Calculate Precision;
+    note right
+        **Precision = TP / (TP + FP)**
+        How many detections were correct?
+    end note
+
+    :Calculate Recall;
+    note right
+        **Recall = TP / (TP + FN)**
+        How many GT objects were detected?
+    end note
+
+    :Calculate F1 Score;
+    note right
+        **F1 = 2 × (P × R) / (P + R)**
+        Harmonic mean of P and R
+    end note
+}
+
+partition "Latency Metrics" #FCE4EC {
+    :Collect TP latencies;
+    note right
+        latency[i] = det_time[i] - gt_time[i]
+        (Only for True Positives)
+    end note
+
+    :Calculate Mean Latency;
+    note right
+        **mean = sum(latencies) / count**
+    end note
+
+    :Calculate Max Latency;
+    note right
+        **max = max(latencies)**
+    end note
+
+    :Calculate % Within Threshold;
+    note right
+        **pct = count(lat < threshold) / TP × 100**
+        e.g., 95% within 100ms
+    end note
+
+    :Calculate Std Deviation;
+    note right
+        Measure of latency consistency
+    end note
+}
+
+partition "Overall Result" #F3E5F5 {
+    :Determine Accuracy Result;
+    if (F1 >= accuracy_threshold?) then (PASS)
+        :accuracy_result = "PASS";
+    else (FAIL)
+        :accuracy_result = "FAIL";
+    endif
+
+    :Determine Latency Result;
+    if (pct_within_threshold >= latency_threshold?) then (PASS)
+        :latency_result = "PASS";
+    else (FAIL)
+        :latency_result = "FAIL";
+    endif
+
+    :Calculate Overall Result;
+    if (accuracy_result == "PASS" AND\nlatency_result == "PASS") then (PASS)
+        :overall_test_result = "PASS";
+    else (FAIL)
+        :overall_test_result = "FAIL";
+    endif
+}
+
+partition "Store Results" {
+    :Update TestSession with metrics;
+    :Create TestResult record;
+    :Update DetectionEvent records;
+}
+
+stop
+
+legend right
+    |= Metric |= Good Value |= Threshold |
+    | Precision | > 0.9 | Configurable |
+    | Recall | > 0.9 | Configurable |
+    | F1 Score | > 0.85 | Configurable |
+    | Mean Latency | < 50ms | 100ms |
+    | Max Latency | < 100ms | 150ms |
+    | % Within | > 95% | 90% |
+endlegend
+
+@enduml

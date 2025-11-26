@@ -7,6 +7,7 @@ the application but may be missing in older SQLite databases.
 
 from typing import Dict, List
 from sqlalchemy.engine import Engine
+from sqlalchemy import text
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def _get_table_columns(engine: Engine, table: str) -> List[str]:
     with engine.connect() as conn:
-        res = conn.execute(f"PRAGMA table_info('{table}')")
+        res = conn.execute(text(f"PRAGMA table_info('{table}')"))
         cols = [row[1] for row in res]  # row[1] is column name
         return cols
 
@@ -40,6 +41,8 @@ def ensure_test_sessions_columns(engine: Engine) -> Dict[str, str]:
             'calibration_timestamp': 'TEXT',  # ISO datetime as TEXT
             'timing_validation_status': 'TEXT',
             'hil_compliance_verified': 'INTEGER DEFAULT 0',
+            'timing_degraded': 'INTEGER DEFAULT 0',
+            'timing_verified': 'INTEGER DEFAULT 0',
         }
 
         results: Dict[str, str] = {}
@@ -47,7 +50,7 @@ def ensure_test_sessions_columns(engine: Engine) -> Dict[str, str]:
             for col, ddl in desired.items():
                 if col not in existing:
                     try:
-                        conn.execute(f"ALTER TABLE test_sessions ADD COLUMN {col} {ddl}")
+                        conn.execute(text(f"ALTER TABLE test_sessions ADD COLUMN {col} {ddl}"))
                         results[col] = 'added'
                         logger.info(f"SQLite migration: added column test_sessions.{col} {ddl}")
                     except Exception as e:
@@ -91,7 +94,7 @@ def ensure_detection_events_columns(engine: Engine) -> Dict[str, str]:
             for col, ddl in desired.items():
                 if col not in existing:
                     try:
-                        conn.execute(f"ALTER TABLE detection_events ADD COLUMN {col} {ddl}")
+                        conn.execute(text(f"ALTER TABLE detection_events ADD COLUMN {col} {ddl}"))
                         results[col] = 'added'
                         logger.info(f"SQLite migration: added column detection_events.{col} {ddl}")
                     except Exception as e:
@@ -131,7 +134,7 @@ def ensure_videos_columns(engine: Engine) -> Dict[str, str]:
             for col, ddl in desired.items():
                 if col not in existing:
                     try:
-                        conn.execute(f"ALTER TABLE videos ADD COLUMN {col} {ddl}")
+                        conn.execute(text(f"ALTER TABLE videos ADD COLUMN {col} {ddl}"))
                         results[col] = 'added'
                         logger.info(f"SQLite migration: added column videos.{col} {ddl}")
                     except Exception as e:

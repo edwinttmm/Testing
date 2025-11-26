@@ -91,12 +91,12 @@ def check_database():
         db = next(get_db())
         
         # Count ground truth objects
-        gt_count = db.query(GroundTruthObject).count()
+        gt_count = db.execute(select(func.count()).select_from(GroundTruthObject)).scalar()
         print(f"📊 Total ground truth objects in DB: {gt_count}")
         
         if gt_count > 0:
             # Get sample ground truth object
-            sample_gt = db.query(GroundTruthObject).first()
+            sample_gt = db.execute(select(GroundTruthObject)).scalar_one_or_none()
             print(f"📋 Sample GT object:")
             print(f"   Video ID: {sample_gt.video_id}")
             print(f"   Timestamp: {sample_gt.timestamp}")
@@ -105,9 +105,9 @@ def check_database():
             
             # Check if this video has a test session
             from models import TestSession
-            session_with_video = db.query(TestSession).filter(
+            session_with_video = db.execute(select(TestSession).where(
                 TestSession.video_id == sample_gt.video_id
-            ).first()
+            )).scalar_one_or_none()
             
             if session_with_video:
                 print(f"✅ Found test session {session_with_video.id} for this video")

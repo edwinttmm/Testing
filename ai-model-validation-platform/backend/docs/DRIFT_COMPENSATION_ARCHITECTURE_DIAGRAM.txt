@@ -1,0 +1,331 @@
+# Drift Compensation System Architecture
+# Visual Overview - All Components
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    DRIFT MEASUREMENT & COMPENSATION SYSTEM                  │
+│                           Production-Grade HIL Testing                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                          1. CLOCK SYNCHRONIZATION                           ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────┐                                    ┌──────────────┐
+│   Browser    │                                    │   Backend    │
+│  (Client)    │                                    │  (Server)    │
+└──────┬───────┘                                    └──────┬───────┘
+       │                                                   │
+       │  T1: PING (performance.now())                    │
+       ├─────────────────────────────────────────────────>│ T2: Received (time.perf_counter())
+       │                                                   │
+       │                                                   │
+       │  T3: PONG (T2, T3)                               │
+       │<─────────────────────────────────────────────────┤ T3: Sent (time.perf_counter())
+       │ T4: Received (performance.now())                 │
+       │                                                   │
+       └───────────────────────────────────────────────────┘
+
+       Calculate:
+       RTT = T4 - T1
+       Clock Offset (θ) = ((T2 - T1) + (T3 - T4)) / 2
+
+       Accuracy: ±5ms (LAN), ±10ms (WAN)
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                        2. DRIFT MEASUREMENT PROTOCOL                        ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────┐    WebSocket      ┌──────────────┐    USB        ┌──────────────┐
+│   Browser    │  START_TEST       │   Backend    │  Command      │   LabJack    │
+│  (Frontend)  │  Event            │  (Python)    │               │   Device     │
+└──────┬───────┘                   └──────┬───────┘               └──────┬───────┘
+       │                                  │                              │
+       │ T_video_start                    │                              │
+       │ (performance.now())               │                              │
+       │ = 1000.0 ms                      │                              │
+       │                                  │                              │
+       ├─────────────────────────────────>│ T_event_received             │
+       │  {video_start: 1000.0}           │ (time.perf_counter())        │
+       │                                  │ = 1.050 s                    │
+       │                                  │                              │
+       │                                  ├─────────────────────────────>│
+       │                                  │ START_MONITORING             │ T_labjack_start
+       │                                  │ T_command_sent               │ (device clock)
+       │                                  │ = 1.200 s                    │ = 1.200 s
+       │                                  │                              │
+       │                                  │<─────────────────────────────┤
+       │                                  │ ACK + Timestamp              │
+       │                                  │                              │
+       │<─────────────────────────────────┤                              │
+       │  SYNC_STATUS                     │                              │
+       │  {drift_ms: 150}                 │                              │
+       │                                  │                              │
+       │                                  │                              │
+       │                                  │  [Monitoring Active]         │
+       │                                  │                              │
+       │                                  │<─────────────────────────────┤
+       │                                  │ DETECTION @ t=2.500s         │
+       │                                  │                              │
+
+       Drift Calculation:
+       T_video_start_backend = 1000.0 ms + 50 ms (clock offset) = 1050 ms = 1.050s
+       T_labjack_start = 1.200s
+       Drift = (1.200 - 1.050) * 1000 = 150 ms
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                      3. TIMESTAMP COMPENSATION                              ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+Input: Raw LabJack Detection
+  T_detection_raw = 2.500 s (backend clock domain)
+
+Step 1: Convert video start to backend clock
+  T_video_start_backend = T_video_start_browser + clock_offset
+  T_video_start_backend = 1000.0 ms + 50 ms = 1050 ms = 1.050s
+
+Step 2: Compensate detection to video timeline
+  T_detection_compensated = (T_detection_raw - T_video_start_backend) * 1000
+  T_detection_compensated = (2.500 - 1.050) * 1000 = 1450 ms
+
+Output: Compensated Detection
+  Detection occurred at 1450 ms in video timeline ✓
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                      4. GROUND TRUTH MATCHING                               ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+Ground Truth Events:
+  GT1: Object appears @ 1400 ms (video timeline)
+  GT2: Object appears @ 2000 ms (video timeline)
+
+Compensated Detections:
+  Detection1: @ 1450 ms (video timeline)
+  Detection2: @ 2050 ms (video timeline)
+
+Matching Algorithm (tolerance = 50 ms):
+  Detection1 → GT1: |1450 - 1400| = 50 ms ✓ MATCH (within tolerance)
+  Detection2 → GT2: |2050 - 2000| = 50 ms ✓ MATCH (within tolerance)
+
+Results:
+  True Positives: 2
+  False Positives: 0
+  False Negatives: 0
+  Precision: 100%
+  Recall: 100%
+  Mean Timing Error: 50 ms
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                    5. MONITORING & ALERTING STACK                           ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         GRAFANA DASHBOARD                                   │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐      │
+│  │ Real-Time   │  │   Drift     │  │    Spec     │  │   Clock     │      │
+│  │   Drift     │  │ Distribution│  │ Compliance  │  │   Sync      │      │
+│  │   Chart     │  │  Histogram  │  │    Rate     │  │  Quality    │      │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     ▲
+                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ALERTMANAGER (Prometheus)                              │
+│  Rules:                                                                     │
+│  - HighDriftRate (drift > 500ms)         → PagerDuty + Slack              │
+│  - ClockSyncDegraded (RTT > 100ms)       → Slack Warning                  │
+│  - SpecComplianceLow (< 95%)             → Slack Critical                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     ▲
+                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    PROMETHEUS METRICS COLLECTOR                             │
+│  - drift_total_milliseconds                                                 │
+│  - drift_compensated_milliseconds                                           │
+│  - clock_sync_rtt_milliseconds                                              │
+│  - clock_offset_milliseconds                                                │
+│  - drift_measurements_total                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     ▲
+                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 TIMESCALEDB (Time-Series Database)                          │
+│  Table: drift_measurements                                                  │
+│  - Stores all drift measurements with full timestamp breakdown              │
+│  - Continuous aggregates for hourly statistics                              │
+│  - Retention: 90 days detailed data, forever aggregated                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                        6. PRE-START BUFFER STRATEGY                         ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+Problem: Network delay causes LabJack to start 50-200ms late
+Solution: Start LabJack BEFORE video starts
+
+Timeline:
+
+  -300ms         0ms (Video Start)       +50ms           +1000ms
+    │             │                       │               │
+    └─────────────┼───────────────────────┼───────────────┤
+                  │                       │               │
+    LabJack       │                       │               │
+    Starts        │                       │               │
+    Monitoring    Video                   First           Detection
+    (300ms early) Playback                Detection       Captured
+                  Begins                  Expected        
+
+Post-Processing:
+1. Trim detections before t=0 (video start marker)
+2. Compensate all remaining detections to video timeline
+3. Match with ground truth
+
+Guarantee: ZERO detection loss, even with 200ms network delay
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                          7. PERFORMANCE TARGETS                             ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  Metric                    │  Target    │  Warning   │  Critical     │
+├──────────────────────────────────────────────────────────────────────┤
+│  Effective Drift           │  < 10 ms   │  < 50 ms   │  ≥ 50 ms      │
+│  Measurement Precision     │  ± 1 ms    │  ± 5 ms    │  > 5 ms       │
+│  Clock Sync Accuracy       │  ± 5 ms    │  ± 10 ms   │  > 10 ms      │
+│  Detection Capture Rate    │  100%      │  ≥ 99%     │  < 99%        │
+│  Spec Compliance Rate      │  ≥ 99%     │  ≥ 95%     │  < 95%        │
+│  Clock Sync RTT            │  < 20 ms   │  < 50 ms   │  ≥ 100 ms     │
+│  Measurement Latency       │  < 1 s     │  < 2 s     │  ≥ 5 s        │
+└──────────────────────────────────────────────────────────────────────┘
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                       8. COMPLETE DATA FLOW                                 ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────┐
+│  Test Start │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────┐
+│  Clock Synchronization  │ ← 10 samples, Marzullo's algorithm
+└──────┬──────────────────┘   Result: clock_offset = +50ms, RTT = 15ms
+       │
+       ▼
+┌─────────────────────────┐
+│  Video Playback Start   │ ← T_video_start = 1000.0 ms (browser)
+└──────┬──────────────────┘
+       │
+       ▼
+┌─────────────────────────┐
+│  LabJack Start Command  │ ← Sent via WebSocket + USB
+└──────┬──────────────────┘   T_command_sent = 1.200 s (backend)
+       │
+       ▼
+┌─────────────────────────┐
+│  Drift Measurement      │ ← drift = 150 ms
+└──────┬──────────────────┘   Stored in database
+       │
+       ▼
+┌─────────────────────────┐
+│  Detections Captured    │ ← Raw timestamps (backend clock)
+└──────┬──────────────────┘   [2.500s, 3.200s, 4.100s, ...]
+       │
+       ▼
+┌─────────────────────────┐
+│  Timestamp Compensation │ ← Adjust to video timeline
+└──────┬──────────────────┘   [1450ms, 2150ms, 3050ms, ...]
+       │
+       ▼
+┌─────────────────────────┐
+│  Ground Truth Matching  │ ← Match detections to GT events
+└──────┬──────────────────┘   Result: TP=10, FP=1, FN=0
+       │
+       ▼
+┌─────────────────────────┐
+│  Metrics Calculation    │ ← Precision, Recall, Timing Errors
+└──────┬──────────────────┘
+       │
+       ▼
+┌─────────────────────────┐
+│  Results Display        │ ← Frontend dashboard
+└─────────────────────────┘
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                       9. TROUBLESHOOTING QUICK REF                          ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+Problem: High Drift (>500ms)
+  Check:
+  ✓ Network latency: ping <backend-host>
+  ✓ LabJack USB connection
+  ✓ System CPU/memory load
+  Fix: Use wired connection, check USB cable, reduce system load
+
+Problem: Poor Clock Sync (RTT >100ms)
+  Check:
+  ✓ WebSocket transport type
+  ✓ Network path (traceroute)
+  ✓ Server processing time
+  Fix: Increase sample count, use wired network, optimize server
+
+Problem: Low Spec Compliance (<95%)
+  Check:
+  ✓ Drift distribution (SQL queries)
+  ✓ Recent system changes
+  ✓ Problem tests/devices
+  Fix: Analyze trends, identify root cause, apply targeted fixes
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                           10. DOCUMENTATION MAP                             ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+docs/
+├── README_DRIFT_COMPENSATION.md          ← START HERE (Overview)
+├── DRIFT_MEASUREMENT_PROTOCOL.md         ← How to measure drift
+├── CLOCK_SYNCHRONIZATION_DESIGN.md       ← NTP-like clock sync
+├── TIMESTAMP_COMPENSATION_ALGORITHM.md   ← Compensate timestamps
+└── DRIFT_MONITORING_STRATEGY.md          ← Alerts & dashboards
+
+Implementation Files:
+backend/services/
+├── clock_sync.py                         ← Clock synchronization
+├── drift_measurement.py                  ← Drift measurement
+├── timestamp_compensation.py             ← Timestamp compensation
+├── drift_metrics.py                      ← Prometheus metrics
+└── alert_handler.py                      ← Alert handling
+
+frontend/services/
+└── clockSync.ts                          ← Frontend clock sync
+
+database/migrations/
+└── 001_drift_measurements_table.sql      ← Database schema
+
+monitoring/
+├── prometheus.yml                        ← Metrics collection
+├── alertmanager.yml                      ← Alert routing
+└── grafana_dashboard.json                ← Dashboard config
+
+tests/
+├── test_clock_sync.py                    ← Unit tests
+├── test_drift_measurement.py             ← Integration tests
+└── test_compensation.py                  ← Compensation tests
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                              LEGEND                                         ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+  →  Data flow / Synchronous call
+  ←  Response / Acknowledgment
+  ▼  Sequential step
+  ✓  Validation / Success indicator
+  ms Milliseconds (1/1000 second)
+  s  Seconds
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Document Version: 1.0.0
+Created: 2025-11-20
+Author: System Architecture Designer
+Status: Production-Ready
+
+═══════════════════════════════════════════════════════════════════════════════

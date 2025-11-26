@@ -1,0 +1,129 @@
+================================================================================
+PER-VIDEO DETECTION BREAKDOWN ANALYSIS
+================================================================================
+
+Session: fa204ef2-9d8b-4480-9692-86e338c1218a
+
+SESSION OVERVIEW:
+- Status: completed
+- Expected Detections (GT): None
+- Actual Detections: 96
+- True Positives: 87
+- False Positives: 9
+- False Negatives: 170
+- Overall Detection Rate: 0.0%
+- Pass/Fail: FAIL
+- F1 Score: 0.493
+- Precision: 0.906
+- Recall: 0.339
+
+================================================================================
+VIDEO SEQUENCE BREAKDOWN
+================================================================================
+
+Found 2 video(s) in sequence
+
+================================================================================
+VIDEO 1:
+================================================================================
+- Filename: child_test_video_20251031_144012.mp4
+- Video ID: 10c2b16c-86fa-4140-b1cf-c0ea42f82ca5
+- Sequence Video Result ID: 775801fd-d2ae-4d73-b6b8-fa9369a443e2
+- Status: pending
+- Validation Result: pending
+
+METRICS:
+- Total GT Events: 131
+- Total Detections: 37
+- True Positives: 36
+- False Positives: 1
+- False Negatives: 95
+- Detection Rate: 27.5%
+
+FRAME ANALYSIS:
+- Frame Range: 1 - 121
+- Frames with GT Events: 121
+- Frames with Detections: 0
+- Missed Frames: 121
+
+MISSED FRAMES:
+- First 10: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+- Last 10: [112, 113, 114, 115, 116, 117, 118, 119, 120, 121]
+
+PATTERN: Systematic skip - every 1 frames
+
+SAMPLE GT EVENTS (first 10):
+  1. Frame 1: pedestrian - ✗ MISSED
+  2. Frame 2: pedestrian - ✗ MISSED
+  3. Frame 3: pedestrian - ✗ MISSED
+  4. Frame 4: pedestrian - ✗ MISSED
+  5. Frame 5: pedestrian - ✗ MISSED
+  6. Frame 6: pedestrian - ✗ MISSED
+  7. Frame 7: pedestrian - ✓ MATCHED
+  8. Frame 8: pedestrian - ✗ MISSED
+  9. Frame 9: pedestrian - ✗ MISSED
+  10. Frame 10: pedestrian - ✓ MATCHED
+
+================================================================================
+VIDEO 2:
+================================================================================
+- Filename: Child_20251031_143523.mp4
+- Video ID: 550e3cf8-2755-42df-8c3c-041300735f93
+- Sequence Video Result ID: fae39423-0da2-4415-a357-0af0956e418b
+- Status: pending
+- Validation Result: pending
+
+METRICS:
+- Total GT Events: 126
+- Total Detections: 62
+- True Positives: 51
+- False Positives: 8
+- False Negatives: 75
+- Detection Rate: 40.5%
+
+FRAME ANALYSIS:
+- Frame Range: 1 - 121
+- Frames with GT Events: 121
+- Frames with Detections: 0
+- Missed Frames: 121
+
+MISSED FRAMES:
+- First 10: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+- Last 10: [112, 113, 114, 115, 116, 117, 118, 119, 120, 121]
+
+PATTERN: Systematic skip - every 1 frames
+
+SAMPLE GT EVENTS (first 10):
+  1. Frame 1: pedestrian - ✗ MISSED
+  2. Frame 2: pedestrian - ✗ MISSED
+  3. Frame 3: pedestrian - ✗ MISSED
+  4. Frame 4: pedestrian - ✗ MISSED
+  5. Frame 5: pedestrian - ✗ MISSED
+  6. Frame 6: pedestrian - ✗ MISSED
+  7. Frame 7: pedestrian - ✗ MISSED
+  8. Frame 8: pedestrian - ✗ MISSED
+  9. Frame 9: pedestrian - ✗ MISSED
+  10. Frame 10: pedestrian - ✓ MATCHED
+
+================================================================================
+COMPARISON:
+================================================================================
+
+Detection Rate Comparison:
+- Video 1: 27.5% (36/131 GT events)
+- Video 2: 40.5% (51/126 GT events)
+
+Rate Difference: 13.0 percentage points
+
+Are both videos equally affected? NO
+
+Video 2 performs better than Video 1
+
+HYPOTHESIS:
+1. Videos may have different characteristics (lighting, motion, occlusion)
+2. Different event distributions or difficulty levels
+3. Video-specific processing issues
+
+================================================================================
+ANALYSIS COMPLETE
+================================================================================

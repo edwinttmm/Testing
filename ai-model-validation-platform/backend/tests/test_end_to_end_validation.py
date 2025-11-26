@@ -27,9 +27,9 @@ from unittest.mock import Mock, patch, AsyncMock
 from contextlib import asynccontextmanager
 
 # System under test - complete integration
-from services.labjack_service import LabJackService, ConnectionMode
+from services.labjack_service_manager import LabJackService, ConnectionMode
 from services.dedicated_labjack_monitor import DedicatedLabJackMonitor
-from services.labjack_detection_service import LabJackDetectionMonitor
+from services.simple_labjack_detection import LabJackDetectionMonitor
 from services.video_timing_service import VideoTimingService
 from services.hil_validation_service import HILValidationService
 
@@ -281,7 +281,7 @@ class TestCompleteDetectionPipeline:
         env = end_to_end_environment
         
         # Create in-memory test database
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, select, delete, update, func
         from sqlalchemy.orm import sessionmaker
         from models import Base
         
@@ -329,9 +329,9 @@ class TestCompleteDetectionPipeline:
             time.sleep(3)
             
             # Verify database storage
-            stored_events = db_session.query(DetectionEvent).filter(
+            stored_events = db_session.execute(select(DetectionEvent).where(
                 DetectionEvent.test_session_id == session_id
-            ).all()
+            )).scalars().all()
             
             # Should have stored detection events
             # Note: May be 0 in test environment due to async operations

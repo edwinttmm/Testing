@@ -1,0 +1,121 @@
+================================================================================
+CIRCULAR IMPORT DEPENDENCY VISUALIZATION
+================================================================================
+
+CHAIN 1: ground_truth_matching_service ↔ match_validator
+─────────────────────────────────────────────────────────────────────
+
+┌───────────────────────────────────┐
+│ ground_truth_matching_service.py  │
+│                                   │
+│ Line 47:                          │
+│ from services.match_validator     │
+│   import validate_matches         │
+└───────────────┬───────────────────┘
+                │
+                │ imports
+                ▼
+┌───────────────────────────────────┐
+│ match_validator.py                │
+│                                   │
+│ Line 351:                         │
+│ if __name__ == "__main__":        │  ✅ SAFE
+│   from services.ground_truth...  │  (inside guard)
+│     import MatchResult            │
+└───────────────┬───────────────────┘
+                │
+                │ imports (guarded)
+                ▼
+       [NO CIRCULAR IMPORT]
+
+
+CHAIN 2: Complex 3-way circular dependency
+─────────────────────────────────────────────────────────────────────
+
+                ┌─────────────────────────┐
+                │ dedicated_labjack_     │
+        ┌───────│   monitor.py           │◄──────┐
+        │       │                        │       │
+        │       │ Line 39: (TOP-LEVEL)   │       │
+        │       │ from services.labjack_ │       │
+        │       │   detection_service    │       │
+        │       └────────────────────────┘       │
+        │                                        │
+        │ imports                                │ lazy import
+        │                                        │ (inside function)
+        ▼                                        │
+┌─────────────────────────┐                     │
+│ labjack_detection_     │                     │
+│   service.py            │                     │
+│                         │                     │
+│ Line 883: (LAZY)        │                     │
+│ def function():         │  ✅ BREAKS CYCLE    │
+│   from services.video_  │                     │
+│     sequence_...        │                     │
+└────────┬────────────────┘                     │
+         │                                      │
+         │ lazy import                          │
+         │ (inside function)                    │
+         ▼                                      │
+┌─────────────────────────┐                    │
+│ video_sequence_         │                    │
+│   orchestrator.py       │                    │
+│                         │                    │
+│ Line 1060: (LAZY)       │                    │
+│ def function():         │  ✅ BREAKS CYCLE    │
+│   from services.        │                    │
+│     dedicated_labjack_  │────────────────────┘
+│     monitor             │
+└─────────────────────────┘
+
+
+LEGEND:
+─────────────────────────────────────────────────────────────────────
+
+    ┌─────┐
+    │     │    = Python module (service file)
+    └─────┘
+
+      │      = Import relationship (solid arrow)
+      ▼
+
+    (LAZY)   = Import inside function (breaks circular dependency)
+    
+    ✅       = Safe / Fixed
+    ❌       = Dangerous / Needs fix
+
+
+KEY RESOLUTION PATTERNS:
+─────────────────────────────────────────────────────────────────────
+
+Pattern A: if __name__ == "__main__" Guard
+═══════════════════════════════════════════════
+Used in: match_validator.py
+Effect: Import only runs when module executed directly
+Status: Safe for example/test code
+
+Pattern B: Lazy Loading (Import Inside Function)
+═══════════════════════════════════════════════
+Used in: labjack_detection_service.py, video_sequence_orchestrator.py
+Effect: Import only runs when function called, not at module load
+Status: Best practice for breaking circular dependencies
+
+def my_function():
+    from services.other import Service  # Lazy load here
+    service = Service()
+    # use service
+
+
+VALIDATION RESULTS:
+─────────────────────────────────────────────────────────────────────
+
+Test 1: Import ground_truth_matching_service     ✅ PASSED
+Test 2: Import match_validator                   ✅ PASSED
+Test 3: Import dedicated_labjack_monitor         ✅ PASSED
+Test 4: Import labjack_detection_service         ✅ PASSED
+Test 5: Import video_sequence_orchestrator       ✅ PASSED
+Test 6: Import all services together             ✅ PASSED
+
+All circular dependencies are properly resolved!
+
+================================================================================

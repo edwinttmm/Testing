@@ -5,6 +5,7 @@ Tests for frontend result display with live monitoring data to ensure
 the frontend shows actual detection counts and results correctly.
 """
 
+import os
 import pytest
 import asyncio
 import json

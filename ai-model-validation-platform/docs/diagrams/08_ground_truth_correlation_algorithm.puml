@@ -1,0 +1,181 @@
+@startuml Ground Truth Correlation Algorithm
+!theme plain
+title Ground Truth Correlation Algorithm - Matching Logic
+skinparam backgroundColor #FEFEFE
+
+start
+
+partition "Input Data Collection" {
+    :Load Detection Events\nfrom test session;
+    :Load Ground Truth Objects\nfrom video;
+    note right
+        Filter GT where:
+        - deleted_at IS NULL
+        - timestamp within video duration
+    end note
+
+    :n_det = count(detections);
+    :n_gt = count(ground_truth);
+}
+
+partition "Algorithm Selection" #LightYellow {
+    if (n_det < n_gt * 0.95?) then (yes)
+        :Use **Many-to-One** Matching;
+        note right
+            Constant voltage scenario:
+            One detection covers
+            multiple GT frames
+        end note
+        goto many_to_one
+    elseif (max(n_gt, n_det) > 1000?) then (yes)
+        :Use **Greedy** Matching;
+        note right
+            Performance optimization
+            for large datasets
+        end note
+        goto greedy
+    else (no)
+        :Use **Hungarian** Algorithm;
+        note right
+            Optimal assignment
+            O(n³) complexity
+        end note
+        goto hungarian
+    endif
+}
+
+' Hungarian Algorithm Branch
+partition "Hungarian Algorithm" #LightGreen {
+    label hungarian
+    :Build Cost Matrix;
+    note right
+        cost[i][j] = |det_time[i] - gt_time[j]|
+        If > tolerance: cost = infinity
+    end note
+
+    :Apply scipy.linear_sum_assignment();
+    :Get optimal (det_idx, gt_idx) pairs;
+
+    :foreach assignment;
+    partition "Validate Match" {
+        if (cost < TOLERANCE_MS?) then (yes)
+            :Mark as True Positive;
+            :latency = det_time - gt_time;
+        else (no)
+            :Invalid match (cost too high);
+        endif
+    }
+    goto classification
+}
+
+' Many-to-One Branch
+partition "Many-to-One Matching" #LightBlue {
+    label many_to_one
+    :foreach ground_truth_frame;
+
+    :Find nearest detection;
+    :frame_diff = |det_frame - gt_frame|;
+
+    if (frame_diff <= 2?) then (yes)
+        :coverage_type = "direct";
+        :correlation_status = "aligned";
+        :Mark GT as covered;
+    elseif (frame_diff <= 5?) then (yes)
+        :coverage_type = "extended";
+        :correlation_status = "extended_coverage";
+        :Mark GT as covered;
+        note right
+            Extended coverage for
+            constant voltage mode
+        end note
+    else (no)
+        :coverage_type = null;
+        :correlation_status = "missing";
+    endif
+
+    goto classification
+}
+
+' Greedy Branch
+partition "Greedy Matching" #LightCoral {
+    label greedy
+    :Sort detections by timestamp;
+    :Sort ground truths by timestamp;
+
+    :matched_gt = empty set;
+
+    :foreach detection in order;
+
+    :Find closest unmatched GT\nwithin tolerance window;
+
+    if (match found?) then (yes)
+        :Create TP match;
+        :Add GT to matched_gt;
+        :Calculate latency;
+    else (no)
+        :Mark detection as FP;
+    endif
+
+    goto classification
+}
+
+' Classification
+partition "Classification & Metrics" #Wheat {
+    label classification
+
+    :Classify all events;
+
+    partition "True Positives (TP)" {
+        :Matched pairs within tolerance;
+        :latency_ms = det_timestamp - gt_timestamp;
+        :is_false_positive = false;
+    }
+
+    partition "False Positives (FP)" {
+        :Detections without GT match;
+        :is_false_positive = true;
+        note right
+            No longer using 10000ms
+            sentinel value
+        end note
+    }
+
+    partition "False Negatives (FN)" {
+        :GT frames without detection;
+        :Potential missed detections;
+    }
+}
+
+partition "Calculate Metrics" {
+    :precision = TP / (TP + FP);
+    :recall = TP / (TP + FN);
+    :f1_score = 2 * (P * R) / (P + R);
+
+    :latency_mean = avg(all TP latencies);
+    :latency_max = max(all TP latencies);
+    :pct_within_threshold =
+        count(latency < threshold) / TP * 100;
+}
+
+partition "Store Results" {
+    :Update DetectionEvent records;
+    :Create DetectionComparison records;
+    :Update TestSession metrics;
+    :Update TestResult summary;
+}
+
+stop
+
+legend right
+    |= Metric |= Formula |
+    | Precision | TP / (TP + FP) |
+    | Recall | TP / (TP + FN) |
+    | F1 Score | 2 * P * R / (P + R) |
+    | Pass Rate | Passed / Total |
+    |= Tolerance |= Value |
+    | Direct Match | ±2 frames |
+    | Extended Coverage | ±5 frames |
+    | Time Window | ±250ms |
+endlegend
+
+@enduml

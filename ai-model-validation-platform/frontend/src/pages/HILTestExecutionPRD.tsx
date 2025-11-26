@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+
+// CRITICAL FIX: Add testRunning ref to prevent stale closure in polling
 import {
   Box,
   Typography,
@@ -32,6 +34,8 @@ import {
   Paper,
   IconButton,
   CircularProgress,
+  Switch,
+  Tooltip,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -43,6 +47,7 @@ import {
   ArrowUpward as ArrowUpIcon,
   ArrowDownward as ArrowDownIcon,
   Delete as DeleteIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 
 import { Project, VideoFile, GroundTruthAnnotation } from '../services/types';
@@ -140,6 +145,7 @@ const HILTestExecutionPRD: React.FC = () => {
   const [orderedVideos, setOrderedVideos] = useState<VideoFile[]>([]);
   const [multiVideoMode, setMultiVideoMode] = useState<boolean>(true);
   const [maxLatencyMs, setMaxLatencyMs] = useState<number>(100); // PRD: Default 100ms
+  const [constantVoltageMode, setConstantVoltageMode] = useState<boolean>(false); // Testing mode: bypass debounce filter
   const [labjackStatus, setLabjackStatus] = useState<LabJackConnectionStatus>({
     connected: false,
     status: 'checking'
@@ -188,6 +194,7 @@ const HILTestExecutionPRD: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const stalledRetryRef = useRef<number>(0);
+  const labjackMonitorActiveRef = useRef<boolean>(false);
 
   // VRU Tracking Services
   const vruTrackManagerRef = useRef<VRUTrackManager | null>(null);
@@ -196,6 +203,35 @@ const HILTestExecutionPRD: React.FC = () => {
   // Enhanced timing tracking for multi-video sequences
   const videoTimingsRef = useRef<VideoTimingMetadata[]>([]);
   const sequenceStartTimeRef = useRef<number | null>(null);
+
+  // CRITICAL FIX: testRunning ref to prevent stale closure in polling
+  const testRunningRef = useRef(false);
+
+  // Sync testRunning state with ref
+  useEffect(() => {
+    testRunningRef.current = testRunning;
+  }, [testRunning]);
+
+  // CRITICAL FIX: Cleanup WebSocket and polling on unmount
+  useEffect(() => {
+    return () => {
+      console.log('🧹 [HIL] Cleaning up WebSocket and polling on unmount');
+
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+          wsRef.current = null;
+        } catch (e) {
+          console.warn('⚠️ [HIL] Error closing WebSocket during cleanup:', e);
+        }
+      }
+
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Helper function
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
@@ -206,6 +242,7 @@ const HILTestExecutionPRD: React.FC = () => {
 
   // Handler for video sequence progression
   // Note: Ground truth is preloaded in startTest() before playback begins
+  // MEMOIZED: Prevents SequentialVideoPlayer remounts (BUG #5 fix)
   const handleVideoStarted = useCallback((videoId: string, videoIndex: number, startTime: number) => {
     console.log('🎬 [HIL] Video started in sequence:', { videoId, videoIndex, startTime });
     setCurrentVideoId(videoId);
@@ -227,9 +264,20 @@ const HILTestExecutionPRD: React.FC = () => {
   const stopTestAndGenerateResultsRef = useRef<(() => Promise<void>) | null>(null);
 
   // Handler for sequence completion
+  // MEMOIZED: Prevents SequentialVideoPlayer remounts (BUG #5 fix)
   const handleSequenceComplete = useCallback(() => {
     console.log('🏁 [HIL] Video sequence completed');
     stopTestAndGenerateResultsRef.current?.();
+  }, []);
+
+  const handleSequentialPlayerError = useCallback((error: string) => {
+    console.error('❌ [HIL] SequentialVideoPlayer error:', error);
+    showSnackbar(error, 'error');
+    setError(error);
+  }, [showSnackbar]);
+
+  const handleSequentialVideoEnded = useCallback((videoId: string, videoIndex: number, endTime: number) => {
+    console.log('🎬 [HIL] Video ended callback:', { videoId, videoIndex, endTime });
   }, []);
 
   useEffect(() => {
@@ -1145,7 +1193,10 @@ const loadProjects = async () => {
           name: `HIL Test ${new Date().toLocaleString()}`,
           projectId: selectedProject!.id,
           videoId: primaryVideo?.id,
-          config: { maxLatencyMs },
+          config: {
+            maxLatencyMs,
+            constant_voltage_mode: constantVoltageMode
+          },
           force_start: forceStart
         });
         createdSessionId = created.id;
@@ -1255,13 +1306,13 @@ const loadProjects = async () => {
       // SequentialVideoPlayer will handle video playback automatically
       console.log('✅ [HIL] SequentialVideoPlayer will manage video playback');
 
-      // Initialize LabJack backend monitoring and detections stream (WebSocket if available)
-      console.log('🔄 [HIL] Starting LabJack backend monitoring...');
-      try {
-        await apiService.startSignalMonitoring(session.id);
-      } catch (e) {
-        console.warn('⚠️ [HIL] startSignalMonitoring failed (continuing anyway):', (e as Error)?.message);
-      }
+      // ✅ FIXED: Monitoring starts AUTOMATICALLY via backend's HIL system
+      // Backend flow: test session creation → start_hil_monitoring() → raw_labjack_integration.py
+      // This was fixed in previous session to properly handle video timing and detection capture.
+      // NO manual API calls needed - monitoring is triggered by test session creation!
+      console.log('✅ [HIL] Monitoring starts automatically when test session is created');
+      console.log('✅ [HIL] Backend uses: test_sessions → start_hil_monitoring → raw_labjack_integration.py');
+      labjackMonitorActiveRef.current = true;
       // Try WebSocket first; fallback to polling if not available
       try {
         const base = (process.env.REACT_APP_API_URL || 'http://localhost:8000').replace(/^http/, 'ws');
@@ -1269,17 +1320,24 @@ const loadProjects = async () => {
         console.log('🔌 [HIL] Attempting WebSocket connection:', wsUrl);
         wsRef.current = new WebSocket(wsUrl);
         wsRef.current.onopen = () => {
-          console.log('✅ [HIL] WebSocket connected');
+          console.log('✅ [HIL] WebSocket connected - polling NOT needed');
+          // WebSocket is working, don't start polling
         };
         wsRef.current.onmessage = (evt) => {
           try {
             const payload = JSON.parse(evt.data);
             const items = Array.isArray(payload) ? payload : (payload?.detections ? payload.detections : [payload]);
-            items.forEach((d: any, idx: number) => {
+            items.forEach((raw: any, idx: number) => {
+              const data = raw?.event ?? raw;
+              const stateTag = data?.state || data?.metadata?.state;
+              if (stateTag === 'steady_high') {
+                console.debug('⚪ [HIL] Steady-high detection received (skipped for scoring)', data);
+                return;
+              }
               // DYNAMIC TIMING: Use high-precision timestamps, no fallback to Date.now()
-              const tsMs = d.timestamp_ms ?? (typeof d.timestamp === 'number' ? d.timestamp * 1000 : null);
+              const tsMs = data.timestamp_ms ?? (typeof data.timestamp === 'number' ? data.timestamp * 1000 : null);
               if (tsMs === null) {
-                console.warn('⚠️ [HIL WebSocket] Detection missing timestamp, skipping:', d);
+                console.warn('⚠️ [HIL WebSocket] Detection missing timestamp, skipping:', data);
                 return;
               }
 
@@ -1312,7 +1370,7 @@ const loadProjects = async () => {
 
               const latencyMs = nearestExpected
                 ? Math.abs((videoRelativeSeconds - nearestExpected.timestamp) * 1000)
-                : Math.abs(Number(d.latency_ms ?? 0));
+                : Math.abs(Number(data.latency_ms ?? 0));
 
               // DYNAMIC TIMING: Expected event time relative to video start
               const expectedEventTime = nearestExpected && activeVideoStartTime
@@ -1324,7 +1382,7 @@ const loadProjects = async () => {
                 signalReceivedTime,
                 latencyMs,
                 outcome,
-                videoId: (d.video_id || validatedVideos[currentVideoIdx]?.id || '') as string,
+                videoId: (data.video_id || validatedVideos[currentVideoIdx]?.id || '') as string,
                 frameNumber: nearestExpected?.frameNumber
               } as DetectionEvent;
               setDetectionEvents(prev => [...prev, event]);
@@ -1333,18 +1391,27 @@ const loadProjects = async () => {
             console.warn('⚠️ [HIL] WS parse error:', (e as Error)?.message);
           }
         };
-        wsRef.current.onerror = () => {
-          console.warn('⚠️ [HIL] WebSocket error; falling back to polling');
-          try { wsRef.current && wsRef.current.close(); } catch {}
+        wsRef.current.onerror = (error) => {
+          console.warn('⚠️ [HIL] WebSocket error; falling back to polling', error);
+          try {
+            wsRef.current && wsRef.current.close();
+            wsRef.current = null;
+          } catch {}
           startSignalPolling(session);
         };
-        // If WS doesn’t open quickly, fallback to polling
+        // CRITICAL FIX: Sequential fallback with longer timeout
         setTimeout(() => {
-          if (!wsRef.current || wsRef.current.readyState !== 1) {
-            console.log('ℹ️ [HIL] WS not open yet; starting polling');
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            console.log('⏱️ [HIL] WebSocket connection timeout; starting polling fallback');
+            try {
+              wsRef.current?.close();
+              wsRef.current = null;
+            } catch {}
             startSignalPolling(session);
+          } else {
+            console.log('✅ [HIL] WebSocket ready, polling not needed');
           }
-        }, 1500);
+        }, 3000);  // Increased from 1500ms to 3000ms
       } catch (e) {
         console.warn('⚠️ [HIL] WebSocket setup failed; starting polling:', (e as Error)?.message);
         startSignalPolling(session);
@@ -1496,19 +1563,27 @@ const loadProjects = async () => {
     let pollCount = 0;
 
     pollingIntervalRef.current = setInterval(async () => {
-      if (!testRunning || !session) return;
+      // CRITICAL FIX: Use ref to avoid stale closure
+      if (!testRunningRef.current || !session) return;
       pollCount++;
       try {
         const detections = await apiService.getTestSessionDetections(session.id);
         if (Array.isArray(detections) && detections.length > 0) {
-          detections.forEach((d: any, idx: number) => {
-            const id = (d.id || d.detection_id || `${idx}-${d.timestamp}`) as string;
+          detections.forEach((raw: any, idx: number) => {
+            const data = raw?.event ?? raw;
+            const stateTag = data?.state || data?.metadata?.state;
+            if (stateTag === 'steady_high') {
+              console.debug('⚪ [HIL Polling] Steady-high detection received (skipped for scoring)', data);
+              return;
+            }
+
+            const id = (data.id || data.detection_id || `${idx}-${data.timestamp}`) as string;
             if (processedIds.has(id)) return;
 
             // DYNAMIC TIMING: Use high-precision timestamps, no fallback to Date.now()
-            const tsMs = d.timestamp_ms ?? (typeof d.timestamp === 'number' ? d.timestamp * 1000 : null);
+            const tsMs = data.timestamp_ms ?? (typeof data.timestamp === 'number' ? data.timestamp * 1000 : null);
             if (tsMs === null) {
-              console.warn('⚠️ [HIL Polling] Detection missing timestamp, skipping:', d);
+              console.warn('⚠️ [HIL Polling] Detection missing timestamp, skipping:', data);
               return;
             }
 
@@ -1546,7 +1621,7 @@ const loadProjects = async () => {
 
             const latencyMs = nearestExpected
               ? Math.abs((videoRelativeSeconds - nearestExpected.timestamp) * 1000)
-              : Math.abs(Number(d.latency_ms ?? 0));
+              : Math.abs(Number(data.latency_ms ?? 0));
 
             // DYNAMIC TIMING: Expected event time relative to video start
             const expectedEventTime = nearestExpected && activeVideoStartTime
@@ -1560,7 +1635,7 @@ const loadProjects = async () => {
               signalReceivedTime,
               latencyMs,
               outcome,
-              videoId: (d.video_id || validatedVideos[0]?.id || '') as string,
+              videoId: (data.video_id || validatedVideos[0]?.id || '') as string,
               frameNumber: nearestExpected?.frameNumber
             } as DetectionEvent;
 
@@ -1936,6 +2011,16 @@ const loadProjects = async () => {
         pollingIntervalRef.current = null;
         console.log('⏹️ [HIL] Signal polling stopped');
       }
+      if (labjackMonitorActiveRef.current) {
+        try {
+          await apiService.stopLabjackMonitorSession();
+          console.log('⏹️ [HIL] Dedicated LabJack monitor session stopped');
+        } catch (monitorErr) {
+          console.warn('⚠️ [HIL] Failed to stop dedicated LabJack monitor session:', (monitorErr as Error)?.message || monitorErr);
+        } finally {
+          labjackMonitorActiveRef.current = false;
+        }
+      }
 
       // Pause video
       if (videoRef.current) {
@@ -2119,6 +2204,29 @@ const loadProjects = async () => {
                     helperText="Enter maximum acceptable latency in milliseconds (PRD requirement)"
                     sx={{ maxWidth: 300 }}
                   />
+
+                  {/* Constant Voltage Mode Toggle - Testing Feature */}
+                  <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={constantVoltageMode}
+                          onChange={(e) => setConstantVoltageMode(e.target.checked)}
+                          color="warning"
+                          disabled={testRunning}
+                        />
+                      }
+                      label="Constant Voltage Mode (Testing)"
+                    />
+                    <Tooltip
+                      title="Bypass debounce filter for constant voltage injection testing. Enables 95%+ detection rate for validation. WARNING: May cause false positives in production environments."
+                      arrow
+                    >
+                      <IconButton size="small">
+                        <InfoIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                 </Box>
 
                 {/* 4. Ground Truth Status Display - Multi-Video Sequence */}
@@ -2420,17 +2528,10 @@ const loadProjects = async () => {
                 sequenceId={sequenceId}
                 maxLatencyMs={maxLatencyMs}
                 onSequenceComplete={handleSequenceComplete}
-                onError={(error) => {
-              console.error('❌ [HIL] SequentialVideoPlayer error:', error);
-              showSnackbar(error, 'error');
-              setError(error);
-            }}
-            onVideoStarted={handleVideoStarted}
-            onVideoEnded={(videoId, videoIndex, endTime) => {
-              console.log('🎬 [HIL] Video ended callback:', { videoId, videoIndex, endTime });
-            }}
-            fullScreenMode={isFullScreen}
-          />
+                onError={handleSequentialPlayerError}
+                onVideoStarted={handleVideoStarted}
+                onVideoEnded={handleSequentialVideoEnded}
+              />
             </VideoPlayerErrorBoundary>
 
             {/* Full-screen controls overlay */}

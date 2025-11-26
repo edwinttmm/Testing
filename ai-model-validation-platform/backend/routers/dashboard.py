@@ -55,7 +55,6 @@ async def get_dashboard_statistics(db: Session = Depends(get_db)):
         
         # Calculate average accuracy from test results; fallback to detection events
         try:
-            from models import TestResult
             avg_acc = db.query(func.avg(TestResult.accuracy)).scalar()
             if avg_acc and avg_acc > 0:
                 average_accuracy = float(avg_acc) * 100.0

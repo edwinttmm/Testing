@@ -3,6 +3,7 @@ Comprehensive End-to-End Test Suite for LabJack Timing Validation Workflow
 Tests the complete flow from test session creation through results display
 """
 
+import os
 import pytest
 import asyncio
 import logging
@@ -35,8 +36,8 @@ from src.enhanced_test_workflow_orchestrator import (
     WorkflowStatus,
     VideoStatus
 )
-from services.enhanced_detection_service import EnhancedDetection
-from services.labjack_service import LabJackService
+from services.simple_labjack_detection import EnhancedDetection
+from services.labjack_service_manager import LabJackService
 from services.websocket_service import realtime_service
 
 # FastAPI app
@@ -92,8 +93,8 @@ class TestLabJackWorkflowIntegration:
             {"timestamp": 1017.5, "voltage": 3.3, "latency_ms": 46.5}
         ]
         
-        mock_service.start_detection.return_value = True
-        mock_service.stop_detection.return_value = True
+        mock_service.start_session.return_value = True
+        mock_service.end_session.return_value = True
         mock_service.get_detection_results.return_value = {
             "detections": detection_sequence,
             "metadata": {
@@ -258,9 +259,9 @@ class TestLabJackWorkflowIntegration:
         # Step 4: Verify detection events were created
         db = SessionLocal()
         try:
-            detection_events = db.query(DetectionEvent).filter(
+            detection_events = db.execute(select(DetectionEvent).where(
                 DetectionEvent.test_session_id == test_session_id
-            ).all()
+            )).scalars().all()
             
             assert len(detection_events) == 8  # Should match mock data
             
@@ -447,7 +448,7 @@ class TestLabJackWorkflowIntegration:
         # Verify timestamps in detection events
         db = SessionLocal()
         try:
-            all_events = db.query(DetectionEvent).all()
+            all_events = db.execute(select(DetectionEvent)).scalars().all()
             
             for event in all_events:
                 # Verify timestamp precision
@@ -622,7 +623,7 @@ class TestLabJackWorkflowIntegration:
         
         # Test 1: LabJack connection failure
         mock_failed_labjack = Mock(spec=LabJackService)
-        mock_failed_labjack.start_detection.side_effect = Exception("LabJack connection failed")
+        mock_failed_labjack.start_session.side_effect = Exception("LabJack connection failed")
         mock_failed_labjack.is_connected.return_value = False
         
         with patch('services.labjack_service.labjack_service', mock_failed_labjack):
@@ -738,8 +739,8 @@ class TestLabJackWorkflowIntegration:
         
         # Enhanced mock with more detections
         mock_large_dataset = Mock(spec=LabJackService)
-        mock_large_dataset.start_detection.return_value = True
-        mock_large_dataset.stop_detection.return_value = True
+        mock_large_dataset.start_session.return_value = True
+        mock_large_dataset.end_session.return_value = True
         mock_large_dataset.is_connected.return_value = True
         
         # Generate 100 detection events (10 per video)
@@ -796,7 +797,7 @@ class TestLabJackWorkflowIntegration:
             # Verify all detection events were processed
             db = SessionLocal()
             try:
-                total_events = db.query(DetectionEvent).count()
+                total_events = db.execute(select(func.count()).select_from(DetectionEvent)).scalar()
                 assert total_events == 100  # Should have processed all detections
                 
             finally:

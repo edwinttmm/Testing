@@ -8,6 +8,7 @@ Addresses critical test coverage gaps identified in TEST_SESSION_TIMING_ANALYSIS
 **Test Coverage:** Video 2 timing, cumulative offsets, transition boundaries
 """
 
+import os
 import pytest
 import time
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ from models import (
     GroundTruthObject,
     SequenceVideoResult
 )
-from services.video_sequence_orchestrator import (
+from services.video_lifecycle_orchestrator import (
     VideoSequenceOrchestrator,
     VideoStatus,
     SequenceStatus

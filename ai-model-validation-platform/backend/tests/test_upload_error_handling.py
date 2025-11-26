@@ -275,7 +275,7 @@ class TestUploadErrorHandling:
         """Test that resources are cleaned up when processing fails"""
         upload_dir = settings.upload_directory
         initial_file_count = len(os.listdir(upload_dir)) if os.path.exists(upload_dir) else 0
-        initial_db_count = db_session.query(Video).count()
+        initial_db_count = db_session.execute(select(func.count()).select_from(Video)).scalar()
         
         # Mock a processing failure after file upload
         with patch('main.process_video_metadata') as mock_process:
@@ -295,7 +295,7 @@ class TestUploadErrorHandling:
         
         # Verify cleanup occurred
         final_file_count = len(os.listdir(upload_dir)) if os.path.exists(upload_dir) else 0
-        final_db_count = db_session.query(Video).count()
+        final_db_count = db_session.execute(select(func.count()).select_from(Video)).scalar()
         
         # Files and DB records should be cleaned up
         assert final_file_count == initial_file_count

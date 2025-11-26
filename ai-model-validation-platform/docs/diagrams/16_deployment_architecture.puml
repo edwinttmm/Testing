@@ -1,0 +1,91 @@
+@startuml Deployment Architecture
+!theme plain
+title Deployment Architecture
+skinparam backgroundColor #FEFEFE
+
+node "Docker Host" {
+
+    node "vru_frontend" #E3F2FD {
+        component [React App\nNode.js 20] as frontend
+        component [nginx\n(optional)] as nginx
+    }
+
+    node "vru_backend" #E8F5E9 {
+        component [FastAPI\nUvicorn] as backend
+        component [LabJack Monitor\n(Subprocess)] as labjack
+        component [WebSocket Server\nSocket.IO] as websocket
+    }
+
+    node "vru_redis" #FCE4EC {
+        database [Redis 7\nCache Layer] as redis
+    }
+
+    database "SQLite/PostgreSQL" as db
+    folder "File Storage" as files {
+        [Videos]
+        [Reports]
+        [Screenshots]
+    }
+}
+
+cloud "External" {
+    actor "Test Engineer" as user
+    entity "LabJack T4/T7\n(USB)" as hardware
+}
+
+' Network
+rectangle "vru_network (bridge)" as network #LightGray {
+}
+
+' Connections
+user --> frontend : Port 3000
+frontend --> backend : Port 8000
+backend --> redis
+backend --> db
+backend --> files
+backend --> websocket
+labjack --> hardware : USB
+websocket --> frontend : WebSocket
+
+frontend -[hidden]-> network
+backend -[hidden]-> network
+redis -[hidden]-> network
+
+note right of frontend
+    **Frontend Container:**
+    - React 18 + TypeScript
+    - Material-UI
+    - Port: 3000
+end note
+
+note right of backend
+    **Backend Container:**
+    - FastAPI + Python 3.11
+    - Uvicorn ASGI
+    - Port: 8000
+    - Subprocess for LabJack
+end note
+
+note right of redis
+    **Redis Container:**
+    - Caching layer
+    - Session storage
+    - Port: 6379
+end note
+
+note bottom of db
+    **Database Options:**
+    - SQLite (dev): ./dev_database.db
+    - PostgreSQL (prod): External server
+end note
+
+legend right
+    **Environment Variables:**
+    - VRU_DATABASE_URL
+    - VRU_REDIS_URL
+    - VRU_SECRET_KEY
+    - REACT_APP_API_URL
+    - REACT_APP_WS_URL
+endlegend
+
+@enduml

@@ -24,10 +24,18 @@ class DatabaseType(str, Enum):
 
 class VRUSettings(BaseSettings):
     """Unified settings for VRU AI Model Validation Platform"""
-    
+
+    # Application Information
+    app_name: str = Field(default="VRU AI Model Validation Platform")
+    app_version: str = Field(default="2.0.0")
+    app_description: str = Field(default="AI-powered video validation and testing platform")
+    app_environment: str = Field(default="development")
+
     # Environment Configuration
     environment: Environment = Field(default=Environment.DEVELOPMENT)
     debug: bool = Field(default=False)
+    api_debug: bool = Field(default=False)
+    api_base_url: str = Field(default="http://localhost:8000")
     
     # Server Configuration with 155.138.239.131 support
     api_host: str = Field(default="0.0.0.0")
@@ -49,11 +57,28 @@ class VRUSettings(BaseSettings):
     
     # Security Configuration
     secret_key: str = Field(default="dev-secret-key-change-in-production")
+    jwt_secret_key: str = Field(default="dev-jwt-secret-key-change-in-production")
     jwt_algorithm: str = Field(default="HS256")
     jwt_expiration: int = Field(default=3600)
-    
+    jwt_expire_minutes: int = Field(default=60)
+    ssl_enabled: bool = Field(default=False)
+    ssl_cert_file: Optional[str] = Field(default=None)
+    security_headers_enabled: bool = Field(default=True)
+    hsts_enabled: bool = Field(default=False)
+    csp_enabled: bool = Field(default=False)
+
     # CORS Configuration with 155.138.239.131
     cors_origins: str = Field(default="http://localhost:3000,http://127.0.0.1:3000,http://155.138.239.131:3000,https://155.138.239.131:3000")
+    cors_credentials: bool = Field(default=True)
+    cors_methods: str = Field(default="GET,POST,PUT,DELETE,OPTIONS,PATCH")
+    cors_headers: str = Field(default="*")
+
+    # Logging Configuration
+    log_level: str = Field(default="INFO")
+    log_file: str = Field(default="./logs/vru.log")
+    log_format: str = Field(default="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    log_max_bytes: int = Field(default=10485760)  # 10MB
+    log_backup_count: int = Field(default=5)
     
     # ML Model Configuration
     yolo_model_path: str = Field(default="./models/yolov8n.pt")
@@ -62,7 +87,9 @@ class VRUSettings(BaseSettings):
     
     # Upload Configuration
     upload_directory: str = Field(default="./uploads")
+    screenshots_directory: str = Field(default="./screenshots")
     max_file_size_mb: int = Field(default=500)
+    max_file_size: int = Field(default=524288000)  # 500MB in bytes
     allowed_video_extensions: List[str] = Field(default_factory=lambda: [
         ".mp4", ".avi", ".mov", ".mkv", ".flv", ".webm"
     ])
@@ -107,6 +134,12 @@ class VRUSettings(BaseSettings):
     enable_batch_processing: bool = Field(default=True)
     enable_audit_logging: bool = Field(default=True)
     enable_performance_monitoring: bool = Field(default=True)
+    enable_caching: bool = Field(default=True)
+
+    # Deployment Configuration
+    docker_mode: bool = Field(default=False)
+    database_sslmode: str = Field(default="prefer")
+    api_reload: bool = Field(default=True)
     
     # API Configuration
     api_v1_prefix: str = Field(default="/api/v1")

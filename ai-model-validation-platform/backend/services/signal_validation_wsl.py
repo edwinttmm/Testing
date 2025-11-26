@@ -63,7 +63,6 @@ class SignalValidationServiceWSL:
     
     async def check_labjack_connection(self) -> Dict[str, Any]:
         """Async wrapper for get_labjack_status for API compatibility"""
-        from datetime import datetime, timezone
         status = self.get_labjack_status()
         
         # Ensure timestamp is present

@@ -128,6 +128,27 @@ async def get_hardware_status():
     try:
         service = get_labjack_hardware_service()
         status = service.get_status()
+
+        # If dedicated hardware service says "not connected" but the core LabJack
+        # monitor already owns the device, surface that connection state so the UI
+        # doesn't block subsequent tests.
+        if not status.get("is_connected"):
+            try:
+                from services.labjack_service import get_labjack_service, ConnectionStatus
+
+                core_service = get_labjack_service()
+                core_status = core_service.get_status()
+                if core_status.connected or core_status.status == ConnectionStatus.CONNECTED:
+                    status["is_connected"] = True
+                    status["connection_status"] = "Connected"
+                    status_details = status.get("connection_details", {})
+                    status_details["status"] = "Connected"
+                    status_details["source"] = "dedicated_monitor"
+                    status["connection_details"] = status_details
+                    if core_status.device_info:
+                        status["device_info"] = core_status.device_info
+            except Exception as sync_error:
+                logger.debug(f"LabJack status sync failed: {sync_error}")
         
         return HardwareStatusResponse(
             connection_status=status["connection_status"],  # PRD requirement

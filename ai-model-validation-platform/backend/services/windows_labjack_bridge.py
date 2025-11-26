@@ -49,8 +49,8 @@ class WindowsLabJackBridge:
                 for line in f:
                     if line.startswith('nameserver'):
                         return line.split()[1]
-        except:
-            pass
+        except (FileNotFoundError, IOError, IndexError) as e:
+            logger.debug(f"Could not read Windows IP from resolv.conf: {e}")
         return "localhost"
     
     def start_session_monitoring(self, session_id: str) -> bool:
@@ -131,7 +131,8 @@ class WindowsLabJackBridge:
         try:
             result = subprocess.run(['lsusb'], capture_output=True, text=True)
             return 'LabJack' in result.stdout or 'Meilhaus' in result.stdout
-        except:
+        except (FileNotFoundError, subprocess.SubprocessError, OSError) as e:
+            logger.debug(f"USB/IP check failed: {e}")
             return False
     
     def _check_tcp_bridge(self) -> bool:
@@ -142,14 +143,14 @@ class WindowsLabJackBridge:
             result = sock.connect_ex((self.windows_ip, self.bridge_port))
             sock.close()
             return result == 0
-        except:
+        except (socket.error, OSError) as e:
+            logger.debug(f"TCP bridge check failed: {e}")
             return False
     
     def _check_network_labjack(self) -> bool:
         """Check if LabJack is accessible via network"""
         # LabJack T7-Pro and T8 can have Ethernet connectivity
         try:
-            import socket
             # Scan common LabJack network addresses
             for addr in ["192.168.1.207", "192.168.0.207"]:  # Default LabJack IPs
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -158,8 +159,8 @@ class WindowsLabJackBridge:
                 sock.close()
                 if result == 0:
                     return True
-        except:
-            pass
+        except (socket.error, OSError) as e:
+            logger.debug(f"Network LabJack check failed: {e}")
         return False
     
     def _check_shared_folder(self) -> bool:
@@ -410,8 +411,8 @@ class WindowsLabJackBridge:
                 try:
                     import labjack.ljm as ljm
                     ljm.close(self._handle)
-                except:
-                    pass
+                except Exception as close_error:
+                    logger.debug(f"Error closing handle on error: {close_error}")
                 self._handle = None
             return {
                 "success": False,

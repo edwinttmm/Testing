@@ -9,7 +9,7 @@ These tests simulate frontend API calls and validate expected responses.
 import pytest
 import json
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 import tempfile
 import os

@@ -59,10 +59,36 @@ async def get_ground_truth_comparison_with_screenshots(
         test_session = db.query(TestSession).filter(TestSession.id == session_id).first()
         if not test_session:
             raise HTTPException(status_code=404, detail=f"Test session {session_id} not found")
-        
+
+        # FIX: Run video_id reassignment BEFORE ground truth matching
+        # This fixes detections that arrived before video lifecycle events completed
+        # See: QUEEN_LABJACK_DETECTION_FIX.md - 7.7% of detections have NULL video_id
+        try:
+            from services.detection_video_reassignment import get_reassignment_service
+            reassignment_service = get_reassignment_service()
+            reassignment_result = await reassignment_service.reassign_null_video_ids(
+                session_id=test_session.id,
+                dry_run=False
+            )
+            if reassignment_result.get('success'):
+                logger.info(
+                    f"✅ Video reassignment completed: "
+                    f"{reassignment_result.get('reassigned_count', 0)} detections fixed"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Video reassignment had issues: {reassignment_result.get('errors', [])}"
+                )
+        except Exception as reassignment_error:
+            logger.warning(
+                "Video reassignment failed for session %s: %s",
+                test_session.id,
+                reassignment_error
+            )
+
         # Get ground truth matching service
         gt_service = get_ground_truth_matching_service()
-        
+
         # Perform ground truth matching
         matching_metrics = gt_service.match_detections_to_ground_truth(
             session_id=session_id,
@@ -209,7 +235,8 @@ async def get_hil_detection_events(
                 'validation_result': event.validation_result,
                 'source': getattr(event, 'source', 'unknown'),
                 'detection_type': getattr(event, 'detection_type', 'unknown'),
-                'created_at': event.created_at.isoformat() if event.created_at else None
+                'created_at': event.created_at.isoformat() if event.created_at else None,
+                'video_id': event.video_id
             }
             
             # Add screenshot information
@@ -417,9 +444,10 @@ async def get_detection_boundaries_analysis(
                 'latency_ms': event.actual_latency_ms
             })
         
-        # Get ground truth events
+        # Get ground truth events (only active records, exclude soft-deleted)
         ground_truth_events = db.query(GroundTruthObject).filter(
-            GroundTruthObject.test_session_id == session_id
+            GroundTruthObject.test_session_id == session_id,
+            GroundTruthObject.deleted_at.is_(None)  # Only include active records
         ).order_by(GroundTruthObject.frame_number).all()
         
         # Convert to dict format for analysis

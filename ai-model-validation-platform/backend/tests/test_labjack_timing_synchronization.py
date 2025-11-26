@@ -18,7 +18,7 @@ import numpy as np
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, delete, update, func
 from sqlalchemy.pool import StaticPool
 
 from main import app
@@ -1091,9 +1091,9 @@ class TimingSynchronizationValidator:
     def cleanup(self):
         """Clean up test resources"""
         try:
-            self.db.query(LabJackDetection).filter(LabJackDetection.session_id == self.session_id).delete()
-            self.db.query(VideoDetection).filter(VideoDetection.session_id == self.session_id).delete()
-            self.db.query(DetectionConfiguration).filter(DetectionConfiguration.session_id == self.session_id).delete()
+            self.db.execute(delete(LabJackDetection).where(LabJackDetection.session_id == self.session_id))
+            self.db.execute(delete(VideoDetection).where(VideoDetection.session_id == self.session_id))
+            self.db.execute(delete(DetectionConfiguration).where(DetectionConfiguration.session_id == self.session_id))
             self.db.commit()
         except Exception:
             self.db.rollback()

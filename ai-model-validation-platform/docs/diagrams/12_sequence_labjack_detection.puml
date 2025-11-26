@@ -1,0 +1,93 @@
+@startuml LabJack Detection Sequence
+!theme plain
+title LabJack Detection Sequence - Detailed
+skinparam backgroundColor #FEFEFE
+
+participant "Backend API" as api
+participant "LabJack Service\nManager" as manager
+participant "Dedicated Monitor\n(Separate Process)" as monitor
+participant "LabJack T4/T7\n(Hardware)" as hardware
+database "Database" as db
+participant "WebSocket\nServer" as ws
+
+== Initialization ==
+api -> manager : initialize()
+manager -> monitor : spawn_process()
+monitor -> monitor : __init__()
+monitor -> hardware : ljm.openS("T4", "USB", "ANY")
+hardware --> monitor : device_handle
+monitor -> hardware : eStreamStart(200Hz, [AIN0])
+hardware --> monitor : actual_scan_rate
+monitor --> manager : ready
+
+== Session Start ==
+api -> manager : start_monitoring(session_id)
+manager -> monitor : IPC: START {session_id}
+monitor -> monitor : Create session context
+monitor -> monitor : Initialize event buffer
+monitor --> manager : monitoring_started
+
+== Detection Loop ==
+loop While Session Active
+    monitor -> hardware : eStreamRead(50 scans)
+    hardware --> monitor : voltage_buffer[50]
+
+    loop For each sample
+        monitor -> monitor : Check voltage > 2.5V
+
+        alt HIGH Signal Detected
+            monitor -> monitor : Check debounce (10ms)
+
+            alt Valid Detection
+                monitor -> monitor : Create DetectionEvent
+                note right
+                    {
+                      id: uuid,
+                      timestamp: hardware_time,
+                      labjack_voltage: 3.2,
+                      session_id: current
+                    }
+                end note
+
+                monitor -> monitor : Add to buffer
+
+                alt Buffer Full (100) OR Timeout (1s)
+                    monitor -> db : Batch INSERT detection_events
+                    db --> monitor : OK
+                    monitor -> ws : Emit detection_event
+                    ws --> ws : Broadcast to clients
+                    monitor -> monitor : Clear buffer
+                end
+            else Debounce Skip
+                monitor -> monitor : Log and skip
+            end
+        end
+    end
+end
+
+== Session End ==
+api -> manager : stop_monitoring(session_id)
+manager -> monitor : IPC: STOP {session_id}
+monitor -> monitor : Flush remaining buffer
+monitor -> db : Final batch INSERT
+monitor -> monitor : Calculate session metrics
+note right
+    {
+      total_samples: 120000,
+      detection_count: 15,
+      effective_rate: 199.8Hz,
+      signal_quality: 0.95
+    }
+end note
+monitor --> manager : session_summary
+manager --> api : {detection_count, duration}
+
+== Cleanup ==
+api -> manager : shutdown()
+manager -> monitor : IPC: SHUTDOWN
+monitor -> hardware : eStreamStop()
+monitor -> hardware : close()
+monitor --> manager : closed
+manager -> manager : Wait for process exit
+
+@enduml

@@ -1,0 +1,135 @@
+@startuml User Journey
+!theme plain
+title User Journey - Complete HIL Testing Workflow
+skinparam backgroundColor #FEFEFE
+
+|Test Engineer|
+start
+:Login to Platform;
+
+|Dashboard|
+:View System Overview;
+:Check Recent Test Results;
+:Review System Health;
+
+|Test Engineer|
+:Decide to Run New Test;
+
+|Project Management|
+:Create/Select Project;
+note right
+    Project contains:
+    - Camera configuration
+    - Signal type (GPIO)
+    - Test parameters
+end note
+
+|Video Management|
+:Upload Test Video;
+:Wait for Processing;
+:Verify Video Quality;
+
+|Ground Truth|
+if (Ground Truth Exists?) then (yes)
+    :Review Existing GT;
+else (no)
+    fork
+        :Manual Annotation;
+        note right
+            Use annotation tools to
+            mark VRU locations
+            frame by frame
+        end note
+    fork again
+        :ML Auto-Generation;
+        note right
+            Run YOLO detection
+            to generate GT
+        end note
+    end fork
+    :Validate Ground Truth;
+endif
+
+|Test Execution|
+:Configure Test Session;
+note right
+    Parameters:
+    - Latency threshold (ms)
+    - Tolerance window
+    - Enable precision timing
+end note
+
+:Verify LabJack Connection;
+:Click "Start Test";
+
+|System|
+:Initialize Hardware;
+:Start Video Playback;
+:Monitor LabJack Signals;
+:Record Detection Events;
+
+|Test Execution|
+:Watch Live Progress;
+:View Real-time Detections;
+:Monitor Signal Status;
+
+|System|
+:Video Completes;
+:Stop Monitoring;
+:Run Correlation Algorithm;
+:Calculate Metrics;
+
+|Results|
+:View Results Dashboard;
+partition "Analyze Results" {
+    :Review Metrics Cards;
+    note right
+        - Precision: 94%
+        - Recall: 92%
+        - Mean Latency: 45ms
+        - Pass Rate: 96%
+    end note
+
+    :Examine Frame Timeline;
+    note right
+        Visual correlation of:
+        - Ground Truth frames
+        - Detection events
+        - Match status
+    end note
+
+    :Review Failed Detections;
+    :Examine Failure Snapshots;
+}
+
+|Test Engineer|
+if (Results Acceptable?) then (yes)
+    :Approve Test Session;
+    |Reports|
+    :Generate PDF Report;
+    :Download Results;
+else (no)
+    :Add Rejection Comments;
+    :Flag for Re-test;
+    |Test Engineer|
+    :Investigate Issues;
+    :Adjust Parameters;
+    :Re-run Test;
+endif
+
+|Dashboard|
+:Updated Statistics;
+:Test History Recorded;
+
+stop
+
+legend right
+    **Key Metrics Evaluated:**
+    |= Metric |= Pass Criteria |
+    | F1 Score | > 0.85 |
+    | Mean Latency | < 100ms |
+    | Max Latency | < 150ms |
+    | Pass Rate | > 90% |
+endlegend
+
+@enduml

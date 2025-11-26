@@ -71,10 +71,29 @@ class LabJackBridgeService:
             
             # Get device information
             info = ljm.getHandleInfo(self.labjack_handle)
-            device_type = ljm.numberToType(info[0])
-            connection_type = ljm.numberToConnectionType(info[1])
+            device_type_int = info[0]
+            connection_type_int = info[1]
             serial_number = info[2]
-            
+
+            # Convert device type integer to string
+            device_type_map = {
+                4: "T4",
+                7: "T7",
+                200: "T8",
+                6: "U6",
+                3: "U3",
+                9: "UE9"
+            }
+            device_type = device_type_map.get(device_type_int, f"Unknown({device_type_int})")
+
+            # Convert connection type integer to string
+            connection_type_map = {
+                1: "USB",
+                3: "ETHERNET",
+                4: "WIFI"
+            }
+            connection_type = connection_type_map.get(connection_type_int, f"Unknown({connection_type_int})")
+
             self.device_info = {
                 "device_type": device_type,
                 "connection_type": connection_type,

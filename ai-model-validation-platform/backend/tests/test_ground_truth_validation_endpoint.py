@@ -7,7 +7,7 @@ ground truth data before starting a test session.
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, delete, update, func
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import uuid

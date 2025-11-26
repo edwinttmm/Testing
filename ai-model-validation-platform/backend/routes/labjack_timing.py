@@ -34,6 +34,7 @@ class StartVideoTimingRequest(BaseModel):
     detection_threshold: Optional[float] = Field(3.3, description="LabJack detection threshold in volts")
     latency_threshold_ms: Optional[float] = Field(50.0, description="Latency threshold in milliseconds")
     detection_channel: Optional[str] = Field("AIN0", description="LabJack channel for detection")
+    enable_t3_yolo: Optional[bool] = Field(False, description="Enable T3 YOLO ML detection (for GT setup only, NOT for HIL validation tests)")
 
 
 class DetectionEventRequest(BaseModel):
@@ -168,8 +169,11 @@ async def start_video_timing(
         db.commit()
         
         # Optionally start T3 YOLO detection + video monitor + coordination
+        # NOTE: T3 YOLO should ONLY be enabled for Ground Truth setup, NOT for HIL validation tests
+        # HIL validation tests use LabJack voltage signals as the primary detection source
+        t3_started = False
         try:
-            if video_file_path:
+            if video_file_path and request.enable_t3_yolo:
                 from src.hil_video_frame_monitor import start_hil_video_monitoring
                 from src.t3_t4_coordination_service import start_t3_t4_coordination
                 from src.hil_t3_yolo_pipeline import start_t3_detection_for_hil_session
@@ -180,7 +184,10 @@ async def start_video_timing(
                 await start_hil_video_monitoring(session_id=session_id, video_path=video_file_path, video_id=request.video_id, start_frame=0)
                 # Start coordination for T3-T4 if desired (use latency threshold provided)
                 await start_t3_t4_coordination(session_id=session_id, latency_threshold_ms=request.latency_threshold_ms or 100.0)
+                t3_started = True
                 logger.info(f"T3 detection + video monitor + coordination started for session {session_id}")
+            elif video_file_path:
+                logger.info(f"📍 Pure LabJack HIL test mode - T3 YOLO detection DISABLED for session {session_id}")
         except Exception as t3_err:
             logger.warning(f"T3 auto-start skipped for session {session_id}: {t3_err}")
 
@@ -196,9 +203,11 @@ async def start_video_timing(
             "detection_channel": request.detection_channel,
             "timing_session": timing_session.to_dict(),
             "t3": {
-                "auto_started": bool(video_file_path),
+                "enabled": request.enable_t3_yolo,
+                "started": t3_started,
                 "video_path": video_file_path
             },
+            "mode": "pure_labjack_hil" if not request.enable_t3_yolo else "t3_yolo_enabled",
             "message": "Video timing and LabJack detection monitoring started successfully"
         }
         

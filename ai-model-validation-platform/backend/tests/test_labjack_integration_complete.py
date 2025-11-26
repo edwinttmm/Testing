@@ -16,7 +16,7 @@ def test_labjack_service_imports():
     """Test that all LabJack services can be imported successfully"""
     try:
         # Test core hardware service
-        from services.labjack_hardware_service import (
+        from services.simple_labjack_detection import (
             get_labjack_hardware_service,
             initialize_hardware_service,
             LabJackHardwareService
@@ -92,12 +92,12 @@ def test_service_initialization():
     """Test that services can be initialized without hardware"""
     try:
         # Test hardware service initialization (should work in mock mode)
-        from services.labjack_hardware_service import initialize_hardware_service
+        from services.simple_labjack_detection import initialize_hardware_service
         result = initialize_hardware_service()
         print(f"✅ Hardware service initialization: {result}")
         
         # Test getting service instance
-        from services.labjack_hardware_service import get_labjack_hardware_service
+        from services.simple_labjack_detection import get_labjack_hardware_service
         service = get_labjack_hardware_service()
         print(f"✅ Hardware service instance created: {type(service).__name__}")
         

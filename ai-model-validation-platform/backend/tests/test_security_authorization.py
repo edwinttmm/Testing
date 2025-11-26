@@ -277,7 +277,7 @@ class TestAuditLogging:
         db_session.commit()
         
         # Clear existing audit logs
-        db_session.query(AuditLog).delete()
+        db_session.execute(delete(AuditLog))
         db_session.commit()
         
         # Test authorization (should succeed and log)
@@ -286,10 +286,10 @@ class TestAuditLogging:
         )
         
         # Check audit log was created
-        audit_logs = db_session.query(AuditLog).filter(
+        audit_logs = db_session.execute(select(AuditLog).where(
             AuditLog.user_id == test_user_1.id,
             AuditLog.event_type == "resource_access_granted"
-        ).all()
+        )).scalars().all()
         
         assert len(audit_logs) == 1
         assert audit_logs[0].event_data["resource_type"] == "project"
@@ -305,7 +305,7 @@ class TestAuditLogging:
         db_session.commit()
         
         # Clear existing audit logs
-        db_session.query(AuditLog).delete()
+        db_session.execute(delete(AuditLog))
         db_session.commit()
         
         # Test authorization (should fail and log)
@@ -315,10 +315,10 @@ class TestAuditLogging:
             )
         
         # Check audit log was created
-        audit_logs = db_session.query(AuditLog).filter(
+        audit_logs = db_session.execute(select(AuditLog).where(
             AuditLog.user_id == test_user_1.id,
             AuditLog.event_type == "resource_access_denied"
-        ).all()
+        )).scalars().all()
         
         assert len(audit_logs) == 1
         assert audit_logs[0].event_data["resource_type"] == "project"

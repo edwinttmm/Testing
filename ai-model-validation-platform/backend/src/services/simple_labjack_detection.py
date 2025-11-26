@@ -185,36 +185,44 @@ class SimpleLabJackDetector:
             return
         
         detection_count = 0
-        last_pin_state = False
-        
+        # FIX #1: Sample-and-hold detection at video frame rate (not edge detection)
+        # Matches ground truth pattern: continuous detections during object presence
+        SAMPLE_RATE_HZ = 24  # Match video frame rate (24fps)
+        SAMPLE_INTERVAL = 1.0 / SAMPLE_RATE_HZ  # ~42ms between samples
+        last_sample_time = 0
+
         try:
             while not self.stop_event.is_set():
                 try:
-                    # Check LabJack pin state (replace with actual LabJack code)
-                    current_pin_state = self._read_labjack_pin()
                     current_time = time.time()
-                    
-                    # Detect state change (rising edge detection)
-                    if current_pin_state and not last_pin_state:
-                        detection_count += 1
-                        detection_event = DetectionEvent(
-                            timestamp=current_time,
-                            pin_state=current_pin_state,
-                            detection_id=f"DET_{self.session_id}_{detection_count:04d}",
-                            metadata={
-                                "session_start_offset": current_time - (self.session_start_time or 0),
-                                "detection_sequence": detection_count
-                            }
-                        )
-                        
-                        self.detection_events.append(detection_event)
-                        logger.debug(f"Detection event recorded: {detection_event.detection_id} at {current_time}")
-                    
-                    last_pin_state = current_pin_state
-                    
-                    # Small sleep to prevent excessive CPU usage
-                    # Adjust based on required precision (1ms = 0.001)
-                    time.sleep(0.001)  # 1ms polling rate for high precision
+
+                    # Sample at fixed intervals (frame rate)
+                    if current_time - last_sample_time >= SAMPLE_INTERVAL:
+                        # Check LabJack pin state
+                        current_pin_state = self._read_labjack_pin()
+
+                        # Level detection: Generate detection if signal is HIGH at sample time
+                        if current_pin_state:
+                            detection_count += 1
+                            detection_event = DetectionEvent(
+                                timestamp=current_time,
+                                pin_state=current_pin_state,
+                                detection_id=f"DET_{self.session_id}_{detection_count:04d}",
+                                metadata={
+                                    "session_start_offset": current_time - (self.session_start_time or 0),
+                                    "detection_sequence": detection_count,
+                                    "sample_rate_hz": SAMPLE_RATE_HZ,
+                                    "detection_type": "level_sampled"
+                                }
+                            )
+
+                            self.detection_events.append(detection_event)
+                            logger.debug(f"Detection event recorded: {detection_event.detection_id} at {current_time}")
+
+                        last_sample_time = current_time
+
+                    # Small sleep to prevent excessive CPU usage while maintaining responsiveness
+                    time.sleep(0.001)  # 1ms poll rate for precise sampling timing
                     
                 except Exception as e:
                     logger.error(f"Error in detection worker: {e}")
@@ -224,9 +232,9 @@ class SimpleLabJackDetector:
         
         except Exception as e:
             logger.error(f"Fatal error in detection worker: {e}")
-        
+
         finally:
-            self._disconnect_labjack()
+            logger.info(f"⚠️ Detection worker stopped, hardware remains connected")
             logger.info(f"Detection worker stopped for session: {self.session_id}")
     
     def _connect_labjack(self) -> bool:

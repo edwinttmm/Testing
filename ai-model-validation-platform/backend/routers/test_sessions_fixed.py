@@ -218,8 +218,15 @@ async def start_test_session(
         # Update session status
         session.status = "running"
         session.started_at = datetime.utcnow()
-        db.commit()
-        
+
+        # FIX-4: Explicit commit + flush + refresh for PostgreSQL MVCC visibility
+        # This ensures the session is fully persisted before starting monitoring service
+        logger.info(f"💾 Committing session {session_id} to database...")
+        db.commit()          # Commit transaction
+        db.flush()           # Ensure write to database
+        db.refresh(session)  # Ensure local session state is fresh
+        logger.info(f"✅ Session {session_id} committed and flushed to database (status: {session.status})")
+
         # Initialize monitoring result
         monitoring_result = {"success": False, "error": "Not attempted"}
         

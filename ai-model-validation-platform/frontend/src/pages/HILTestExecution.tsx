@@ -294,12 +294,36 @@ const HILTestExecution: React.FC = () => {
       setError(`Cannot start test:\n${validation.errors.join('\n')}`);
       return;
     }
-    
+
     try {
       setLoading(true);
       setError(null);
-      
-      // Create test session
+
+      // FIX: Generate session ID upfront to enable proactive room join
+      // This eliminates the 100-200ms race condition that causes zero detections
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // FIX: Join WebSocket room BEFORE creating session
+      // This ensures we're in the room when detections start emitting
+      if (!wsConnected) {
+        setError('WebSocket not connected. Cannot start test.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Import websocketService for direct access to joinSession
+        const websocketService = (await import('../services/websocketService')).default;
+        await websocketService.joinSession(sessionId);
+        console.log(`✅ Proactively joined session room: ${sessionId}`);
+      } catch (joinError: any) {
+        console.error('❌ Failed to join WebSocket session:', joinError);
+        setError(`Failed to join WebSocket session: ${joinError.message}. Please retry.`);
+        setLoading(false);
+        return;
+      }
+
+      // Create test session with pre-generated ID
       const testSessionData: TestSessionCreate = {
         projectId: selectedProject!.id,
         name: `HIL Test Session - ${new Date().toISOString()}`,
@@ -307,36 +331,42 @@ const HILTestExecution: React.FC = () => {
         labjackConnected: labjackStatus!.connected,
         status: 'running'
       };
-      
-      const session = await apiService.post<TestSessionInterface>('/api/v1/test-sessions', testSessionData);
+
+      // Add sessionId to request if backend supports it
+      const sessionDataWithId = {
+        ...testSessionData,
+        sessionId  // Pass pre-generated session ID
+      };
+
+      const session = await apiService.post<TestSessionInterface>('/api/v1/test-sessions', sessionDataWithId);
       setCurrentTestSession(session);
-      
+
       // Capture high-precision Test_Start_Time (PRD requirement)
       const startTime = new Date();
       setTestStartTime(startTime);
       setTestInProgress(true);
-      
+
       // Switch to full-screen mode (PRD requirement)
       await enterFullScreen();
-      
+
       // Start video playback
       setCurrentVideoIndex(0);
       if (videoRef.current) {
         videoRef.current.currentTime = 0;
         await videoRef.current.play();
       }
-      
-      // Subscribe to hardware signals via WebSocket
+
+      // Subscribe to hardware signals via WebSocket (already in room now)
       if (wsConnected) {
         wsEmit('subscribe_hardware_signals', {
           sessionId: session.id,
           signalType: labjackStatus!.signalType
         });
       }
-      
+
       setSuccessMessage('HIL test started successfully');
       setStartTestDialog(false);
-      
+
     } catch (err: any) {
       setError(`Failed to start test: ${err.message}`);
     } finally {

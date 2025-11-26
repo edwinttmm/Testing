@@ -25,6 +25,17 @@ router = APIRouter(prefix="/api", tags=["HIL Results"])
 # Initialize services
 labjack_service = LabJackService()
 
+
+def to_isoformat(dt_value):
+    """Convert datetime or string to ISO format string safely."""
+    if dt_value is None:
+        return None
+    if isinstance(dt_value, str):
+        return dt_value  # Already a string, return as-is
+    if hasattr(dt_value, 'isoformat'):
+        return dt_value.isoformat()
+    return str(dt_value)
+
 @router.get("/test-sessions/{session_id}/results-debug")
 async def get_hil_test_results_debug(
     session_id: str,
@@ -63,7 +74,7 @@ async def get_latest_session_with_events(db: Session = Depends(get_db)):
             "session_id": result.id,
             "name": result.name,
             "status": result.status,
-            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "created_at": to_isoformat(result.created_at),
             "event_count": result.event_count,
             "latest_event_time": result.latest_event_time,
             "message": f"Found session with {result.event_count} detection events"
@@ -134,11 +145,11 @@ async def get_hil_test_results(
         # Get detection events for detailed analysis using raw SQL
         # First try the specific session, then fall back to sessions with events
         detection_events_query = text("""
-            SELECT id, test_session_id, frame_number, timestamp, latency_ms, latency_ns,
+            SELECT id, test_session_id, frame_number, timestamp, actual_latency_ms, latency_ns,
                    processing_time_ms, voltage_level, labjack_voltage, labjack_timestamp,
                    detection_channel, validation_result, confidence, class_label, vru_type,
                    created_at
-            FROM detection_events 
+            FROM detection_events
             WHERE test_session_id = :session_id
             ORDER BY timestamp ASC
         """)
@@ -148,11 +159,11 @@ async def get_hil_test_results(
         if not detection_events_result:
             logger.warning(f"No detection events found for session {session_id}, looking for recent events in any session")
             fallback_query = text("""
-                SELECT id, test_session_id, frame_number, timestamp, latency_ms, latency_ns,
+                SELECT id, test_session_id, frame_number, timestamp, actual_latency_ms, latency_ns,
                        processing_time_ms, voltage_level, labjack_voltage, labjack_timestamp,
                        detection_channel, validation_result, confidence, class_label, vru_type,
                        created_at
-                FROM detection_events 
+                FROM detection_events
                 WHERE test_session_id IS NOT NULL
                 ORDER BY created_at DESC
                 LIMIT 50
@@ -168,7 +179,7 @@ async def get_hil_test_results(
                 self.test_session_id = row.test_session_id
                 self.frame_number = row.frame_number
                 self.timestamp = row.timestamp
-                self.latency_ms = row.latency_ms
+                self.latency_ms = row.actual_latency_ms  # Column is actual_latency_ms in DB
                 self.latency_ns = row.latency_ns
                 self.processing_time_ms = row.processing_time_ms
                 self.voltage_level = row.voltage_level
@@ -311,19 +322,44 @@ async def get_hil_test_results(
                 "active_channels": ["AIN0", "AIN1"]
             }
         
-        # Calculate session duration
+        # Calculate session duration - handle both datetime and string formats
         duration_seconds = 0
-        if test_session.started_at and test_session.completed_at:
-            duration_seconds = (test_session.completed_at - test_session.started_at).total_seconds()
-        elif test_session.started_at:
-            duration_seconds = (datetime.utcnow() - test_session.started_at).total_seconds()
+        try:
+            started_at = test_session.started_at
+            completed_at = test_session.completed_at
+
+            # Parse started_at if it's a string
+            if isinstance(started_at, str):
+                started_at = datetime.fromisoformat(started_at.replace('Z', '+00:00').replace(' ', 'T'))
+
+            # Parse completed_at if it's a string
+            if isinstance(completed_at, str):
+                completed_at = datetime.fromisoformat(completed_at.replace('Z', '+00:00').replace(' ', 'T'))
+
+            if started_at and completed_at:
+                duration_seconds = (completed_at - started_at).total_seconds()
+            elif started_at:
+                duration_seconds = (datetime.utcnow() - started_at).total_seconds()
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Could not calculate session duration: {e}")
+            duration_seconds = 0
 
         # Calculate video startup delay if timing data is available
         video_startup_delay_ms = 0
         if (test_session.video_playback_start_time and test_session.started_at):
-            # Convert datetime to timestamp for calculation
-            started_timestamp = test_session.started_at.timestamp()
-            video_startup_delay_ms = (test_session.video_playback_start_time - started_timestamp) * 1000
+            try:
+                # Convert started_at to timestamp - handle both datetime and string formats
+                if hasattr(test_session.started_at, 'timestamp'):
+                    started_timestamp = test_session.started_at.timestamp()
+                elif isinstance(test_session.started_at, str):
+                    # datetime is already imported at module level
+                    started_timestamp = datetime.fromisoformat(test_session.started_at.replace('Z', '+00:00')).timestamp()
+                else:
+                    started_timestamp = float(test_session.started_at)
+                video_startup_delay_ms = (test_session.video_playback_start_time - started_timestamp) * 1000
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.warning(f"Could not calculate video startup delay: {e}")
+                video_startup_delay_ms = 0
         
         # Get project info safely
         project_name = "Unknown Project"
@@ -349,8 +385,8 @@ async def get_hil_test_results(
             "session_info": {
                 "project_name": project_name,
                 "operator": "System",
-                "start_time": test_session.started_at.isoformat() if test_session.started_at else None,
-                "end_time": test_session.completed_at.isoformat() if test_session.completed_at else None,
+                "start_time": to_isoformat(test_session.started_at),
+                "end_time": to_isoformat(test_session.completed_at),
                 "duration_seconds": round(duration_seconds, 1)
             },
             "video_timing": {
@@ -445,9 +481,9 @@ async def list_test_sessions(
                 "project_id": session.project_id,
                 "status": session.status,
                 "session_type": session.session_type,
-                "started_at": session.started_at.isoformat() if session.started_at else None,
-                "completed_at": session.completed_at.isoformat() if session.completed_at else None,
-                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "started_at": to_isoformat(session.started_at),
+                "completed_at": to_isoformat(session.completed_at),
+                "created_at": to_isoformat(session.created_at),
                 "detection_count": event_count,
                 "latency_threshold_ms": session.latency_threshold_ms or session.tolerance_ms or 100
             })
@@ -506,7 +542,7 @@ async def get_session_detection_events(
                 "confidence": event.confidence,
                 "class_label": event.class_label,
                 "vru_type": event.vru_type,
-                "created_at": event.created_at.isoformat() if event.created_at else None
+                "created_at": to_isoformat(event.created_at)
             })
         
         return {
@@ -579,8 +615,8 @@ async def get_session_summary(
             "pass_rate": round(pass_rate, 2),
             "average_latency_ms": round(avg_latency, 3),
             "threshold_ms": threshold_ms,
-            "started_at": test_session.started_at.isoformat() if test_session.started_at else None,
-            "completed_at": test_session.completed_at.isoformat() if test_session.completed_at else None
+            "started_at": to_isoformat(test_session.started_at),
+            "completed_at": to_isoformat(test_session.completed_at)
         }
         
     except HTTPException:
